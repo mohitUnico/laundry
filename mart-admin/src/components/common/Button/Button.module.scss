@@ -1,0 +1,56 @@
+.btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.3s ease;
+
+  &-primary {
+    background-color: #1976d2;
+    color: white;
+
+    &:hover:not(:disabled) {
+      background-color: #1565c0;
+    }
+  }
+
+  &-secondary {
+    background-color: #f5f5f5;
+    color: #333;
+
+    &:hover:not(:disabled) {
+      background-color: #e0e0e0;
+    }
+  }
+
+  &-danger {
+    background-color: #dc004e;
+    color: white;
+
+    &:hover:not(:disabled) {
+      background-color: #c4003f;
+    }
+  }
+
+  &-small {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+
+  &-medium {
+    padding: 10px 20px;
+    font-size: 14px;
+  }
+
+  &-large {
+    padding: 14px 28px;
+    font-size: 16px;
+  }
+
+  &-disabled,
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}

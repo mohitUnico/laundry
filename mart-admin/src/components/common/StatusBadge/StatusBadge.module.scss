@@ -1,0 +1,28 @@
+.status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+
+  &-success {
+    background-color: #e8f5e9;
+    color: #2e7d32;
+  }
+
+  &-warning {
+    background-color: #fff3e0;
+    color: #e65100;
+  }
+
+  &-error {
+    background-color: #ffebee;
+    color: #c62828;
+  }
+
+  &-info {
+    background-color: #e3f2fd;
+    color: #1565c0;
+  }
+}

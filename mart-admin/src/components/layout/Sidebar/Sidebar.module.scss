@@ -1,0 +1,55 @@
+.sidebar {
+  width: 260px;
+  height: 100vh;
+  background-color: #1e293b;
+  color: white;
+  position: fixed;
+  left: 0;
+  top: 0;
+  overflow-y: auto;
+
+  &-header {
+    padding: 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+
+    h2 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 600;
+    }
+  }
+
+  &-nav {
+    padding: 20px 0;
+  }
+
+  &-item {
+    display: flex;
+    align-items: center;
+    padding: 12px 20px;
+    color: rgba(255, 255, 255, 0.7);
+    text-decoration: none;
+    transition: all 0.3s ease;
+
+    &:hover {
+      background-color: rgba(255, 255, 255, 0.05);
+      color: white;
+    }
+
+    &.active {
+      background-color: rgba(59, 130, 246, 0.15);
+      color: #3b82f6;
+      border-right: 3px solid #3b82f6;
+    }
+
+    &-icon {
+      margin-right: 12px;
+      font-size: 20px;
+    }
+
+    &-label {
+      font-size: 14px;
+      font-weight: 500;
+    }
+  }
+}

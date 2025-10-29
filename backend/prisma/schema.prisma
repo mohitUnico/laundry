@@ -1,0 +1,382 @@
+// Prisma Schema for Laundry App
+// Database: PostgreSQL 14+
+// ORM: Prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// CORE ENTITIES
+// ============================================================================
+
+model LaundryMart {
+  mart_id             String   @id @default(uuid())
+  mart_name           String   @db.VarChar(255)
+  contact_email       String   @unique @db.VarChar(255)
+  contact_phone       String   @db.VarChar(20)
+  address             String   @db.Text
+  latitude            Decimal  @db.Decimal(10, 8)
+  longitude           Decimal  @db.Decimal(11, 8)
+  service_radius_km   Json     // JSON field for distance-based pricing tiers
+  is_active           Boolean  @default(true)
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  users                 User[]
+  orders                Order[]
+  services              Service[]
+  delivery_staffs       DeliveryStaff[]
+  mart_daily_metrics    MartDailyMetrics[]
+  customer_mart_profile CustomerMartProfile[]
+
+  @@map("laundry_mart")
+}
+
+model User {
+  user_id    String   @id @default(uuid())
+  mart_id    String
+  full_name  String   @db.VarChar(255)
+  email      String   @unique @db.VarChar(255)
+  phone      String   @db.VarChar(20)
+  password   String   @db.VarChar(255)
+  role       String   @db.VarChar(50) // super_admin, admin, manager, staff
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  mart LaundryMart @relation(fields: [mart_id], references: [mart_id])
+
+  @@index([mart_id])
+  @@map("users")
+}
+
+model Customer {
+  customer_id String   @id @default(uuid())
+  full_name   String   @db.VarChar(255)
+  email       String   @unique @db.VarChar(255)
+  phone       String   @unique @db.VarChar(20)
+  password    String   @db.VarChar(255)
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  addresses             CustomerAddress[]
+  orders                Order[]
+  customer_mart_profile CustomerMartProfile[]
+
+  @@map("customers")
+}
+
+model CustomerAddress {
+  address_id      String   @id @default(uuid())
+  customer_id     String
+  address_label   String   @db.VarChar(50) // home, work, friend, other
+  full_address    String   @db.Text
+  latitude        Decimal  @db.Decimal(10, 8)
+  longitude       Decimal  @db.Decimal(11, 8)
+  is_default      Boolean  @default(false)
+  delivery_note   String?  @db.Text
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  customer Customer @relation(fields: [customer_id], references: [customer_id], onDelete: Cascade)
+
+  pickup_orders   Order[] @relation("PickupAddress")
+  delivery_orders Order[] @relation("DeliveryAddress")
+
+  @@index([customer_id])
+  @@map("customer_addresses")
+}
+
+model CustomerMartProfile {
+  profile_id      String   @id @default(uuid())
+  customer_id     String
+  mart_id         String
+  total_orders    Int      @default(0)
+  total_spent     Decimal  @default(0) @db.Decimal(10, 2)
+  last_order_date DateTime?
+  customer_rating Decimal? @db.Decimal(3, 2) // Rating by mart
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  customer Customer     @relation(fields: [customer_id], references: [customer_id], onDelete: Cascade)
+  mart     LaundryMart  @relation(fields: [mart_id], references: [mart_id], onDelete: Cascade)
+
+  @@unique([customer_id, mart_id])
+  @@index([customer_id])
+  @@index([mart_id])
+  @@map("customer_mart_profile")
+}
+
+// ============================================================================
+// SERVICE CATALOG
+// ============================================================================
+
+model ServiceCategory {
+  category_id   String   @id @default(uuid())
+  category_name String   @db.VarChar(100)
+  description   String?  @db.Text
+  icon_url      String?  @db.VarChar(500)
+  display_order Int      @default(0)
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  services Service[]
+
+  @@map("service_categories")
+}
+
+model Service {
+  service_id      String   @id @default(uuid())
+  category_id     String
+  mart_id         String
+  service_name    String   @db.VarChar(255)
+  description     String?  @db.Text
+  base_price      Decimal  @db.Decimal(10, 2)
+  per_kg_price    Decimal? @db.Decimal(10, 2)
+  estimated_hours Int      // Processing time in hours
+  icon_url        String?  @db.VarChar(500)
+  is_active       Boolean  @default(true)
+  display_order   Int      @default(0)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  category ServiceCategory @relation(fields: [category_id], references: [category_id])
+  mart     LaundryMart     @relation(fields: [mart_id], references: [mart_id])
+
+  @@index([category_id])
+  @@index([mart_id])
+  @@map("services")
+}
+
+model ClothesItem {
+  item_id       String   @id @default(uuid())
+  item_name     String   @db.VarChar(100)
+  per_unit_price Decimal @db.Decimal(10, 2)
+  icon_url      String?  @db.VarChar(500)
+  is_active     Boolean  @default(true)
+  display_order Int      @default(0)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  order_items OrderItem[]
+
+  @@map("clothes_items")
+}
+
+// ============================================================================
+// ORDERS & BILLING
+// ============================================================================
+
+model Order {
+  order_id            String   @id @default(uuid())
+  customer_id         String
+  mart_id             String
+  order_status        String   @db.VarChar(50) // pickup, in_process, ready, out_for_delivery, delivered
+  pricing_model       String   @db.VarChar(50) // per-unit-piece, per-kg
+  total_amount        Decimal  @db.Decimal(10, 2)
+  pickup_address_id   String
+  delivery_address_id String
+  pickup_date         DateTime
+  delivery_date       DateTime
+  special_instructions String? @db.Text
+  customer_rating     Decimal? @db.Decimal(3, 2)
+  customer_review     String?  @db.Text
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  customer         Customer        @relation(fields: [customer_id], references: [customer_id])
+  mart             LaundryMart     @relation(fields: [mart_id], references: [mart_id])
+  pickup_address   CustomerAddress @relation("PickupAddress", fields: [pickup_address_id], references: [address_id])
+  delivery_address CustomerAddress @relation("DeliveryAddress", fields: [delivery_address_id], references: [address_id])
+
+  order_items    OrderItem[]
+  order_items_kg OrderItemKg[]
+  bill           Bill?
+  delivery       Delivery?
+
+  @@index([customer_id])
+  @@index([mart_id])
+  @@index([order_status])
+  @@index([created_at])
+  @@map("orders")
+}
+
+model OrderItem {
+  item_id      String  @id @default(uuid())
+  order_id     String
+  clothes_id   String
+  quantity     Int
+  unit_price   Decimal @db.Decimal(10, 2)
+  subtotal     Decimal @db.Decimal(10, 2)
+
+  order   Order       @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
+  clothes ClothesItem @relation(fields: [clothes_id], references: [item_id])
+
+  @@index([order_id])
+  @@map("order_items")
+}
+
+model OrderItemKg {
+  item_kg_id   String  @id @default(uuid())
+  order_id     String
+  item_name    String  @db.VarChar(255)
+  weight_kg    Decimal @db.Decimal(10, 2)
+  price_per_kg Decimal @db.Decimal(10, 2)
+  subtotal     Decimal @db.Decimal(10, 2)
+
+  order Order @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
+
+  @@index([order_id])
+  @@map("order_items_kg")
+}
+
+model Bill {
+  bill_id        String   @id @default(uuid())
+  order_id       String   @unique
+  subtotal       Decimal  @db.Decimal(10, 2)
+  delivery_fee   Decimal  @db.Decimal(10, 2)
+  tax_amount     Decimal  @db.Decimal(10, 2)
+  discount       Decimal  @default(0) @db.Decimal(10, 2)
+  final_amount   Decimal  @db.Decimal(10, 2)
+  payment_method String   @db.VarChar(50) // card, cod, upi, wallet
+  payment_status String   @db.VarChar(50) // pending, completed, failed, refunded
+  transaction_id String?  @db.VarChar(255)
+  paid_at        DateTime?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  order Order @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
+
+  @@index([payment_status])
+  @@index([created_at])
+  @@map("bills")
+}
+
+// ============================================================================
+// DELIVERY MANAGEMENT
+// ============================================================================
+
+model DeliveryStaff {
+  staff_id            String   @id @default(uuid())
+  mart_id             String
+  full_name           String   @db.VarChar(255)
+  phone               String   @unique @db.VarChar(20)
+  email               String?  @unique @db.VarChar(255)
+  password            String   @db.VarChar(255)
+  vehicle_type        String   @db.VarChar(50) // bike, car, scooter
+  vehicle_number      String   @db.VarChar(50)
+  license_number      String   @db.VarChar(50)
+  document_url        String?  @db.VarChar(500) // S3 URL for documents
+  bank_account_details Json?   // JSON field for bank info
+  verification_status String   @db.VarChar(50) // pending, approved, rejected
+  is_active           Boolean  @default(true)
+  average_rating      Decimal? @db.Decimal(3, 2)
+  total_deliveries    Int      @default(0)
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  mart       LaundryMart @relation(fields: [mart_id], references: [mart_id])
+  deliveries Delivery[]
+
+  @@index([mart_id])
+  @@index([verification_status])
+  @@map("delivery_staffs")
+}
+
+model Delivery {
+  delivery_id          String   @id @default(uuid())
+  order_id             String   @unique
+  staff_id             String
+  delivery_status      String   @db.VarChar(50) // picked_up, on_the_way, delivered
+  assigned_at          DateTime @default(now())
+  completed_at         DateTime?
+  delivery_rating      Decimal? @db.Decimal(3, 2)
+  delivery_review      String?  @db.Text
+  delivery_fee         Decimal  @db.Decimal(10, 2)
+  distance_km          Decimal? @db.Decimal(10, 2)
+  estimated_duration   Int?     // Minutes
+  actual_duration      Int?     // Minutes
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+
+  order          Order                @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
+  staff          DeliveryStaff        @relation(fields: [staff_id], references: [staff_id])
+  pickup         PickupForDelivery?
+  drop           DropForDelivery?
+
+  @@index([staff_id])
+  @@index([delivery_status])
+  @@map("delivery")
+}
+
+model PickupForDelivery {
+  pickup_id      String   @id @default(uuid())
+  delivery_id    String   @unique
+  pickup_address String   @db.Text
+  pickup_lat     Decimal  @db.Decimal(10, 8)
+  pickup_lng     Decimal  @db.Decimal(11, 8)
+  pickup_status  String   @db.VarChar(50) // scheduled, on_the_way, picked_up
+  pickup_time    DateTime?
+  pickup_proof   String   @db.VarChar(500) // S3 URL for photo
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  delivery Delivery @relation(fields: [delivery_id], references: [delivery_id], onDelete: Cascade)
+
+  @@index([pickup_status])
+  @@map("pickup_for_delivery")
+}
+
+model DropForDelivery {
+  drop_id      String   @id @default(uuid())
+  delivery_id  String   @unique
+  drop_address String   @db.Text
+  drop_lat     Decimal  @db.Decimal(10, 8)
+  drop_lng     Decimal  @db.Decimal(11, 8)
+  drop_status  String   @db.VarChar(50) // scheduled, on_the_way, dropped
+  drop_time    DateTime?
+  drop_proof   String   @db.VarChar(500) // S3 URL for photo
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  delivery Delivery @relation(fields: [delivery_id], references: [delivery_id], onDelete: Cascade)
+
+  @@index([drop_status])
+  @@map("drop_for_delivery")
+}
+
+// ============================================================================
+// ANALYTICS
+// ============================================================================
+
+model MartDailyMetrics {
+  metric_id         String   @id @default(uuid())
+  mart_id           String
+  metric_date       DateTime @db.Date
+  total_orders      Int      @default(0)
+  completed_orders  Int      @default(0)
+  cancelled_orders  Int      @default(0)
+  total_revenue     Decimal  @default(0) @db.Decimal(10, 2)
+  total_customers   Int      @default(0)
+  new_customers     Int      @default(0)
+  avg_order_value   Decimal  @default(0) @db.Decimal(10, 2)
+  completion_rate   Decimal  @default(0) @db.Decimal(5, 2)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  mart LaundryMart @relation(fields: [mart_id], references: [mart_id], onDelete: Cascade)
+
+  @@unique([mart_id, metric_date])
+  @@index([mart_id])
+  @@index([metric_date])
+  @@map("mart_daily_metrics")
+}
+

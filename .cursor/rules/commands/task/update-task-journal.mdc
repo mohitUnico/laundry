@@ -1,0 +1,31 @@
+---
+alwaysApply: false
+---
+## arguments
+- taskId: The ID of the task to be completed (format: YYMMDD-XX)
+## init
+1. Verify that the task exists:
+   - Check if the file exists at `.cursor/ctx-store/tasks/active/{{taskId}}.md`
+   - If not found, check `.cursor/ctx-store/tasks/completed/{{taskId}}.md`
+   - If still not found, report error: "Task with ID {{taskId}} not found"
+
+## perform
+1. **Read the task file**
+   - Load the contents of the task file
+   - Parse the Markdown structure
+
+2. **Update the journal**
+   - If subtaskIndex is provided:
+     - Locate the subtask section by index
+     - Add the new entry with timestamp to the subtask's journal section
+     - If subtaskStatus is provided, update the subtask's status
+   - If subtaskIndex is not provided:
+     - Add the new entry with timestamp to the main task's journal section
+
+3. **Save the updated task file**
+   - Write the modified content back to the task file
+   - Ensure the formatting is preserved
+
+## finalize
+1. Confirm successful journal update
+2. Return confirmation message: "Journal updated for task {{taskId}}"

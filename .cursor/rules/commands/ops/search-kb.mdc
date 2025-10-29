@@ -1,0 +1,35 @@
+---
+alwaysApply: false
+---
+## arguments
+- query: Free text search query describing what to search for
+
+## init
+1. Verify that the `.cursor/ctx-store/kb/` directory structure exists
+2. Check if the KB index file exists at `.cursor/ctx-store/kb/index.md`
+3. Parse the search query to extract key terms and concepts
+
+## perform
+1. **Search KB index first**
+   - Scan the KB index file for matching terms from the query
+   - Present any matching articles from the index with their categories
+   - Include a relevance score based on term matching
+
+2. **Search all KB articles**
+   - Search through all KB directories for articles matching the query terms
+   - Check titles, problems, solutions, and tags for matches
+   - Sort results by relevance score (number of matching terms, frequency count)
+   - Present the search results with article titles, categories, and relevance scores
+
+3. **Display matching article details**
+   - For the top 3 most relevant results, display a summary:
+     - Article title and ID
+     - Problem statement
+     - Brief solution overview
+     - Frequency count (how often it's been referenced)
+   - Provide links to view the full article content
+
+## finalize
+1. Summarize the search results statistics (number of matches found)
+2. Ask if the user wants to view any specific article in full
+3. Offer to refine the search if results are not satisfactory

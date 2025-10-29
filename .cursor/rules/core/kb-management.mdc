@@ -1,0 +1,100 @@
+---
+description:DoorSync's knowledge base management system organizes technical solutions in a self-updating repository where articles are categorized by domain, tracked by usage frequency, and dynamically indexed (max 5 per category) to ensure the most commonly referenced solutions are instantly accessible, creating an evolving system of institutional knowledge that grows organically through daily problem-solving.
+globs:
+alwaysApply: true
+---
+## Knowledge Base Overview
+- **Knowledge Base (KB)**: A structured repository of solutions, patterns, and workarounds for recurring technical issues
+- **KB Articles**: Individual documents capturing specific problems and their solutions
+- **Categories**: Logical groupings of knowledge articles by technology area or problem domain
+- **KB Index**: Central reference file at `.cursor/ctx-store/kb/index.md` that lists frequently accessed articles by category
+
+## Directories
+- `.cursor/ctx-store/kb/backend/`: Contains knowledge articles for backend-related issues
+- `.cursor/ctx-store/kb/frontend/`: Contains knowledge articles for frontend-related issues
+- `.cursor/ctx-store/kb/devops/`: Contains knowledge articles for CI/CD and deployment issues
+- `.cursor/ctx-store/kb/general/`: Contains knowledge articles for general or cross-cutting issues
+- `.cursor/ctx-store/kb/index.md`: Index file listing most frequently referenced articles
+
+## KB Article Structure
+- **Title**: Clear problem statement in the form of a question or declaration
+- **ID**: Auto-generated unique identifier (format: KB-YYMMDD-XXX)
+- **Category**: Technical area classification (e.g., database, unit-testing, state-management)
+- **Tags**: Keywords for improved searchability
+- **Problem**: Concise explanation of the issue (keep under 3 sentences)
+- **Root Cause**: Brief analysis of why the issue occurs (keep under 3 sentences)
+- **Solution**: Clear, concise steps to resolve the issue
+- **Related Articles**: Links to other KB articles with related information
+- **Created/Updated**: Timestamps for article creation and latest update
+- **Frequency**: Counter for how many times the article has been referenced or solution applied
+
+## KB Creation Process
+1. When an issue is encountered multiple times (at least twice) or is particularly notable:
+   - Pause the current task
+   - Create a new KB article in the appropriate directory
+   - Assign a unique ID
+   - Document the problem, root cause, and solution concisely
+   - Add appropriate tags for searchability
+   - Link to any related KB articles
+   - Initialize frequency counter to 1
+   - Resume the original task
+
+2. If the solution evolves or improves over time:
+   - Update the existing KB article
+   - Document the improved solution
+   - Update the "Last Updated" timestamp
+
+3. When referencing or applying a KB article solution:
+   - Increment the frequency counter in the article
+   - Update the KB index if needed based on the new frequency count
+
+## KB Index Management
+1. The KB index should only include the top 5 most frequently referenced articles for each subcategory
+2. When a KB article's frequency count increases:
+   - Check if it should be added to the index based on its frequency relative to other articles
+   - If it belongs in the top 5, add it to the index
+   - If the subcategory already has 5 entries, remove the least frequently used one
+3. Maintain the KB index structure clean and minimal:
+   - Only populate categories with actual KB articles, not placeholders
+   - Keep empty subcategories in the index for organizational purposes
+   - Sort articles within each subcategory by frequency (highest first)
+
+## KB Usage Process
+1. Before attempting to solve any issue:
+   - First check the KB index file for commonly encountered issues
+   - If not found in the index, search KB directories for keywords related to the issue
+   - Apply the documented solution if found
+   - Increment the frequency counter for the used article
+
+2. If a KB article exists but the solution doesn't work:
+   - Update the article with information about the limitation
+   - Document the new approach taken
+   - Do not increment the frequency counter
+
+3. If no KB article exists and the issue is solved after multiple attempts:
+   - Create a new KB article following the KB Creation Process
+
+## Knowledge Management Principles
+1. **Continuous Learning**: The KB should grow and improve over time
+2. **Solution Efficiency**: Prioritize solutions that are efficient and maintainable
+3. **Conciseness**: Keep articles brief and focused on the key information
+4. **Consistent Format**: Follow the KB article structure consistently
+5. **Cross-Referencing**: Link related articles for better knowledge discovery
+6. **Validation**: Solutions should be tested before adding to the KB
+7. **Practicality**: Focus on practical solutions, not theoretical discussions
+8. **Frequency Tracking**: Track how often articles are referenced or used
+9. **Dynamic Indexing**: Maintain the KB index based on actual usage patterns
+
+## AI Processing Instructions
+1. Always check the KB index first, then general KB directories when faced with a technical issue
+2. Create KB articles for recurring problems without waiting to be instructed
+3. Update KB articles when better solutions are found
+4. Reference KB articles when applying their solutions
+5. Keep KB articles concise and to the point
+6. Track and increment frequency counters when applying solutions
+7. Update the KB index when frequency counts change significantly
+8. Ensure each subcategory in the index has at most 5 entries
+9. Sort indexed articles by frequency (highest first)
+
+## KB Article Template
+[See template file](mdc:.cursor/rules/templates/kb-article-template.md)

@@ -1,0 +1,450 @@
+---
+description: Generate a service class for business logic in the Laundry App backend with Prisma integration, transactions, and error handling.
+globs: 
+alwaysApply: false
+---
+
+## arguments
+- resourceName: Name of the resource (e.g., Order, Customer, Delivery) - PascalCase
+- moduleName: Optional module/subdirectory name (e.g., orders, customers) - defaults to lowercase plural of resourceName
+- prismaModel: Prisma model name (defaults to lowercase resourceName)
+- includeCRUD: Generate full CRUD operations (default: true)
+- includeTransactions: Include transaction examples (default: true)
+
+## init
+1. Validate inputs:
+   - resourceName must be in PascalCase
+   - Determine moduleName (defaults to lowercase plural)
+   - Determine prismaModel name
+
+2. Check for existing files:
+   - Service file: `backend/src/services/${moduleName}.service.js`
+   - Verify Prisma client is set up: `backend/src/config/database.js` or Prisma client import
+
+3. Display summary:
+   ```
+   Creating service for: ${resourceName}
+   Module: ${moduleName}
+   Prisma Model: ${prismaModel}
+   
+   File to be created:
+   - backend/src/services/${moduleName}.service.js
+   
+   Operations: ${includeCRUD ? 'Full CRUD with Prisma' : 'Custom operations'}
+   Transactions: ${includeTransactions ? 'Included' : 'Not included'}
+   ```
+
+4. Confirm with user before proceeding
+
+## perform
+1. **Create service file**
+
+   Generate `backend/src/services/${moduleName}.service.js`:
+
+```javascript
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+const { AppError, NotFoundError, ValidationError } = require('../utils/errors');
+const logger = require('../utils/logger');
+
+/**
+ * ${resourceName} Service
+ * Contains business logic for ${moduleName} operations
+ */
+
+class ${resourceName}Service {
+${includeCRUD ? `
+  /**
+   * Get all ${moduleName} with pagination and filtering
+   * @param {Object} options - Query options
+   * @param {number} options.page - Page number
+   * @param {number} options.limit - Items per page
+   * @param {Object} options.filters - Filter criteria
+   * @param {string} options.userId - User ID for authorization (optional)
+   * @returns {Promise<{${moduleName}: Array, pagination: Object}>}
+   */
+  async getAll${resourceName}s(options) {
+    const { page, limit, filters, userId } = options;
+    const skip = (page - 1) * limit;
+
+    try {
+      // Build where clause
+      const where = {
+        // TODO: Add your filter logic
+        // Example: ...(filters.status && { status: filters.status }),
+        // Example: ...(userId && { customer_id: userId }),
+      };
+
+      // Execute query with pagination
+      const [${moduleName}, total] = await Promise.all([
+        prisma.${prismaModel}.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { created_at: 'desc' },
+          // Include related data if needed
+          // include: {
+          //   customer: {
+          //     select: { full_name: true, email: true }
+          //   }
+          // }
+        }),
+        prisma.${prismaModel}.count({ where }),
+      ]);
+
+      return {
+        ${moduleName},
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+          hasNext: page * limit < total,
+          hasPrev: page > 1,
+        },
+      };
+    } catch (error) {
+      logger.error('Error fetching ${moduleName}:', error);
+      throw new AppError('Failed to fetch ${moduleName}', 500);
+    }
+  }
+
+  /**
+   * Get ${resourceName.toLowerCase()} by ID
+   * @param {string} id - ${resourceName} ID
+   * @returns {Promise<Object>}
+   */
+  async get${resourceName}ById(id) {
+    try {
+      const ${resourceName.toLowerCase()} = await prisma.${prismaModel}.findUnique({
+        where: { ${prismaModel}_id: id },
+        // Include related data if needed
+        // include: {
+        //   items: true,
+        //   customer: true,
+        // }
+      });
+
+      if (!${resourceName.toLowerCase()}) {
+        throw new NotFoundError('${resourceName}');
+      }
+
+      return ${resourceName.toLowerCase()};
+    } catch (error) {
+      if (error instanceof NotFoundError) throw error;
+      logger.error(\`Error fetching ${resourceName.toLowerCase()} \${id}:\`, error);
+      throw new AppError('Failed to fetch ${resourceName.toLowerCase()}', 500);
+    }
+  }
+
+  /**
+   * Create new ${resourceName.toLowerCase()}
+   * @param {string} userId - User ID (if applicable)
+   * @param {Object} ${resourceName.toLowerCase()}Data - ${resourceName} data
+   * @returns {Promise<Object>}
+   */
+  async create${resourceName}(userId, ${resourceName.toLowerCase()}Data) {
+    try {
+      // Validate business rules
+      this._validate${resourceName}Data(${resourceName.toLowerCase()}Data);
+
+      ${includeTransactions ? `
+      // Use transaction for multiple operations
+      const result = await prisma.$transaction(async (tx) => {
+        // Create ${resourceName.toLowerCase()}
+        const ${resourceName.toLowerCase()} = await tx.${prismaModel}.create({
+          data: {
+            // TODO: Map your fields
+            // Example: customer_id: userId,
+            // Example: status: 'pending',
+            // Example: created_at: new Date(),
+          },
+        });
+
+        // Additional operations in transaction
+        // Example: Create related records
+        // Example: Update counters
+
+        return ${resourceName.toLowerCase()};
+      });
+
+      logger.info(\`${resourceName} created: \${result.${prismaModel}_id}\`);
+      return result;
+      ` : `
+      const ${resourceName.toLowerCase()} = await prisma.${prismaModel}.create({
+        data: {
+          // TODO: Map your fields
+          // customer_id: userId,
+          // ...${resourceName.toLowerCase()}Data,
+          created_at: new Date(),
+        },
+      });
+
+      logger.info(\`${resourceName} created: \${${resourceName.toLowerCase()}.${prismaModel}_id}\`);
+      return ${resourceName.toLowerCase()};
+      `}
+    } catch (error) {
+      if (error instanceof ValidationError) throw error;
+      logger.error('Error creating ${resourceName.toLowerCase()}:', error);
+      throw new AppError('Failed to create ${resourceName.toLowerCase()}', 500);
+    }
+  }
+
+  /**
+   * Update ${resourceName.toLowerCase()}
+   * @param {string} id - ${resourceName} ID
+   * @param {Object} updateData - Data to update
+   * @returns {Promise<Object>}
+   */
+  async update${resourceName}(id, updateData) {
+    try {
+      // Check if ${resourceName.toLowerCase()} exists
+      await this.get${resourceName}ById(id);
+
+      // Validate update data
+      this._validateUpdateData(updateData);
+
+      const updated${resourceName} = await prisma.${prismaModel}.update({
+        where: { ${prismaModel}_id: id },
+        data: {
+          ...updateData,
+          updated_at: new Date(),
+        },
+      });
+
+      logger.info(\`${resourceName} updated: \${id}\`);
+      return updated${resourceName};
+    } catch (error) {
+      if (error instanceof NotFoundError || error instanceof ValidationError) {
+        throw error;
+      }
+      logger.error(\`Error updating ${resourceName.toLowerCase()} \${id}:\`, error);
+      throw new AppError('Failed to update ${resourceName.toLowerCase()}', 500);
+    }
+  }
+
+  /**
+   * Delete ${resourceName.toLowerCase()}
+   * @param {string} id - ${resourceName} ID
+   * @returns {Promise<void>}
+   */
+  async delete${resourceName}(id) {
+    try {
+      // Check if ${resourceName.toLowerCase()} exists
+      await this.get${resourceName}ById(id);
+
+      ${includeTransactions ? `
+      // Use transaction if cascade deletes needed
+      await prisma.$transaction(async (tx) => {
+        // Delete related records first if needed
+        // await tx.relatedModel.deleteMany({ where: { ${prismaModel}_id: id } });
+
+        // Delete the ${resourceName.toLowerCase()}
+        await tx.${prismaModel}.delete({
+          where: { ${prismaModel}_id: id },
+        });
+      });
+      ` : `
+      await prisma.${prismaModel}.delete({
+        where: { ${prismaModel}_id: id },
+      });
+      `}
+
+      logger.info(\`${resourceName} deleted: \${id}\`);
+    } catch (error) {
+      if (error instanceof NotFoundError) throw error;
+      logger.error(\`Error deleting ${resourceName.toLowerCase()} \${id}:\`, error);
+      throw new AppError('Failed to delete ${resourceName.toLowerCase()}', 500);
+    }
+  }
+` : ''}
+
+  /**
+   * Validate ${resourceName.toLowerCase()} data
+   * @private
+   * @param {Object} data - ${resourceName} data
+   * @throws {ValidationError}
+   */
+  _validate${resourceName}Data(data) {
+    // TODO: Add your business validation logic
+    // Example:
+    // if (!data.items || data.items.length === 0) {
+    //   throw new ValidationError('${resourceName} must contain at least one item');
+    // }
+    
+    // if (data.totalAmount < 0) {
+    //   throw new ValidationError('Total amount cannot be negative');
+    // }
+  }
+
+  /**
+   * Validate update data
+   * @private
+   * @param {Object} data - Update data
+   * @throws {ValidationError}
+   */
+  _validateUpdateData(data) {
+    // TODO: Add update validation logic
+    // Example: Validate status transitions
+    // if (data.status) {
+    //   const validTransitions = ['pending', 'processing', 'completed'];
+    //   if (!validTransitions.includes(data.status)) {
+    //     throw new ValidationError('Invalid status');
+    //   }
+    // }
+  }
+}
+
+module.exports = new ${resourceName}Service();
+```
+
+2. **Create database config if it doesn't exist**
+
+   If `backend/src/config/database.js` doesn't exist, create it:
+
+```javascript
+const { PrismaClient } = require('@prisma/client');
+
+const prisma = new PrismaClient({
+  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+});
+
+// Handle connection errors
+prisma.$connect()
+  .then(() => {
+    console.log('✓ Database connected successfully');
+  })
+  .catch((error) => {
+    console.error('✗ Database connection failed:', error);
+    process.exit(1);
+  });
+
+// Graceful shutdown
+process.on('beforeExit', async () => {
+  await prisma.$disconnect();
+});
+
+module.exports = prisma;
+```
+
+3. **Display usage examples**
+
+   ```javascript
+   // Example usage in controller:
+   const ${moduleName}Service = require('../services/${moduleName}.service');
+
+   // Get all ${moduleName}
+   const result = await ${moduleName}Service.getAll${resourceName}s({
+     page: 1,
+     limit: 10,
+     filters: { status: 'active' },
+     userId: req.user.id,
+   });
+
+   // Get by ID
+   const ${resourceName.toLowerCase()} = await ${moduleName}Service.get${resourceName}ById(id);
+
+   // Create
+   const new${resourceName} = await ${moduleName}Service.create${resourceName}(
+     userId,
+     ${resourceName.toLowerCase()}Data
+   );
+
+   // Update
+   const updated${resourceName} = await ${moduleName}Service.update${resourceName}(
+     id,
+     updateData
+   );
+
+   // Delete
+   await ${moduleName}Service.delete${resourceName}(id);
+   ```
+
+4. **Display next steps**
+   ```
+   ✓ Service created successfully!
+   
+   Next steps:
+   1. Update TODO comments in the service file
+   2. Add your business logic and validation rules
+   3. Create/update Prisma model: /command create-prisma-model ${resourceName}
+   4. Test the service methods in isolation or through controller
+   5. Add unit tests: backend/tests/services/${moduleName}.service.test.js
+   
+   Service location: backend/src/services/${moduleName}.service.js
+   ```
+
+## finalize
+1. **Verify file was created**
+   - Check service file exists and is valid JavaScript
+   - Verify no syntax errors
+
+2. **Display summary**
+   ```
+   ===== Service Creation Summary =====
+   Resource: ${resourceName}
+   Module: ${moduleName}
+   Prisma Model: ${prismaModel}
+   
+   File Created:
+   ✓ backend/src/services/${moduleName}.service.js
+   
+   Operations: ${includeCRUD ? 'Full CRUD with Prisma' : 'Custom'}
+   Transactions: ${includeTransactions ? 'Included' : 'Not included'}
+   
+   Service Methods:
+   ${includeCRUD ? `- getAll${resourceName}s(options)
+   - get${resourceName}ById(id)
+   - create${resourceName}(userId, data)
+   - update${resourceName}(id, data)
+   - delete${resourceName}(id)` : '- Custom methods'}
+   ```
+
+3. **Suggest testing approach**
+   ```bash
+   # Create unit test file
+   touch backend/tests/services/${moduleName}.service.test.js
+   
+   # Example test structure:
+   const ${moduleName}Service = require('../../src/services/${moduleName}.service');
+   const prisma = require('../../src/config/database');
+
+   jest.mock('../../src/config/database');
+
+   describe('${resourceName}Service', () => {
+     describe('getAll${resourceName}s', () => {
+       it('should return paginated ${moduleName}', async () => {
+         // Test implementation
+       });
+     });
+   });
+   ```
+
+4. **Add to service index (optional)**
+   ```javascript
+   // backend/src/services/index.js
+   module.exports = {
+     ${moduleName}Service: require('./${moduleName}.service'),
+     // ... other services
+   };
+   ```
+
+## examples
+
+### Example 1: Create Order Service
+```
+/command create-service Order
+```
+Creates: orders.service.js with full CRUD and transactions
+
+### Example 2: Create simple service without transactions
+```
+/command create-service Customer --includeTransactions=false
+```
+Creates: customers.service.js with basic CRUD
+
+### Example 3: Custom Prisma model name
+```
+/command create-service DeliveryStaff --prismaModel=delivery_staffs
+```
+Creates: delivery-staffs.service.js with custom Prisma model

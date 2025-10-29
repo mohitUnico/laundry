@@ -1,0 +1,42 @@
+---
+alwaysApply: false
+---
+## arguments
+- service_name: Name of the service to clean up (defaults to "example-service" if not specified)
+
+## init
+1. Verify that the specified service exists in the apis directory
+2. Check if running in development environment to avoid accidental deletion of production services
+3. Identify service registrations in NX workspace
+
+## perform
+1. **Remove service from NX workspace**
+   - Identify the service in the NX workspace configuration
+   - Remove all references to the service from nx.json
+   - Remove service from workspace.json or angular.json if present
+
+2. **Delete service files and directories**
+   - Safely delete the api directory: `apis/${service_name}`
+   - Remove any generated assets in the dist directory
+   - Clean any cached build files related to the service
+
+3. **Clean up database resources (if applicable)**
+   - Identify and remove any local database resources related to the service
+   - Remove any database migration scripts specific to this service
+
+4. **Clean up infrastructure resources**
+   - Remove any service-specific infrastructure definitions in AWS SAM templates
+   - Remove any service-specific CloudFormation templates
+
+5. **Clean up CI/CD pipelines**
+   - Remove service from any CI/CD pipeline configurations
+   - Remove service-specific build or deployment scripts
+
+6. **Clean up dependency references**
+   - Check other services for dependencies on the deleted service
+   - Remove or update any cross-service references
+
+## finalize
+1. Verify successful cleanup with confirmation message
+2. Provide instructions for recreating the service if needed
+3. Suggest running a workspace validation to ensure integrity after removal

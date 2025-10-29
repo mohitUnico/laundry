@@ -1,0 +1,354 @@
+---
+description: Generate a React component for the Laundry App admin panel with TypeScript, proper structure, and styling.
+globs: 
+alwaysApply: false
+---
+
+## arguments
+- componentName: Name of the component in PascalCase (e.g., OrderCard, CustomerList)
+- componentType: Type of component (default: common, options: common, feature, layout)
+- featureModule: Feature module name if componentType is 'feature' (e.g., orders, customers)
+- includeStyles: Create CSS Module file (default: true)
+- includeTests: Create test file (default: true)
+- useTypeScript: Use TypeScript (default: true)
+
+## init
+1. Validate inputs:
+   - componentName must be in PascalCase
+   - If componentType is 'feature', featureModule is required
+   - Verify admin-panel/src/components directory exists
+
+2. Determine component path:
+   - common: `admin-panel/src/components/common/${componentName}/`
+   - feature: `admin-panel/src/components/features/${featureModule}/${componentName}/`
+   - layout: `admin-panel/src/components/layout/${componentName}/`
+
+3. Check for existing component:
+   - Component file: `${componentPath}/${componentName}.${useTypeScript ? 'tsx' : 'jsx'}`
+
+4. Display summary:
+   ```
+   Creating React component: ${componentName}
+   Type: ${componentType}
+   ${componentType === 'feature' ? `Feature: ${featureModule}` : ''}
+   
+   Files to be created:
+   - ${componentPath}/${componentName}.${useTypeScript ? 'tsx' : 'jsx'}
+   - ${componentPath}/index.ts
+   ${includeStyles ? `- ${componentPath}/${componentName}.module.css` : ''}
+   ${includeTests ? `- ${componentPath}/${componentName}.test.${useTypeScript ? 'tsx' : 'jsx'}` : ''}
+   ```
+
+5. Confirm with user before proceeding
+
+## perform
+1. **Create component directory**
+   ```bash
+   mkdir -p ${componentPath}
+   ```
+
+2. **Create component file**
+
+   Generate `${componentPath}/${componentName}.${useTypeScript ? 'tsx' : 'jsx'}`:
+
+```typescript
+${useTypeScript ? `import React from 'react';
+${includeStyles ? `import styles from './${componentName}.module.css';` : ''}
+
+interface ${componentName}Props {
+  // TODO: Define your props
+  // Example:
+  // title: string;
+  // onAction?: () => void;
+  // isLoading?: boolean;
+  // className?: string;
+}
+
+export const ${componentName}: React.FC<${componentName}Props> = ({
+  // TODO: Destructure your props
+}) => {
+  // State
+  // const [state, setState] = useState<Type>(initialValue);
+
+  // Effects
+  // useEffect(() => {
+  //   // Effect logic
+  // }, [dependencies]);
+
+  // Event handlers
+  // const handleClick = () => {
+  //   // Handle event
+  // };
+
+  // Render
+  return (
+    <div ${includeStyles ? `className={styles.${componentName.charAt(0).toLowerCase() + componentName.slice(1)}}` : ''}>
+      <h2>TODO: ${componentName} Component</h2>
+      {/* TODO: Add your component UI */}
+    </div>
+  );
+};` : `import React from 'react';
+${includeStyles ? `import styles from './${componentName}.module.css';` : ''}
+
+export const ${componentName} = ({
+  // TODO: Destructure your props
+}) => {
+  // State
+  // const [state, setState] = useState(initialValue);
+
+  // Effects
+  // useEffect(() => {
+  //   // Effect logic
+  // }, [dependencies]);
+
+  // Event handlers
+  // const handleClick = () => {
+  //   // Handle event
+  // };
+
+  // Render
+  return (
+    <div ${includeStyles ? `className={styles.${componentName.charAt(0).toLowerCase() + componentName.slice(1)}}` : ''}>
+      <h2>TODO: ${componentName} Component</h2>
+      {/* TODO: Add your component UI */}
+    </div>
+  );
+};`}
+```
+
+3. **Create barrel export file**
+
+   Generate `${componentPath}/index.ts`:
+
+```typescript
+export { ${componentName} } from './${componentName}';
+${useTypeScript ? `export type { ${componentName}Props } from './${componentName}';` : ''}
+```
+
+4. **Create styles file (if includeStyles is true)**
+
+   Generate `${componentPath}/${componentName}.module.css`:
+
+```css
+/* ${componentName} Component Styles */
+
+.${componentName.charAt(0).toLowerCase() + componentName.slice(1)} {
+  /* TODO: Add your component styles */
+  padding: 16px;
+}
+
+.header {
+  /* TODO: Style header */
+}
+
+.content {
+  /* TODO: Style content */
+}
+
+.actions {
+  /* TODO: Style actions/buttons */
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* Responsive styles */
+@media (max-width: 768px) {
+  .${componentName.charAt(0).toLowerCase() + componentName.slice(1)} {
+    padding: 8px;
+  }
+}
+```
+
+5. **Create test file (if includeTests is true)**
+
+   Generate `${componentPath}/${componentName}.test.${useTypeScript ? 'tsx' : 'jsx'}`:
+
+```typescript
+import { render, screen, fireEvent } from '@testing-library/react';
+import { ${componentName} } from './${componentName}';
+
+describe('${componentName}', () => {
+  it('renders without crashing', () => {
+    render(<${componentName} />);
+    // TODO: Add assertions
+    // expect(screen.getByText('Expected Text')).toBeInTheDocument();
+  });
+
+  it('handles user interaction', () => {
+    const handleAction = jest.fn();
+    render(<${componentName} onAction={handleAction} />);
+    
+    // TODO: Test interactions
+    // const button = screen.getByRole('button');
+    // fireEvent.click(button);
+    // expect(handleAction).toHaveBeenCalled();
+  });
+
+  it('displays props correctly', () => {
+    render(<${componentName} title="Test Title" />);
+    // TODO: Verify props are displayed
+    // expect(screen.getByText('Test Title')).toBeInTheDocument();
+  });
+
+  // TODO: Add more tests
+  // - Test different states
+  // - Test error cases
+  // - Test loading state
+  // - Test conditional rendering
+});
+```
+
+6. **Create comprehensive component example**
+
+   For feature components, add example usage:
+
+```typescript
+// Example usage in ${featureModule}:
+import { ${componentName} } from '../components/features/${featureModule}/${componentName}';
+
+function ${featureModule.charAt(0).toUpperCase() + featureModule.slice(1)}Page() {
+  return (
+    <div>
+      <${componentName}
+        // TODO: Pass required props
+      />
+    </div>
+  );
+}
+```
+
+7. **Display next steps**
+   ```
+   ✓ Component created successfully!
+   
+   Next steps:
+   1. Define props interface in: ${componentPath}/${componentName}.${useTypeScript ? 'tsx' : 'jsx'}
+   2. Implement component logic and UI
+   3. Add styles in: ${componentPath}/${componentName}.module.css
+   4. Write tests in: ${componentPath}/${componentName}.test.${useTypeScript ? 'tsx' : 'jsx'}
+   5. Import and use component:
+      import { ${componentName} } from '${componentPath}';
+   
+   Component location: ${componentPath}
+   
+   Common props to consider:
+   - Data props: item, items, data
+   - Event handlers: onClick, onSubmit, onChange, onAction
+   - State props: isLoading, isError, isEmpty
+   - Style props: className, style
+   - Children: children (React.ReactNode)
+   ```
+
+## finalize
+1. **Verify files were created**
+   - Check component file exists and is valid
+   - Check index.ts exists
+   - Check styles file exists (if applicable)
+   - Check test file exists (if applicable)
+
+2. **Run linter**
+   ```bash
+   cd admin-panel && npm run lint ${componentPath}
+   ```
+
+3. **Display summary**
+   ```
+   ===== Component Creation Summary =====
+   Component: ${componentName}
+   Type: ${componentType}
+   ${componentType === 'feature' ? `Feature: ${featureModule}` : ''}
+   
+   Files Created:
+   ✓ ${componentPath}/${componentName}.${useTypeScript ? 'tsx' : 'jsx'}
+   ✓ ${componentPath}/index.ts
+   ${includeStyles ? `✓ ${componentPath}/${componentName}.module.css` : ''}
+   ${includeTests ? `✓ ${componentPath}/${componentName}.test.${useTypeScript ? 'tsx' : 'jsx'}` : ''}
+   
+   TypeScript: ${useTypeScript ? 'Yes' : 'No'}
+   Styles: ${includeStyles ? 'CSS Modules' : 'None'}
+   Tests: ${includeTests ? 'Included' : 'Not included'}
+   ```
+
+4. **Show import statement**
+   ```typescript
+   // Import in your code:
+   import { ${componentName} } from '@/components/${componentType}/${componentType === 'feature' ? featureModule + '/' : ''}${componentName}';
+   
+   // Or relative import:
+   import { ${componentName} } from '../components/${componentType}/${componentType === 'feature' ? featureModule + '/' : ''}${componentName}';
+   
+   // Usage:
+   <${componentName} 
+     // your props here
+   />
+   ```
+
+5. **Suggest Storybook story (optional)**
+   ```typescript
+   // Optional: Create Storybook story
+   // ${componentPath}/${componentName}.stories.${useTypeScript ? 'tsx' : 'jsx'}
+   
+   import type { Meta, StoryObj } from '@storybook/react';
+   import { ${componentName} } from './${componentName}';
+
+   const meta: Meta<typeof ${componentName}> = {
+     title: '${componentType}/${componentName}',
+     component: ${componentName},
+     tags: ['autodocs'],
+   };
+
+   export default meta;
+   type Story = StoryObj<typeof ${componentName}>;
+
+   export const Default: Story = {
+     args: {
+       // Default props
+     },
+   };
+
+   export const WithData: Story = {
+     args: {
+       // Props with data
+     },
+   };
+   ```
+
+## examples
+
+### Example 1: Create common component
+```
+/command create-react-component OrderCard --componentType=common
+```
+Creates: admin-panel/src/components/common/OrderCard/
+
+### Example 2: Create feature component
+```
+/command create-react-component OrderList --componentType=feature --featureModule=orders
+```
+Creates: admin-panel/src/components/features/orders/OrderList/
+
+### Example 3: Create layout component without tests
+```
+/command create-react-component Header --componentType=layout --includeTests=false
+```
+Creates: admin-panel/src/components/layout/Header/
+
+### Example 4: JavaScript component (no TypeScript)
+```
+/command create-react-component CustomerCard --useTypeScript=false
+```
+Creates: JavaScript version with .jsx extension
+
+## Component Best Practices
+
+1. **Keep components small** (< 200 lines)
+2. **Single responsibility** - one component, one purpose
+3. **Use TypeScript** for type safety
+4. **Props interface** - always define clear prop types
+5. **Composition** - compose small components into larger ones
+6. **Avoid prop drilling** - use context or state management
+7. **Memoization** - use React.memo for expensive components
+8. **Accessibility** - use semantic HTML and ARIA labels
+9. **Testing** - write tests for user interactions
+10. **Documentation** - add JSDoc comments for complex props

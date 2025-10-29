@@ -1,0 +1,31 @@
+---
+description: General Rules for Cursor AI
+globs:
+alwaysApply: true
+---
+# General Rules for Cursor AI
+
+## Rule Structure
+The rules folder is organized into categories:
+- `core/`: Foundation rules governing overall system behavior
+- `frontend/`: Rules specific to frontend development
+- `backend/`: Rules specific to backend development
+- `commands/`: Task automation commands organized by category (ops, service, task, web)
+- `templates/`: Reusable templates for various components and structures
+Each rule is defined in an MDC file with a specific purpose and is loaded based on context or explicitly fetched.
+
+## Temporary Files and Scripts
+All temporary files, scripts, test files, and experimental code MUST be created strictly within the `.tmp` folder at the root of the project. This includes:
+- Test scripts
+- Experimental code snippets
+- Debugging files
+- One-off utility scripts
+- Generated test data
+- Draft implementations
+This folder is excluded from version control and deployments. Never place temporary files elsewhere in the codebase.
+
+## Project Module Structure
+The DoorSync codebase is organized into the following main components:
+
+## Core Principle
+STRICTLY perform only what is asked for. Do not do things that are not explicitly requested. Follow user instructions precisely without adding extra tasks or suggestions unless specifically asked.

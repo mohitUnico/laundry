@@ -1,0 +1,181 @@
+---
+description: Laundry App Backend Code Review Checklist
+globs: *.js,*.ts,backend/**/*.js,backend/**/*.ts
+alwaysApply: false
+---
+
+## Architecture Compliance
+- [ ] Code follows layered architecture (controllers, services, middleware, utils)
+- [ ] Proper separation of concerns between layers
+- [ ] Controllers are thin and delegate to services
+- [ ] Business logic is in services, not controllers
+- [ ] Database operations use Prisma Client properly
+- [ ] No business logic in middleware or utility functions
+
+## API Implementation
+- [ ] RESTful API design with proper HTTP methods (GET, POST, PUT, PATCH, DELETE)
+- [ ] Correct HTTP status codes returned (200, 201, 400, 401, 403, 404, 500, etc.)
+- [ ] Consistent API response format across all endpoints
+- [ ] API versioning implemented (`/api/v1/`)
+- [ ] Proper use of async/await for asynchronous operations
+- [ ] Request validation implemented with Joi or Zod
+- [ ] Error handling middleware catches all errors
+
+## Code Quality
+- [ ] Code is free from linting errors (ESLint)
+- [ ] Code is formatted consistently (Prettier)
+- [ ] Functions are focused and concise (< 50 lines preferred)
+- [ ] No unused variables or imports
+- [ ] Proper use of const and let (no var)
+- [ ] Destructuring used appropriately for cleaner code
+- [ ] Template literals used for string concatenation
+- [ ] Arrow functions used where appropriate
+- [ ] Early returns used to avoid deep nesting
+- [ ] No magic numbers or strings (use constants)
+
+## TypeScript Specific (if applicable)
+- [ ] Proper type annotations for function parameters and return types
+- [ ] Interfaces or types defined for complex objects
+- [ ] Avoid using `any` type (use `unknown` or specific types)
+- [ ] Enum or union types used for fixed values
+- [ ] Generics used for reusable type-safe functions
+- [ ] Strict mode enabled in tsconfig.json
+
+## Security
+- [ ] Authentication implemented with JWT
+- [ ] Authorization checks for protected routes
+- [ ] Passwords hashed with bcrypt before storage
+- [ ] Input validation and sanitization on all endpoints
+- [ ] SQL injection prevented (Prisma handles this automatically)
+- [ ] XSS prevention measures in place
+- [ ] CORS configured appropriately
+- [ ] Rate limiting implemented for public endpoints
+- [ ] Secrets stored in environment variables, not hardcoded
+- [ ] No sensitive information in error messages or logs
+
+## Database (Prisma)
+- [ ] Proper use of Prisma Client for queries
+- [ ] Transactions used for multi-step operations
+- [ ] Appropriate error handling for database operations
+- [ ] No N+1 query problems (use `include` or `select` wisely)
+- [ ] Indexes defined for frequently queried fields
+- [ ] Migrations properly named and tracked
+- [ ] Database schema follows naming conventions (snake_case)
+- [ ] Foreign key constraints defined with proper cascade rules
+
+## Error Handling
+- [ ] Try-catch blocks around all async operations
+- [ ] Custom error classes used for different error types
+- [ ] Errors passed to error handling middleware (next(error))
+- [ ] Appropriate error messages for different scenarios
+- [ ] Error logging with correlation IDs
+- [ ] Operational errors distinguished from programming errors
+- [ ] Prisma errors handled and mapped to appropriate HTTP status codes
+
+## Testing
+- [ ] Unit tests for services and business logic
+- [ ] Integration tests for API endpoints (Supertest)
+- [ ] Tests cover both happy paths and error scenarios
+- [ ] Mocks used appropriately for external dependencies
+- [ ] Test coverage meets minimum requirements (70%+)
+- [ ] Tests are independent and don't rely on execution order
+- [ ] Test data cleanup performed after tests
+- [ ] Meaningful test descriptions and assertions
+
+## Documentation
+- [ ] JSDoc comments for complex functions
+- [ ] Swagger/OpenAPI documentation for all endpoints
+- [ ] README updated with setup and usage instructions
+- [ ] Environment variables documented in .env.example
+- [ ] API documentation includes request/response examples
+- [ ] Complex business logic explained with comments
+- [ ] Database schema documented
+
+## Logging and Observability
+- [ ] Structured logging with Winston or Pino
+- [ ] Correlation IDs included in all log entries
+- [ ] Appropriate log levels used (info, warn, error, debug)
+- [ ] No console.log in production code
+- [ ] Errors logged with full context (stack trace, request info)
+- [ ] Sensitive data excluded from logs
+- [ ] Request/response logging middleware implemented
+
+## Performance
+- [ ] Database queries optimized (proper use of select/include)
+- [ ] Pagination implemented for list endpoints
+- [ ] Caching considered for frequently accessed data
+- [ ] No blocking operations in request handlers
+- [ ] Parallel execution used where appropriate (Promise.all)
+- [ ] File uploads handled efficiently (streaming, size limits)
+- [ ] Response compression enabled (gzip)
+
+## File Upload (if applicable)
+- [ ] Multer middleware configured properly
+- [ ] File type validation implemented
+- [ ] File size limits enforced
+- [ ] Files uploaded to S3 (not stored on server)
+- [ ] Temporary files cleaned up after upload
+- [ ] Error handling for upload failures
+
+## Multi-tenancy (if applicable)
+- [ ] Mart ID or tenant ID included in all relevant queries
+- [ ] Users can only access data from their own mart/tenant
+- [ ] Cross-tenant data access prevented
+- [ ] Tenant isolation verified in tests
+
+## Naming & Style
+- [ ] camelCase for variables and functions
+- [ ] PascalCase for classes
+- [ ] UPPER_SNAKE_CASE for constants
+- [ ] kebab-case for file names
+- [ ] Descriptive and meaningful names
+- [ ] Consistent naming across codebase
+- [ ] No abbreviations unless widely understood
+
+## Dependencies
+- [ ] Only necessary dependencies included
+- [ ] No dependencies with known security vulnerabilities
+- [ ] Package versions specified (not using "*" or "latest")
+- [ ] Dev dependencies separated from production dependencies
+- [ ] package-lock.json or yarn.lock committed to repo
+
+## Environment Configuration
+- [ ] Environment variables used for configuration
+- [ ] .env.example file provided with all required variables
+- [ ] Proper validation for required environment variables on startup
+- [ ] Different configurations for dev, staging, production
+- [ ] No environment-specific code in application logic
+
+## Git and Version Control
+- [ ] Meaningful commit messages
+- [ ] Feature branches used (not committing directly to main)
+- [ ] .gitignore properly configured
+- [ ] No secrets or .env files committed
+- [ ] No unnecessary files committed (node_modules, logs, uploads)
+
+## Deployment Readiness
+- [ ] Dockerfile present and properly configured
+- [ ] Health check endpoint implemented
+- [ ] Graceful shutdown handling
+- [ ] Process manager configuration (PM2 config if applicable)
+- [ ] Environment-specific configuration handled
+- [ ] Database migrations can be run in production
+
+## Code Review Specific
+- [ ] Code addresses the requirements completely
+- [ ] No commented-out code left behind
+- [ ] TODOs have associated tickets or are addressed
+- [ ] Code follows existing patterns in the codebase
+- [ ] Breaking changes documented and communicated
+- [ ] Performance impact considered
+- [ ] Backward compatibility maintained (if required)
+
+## Final Checks
+- [ ] Code runs without errors locally
+- [ ] All tests pass
+- [ ] No linting errors
+- [ ] Build succeeds
+- [ ] API documentation updated
+- [ ] Postman collection updated (if applicable)
+- [ ] Database migrations tested
+- [ ] Environment variables documented

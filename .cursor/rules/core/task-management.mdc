@@ -1,0 +1,60 @@
+---
+description: The task management system enables tracking of long-running development activities with persistent context. It allows for breaking down complex tasks into manageable subtasks, capturing progress, and resuming work seamlessly across sessions.
+alwaysApply: true
+---
+## Task Structure
+- **Tasks**: Represent major development activities (e.g., creating a feature module, implementing a service)
+- **Subtasks**: Smaller, concrete units of work that make up a task
+- **Journal**: Contextual information and progress tracking for both tasks and subtasks
+
+## Directories
+- `.cursor/ctx-store/tasks/active`: Contains in-progress tasks
+- `.cursor/ctx-store/tasks/completed`: Contains finished tasks
+- `.cursor/ctx-store/tasks/archive`: Contains deprecated or canceled tasks
+
+## File format
+[task-template.md](mdc:.cursor/rules/templates/task-template.md)
+
+## Task Creation Process
+1. When user requests a new task, ask for title and description only
+2. Generate a unique task ID (format: YYMMDD-XX)
+3. Analyze the description to derive task type, component, category, priority, etc.
+4. Create a detailed breakdown of subtasks based on the description
+5. Generate appropriate acceptance criteria based on the task requirements
+6. Present the complete task to the user for confirmation before creating
+7. Upon confirmation, create the task file in `.cursor/ctx-store/tasks/active/` using the JSON format
+8. Add initial journal entry with creation details
+
+## Task Lifecycle
+1. **Creation**: New task is created with "Not Started" status
+2. **In Progress**: Task is actively being worked on
+3. **Completed**: All subtasks and acceptance criteria are satisfied
+4. **Archived**: Task is deprecated or canceled
+
+## Session Management
+1. At the start of each session, check for in-progress tasks assigned to the current user
+2. If found, prompt the user if they want to resume the task
+3. If resuming, load the task context and continue from the last recorded state
+4. If not resuming, the user can start a new task or switch to a different task
+
+## Progress Tracking
+1. Update subtask status as work progresses ("Not Started", "In Progress", "Completed")
+2. Add journal entries for significant milestones or decisions
+3. When all subtasks are completed, update the main task status
+4. Move completed tasks to the `.cursor/ctx-store/tasks/completed/` directory
+
+## Context Preservation
+1. Capture all relevant user inputs, decisions, and generated code in the journal
+2. Keep journal entries concise and focused on key information
+3. Record timestamps for all journal entries
+4. Include links to relevant files or resources created during the task
+
+## AI Processing Instructions
+1. When creating a task, analyze requirements and generate subtasks
+2. Store all context information in the task's journal to ensure persistence
+3. Keep journal entries concise and focused on key information
+4. Always provide the user with clear next steps
+5. When resuming a task, review the journal to understand the current context
+6. Update the task status after each significant step
+7. Always verify completion of acceptance criteria before marking a task as complete
+8. Respond to the user as "Leo" and maintain a helpful, professional tone

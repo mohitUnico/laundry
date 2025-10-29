@@ -1,0 +1,699 @@
+---
+description: Laundry App JavaScript/TypeScript Coding Standards
+globs: *.js,*.ts,backend/**/*.js,backend/**/*.ts
+alwaysApply: false
+---
+
+## General Principles
+
+- Write clean, readable, and maintainable code
+- Follow the DRY (Don't Repeat Yourself) principle
+- Keep functions small and focused on a single responsibility
+- Use meaningful and descriptive names for variables, functions, and classes
+- Write self-documenting code with clear intent
+- Add comments for complex business logic, not obvious code
+- Prefer composition over inheritance
+- Use modern JavaScript/TypeScript features (ES6+)
+- Follow functional programming principles where appropriate
+- Handle errors explicitly and gracefully
+
+## Language Choice
+
+### JavaScript vs TypeScript
+
+**Use JavaScript when:**
+- Rapid prototyping or simple scripts
+- Small utilities or configuration files
+- Team has limited TypeScript experience
+
+**Use TypeScript when:**
+- Building production applications (recommended for this project)
+- Need type safety and better IDE support
+- Working on complex business logic
+- Multiple developers collaborating
+- Long-term maintainability is important
+
+## Naming Conventions
+
+### Variables and Functions
+```javascript
+// Use camelCase for variables and functions
+const userName = 'John Doe';
+const orderTotal = 150.00;
+
+function calculateDeliveryFee(distance, serviceRadius) {
+  // Implementation
+}
+
+async function createOrder(orderData) {
+  // Implementation
+}
+```
+
+### Constants
+```javascript
+// Use UPPER_SNAKE_CASE for constants
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const API_VERSION = 'v1';
+const DEFAULT_PAGE_SIZE = 10;
+
+// For configuration objects, use camelCase
+const config = {
+  database: {
+    host: 'localhost',
+    port: 5432
+  }
+};
+```
+
+### Classes
+```javascript
+// Use PascalCase for classes
+class OrderService {
+  constructor(prisma) {
+    this.prisma = prisma;
+  }
+
+  async createOrder(orderData) {
+    // Implementation
+  }
+}
+
+class AppError extends Error {
+  constructor(message, statusCode) {
+    super(message);
+    this.statusCode = statusCode;
+  }
+}
+```
+
+### Files and Directories
+```
+// Use kebab-case for files
+order-service.js
+customer-controller.js
+auth-middleware.js
+
+// Use lowercase for directories
+controllers/
+services/
+middleware/
+utils/
+```
+
+### Database Naming
+```javascript
+// Database: snake_case (PostgreSQL convention)
+// Prisma models: PascalCase
+// Model fields: camelCase (Prisma convention)
+
+// Database table: orders
+// Prisma model: Orders
+// Fields: orderId, customerId, createdAt
+
+const order = await prisma.orders.findUnique({
+  where: { order_id: orderId } // Database column
+});
+
+console.log(order.orderId); // Prisma model field (camelCase)
+```
+
+## Code Structure
+
+### Function Declaration
+```javascript
+// Good: Use arrow functions for simple functions
+const add = (a, b) => a + b;
+
+const calculateTotal = (items) => {
+  return items.reduce((sum, item) => sum + item.price, 0);
+};
+
+// Good: Use function keyword for complex functions or methods
+function processOrder(order) {
+  // Complex logic
+  validateOrder(order);
+  calculatePricing(order);
+  applyDiscounts(order);
+  return finalizeOrder(order);
+}
+
+// Good: Use async/await for asynchronous operations
+async function fetchUserOrders(userId) {
+  try {
+    const orders = await prisma.orders.findMany({
+      where: { customer_id: userId }
+    });
+    return orders;
+  } catch (error) {
+    logger.error('Failed to fetch orders', error);
+    throw new AppError('Unable to retrieve orders', 500);
+  }
+}
+```
+
+### Module Exports
+```javascript
+// Good: Named exports for multiple exports
+// order-service.js
+exports.createOrder = async (orderData) => { /* ... */ };
+exports.getOrderById = async (orderId) => { /* ... */ };
+exports.updateOrderStatus = async (orderId, status) => { /* ... */ };
+
+// Or using ES6 modules
+export const createOrder = async (orderData) => { /* ... */ };
+export const getOrderById = async (orderId) => { /* ... */ };
+
+// Good: Default export for single export
+// logger.js
+const logger = winston.createLogger({ /* ... */ });
+module.exports = logger;
+
+// Or ES6
+export default logger;
+```
+
+### Class Structure
+```javascript
+class DeliveryService {
+  // Constructor first
+  constructor(prisma, notificationService) {
+    this.prisma = prisma;
+    this.notificationService = notificationService;
+  }
+
+  // Public methods
+  async assignDelivery(deliveryId, staffId) {
+    await this.validateAssignment(deliveryId, staffId);
+    const delivery = await this.createAssignment(deliveryId, staffId);
+    await this.notifyStaff(staffId, delivery);
+    return delivery;
+  }
+
+  async updateDeliveryStatus(deliveryId, status, proofPhoto) {
+    // Implementation
+  }
+
+  // Private methods (prefix with _)
+  async _validateAssignment(deliveryId, staffId) {
+    // Validation logic
+  }
+
+  async _createAssignment(deliveryId, staffId) {
+    // Assignment logic
+  }
+
+  async _notifyStaff(staffId, delivery) {
+    // Notification logic
+  }
+}
+```
+
+## TypeScript Best Practices
+
+### Type Annotations
+```typescript
+// Explicitly type function parameters and return types
+function calculateDeliveryFee(distance: number, pricePerKm: number): number {
+  return distance * pricePerKm;
+}
+
+// Use interfaces for object shapes
+interface OrderData {
+  martId: string;
+  customerId: string;
+  items: OrderItem[];
+  pickupAddressId?: string; // Optional
+  deliveryAddressId?: string;
+}
+
+interface OrderItem {
+  itemId: string;
+  quantity: number;
+  subtotal: number;
+}
+
+// Use type aliases for unions and primitives
+type OrderStatus = 'pickup' | 'in_process' | 'ready' | 'out_for_delivery' | 'delivered';
+type PaymentMethod = 'card' | 'cod' | 'upi' | 'wallet';
+
+// Use generics for reusable types
+interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  message?: string;
+}
+
+async function fetchData<T>(url: string): Promise<ApiResponse<T>> {
+  // Implementation
+}
+```
+
+### Avoid `any`
+```typescript
+// Bad: Using any
+function processData(data: any): any {
+  return data.value;
+}
+
+// Good: Use specific types
+interface InputData {
+  value: number;
+  metadata: Record<string, unknown>;
+}
+
+function processData(data: InputData): number {
+  return data.value;
+}
+
+// Good: Use unknown for truly unknown types, then narrow
+function processUnknownData(data: unknown): string {
+  if (typeof data === 'string') {
+    return data.toUpperCase();
+  }
+  if (typeof data === 'number') {
+    return data.toString();
+  }
+  throw new Error('Invalid data type');
+}
+```
+
+## Async/Await Best Practices
+
+### Always Use try-catch
+```javascript
+// Good: Proper error handling
+async function createOrder(orderData) {
+  try {
+    const order = await orderService.create(orderData);
+    await billingService.createBill(order.id);
+    await notificationService.sendConfirmation(order.customerId);
+    return order;
+  } catch (error) {
+    logger.error('Order creation failed', error);
+    // Clean up partial operations if needed
+    throw new AppError('Failed to create order', 500);
+  }
+}
+
+// Bad: No error handling
+async function createOrder(orderData) {
+  const order = await orderService.create(orderData);
+  return order;
+}
+```
+
+### Parallel Execution
+```javascript
+// Good: Execute independent operations in parallel
+async function getOrderDetails(orderId) {
+  const [order, items, bill, delivery] = await Promise.all([
+    prisma.orders.findUnique({ where: { order_id: orderId } }),
+    prisma.order_items.findMany({ where: { order_id: orderId } }),
+    prisma.bills.findUnique({ where: { order_id: orderId } }),
+    prisma.delivery.findFirst({ where: { order_id: orderId } })
+  ]);
+
+  return { order, items, bill, delivery };
+}
+
+// Bad: Sequential execution when not needed
+async function getOrderDetails(orderId) {
+  const order = await prisma.orders.findUnique({ where: { order_id: orderId } });
+  const items = await prisma.order_items.findMany({ where: { order_id: orderId } });
+  const bill = await prisma.bills.findUnique({ where: { order_id: orderId } });
+  return { order, items, bill };
+}
+```
+
+## Error Handling
+
+### Custom Error Classes
+```javascript
+// Define custom errors
+class AppError extends Error {
+  constructor(message, statusCode, code) {
+    super(message);
+    this.statusCode = statusCode;
+    this.code = code;
+    this.isOperational = true;
+    Error.captureStackTrace(this, this.constructor);
+  }
+}
+
+class ValidationError extends AppError {
+  constructor(message, errors = []) {
+    super(message, 400, 'VALIDATION_ERROR');
+    this.errors = errors;
+  }
+}
+
+class NotFoundError extends AppError {
+  constructor(resource) {
+    super(`${resource} not found`, 404, 'NOT_FOUND');
+  }
+}
+
+// Use custom errors
+if (!order) {
+  throw new NotFoundError('Order');
+}
+
+if (order.items.length === 0) {
+  throw new ValidationError('Order must contain at least one item');
+}
+```
+
+### Error Handling in Services
+```javascript
+// Good: Specific error handling
+async function updateOrderStatus(orderId, newStatus) {
+  const order = await prisma.orders.findUnique({
+    where: { order_id: orderId }
+  });
+
+  if (!order) {
+    throw new NotFoundError('Order');
+  }
+
+  if (!isValidStatusTransition(order.order_status, newStatus)) {
+    throw new AppError(
+      `Cannot transition from ${order.order_status} to ${newStatus}`,
+      400,
+      'INVALID_STATUS_TRANSITION'
+    );
+  }
+
+  return await prisma.orders.update({
+    where: { order_id: orderId },
+    data: { order_status: newStatus, updated_at: new Date() }
+  });
+}
+```
+
+## Code Quality
+
+### Avoid Magic Numbers and Strings
+```javascript
+// Bad: Magic numbers and strings
+if (order.status === 'delivered') {
+  const fee = distance * 40;
+}
+
+// Good: Use constants
+const ORDER_STATUS = {
+  PICKUP: 'pickup',
+  IN_PROCESS: 'in_process',
+  READY: 'ready',
+  OUT_FOR_DELIVERY: 'out_for_delivery',
+  DELIVERED: 'delivered'
+};
+
+const DELIVERY_FEE_PER_KM = 40;
+
+if (order.order_status === ORDER_STATUS.DELIVERED) {
+  const fee = distance * DELIVERY_FEE_PER_KM;
+}
+```
+
+### Avoid Deep Nesting
+```javascript
+// Bad: Deep nesting
+async function processOrder(orderId) {
+  const order = await getOrder(orderId);
+  if (order) {
+    if (order.items.length > 0) {
+      if (order.payment_status === 'completed') {
+        if (order.delivery_address) {
+          // Process order
+        }
+      }
+    }
+  }
+}
+
+// Good: Early returns
+async function processOrder(orderId) {
+  const order = await getOrder(orderId);
+  
+  if (!order) {
+    throw new NotFoundError('Order');
+  }
+  
+  if (order.items.length === 0) {
+    throw new ValidationError('Order has no items');
+  }
+  
+  if (order.payment_status !== 'completed') {
+    throw new AppError('Payment not completed', 400);
+  }
+  
+  if (!order.delivery_address) {
+    throw new ValidationError('Delivery address required');
+  }
+  
+  // Process order
+}
+```
+
+### Use Descriptive Variable Names
+```javascript
+// Bad: Unclear names
+const d = new Date();
+const x = await prisma.orders.findMany();
+const fn = (a, b) => a + b;
+
+// Good: Clear names
+const currentDate = new Date();
+const activeOrders = await prisma.orders.findMany({
+  where: { order_status: 'in_process' }
+});
+const calculateTotal = (subtotal, deliveryFee) => subtotal + deliveryFee;
+```
+
+## Security Best Practices
+
+### Input Validation
+```javascript
+// Always validate and sanitize inputs
+const Joi = require('joi');
+
+const loginSchema = Joi.object({
+  email: Joi.string().email().required(),
+  password: Joi.string().min(8).required()
+});
+
+router.post('/login', validate(loginSchema), loginController);
+```
+
+### Password Hashing
+```javascript
+const bcrypt = require('bcrypt');
+
+// Always hash passwords
+async function createUser(userData) {
+  const hashedPassword = await bcrypt.hash(userData.password, 10);
+  
+  return await prisma.users.create({
+    data: {
+      ...userData,
+      password: hashedPassword
+    }
+  });
+}
+
+// Verify passwords
+async function verifyPassword(plainPassword, hashedPassword) {
+  return await bcrypt.compare(plainPassword, hashedPassword);
+}
+```
+
+### SQL Injection Prevention
+```javascript
+// Good: Prisma handles parameterization automatically
+const orders = await prisma.orders.findMany({
+  where: {
+    customer_id: userId, // Safe: parameterized
+    order_status: status
+  }
+});
+
+// Never: Construct raw queries with user input
+// const query = `SELECT * FROM orders WHERE customer_id = '${userId}'`; // UNSAFE!
+```
+
+### Environment Variables
+```javascript
+// Never hardcode secrets
+// Bad
+const JWT_SECRET = 'my-secret-key-12345';
+
+// Good: Use environment variables
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required');
+}
+```
+
+## Performance Optimization
+
+### Database Queries
+```javascript
+// Good: Select only needed fields
+const customer = await prisma.customers.findUnique({
+  where: { customer_id: customerId },
+  select: {
+    customer_id: true,
+    full_name: true,
+    email: true
+  }
+});
+
+// Bad: Fetching all fields when not needed
+const customer = await prisma.customers.findUnique({
+  where: { customer_id: customerId }
+});
+```
+
+### Caching
+```javascript
+// Cache frequently accessed data
+const NodeCache = require('node-cache');
+const cache = new NodeCache({ stdTTL: 600 }); // 10 minutes
+
+async function getServiceCategories(martId) {
+  const cacheKey = `categories:${martId}`;
+  
+  // Check cache first
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+  
+  // Fetch from database
+  const categories = await prisma.service_categories.findMany({
+    where: { mart_id: martId, is_active: true }
+  });
+  
+  // Store in cache
+  cache.set(cacheKey, categories);
+  
+  return categories;
+}
+```
+
+## Testing Guidelines
+
+### Unit Tests
+```javascript
+// test/services/order.service.test.js
+const orderService = require('../../src/services/order.service');
+const prisma = require('../../src/config/database');
+
+jest.mock('../../src/config/database');
+
+describe('OrderService', () => {
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  describe('createOrder', () => {
+    it('should create order successfully', async () => {
+      const mockOrder = {
+        order_id: 'order-123',
+        customer_id: 'cust-456'
+      };
+      
+      prisma.$transaction.mockResolvedValue(mockOrder);
+      
+      const result = await orderService.createOrder('cust-456', {
+        martId: 'mart-789',
+        items: [{ itemId: 'item-1', quantity: 2, subtotal: 100 }]
+      });
+      
+      expect(result).toEqual(mockOrder);
+      expect(prisma.$transaction).toHaveBeenCalled();
+    });
+
+    it('should throw error for empty items', async () => {
+      await expect(
+        orderService.createOrder('cust-456', { items: [] })
+      ).rejects.toThrow('Order must contain at least one item');
+    });
+  });
+});
+```
+
+## Documentation
+
+### JSDoc Comments
+```javascript
+/**
+ * Calculate delivery fee based on distance and service radius pricing
+ * @param {number} distance - Distance in kilometers
+ * @param {object} serviceRadius - Service radius pricing configuration
+ * @returns {number} Calculated delivery fee
+ * @throws {AppError} If distance exceeds maximum service radius
+ */
+function calculateDeliveryFee(distance, serviceRadius) {
+  if (distance > serviceRadius.maxRadius) {
+    throw new AppError('Delivery location outside service area', 400);
+  }
+  
+  for (const tier of serviceRadius.tiers) {
+    if (distance >= tier.minKm && distance < tier.maxKm) {
+      return distance * tier.pricePerKm;
+    }
+  }
+  
+  throw new AppError('Invalid service radius configuration', 500);
+}
+```
+
+## Formatting and Linting
+
+### ESLint Configuration
+```json
+{
+  "extends": ["eslint:recommended", "prettier"],
+  "env": {
+    "node": true,
+    "es2021": true,
+    "jest": true
+  },
+  "parserOptions": {
+    "ecmaVersion": 12
+  },
+  "rules": {
+    "no-console": "warn",
+    "no-unused-vars": "error",
+    "prefer-const": "error",
+    "no-var": "error"
+  }
+}
+```
+
+### Prettier Configuration
+```json
+{
+  "singleQuote": true,
+  "trailingComma": "es5",
+  "tabWidth": 2,
+  "semi": true,
+  "printWidth": 100
+}
+```
+
+## Best Practices Summary
+
+1. **Use Modern JavaScript**: Leverage ES6+ features (arrow functions, destructuring, template literals)
+2. **Async/Await**: Prefer async/await over callbacks and raw promises
+3. **Error Handling**: Always handle errors explicitly with try-catch
+4. **TypeScript**: Use TypeScript for type safety in production code
+5. **Naming**: Follow consistent naming conventions (camelCase, PascalCase, UPPER_SNAKE_CASE)
+6. **Code Quality**: Keep functions small, avoid deep nesting, use early returns
+7. **Security**: Validate inputs, hash passwords, use environment variables for secrets
+8. **Testing**: Write comprehensive unit and integration tests
+9. **Documentation**: Use JSDoc for complex functions and APIs
+10. **Formatting**: Use ESLint and Prettier for consistent code style

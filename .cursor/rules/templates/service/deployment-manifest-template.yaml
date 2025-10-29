@@ -1,0 +1,95 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: {{serviceName}} Service - Root stack (nested SAM apps)
+
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues:
+      - dev
+      - uat
+      - prod
+    Default: dev
+  DynamoDBTableName:
+    Type: String
+    Default: {{dynamodbTableName}}
+  OutboxTableName:
+    Type: String
+    Default: {{outboxTableName}}
+  SQSQueueName:
+    Type: String
+    Default: {{sqsQueueName}}
+  LambdaMemorySize:
+    Type: Number
+    Default: {{lambdaMemorySize}}
+  LambdaTimeout:
+    Type: Number
+    Default: {{lambdaTimeout}}
+  CognitoUserPoolArn:
+    Type: String
+    Default: ""
+  CursorHmacKidValue:
+    Type: String
+  CursorHmacSecretValue:
+    Type: String
+    NoEcho: true
+
+Conditions:
+  IsProd: !Equals [!Ref Environment, prod]
+  HasCognitoArn: !Not [!Equals [!Ref CognitoUserPoolArn, ""]]
+
+Rules:
+  RequireCognitoUserPoolArnInProd:
+    RuleCondition: !Equals [!Ref Environment, prod]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref CognitoUserPoolArn, ""]]
+        AssertDescription: CognitoUserPoolArn must be provided in prod.
+
+Resources:
+  StorageStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: ./partials/storage.yaml
+      Parameters:
+        Environment: !Ref Environment
+        DynamoDBTableName: !Ref DynamoDBTableName
+        OutboxTableName: !Ref OutboxTableName
+
+  MessagingStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: ./partials/messaging.yaml
+      Parameters:
+        Environment: !Ref Environment
+        SQSQueueName: !Ref SQSQueueName
+
+  FunctionsStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: ./partials/functions.yaml
+      Parameters:
+        Environment: !Ref Environment
+        LambdaMemorySize: !Ref LambdaMemorySize
+        LambdaTimeout: !Ref LambdaTimeout
+        CursorHmacKidValue: !Ref CursorHmacKidValue
+        CursorHmacSecretValue: !Ref CursorHmacSecretValue
+        HasCognitoArn: !If [HasCognitoArn, "true", "false"]
+        CognitoUserPoolArn: !Ref CognitoUserPoolArn
+        DynamoTableArn: !GetAtt StorageStack.Outputs.{{CamelServiceName}}DynamoTableArn
+        DynamoTableName: !GetAtt StorageStack.Outputs.{{CamelServiceName}}DynamoTableName
+        OutboxTableArn: !GetAtt StorageStack.Outputs.{{CamelServiceName}}OutboxTableArn
+        OutboxTableName: !GetAtt StorageStack.Outputs.{{CamelServiceName}}OutboxTableName
+        OutboxStreamArn: !GetAtt StorageStack.Outputs.{{CamelServiceName}}OutboxStreamArn
+        SqsQueueArn: !GetAtt MessagingStack.Outputs.{{CamelServiceName}}EventsQueueArn
+        SqsQueueUrl: !GetAtt MessagingStack.Outputs.{{CamelServiceName}}EventsQueueUrl
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !GetAtt FunctionsStack.Outputs.ApiEndpoint
+  DynamoDBTableNameOutput:
+    Description: DynamoDB table name
+    Value: !GetAtt StorageStack.Outputs.{{CamelServiceName}}DynamoTableName
+  SQSQueueUrl:
+    Description: SQS queue URL for domain events
+    Value: !GetAtt MessagingStack.Outputs.{{CamelServiceName}}EventsQueueUrl

@@ -1,0 +1,109 @@
+description: Laundry App Product Overview
+alwaysApply: true
+---
+
+## Purpose
+
+- Provide an on-demand laundry service platform connecting customers with laundry service providers (marts) and delivery partners.
+- Eliminate the inefficiencies of traditional laundry services with digital ordering, tracking, and payment systems.
+- Enable multi-tenant operation supporting multiple laundry marts with independent operations and branding.
+- Support flexible pricing models (per-piece and per-kg) with real-time tracking and proof-of-service delivery.
+
+## Problems Addressed
+
+- Avoid manual order taking and tracking in laundry services
+- Reduce customer wait times with scheduled pickup and delivery
+- Bridge communication gaps between customers, laundry marts, and delivery partners
+- Enable transparent pricing and real-time order tracking
+- Provide proof of pickup and delivery with photo verification
+- Simplify payment processing with multiple payment methods
+- Enable data-driven business insights through analytics and reporting
+
+## Core Modules
+
+### Customer Management
+- Customer registration and authentication with OTP verification
+- Profile management (name, email, phone, saved addresses)
+- Multiple address management with geolocation and default selection
+- Order history and tracking by customer
+- Customer-mart relationship tracking (orders, spending, ratings)
+- FAQ and help section access
+- Feedback and rating system
+
+### Service Catalog
+- Service category management (Regular Wash, Pro Clean, Luxury Care, Home Linens)
+- Individual service definitions with pricing and duration estimates
+- Clothing item catalog with per-piece pricing
+- Per-kg pricing for bulk items
+- Service icons and imagery
+- Active/inactive service management
+- Display order configuration for UI
+
+### Order Management
+- Dual pricing model support (per-piece and per-kg)
+- Order creation with item selection and quantity
+- Pickup and delivery scheduling
+- Address selection for pickup and delivery
+- Order status tracking (pickup → in_process → ready → out_for_delivery → delivered)
+- Real-time order updates and notifications
+- Order history and filtering
+- Order cancellation and modification
+
+### Billing & Payments
+- Invoice generation with item-wise breakdown
+- Delivery fee calculation based on distance
+- Tax and discount application
+- Multiple payment methods (Card, COD, UPI, Wallet)
+- Payment status tracking (pending, completed, failed, refunded)
+- Transaction ID tracking
+- Digital receipts
+
+### Delivery Management
+- Delivery partner onboarding with document verification
+- Real-time location tracking of delivery partners
+- Delivery assignment for pickup and drop
+- Route navigation and distance calculation
+- Pickup and delivery proof with mandatory photo capture
+- Delivery duration tracking (estimated vs actual)
+- Delivery fee calculation
+- Partner availability status management
+- Delivery ratings and feedback
+
+### Mart Administration
+- Multi-tenant mart management with independent operations
+- Dashboard with revenue, orders, and delivery analytics
+- Daily metrics tracking (orders, revenue, completion rate)
+- Customer relationship management
+- Service and pricing configuration
+- Delivery staff management and verification
+- Order assignment and status updates
+- Performance monitoring (ratings, delivery times)
+- Promotional offers and discount management
+- Report generation and export
+
+### Analytics & Reporting
+- Daily mart metrics (orders, revenue, cancellations)
+- Customer spending patterns and retention
+- Service popularity analysis
+- Delivery performance metrics
+- Revenue trends and forecasting
+- Customer acquisition and engagement
+- Staff performance tracking
+
+## Architectural Principles
+
+- Multi-tenant architecture supporting independent laundry mart operations
+- Separate mobile applications for customers and delivery partners
+- Admin web panel for mart management
+- Real-time tracking and notifications
+- Geolocation-based service radius and delivery fee calculation
+- Photo proof verification for pickups and deliveries
+- Flexible pricing models supporting different business needs
+- Scalable REST API architecture with PostgreSQL database
+- Cloud storage (S3) for images and documents
+- Docker containerization for consistent deployment
+
+## References
+
+- See architecture documents under `.cursor/ctx-store/architecture/` for module-specific details.
+- See database schema documentation for entity relationships and data model.

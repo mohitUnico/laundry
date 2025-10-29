@@ -1,0 +1,756 @@
+---
+description: Laundry App Backend API Guidelines - REST API Design and Implementation Standards
+globs: *.js,*.ts,backend/**/*.js,backend/**/*.ts
+alwaysApply: false
+---
+
+## REST API Design Principles
+
+The Laundry App backend follows RESTful architecture principles with a resource-oriented design:
+
+- **Resource-Based URLs**: URLs represent resources (nouns), not actions (verbs)
+- **HTTP Methods**: Use appropriate HTTP methods for operations (GET, POST, PUT, PATCH, DELETE)
+- **Stateless**: Each request contains all necessary information; no server-side session state
+- **Consistent Naming**: Use plural nouns for collections, lowercase with hyphens for readability
+- **Versioning**: Include API version in the URL path (`/api/v1/`)
+- **Standard Status Codes**: Use appropriate HTTP status codes for different scenarios
+- **JSON Format**: All requests and responses use JSON format
+- **HATEOAS**: Include relevant links in responses where applicable (optional)
+
+## API Endpoint Structure
+
+### URL Pattern
+```
+/api/v{version}/{resource}[/{id}][/{sub-resource}]
+```
+
+### Examples
+```
+GET    /api/v1/orders              # List all orders
+GET    /api/v1/orders/:orderId     # Get single order
+POST   /api/v1/orders              # Create new order
+PUT    /api/v1/orders/:orderId     # Update entire order
+PATCH  /api/v1/orders/:orderId     # Partial update
+DELETE /api/v1/orders/:orderId     # Delete order
+
+GET    /api/v1/orders/:orderId/items           # Get order items (sub-resource)
+POST   /api/v1/orders/:orderId/cancel          # Action on resource
+GET    /api/v1/customers/:customerId/orders    # Related resources
+```
+
+## HTTP Methods and Semantics
+
+### GET - Retrieve Resources
+- **Purpose**: Fetch one or multiple resources
+- **Idempotent**: Yes
+- **Safe**: Yes (no side effects)
+- **Response**: 200 OK with resource data
+
+```javascript
+// GET /api/v1/orders/:orderId
+router.get('/orders/:orderId', authenticateJWT, async (req, res, next) => {
+  try {
+    const order = await orderService.getOrderById(req.params.orderId);
+    res.json({
+      success: true,
+      data: order
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+```
+
+### POST - Create Resources
+- **Purpose**: Create new resources
+- **Idempotent**: No
+- **Safe**: No
+- **Response**: 201 Created with created resource and Location header
+
+```javascript
+// POST /api/v1/orders
+router.post('/orders', 
+  authenticateJWT,
+  validate(orderCreationSchema),
+  async (req, res, next) => {
+    try {
+      const order = await orderService.createOrder(req.user.id, req.body);
+      res.status(201)
+        .location(`/api/v1/orders/${order.order_id}`)
+        .json({
+          success: true,
+          data: order,
+          message: 'Order created successfully'
+        });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+```
+
+### PUT - Replace Resources
+- **Purpose**: Replace entire resource
+- **Idempotent**: Yes
+- **Safe**: No
+- **Response**: 200 OK with updated resource
+
+```javascript
+// PUT /api/v1/customers/:customerId
+router.put('/customers/:customerId',
+  authenticateJWT,
+  authorize('customer', 'admin'),
+  validate(customerUpdateSchema),
+  async (req, res, next) => {
+    try {
+      const customer = await customerService.updateCustomer(
+        req.params.customerId,
+        req.body
+      );
+      res.json({
+        success: true,
+        data: customer,
+        message: 'Customer updated successfully'
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+```
+
+### PATCH - Partial Update
+- **Purpose**: Update specific fields of a resource
+- **Idempotent**: Yes
+- **Safe**: No
+- **Response**: 200 OK with updated resource
+
+```javascript
+// PATCH /api/v1/orders/:orderId/status
+router.patch('/orders/:orderId/status',
+  authenticateJWT,
+  authorize('admin', 'staff'),
+  validate(statusUpdateSchema),
+  async (req, res, next) => {
+    try {
+      const order = await orderService.updateOrderStatus(
+        req.params.orderId,
+        req.body.status
+      );
+      res.json({
+        success: true,
+        data: order,
+        message: 'Order status updated'
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+```
+
+### DELETE - Remove Resources
+- **Purpose**: Delete a resource
+- **Idempotent**: Yes
+- **Safe**: No
+- **Response**: 204 No Content or 200 OK with deletion confirmation
+
+```javascript
+// DELETE /api/v1/service-categories/:categoryId
+router.delete('/service-categories/:categoryId',
+  authenticateJWT,
+  authorize('admin'),
+  async (req, res, next) => {
+    try {
+      await serviceCatalogService.deleteCategory(req.params.categoryId);
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+```
+
+## HTTP Status Codes
+
+### Success Codes (2xx)
+- **200 OK**: Request succeeded, response includes data
+- **201 Created**: Resource created successfully, include Location header
+- **204 No Content**: Request succeeded, no response body needed (typically DELETE)
+
+### Client Error Codes (4xx)
+- **400 Bad Request**: Invalid request syntax or validation failure
+- **401 Unauthorized**: Authentication required or failed
+- **403 Forbidden**: Authenticated but insufficient permissions
+- **404 Not Found**: Resource not found
+- **409 Conflict**: Request conflicts with current state (e.g., duplicate email)
+- **422 Unprocessable Entity**: Validation errors with detailed field errors
+- **429 Too Many Requests**: Rate limit exceeded
+
+### Server Error Codes (5xx)
+- **500 Internal Server Error**: Unexpected server error
+- **503 Service Unavailable**: Server temporarily unavailable (maintenance, overload)
+
+## Request/Response Structure
+
+### Request Headers
+```http
+POST /api/v1/orders HTTP/1.1
+Host: api.laundryapp.com
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Accept: application/json
+X-Correlation-ID: 550e8400-e29b-41d4-a716-446655440000
+```
+
+### Request Body (POST/PUT/PATCH)
+```json
+{
+  "martId": "mart-uuid-123",
+  "isPerUnitPiece": true,
+  "pickupRequired": true,
+  "pickupScheduledDatetime": "2025-10-30T10:00:00Z",
+  "pickupAddressId": "addr-uuid-456",
+  "dropRequired": true,
+  "deliveryAddressId": "addr-uuid-789",
+  "items": [
+    {
+      "itemId": "item-uuid-001",
+      "quantity": 2,
+      "subtotal": 80.00
+    },
+    {
+      "itemId": "item-uuid-002",
+      "quantity": 1,
+      "subtotal": 50.00
+    }
+  ]
+}
+```
+
+### Success Response (200/201)
+```json
+{
+  "success": true,
+  "data": {
+    "orderId": "order-uuid-001",
+    "martId": "mart-uuid-123",
+    "customerId": "cust-uuid-001",
+    "orderStatus": "pickup",
+    "totalAmount": 150.00,
+    "createdAt": "2025-10-29T12:00:00Z"
+  },
+  "message": "Order created successfully"
+}
+```
+
+### Error Response (4xx/5xx)
+```json
+{
+  "success": false,
+  "message": "Validation failed",
+  "errorCode": "VALIDATION_ERROR",
+  "errors": [
+    {
+      "field": "pickupAddressId",
+      "message": "Pickup address is required when pickupRequired is true"
+    },
+    {
+      "field": "items",
+      "message": "Order must contain at least one item"
+    }
+  ],
+  "timestamp": "2025-10-29T12:00:00Z",
+  "path": "/api/v1/orders"
+}
+```
+
+### Paginated Response
+```json
+{
+  "success": true,
+  "data": [
+    { "orderId": "order-1", "...": "..." },
+    { "orderId": "order-2", "...": "..." }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 10,
+    "total": 45,
+    "totalPages": 5,
+    "hasNext": true,
+    "hasPrev": false
+  },
+  "links": {
+    "self": "/api/v1/orders?page=1&limit=10",
+    "next": "/api/v1/orders?page=2&limit=10",
+    "first": "/api/v1/orders?page=1&limit=10",
+    "last": "/api/v1/orders?page=5&limit=10"
+  }
+}
+```
+
+## Pagination and Filtering
+
+### Query Parameters
+```javascript
+// GET /api/v1/orders?page=2&limit=20&status=delivered&sortBy=createdAt&order=desc
+router.get('/orders', authenticateJWT, async (req, res, next) => {
+  try {
+    const { page = 1, limit = 10, status, sortBy = 'created_at', order = 'desc' } = req.query;
+    
+    const result = await orderService.getOrders({
+      page: parseInt(page),
+      limit: parseInt(limit),
+      status,
+      sortBy,
+      order,
+      userId: req.user.id
+    });
+    
+    res.json({
+      success: true,
+      data: result.orders,
+      pagination: result.pagination
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+```
+
+### Service Implementation
+```javascript
+async getOrders(options) {
+  const { page, limit, status, sortBy, order, userId } = options;
+  const skip = (page - 1) * limit;
+  
+  const where = {
+    customer_id: userId,
+    ...(status && { order_status: status }),
+  };
+  
+  const [orders, total] = await Promise.all([
+    prisma.orders.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: { [sortBy]: order },
+      include: { bills: true },
+    }),
+    prisma.orders.count({ where }),
+  ]);
+  
+  return {
+    orders,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+      hasNext: page * limit < total,
+      hasPrev: page > 1,
+    },
+  };
+}
+```
+
+## Authentication and Authorization
+
+### JWT Authentication
+```javascript
+// middleware/auth.middleware.js
+const jwt = require('jsonwebtoken');
+const { UnauthorizedError } = require('../utils/errors');
+
+exports.authenticateJWT = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      throw new UnauthorizedError('No token provided');
+    }
+    
+    const token = authHeader.substring(7);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    
+    // Attach user info to request
+    req.user = {
+      id: decoded.userId,
+      role: decoded.role,
+      martId: decoded.martId // for admin users
+    };
+    
+    next();
+  } catch (error) {
+    if (error.name === 'TokenExpiredError') {
+      next(new UnauthorizedError('Token expired'));
+    } else if (error.name === 'JsonWebTokenError') {
+      next(new UnauthorizedError('Invalid token'));
+    } else {
+      next(error);
+    }
+  }
+};
+
+// Role-based authorization
+exports.authorize = (...allowedRoles) => {
+  return (req, res, next) => {
+    if (!allowedRoles.includes(req.user.role)) {
+      return next(new AppError('Insufficient permissions', 403));
+    }
+    next();
+  };
+};
+```
+
+### Protected Routes
+```javascript
+// Public routes (no authentication)
+router.post('/auth/register', registerController);
+router.post('/auth/login', loginController);
+router.get('/health', healthCheckController);
+
+// Customer routes (customer role)
+router.get('/orders', authenticateJWT, authorize('customer'), getOrdersController);
+router.post('/orders', authenticateJWT, authorize('customer'), createOrderController);
+
+// Admin routes (admin, manager, staff roles)
+router.get('/admin/dashboard', authenticateJWT, authorize('admin', 'manager', 'staff'), getDashboardController);
+router.patch('/orders/:orderId/status', authenticateJWT, authorize('admin', 'staff'), updateOrderStatusController);
+
+// Delivery partner routes (delivery_partner role)
+router.get('/delivery/available', authenticateJWT, authorize('delivery_partner'), getAvailableDeliveriesController);
+router.patch('/delivery/:deliveryId/status', authenticateJWT, authorize('delivery_partner'), updateDeliveryStatusController);
+```
+
+## Validation
+
+### Request Validation with Joi
+```javascript
+// validators/order.validator.js
+const Joi = require('joi');
+
+exports.createOrderSchema = Joi.object({
+  martId: Joi.string().uuid().required(),
+  isPerUnitPiece: Joi.boolean().required(),
+  pickupRequired: Joi.boolean().default(true),
+  pickupScheduledDatetime: Joi.date().iso().when('pickupRequired', {
+    is: true,
+    then: Joi.required(),
+    otherwise: Joi.forbidden()
+  }),
+  pickupAddressId: Joi.string().uuid().when('pickupRequired', {
+    is: true,
+    then: Joi.required()
+  }),
+  dropRequired: Joi.boolean().default(true),
+  deliveryAddressId: Joi.string().uuid().when('dropRequired', {
+    is: true,
+    then: Joi.required()
+  }),
+  items: Joi.array().items(
+    Joi.object({
+      itemId: Joi.string().uuid().when('..isPerUnitPiece', {
+        is: true,
+        then: Joi.required()
+      }),
+      serviceId: Joi.string().uuid().when('..isPerUnitPiece', {
+        is: false,
+        then: Joi.required()
+      }),
+      quantity: Joi.number().positive().required(),
+      subtotal: Joi.number().positive().required()
+    })
+  ).min(1).required()
+});
+
+// Apply in route
+router.post('/orders',
+  authenticateJWT,
+  validate(createOrderSchema),
+  orderController.createOrder
+);
+```
+
+## File Upload Handling
+
+### Multer Configuration
+```javascript
+// middleware/upload.middleware.js
+const multer = require('multer');
+const path = require('path');
+const { AppError } = require('../utils/errors');
+
+// Configure storage
+const storage = multer.memoryStorage(); // Store in memory for S3 upload
+
+// File filter
+const fileFilter = (req, file, cb) => {
+  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+  
+  if (allowedTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new AppError('Invalid file type. Only JPEG, PNG, and WebP are allowed', 400), false);
+  }
+};
+
+// Multer instance
+const upload = multer({
+  storage,
+  fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit
+  }
+});
+
+module.exports = upload;
+```
+
+### Upload Endpoint
+```javascript
+// routes/upload.routes.js
+const upload = require('../middleware/upload.middleware');
+const uploadService = require('../services/upload.service');
+
+// Single file upload
+router.post('/upload/proof',
+  authenticateJWT,
+  upload.single('photo'),
+  async (req, res, next) => {
+    try {
+      if (!req.file) {
+        throw new AppError('No file uploaded', 400);
+      }
+      
+      const imageUrl = await uploadService.uploadToS3(
+        req.file.buffer,
+        req.file.originalname,
+        req.file.mimetype,
+        'proofs'
+      );
+      
+      res.json({
+        success: true,
+        data: { imageUrl },
+        message: 'File uploaded successfully'
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// Multiple file upload
+router.post('/upload/documents',
+  authenticateJWT,
+  upload.array('documents', 5), // Max 5 files
+  async (req, res, next) => {
+    try {
+      const uploadPromises = req.files.map(file =>
+        uploadService.uploadToS3(file.buffer, file.originalname, file.mimetype, 'documents')
+      );
+      
+      const imageUrls = await Promise.all(uploadPromises);
+      
+      res.json({
+        success: true,
+        data: { imageUrls },
+        message: 'Files uploaded successfully'
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+```
+
+## API Documentation with Swagger
+
+### Swagger Setup
+```javascript
+// config/swagger.js
+const swaggerJsdoc = require('swagger-jsdoc');
+const swaggerUi = require('swagger-ui-express');
+
+const options = {
+  definition: {
+    openapi: '3.0.0',
+    info: {
+      title: 'Laundry App API',
+      version: '1.0.0',
+      description: 'REST API for Laundry App platform',
+      contact: {
+        name: 'API Support',
+        email: 'support@laundryapp.com'
+      }
+    },
+    servers: [
+      {
+        url: 'http://localhost:3000/api/v1',
+        description: 'Development server'
+      },
+      {
+        url: 'https://api.laundryapp.com/api/v1',
+        description: 'Production server'
+      }
+    ],
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT'
+        }
+      }
+    },
+    security: [
+      {
+        bearerAuth: []
+      }
+    ]
+  },
+  apis: ['./src/routes/*.js'] // Path to API docs
+};
+
+const specs = swaggerJsdoc(options);
+
+module.exports = { specs, swaggerUi };
+```
+
+### JSDoc Comments for Swagger
+```javascript
+/**
+ * @swagger
+ * /orders:
+ *   post:
+ *     summary: Create a new order
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - martId
+ *               - isPerUnitPiece
+ *               - items
+ *             properties:
+ *               martId:
+ *                 type: string
+ *                 format: uuid
+ *               isPerUnitPiece:
+ *                 type: boolean
+ *               pickupRequired:
+ *                 type: boolean
+ *               items:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *     responses:
+ *       201:
+ *         description: Order created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: '#/components/schemas/Order'
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ */
+router.post('/orders', authenticateJWT, validate(createOrderSchema), orderController.createOrder);
+```
+
+## Error Handling
+
+### Centralized Error Handler
+```javascript
+// middleware/error.middleware.js
+const logger = require('../utils/logger');
+
+exports.errorHandler = (err, req, res, next) => {
+  // Log error
+  logger.error({
+    message: err.message,
+    stack: err.stack,
+    url: req.originalUrl,
+    method: req.method,
+    body: req.body,
+    correlationId: req.correlationId,
+  });
+
+  // Default error
+  let statusCode = err.statusCode || 500;
+  let message = err.message || 'Internal server error';
+  let errorCode = err.code || 'INTERNAL_ERROR';
+  let errors = err.errors;
+
+  // Prisma errors
+  if (err.code === 'P2002') {
+    statusCode = 409;
+    message = 'Duplicate entry';
+    errorCode = 'DUPLICATE_ERROR';
+  } else if (err.code === 'P2025') {
+    statusCode = 404;
+    message = 'Record not found';
+    errorCode = 'NOT_FOUND';
+  }
+
+  // Multer errors
+  if (err.name === 'MulterError') {
+    statusCode = 400;
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      message = 'File too large';
+      errorCode = 'FILE_SIZE_ERROR';
+    }
+  }
+
+  // Send response
+  res.status(statusCode).json({
+    success: false,
+    message,
+    errorCode,
+    ...(errors && { errors }),
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+    timestamp: new Date().toISOString(),
+    path: req.originalUrl
+  });
+};
+
+// 404 handler
+exports.notFoundHandler = (req, res, next) => {
+  res.status(404).json({
+    success: false,
+    message: 'Route not found',
+    errorCode: 'ROUTE_NOT_FOUND',
+    path: req.originalUrl
+  });
+};
+```
+
+## Best Practices Summary
+
+1. **Consistent Structure**: All endpoints follow the same URL structure and response format
+2. **Proper HTTP Methods**: Use correct HTTP methods for different operations
+3. **Status Codes**: Return appropriate HTTP status codes
+4. **Validation**: Validate all inputs at the API layer
+5. **Authentication**: Protect endpoints with JWT authentication
+6. **Authorization**: Implement role-based access control
+7. **Error Handling**: Provide clear, consistent error messages
+8. **Documentation**: Document all endpoints with Swagger
+9. **Logging**: Log all requests and errors with correlation IDs
+10. **Security**: Implement rate limiting, input sanitization, and HTTPS
+11. **Versioning**: Use API versioning for backward compatibility
+12. **Pagination**: Implement pagination for list endpoints
+13. **File Uploads**: Handle file uploads securely with validation
+14. **Testing**: Write comprehensive tests for all endpoints

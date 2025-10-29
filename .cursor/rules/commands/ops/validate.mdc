@@ -1,0 +1,486 @@
+---
+description: This rule provides a command to validate and test REST APIs after deployment, ensuring endpoints are working correctly and meet specifications defined in Swagger/OpenAPI documentation.
+globs: 
+alwaysApply: false
+---
+## arguments
+- service: Name of the service to validate (default: backend, options: backend, admin-panel)
+- environment: Target environment for validation (default: dev, options: dev, staging, prod)
+- baseUrl: Base URL for the API (optional, auto-detected if not provided)
+- authToken: JWT authentication token for secured endpoints (optional, will generate if not provided)
+- testSuite: Specific test suite to run (default: all, options: all, smoke, regression, integration)
+- taskDescription: Description of the validation task (default value: Validate {{service}} API in {{environment}} environment)
+- taskId: The ID of the task to update (will be set after task creation)
+- skipAuth: Skip authentication tests (default: false)
+
+## init
+1. **Create task for tracking validation**
+   - Use @create-task.mdc directly with:
+     - title: "Validate {{service}} API in {{environment}}"
+     - description: "{{taskDescription}}"
+     - assignee: (current user)
+     - priority: "Medium"
+     - type: "Testing"
+     - component: "QA"
+   - Note the created task ID and store it in the taskId variable
+   - IMPORTANT: The task creation MUST be completed before proceeding
+
+2. Verify required testing tools are available:
+   - Newman (Postman CLI): `newman --version`
+   - curl: `curl --version`
+   - jq (for JSON parsing): `jq --version`
+
+3. Verify service and environment:
+   - backend service has API tests at `backend/tests/postman/`
+   - Environment-specific configuration exists
+
+4. Use @update-task-journal.mdc with:
+   - taskId: {{taskId}}
+   - entry: "Verified validation prerequisites and tools"
+
+## perform
+1. **Determine API base URL**
+   - If baseUrl argument is not provided, determine based on environment:
+     - dev: `http://localhost:3000/api/v1`
+     - staging: `https://api-staging.laundryapp.com/api/v1`
+     - prod: `https://api.laundryapp.com/api/v1`
+   
+   - For local Docker deployment:
+     ```bash
+     if [ "{{environment}}" = "dev" ]; then
+       # Check if backend is running
+       docker ps | grep laundry-backend || echo "Backend not running locally"
+       BASE_URL="http://localhost:3000/api/v1"
+     fi
+     ```
+   
+   - Store in environment variable:
+     ```bash
+     export BASE_URL="{{baseUrl}}"
+     ```
+   
+   - Use @update-task-journal.mdc with:
+     - taskId: {{taskId}}
+     - entry: "Determined API base URL: {{baseUrl}}"
+     - subtaskIndex: 1
+     - subtaskStatus: "Completed"
+
+2. **Connectivity and health check**
+   - Test basic connectivity to API:
+     ```bash
+     echo "Testing connectivity to $BASE_URL..."
+     curl -f -s -o /dev/null -w "%{http_code}" "$BASE_URL/health"
+     if [ $? -eq 0 ]; then
+       echo "✓ API is reachable"
+     else
+       echo "✗ API is not reachable"
+       exit 1
+     fi
+     ```
+   
+   - Check health endpoint response:
+     ```bash
+     HEALTH_RESPONSE=$(curl -s "$BASE_URL/health")
+     echo "Health check response: $HEALTH_RESPONSE"
+     ```
+   
+   - Verify API version endpoint:
+     ```bash
+     VERSION=$(curl -s "$BASE_URL/version" | jq -r '.version')
+     echo "API Version: $VERSION"
+     ```
+   
+   - Use @update-task-journal.mdc with:
+     - taskId: {{taskId}}
+     - entry: "Confirmed API connectivity and health check passed"
+     - subtaskIndex: 2
+     - subtaskStatus: "Completed"
+
+3. **Swagger/OpenAPI documentation validation**
+   - Check if Swagger docs are accessible:
+     ```bash
+     curl -f "$BASE_URL/api-docs" > /dev/null 2>&1
+     if [ $? -eq 0 ]; then
+       echo "✓ Swagger documentation is accessible"
+       curl -s "$BASE_URL/api-docs" | jq '.info'
+     else
+       echo "! Swagger documentation not found (optional)"
+     fi
+     ```
+   
+   - Download OpenAPI spec for reference:
+     ```bash
+     curl -s "$BASE_URL/api-docs" > swagger-output.json
+     ```
+   
+   - Validate spec structure:
+     ```bash
+     if [ -f swagger-output.json ]; then
+       jq '.paths | keys' swagger-output.json
+       ENDPOINT_COUNT=$(jq '.paths | length' swagger-output.json)
+       echo "Total endpoints documented: $ENDPOINT_COUNT"
+     fi
+     ```
+   
+   - Use @update-task-journal.mdc with:
+     - taskId: {{taskId}}
+     - entry: "Validated Swagger/OpenAPI documentation ($ENDPOINT_COUNT endpoints)"
+     - subtaskIndex: 3
+     - subtaskStatus: "Completed"
+
+4. **Authentication setup**
+   - If skipAuth is false and authToken is not provided, generate test token:
+     ```bash
+     if [ "{{skipAuth}}" != "true" ] && [ -z "{{authToken}}" ]; then
+       echo "Generating test authentication token..."
+       
+       # Login with test credentials
+       LOGIN_RESPONSE=$(curl -s -X POST "$BASE_URL/auth/login" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "email": "test@laundryapp.com",
+           "password": "Test@123456"
+         }')
+       
+       AUTH_TOKEN=$(echo $LOGIN_RESPONSE | jq -r '.data.token')
+       
+       if [ "$AUTH_TOKEN" != "null" ] && [ -n "$AUTH_TOKEN" ]; then
+         echo "✓ Successfully obtained auth token"
+         export AUTH_TOKEN
+       else
+         echo "✗ Failed to obtain auth token"
+         echo "Response: $LOGIN_RESPONSE"
+         exit 1
+       fi
+     else
+       AUTH_TOKEN="{{authToken}}"
+     fi
+     ```
+   
+   - Verify token works:
+     ```bash
+     if [ -n "$AUTH_TOKEN" ]; then
+       curl -s -H "Authorization: Bearer $AUTH_TOKEN" \
+         "$BASE_URL/auth/me" | jq .
+     fi
+     ```
+   
+   - Use @update-task-journal.mdc with:
+     - taskId: {{taskId}}
+     - entry: "Authentication token obtained and verified"
+     - subtaskIndex: 4
+     - subtaskStatus: "Completed"
+
+5. **Run Postman/Newman test suite**
+   - Locate Postman collection:
+     ```bash
+     COLLECTION_FILE="backend/tests/postman/laundry-api.postman_collection.json"
+     ENV_FILE="backend/tests/postman/{{environment}}.postman_environment.json"
+     
+     if [ ! -f "$COLLECTION_FILE" ]; then
+       echo "✗ Postman collection not found at $COLLECTION_FILE"
+       exit 1
+     fi
+     
+     echo "✓ Found Postman collection"
+     ```
+   
+   - Prepare environment variables for Newman:
+     ```bash
+     cat > newman-env-vars.json <<EOF
+     {
+       "base_url": "$BASE_URL",
+       "auth_token": "$AUTH_TOKEN",
+       "environment": "{{environment}}"
+     }
+     EOF
+     ```
+   
+   - Run Newman tests based on test suite:
+     ```bash
+     case "{{testSuite}}" in
+       "smoke")
+         echo "Running smoke tests..."
+         newman run "$COLLECTION_FILE" \
+           --folder "Smoke Tests" \
+           --environment "$ENV_FILE" \
+           --env-var "base_url=$BASE_URL" \
+           --env-var "auth_token=$AUTH_TOKEN" \
+           --reporters cli,json \
+           --reporter-json-export newman-results-smoke.json
+         ;;
+       
+       "regression")
+         echo "Running regression tests..."
+         newman run "$COLLECTION_FILE" \
+           --folder "Regression Tests" \
+           --environment "$ENV_FILE" \
+           --env-var "base_url=$BASE_URL" \
+           --env-var "auth_token=$AUTH_TOKEN" \
+           --reporters cli,json,html \
+           --reporter-json-export newman-results-regression.json \
+           --reporter-html-export newman-report.html
+         ;;
+       
+       "integration")
+         echo "Running integration tests..."
+         newman run "$COLLECTION_FILE" \
+           --folder "Integration Tests" \
+           --environment "$ENV_FILE" \
+           --env-var "base_url=$BASE_URL" \
+           --env-var "auth_token=$AUTH_TOKEN" \
+           --reporters cli,json \
+           --reporter-json-export newman-results-integration.json
+         ;;
+       
+       *)
+         echo "Running all tests..."
+         newman run "$COLLECTION_FILE" \
+           --environment "$ENV_FILE" \
+           --env-var "base_url=$BASE_URL" \
+           --env-var "auth_token=$AUTH_TOKEN" \
+           --reporters cli,json,html \
+           --reporter-json-export newman-results.json \
+           --reporter-html-export newman-report.html \
+           --bail
+         ;;
+     esac
+     
+     NEWMAN_EXIT_CODE=$?
+     ```
+   
+   - Parse and display test results:
+     ```bash
+     if [ -f newman-results.json ]; then
+       echo ""
+       echo "===== Test Results Summary ====="
+       jq -r '
+         "Total Tests: \(.run.stats.tests.total)",
+         "Passed: \(.run.stats.tests.passed)",
+         "Failed: \(.run.stats.tests.failed)",
+         "Skipped: \(.run.stats.tests.skipped)",
+         "",
+         "Total Assertions: \(.run.stats.assertions.total)",
+         "Passed Assertions: \(.run.stats.assertions.passed)",
+         "Failed Assertions: \(.run.stats.assertions.failed)"
+       ' newman-results.json
+       
+       # Display failed tests if any
+       FAILED_COUNT=$(jq '.run.stats.tests.failed' newman-results.json)
+       if [ "$FAILED_COUNT" -gt 0 ]; then
+         echo ""
+         echo "===== Failed Tests ====="
+         jq -r '.run.executions[] | select(.assertions[].error != null) | 
+           "Request: \(.item.name)",
+           "Assertion: \(.assertions[].error.message // "Unknown error")",
+           "---"
+         ' newman-results.json
+       fi
+     fi
+     ```
+   
+   - Use @update-task-journal.mdc with:
+     - taskId: {{taskId}}
+     - entry: "Completed Newman test suite ({{testSuite}}): $FAILED_COUNT failed out of total tests"
+     - subtaskIndex: 5
+     - subtaskStatus: "Completed"
+
+6. **Manual endpoint testing (critical endpoints)**
+   - Test critical endpoints manually with curl:
+     ```bash
+     echo ""
+     echo "===== Testing Critical Endpoints ====="
+     
+     # Test 1: List orders (authenticated)
+     echo "1. GET /orders - List orders"
+     curl -s -H "Authorization: Bearer $AUTH_TOKEN" \
+       "$BASE_URL/orders?page=1&limit=5" | jq '.success, .data | length'
+     
+     # Test 2: Get specific order (authenticated)
+     ORDER_ID=$(curl -s -H "Authorization: Bearer $AUTH_TOKEN" \
+       "$BASE_URL/orders?page=1&limit=1" | jq -r '.data[0].orderId')
+     
+     if [ "$ORDER_ID" != "null" ]; then
+       echo "2. GET /orders/:orderId - Get order details"
+       curl -s -H "Authorization: Bearer $AUTH_TOKEN" \
+         "$BASE_URL/orders/$ORDER_ID" | jq '.success, .data.orderId'
+     fi
+     
+     # Test 3: List service categories
+     echo "3. GET /service-categories - List service categories"
+     curl -s "$BASE_URL/service-categories" | jq '.success, .data | length'
+     
+     # Test 4: Create order (authenticated)
+     echo "4. POST /orders - Create new order"
+     CREATE_RESPONSE=$(curl -s -X POST \
+       -H "Authorization: Bearer $AUTH_TOKEN" \
+       -H "Content-Type: application/json" \
+       -d '{
+         "martId": "test-mart-id",
+         "items": [{"itemId": "test-item", "quantity": 2}],
+         "pickupAddressId": "test-address"
+       }' \
+       "$BASE_URL/orders")
+     echo $CREATE_RESPONSE | jq '.success, .message'
+     ```
+   
+   - Use @update-task-journal.mdc with:
+     - taskId: {{taskId}}
+     - entry: "Completed manual testing of critical endpoints"
+     - subtaskIndex: 6
+     - subtaskStatus: "Completed"
+
+7. **Performance and load testing (optional)**
+   - Basic performance check with Apache Bench (if available):
+     ```bash
+     if command -v ab &> /dev/null; then
+       echo "Running basic performance test..."
+       ab -n 100 -c 10 -H "Authorization: Bearer $AUTH_TOKEN" \
+         "$BASE_URL/orders?page=1&limit=10"
+     else
+       echo "Apache Bench (ab) not installed, skipping performance tests"
+     fi
+     ```
+   
+   - Use @update-task-journal.mdc with:
+     - taskId: {{taskId}}
+     - entry: "Completed performance testing (if applicable)"
+     - subtaskIndex: 7
+     - subtaskStatus: "Completed"
+
+## finalize
+1. Display validation summary:
+   ```
+   ===== API Validation Summary =====
+   Service: {{service}}
+   Environment: {{environment}}
+   Base URL: {{baseUrl}}
+   
+   Health Check: ✓ Passed
+   Authentication: ✓ Working
+   API Documentation: ✓ Accessible
+   
+   Test Results:
+   - Total Tests: {{totalTests}}
+   - Passed: {{passedTests}}
+   - Failed: {{failedTests}}
+   - Success Rate: {{successRate}}%
+   
+   Critical Endpoints: ✓ All Working
+   Performance: ✓ Acceptable (if tested)
+   
+   Validation Time: {{timestamp}}
+   Validated By: {{currentUser}}
+   ```
+
+2. Generate validation report:
+   - Create summary report file:
+     ```bash
+     cat > validation-report-{{environment}}-$(date +%Y%m%d).md <<EOF
+     # API Validation Report
+     
+     **Date**: $(date)
+     **Environment**: {{environment}}
+     **API Base URL**: $BASE_URL
+     **Test Suite**: {{testSuite}}
+     
+     ## Results
+     - Total Tests: {{totalTests}}
+     - Passed: {{passedTests}}
+     - Failed: {{failedTests}}
+     
+     ## Failed Tests
+     {{failedTestDetails}}
+     
+     ## Recommendations
+     {{recommendations}}
+     EOF
+     ```
+
+3. Archive test results:
+   ```bash
+   mkdir -p test-results/{{environment}}/$(date +%Y%m%d)
+   mv newman-results*.json test-results/{{environment}}/$(date +%Y%m%d)/
+   mv newman-report.html test-results/{{environment}}/$(date +%Y%m%d)/ 2>/dev/null || true
+   ```
+
+4. Determine if validation passed:
+   ```bash
+   if [ "$NEWMAN_EXIT_CODE" -eq 0 ]; then
+     echo "✓ API validation PASSED"
+     VALIDATION_STATUS="PASSED"
+   else
+     echo "✗ API validation FAILED"
+     VALIDATION_STATUS="FAILED"
+     exit 1
+   fi
+   ```
+
+5. Use @update-task-journal.mdc with:
+   - taskId: {{taskId}}
+   - entry: "Validation completed with status: $VALIDATION_STATUS"
+
+6. **Complete the validation task**
+   - Use @complete-task.mdc directly with:
+     - taskId: {{taskId}}
+   - This will mark the task as completed and move it to the completed tasks directory
+   - Ensure this step is ALWAYS executed to properly close the task
+
+## Troubleshooting
+
+### Common Issues
+
+**1. API not reachable**
+```bash
+# Check if service is running
+docker ps | grep laundry-backend
+
+# Check service logs
+docker logs laundry-backend --tail=100
+
+# Check network connectivity
+curl -v http://localhost:3000/health
+```
+
+**2. Authentication fails**
+```bash
+# Verify test user exists in database
+# Create test user if needed:
+curl -X POST "$BASE_URL/auth/register" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "test@laundryapp.com",
+    "password": "Test@123456",
+    "fullName": "Test User"
+  }'
+```
+
+**3. Newman tests fail**
+```bash
+# Run with verbose output
+newman run collection.json --verbose
+
+# Check environment variables
+newman run collection.json --env-var "base_url=$BASE_URL"
+```
+
+**4. Swagger docs not accessible**
+```bash
+# Verify Swagger is enabled in environment
+# Check backend/.env file for SWAGGER_ENABLED=true
+```
+
+## Test Data Setup
+
+For comprehensive testing, ensure test data exists:
+
+```bash
+# Seed test data if needed
+docker-compose exec backend npm run seed:test
+
+# Or manually create via API:
+# 1. Create test mart
+# 2. Create test customer
+# 3. Create test service categories
+# 4. Create test orders
+```

@@ -1,0 +1,42 @@
+{
+  "name": "${serviceName}",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "./src",
+  "targets": {
+    "build": {
+      "executor": "@jnxplus/nx-maven:run-task",
+      "outputs": [
+        "{projectRoot}/target"
+      ],
+      "options": {
+        "task": "package spring-boot:repackage -DskipTests=true"
+      }
+    },
+    "build-image": {
+      "executor": "@jnxplus/nx-maven:run-task",
+      "options": {
+        "task": "spring-boot:build-image"
+      }
+    },
+    "serve": {
+      "executor": "@jnxplus/nx-maven:run-task",
+      "options": {
+        "task": "spring-boot:run"
+      },
+      "dependsOn": [
+        "^build"
+      ]
+    },
+    "test": {
+      "executor": "@jnxplus/nx-maven:run-task",
+      "options": {
+        "task": "test"
+      },
+      "dependsOn": [
+        "^build"
+      ]
+    }
+  },
+  "tags": []
+} 

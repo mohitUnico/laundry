@@ -1,0 +1,350 @@
+---
+description: Generate a REST API controller for the Laundry App backend with proper route definitions, validation, and error handling.
+globs: 
+alwaysApply: false
+---
+
+## arguments
+- resourceName: Name of the resource (e.g., Order, Customer, Delivery) - PascalCase
+- moduleName: Optional module/subdirectory name (e.g., orders, customers) - defaults to lowercase plural of resourceName
+- includeAuth: Whether to include authentication middleware (default: true)
+- includeCRUD: Generate full CRUD operations (default: true)
+- includeValidation: Generate validation schemas (default: true)
+
+## init
+1. Validate inputs:
+   - resourceName must be in PascalCase (e.g., Order, Customer, DeliveryStaff)
+   - Determine moduleName (defaults to lowercase plural: Order -> orders, Customer -> customers)
+   - Verify backend/src/controllers directory exists
+
+2. Check for existing files:
+   - Controller file: `backend/src/controllers/${moduleName}.controller.js`
+   - Routes file: `backend/src/routes/${moduleName}.routes.js`
+   - Validation file (if includeValidation): `backend/src/validators/${moduleName}.validator.js`
+
+3. Display summary of what will be created:
+   ```
+   Creating controller for: ${resourceName}
+   Module: ${moduleName}
+   
+   Files to be created:
+   - backend/src/controllers/${moduleName}.controller.js
+   - backend/src/routes/${moduleName}.routes.js
+   ${includeValidation ? '- backend/src/validators/${moduleName}.validator.js' : ''}
+   
+   Operations: ${includeCRUD ? 'Full CRUD (Create, Read, Update, Delete)' : 'Custom operations'}
+   Authentication: ${includeAuth ? 'Required' : 'Optional'}
+   ```
+
+4. Confirm with user before proceeding
+
+## perform
+1. **Create controller file**
+   
+   Generate `backend/src/controllers/${moduleName}.controller.js`:
+
+```javascript
+const ${moduleName}Service = require('../services/${moduleName}.service');
+const { AppError } = require('../utils/errors');
+const logger = require('../utils/logger');
+
+/**
+ * ${resourceName} Controller
+ * Handles HTTP requests for ${moduleName} resource
+ */
+
+${includeCRUD ? `
+/**
+ * Get all ${moduleName}
+ * @route GET /api/v1/${moduleName}
+ * @access ${includeAuth ? 'Private' : 'Public'}
+ */
+exports.getAll${resourceName}s = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 10, ...filters } = req.query;
+    
+    const result = await ${moduleName}Service.getAll${resourceName}s({
+      page: parseInt(page),
+      limit: parseInt(limit),
+      filters,
+      userId: req.user?.id,
+    });
+
+    res.json({
+      success: true,
+      data: result.${moduleName},
+      pagination: result.pagination,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get single ${resourceName.toLowerCase()} by ID
+ * @route GET /api/v1/${moduleName}/:id
+ * @access ${includeAuth ? 'Private' : 'Public'}
+ */
+exports.get${resourceName}ById = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    
+    const ${resourceName.toLowerCase()} = await ${moduleName}Service.get${resourceName}ById(id);
+
+    res.json({
+      success: true,
+      data: ${resourceName.toLowerCase()},
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Create new ${resourceName.toLowerCase()}
+ * @route POST /api/v1/${moduleName}
+ * @access ${includeAuth ? 'Private' : 'Public'}
+ */
+exports.create${resourceName} = async (req, res, next) => {
+  try {
+    const ${resourceName.toLowerCase()}Data = req.body;
+    ${includeAuth ? 'const userId = req.user.id;' : ''}
+
+    const ${resourceName.toLowerCase()} = await ${moduleName}Service.create${resourceName}(
+      ${includeAuth ? 'userId, ' : ''}${resourceName.toLowerCase()}Data
+    );
+
+    res.status(201).json({
+      success: true,
+      data: ${resourceName.toLowerCase()},
+      message: '${resourceName} created successfully',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Update ${resourceName.toLowerCase()}
+ * @route PUT /api/v1/${moduleName}/:id
+ * @access ${includeAuth ? 'Private' : 'Public'}
+ */
+exports.update${resourceName} = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    const ${resourceName.toLowerCase()} = await ${moduleName}Service.update${resourceName}(id, updateData);
+
+    res.json({
+      success: true,
+      data: ${resourceName.toLowerCase()},
+      message: '${resourceName} updated successfully',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Delete ${resourceName.toLowerCase()}
+ * @route DELETE /api/v1/${moduleName}/:id
+ * @access ${includeAuth ? 'Private' : 'Public'}
+ */
+exports.delete${resourceName} = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    await ${moduleName}Service.delete${resourceName}(id);
+
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+};
+` : ''}
+```
+
+2. **Create routes file**
+
+   Generate `backend/src/routes/${moduleName}.routes.js`:
+
+```javascript
+const express = require('express');
+const router = express.Router();
+const ${moduleName}Controller = require('../controllers/${moduleName}.controller');
+${includeAuth ? "const { authenticateJWT, authorize } = require('../middleware/auth.middleware');" : ''}
+${includeValidation ? `const { validate } = require('../middleware/validation.middleware');
+const ${moduleName}Validator = require('../validators/${moduleName}.validator');` : ''}
+
+/**
+ * ${resourceName} Routes
+ * Base path: /api/v1/${moduleName}
+ */
+
+${includeCRUD ? `
+// GET /api/v1/${moduleName} - Get all ${moduleName}
+router.get(
+  '/',
+  ${includeAuth ? 'authenticateJWT,' : ''}
+  ${moduleName}Controller.getAll${resourceName}s
+);
+
+// GET /api/v1/${moduleName}/:id - Get ${resourceName.toLowerCase()} by ID
+router.get(
+  '/:id',
+  ${includeAuth ? 'authenticateJWT,' : ''}
+  ${moduleName}Controller.get${resourceName}ById
+);
+
+// POST /api/v1/${moduleName} - Create new ${resourceName.toLowerCase()}
+router.post(
+  '/',
+  ${includeAuth ? 'authenticateJWT,' : ''}
+  ${includeValidation ? `validate(${moduleName}Validator.create${resourceName}Schema),` : ''}
+  ${moduleName}Controller.create${resourceName}
+);
+
+// PUT /api/v1/${moduleName}/:id - Update ${resourceName.toLowerCase()}
+router.put(
+  '/:id',
+  ${includeAuth ? 'authenticateJWT,' : ''}
+  ${includeValidation ? `validate(${moduleName}Validator.update${resourceName}Schema),` : ''}
+  ${moduleName}Controller.update${resourceName}
+);
+
+// DELETE /api/v1/${moduleName}/:id - Delete ${resourceName.toLowerCase()}
+router.delete(
+  '/:id',
+  ${includeAuth ? 'authenticateJWT,' : ''}
+  ${includeAuth ? "authorize('admin', 'manager')," : ''}
+  ${moduleName}Controller.delete${resourceName}
+);
+` : ''}
+
+module.exports = router;
+```
+
+3. **Create validation schemas (if includeValidation is true)**
+
+   Generate `backend/src/validators/${moduleName}.validator.js`:
+
+```javascript
+const Joi = require('joi');
+
+/**
+ * Validation schemas for ${resourceName}
+ */
+
+exports.create${resourceName}Schema = Joi.object({
+  // TODO: Add your fields here
+  // Example:
+  // name: Joi.string().required().min(3).max(100),
+  // email: Joi.string().email().required(),
+  // status: Joi.string().valid('active', 'inactive').default('active'),
+});
+
+exports.update${resourceName}Schema = Joi.object({
+  // TODO: Add your fields here (usually similar to create but all optional)
+  // Example:
+  // name: Joi.string().min(3).max(100),
+  // email: Joi.string().email(),
+  // status: Joi.string().valid('active', 'inactive'),
+});
+
+exports.query${resourceName}Schema = Joi.object({
+  page: Joi.number().integer().min(1).default(1),
+  limit: Joi.number().integer().min(1).max(100).default(10),
+  // TODO: Add query filters
+  // Example:
+  // status: Joi.string().valid('active', 'inactive'),
+  // sortBy: Joi.string().valid('createdAt', 'name'),
+  // order: Joi.string().valid('asc', 'desc').default('desc'),
+});
+```
+
+4. **Update main app.js to register routes**
+
+   Add to `backend/src/app.js`:
+   ```javascript
+   // ${resourceName} routes
+   app.use('/api/v1/${moduleName}', require('./routes/${moduleName}.routes'));
+   ```
+
+5. **Display next steps**
+   ```
+   ✓ Controller created successfully!
+   
+   Next steps:
+   1. Create the service layer: /command create-service ${resourceName}
+   2. Update validation schemas in: backend/src/validators/${moduleName}.validator.js
+   3. Register routes in: backend/src/app.js
+   4. Create Prisma model if needed: /command create-prisma-model ${resourceName}
+   5. Test the endpoints with Postman or curl
+   
+   Example requests:
+   - GET    /api/v1/${moduleName}
+   - GET    /api/v1/${moduleName}/:id
+   - POST   /api/v1/${moduleName}
+   - PUT    /api/v1/${moduleName}/:id
+   - DELETE /api/v1/${moduleName}/:id
+   ```
+
+## finalize
+1. **Verify files were created**
+   - Check controller file exists and is valid JavaScript
+   - Check routes file exists and is valid JavaScript
+   - Check validation file exists (if applicable)
+
+2. **Display summary**
+   ```
+   ===== Controller Creation Summary =====
+   Resource: ${resourceName}
+   Module: ${moduleName}
+   
+   Files Created:
+   ✓ backend/src/controllers/${moduleName}.controller.js
+   ✓ backend/src/routes/${moduleName}.routes.js
+   ${includeValidation ? '✓ backend/src/validators/${moduleName}.validator.js' : ''}
+   
+   Operations: ${includeCRUD ? 'Full CRUD' : 'Custom'}
+   Authentication: ${includeAuth ? 'Required' : 'Optional'}
+   Validation: ${includeValidation ? 'Included' : 'Not included'}
+   ```
+
+3. **Provide testing command**
+   ```bash
+   # Start the server
+   cd backend && npm run dev
+   
+   # Test health endpoint
+   curl http://localhost:3000/health
+   
+   # Test your new endpoints
+   curl http://localhost:3000/api/v1/${moduleName}
+   ```
+
+4. **Add TODO comments in generated files**
+   - Mark sections that need customization
+   - Add examples in validation schemas
+   - Include JSDoc comments for Swagger generation
+
+## examples
+
+### Example 1: Create Order Controller
+```
+/command create-controller Order
+```
+Creates: orders.controller.js, orders.routes.js, orders.validator.js
+
+### Example 2: Create Customer Controller (no validation)
+```
+/command create-controller Customer --includeValidation=false
+```
+Creates: customers.controller.js, customers.routes.js
+
+### Example 3: Create Public API Controller
+```
+/command create-controller ServiceCategory --includeAuth=false
+```
+Creates: service-categories.controller.js (with public access)

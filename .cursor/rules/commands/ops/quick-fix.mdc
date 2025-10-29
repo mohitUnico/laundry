@@ -1,0 +1,113 @@
+---
+alwaysApply: false
+---
+## arguments
+- moduleName: The name of the module to apply quick fixes to (e.g., course-service, ui-components, DoorSync-core, learn, shell, main.scss)
+- issueType: The type of issue to fix (e.g., linting, compilation, dependency, formatting)
+- taskDescription: Description of the quick fix task  default value: Fix blocking lint and compilation errors in {{moduleName}} module
+- taskId: The ID of the task to update (will be set after task creation)
+
+## init
+1. **Create task for tracking quick fixes**
+   - Use @create-task.mdc directly with:
+     - title: "Quick fix for {{moduleName}} module"
+     - description: "{{taskDescription}}"
+     - assignee: (current user)
+     - priority: "High"
+     - type: "Maintenance"
+     - component: "DevOps"
+   - Note the created task ID and store it in the taskId variable
+   - IMPORTANT: The task creation MUST be completed before proceeding
+
+2. Determine module type and path based on provided name:
+   - Backend service (Java) - in `/apis` directory:
+     - task-service: `/apis/task-service`
+     - course-service: `/apis/course-service`
+     - event-service: `/apis/event-service`
+     - company-service: `/apis/company-service`
+     - reference-service: `/apis/reference-service`
+     - audit-service: `/apis/audit-service`
+     - author-service: `/apis/author-service`
+     - batch-service: `/apis/batch-service`
+     - test-service: `/apis/test-service`
+     - learner-service: `/apis/learner-service`
+     - metadata-service: `/apis/metadata-service`
+     - communication-service: `/apis/communication-service`
+     - caching-service: `/apis/caching-service`
+     - rewards-service: `/apis/rewards-service`
+     - platform-admin-service: `/apis/platform-admin-service`
+     - iam-service: `/apis/iam-service`
+     - document-service: `/apis/document-service`
+     - user-service: `/apis/user-service`
+     - Builder: Maven (`mvn`)
+
+   - Frontend feature app - in `/apps` directory:
+     - shell: `/apps/shell`
+     - admin: `/apps/admin`
+     - onboard: `/apps/onboard`
+     - hire: `/apps/hire`
+     - learn: `/apps/learn`
+     - auth: `/apps/auth`
+     - Builder: Nx with Angular (`npx nx`)
+
+   - Libraries - in `/libs` directory:
+     - ui-components: `/libs/ui-components`
+     - DoorSync-core: `/libs/DoorSync-core`
+     - shared-utils: `/libs/shared-utils`
+     - data-access: `/libs/data-access`
+     - Builder: Nx with Angular (`npx nx`)
+
+   - SCSS styling - in `/styles` directory:
+     - main.scss: `/styles/main.scss`
+     - Builder: SASS compiler (`sass`)
+
+3. Validate that the module exists in the workspace
+4. Use @update-task-journal.mdc with:
+   - taskId: {{taskId}}
+   - entry: "Identified module type for quick fix of {{moduleName}}"
+
+## perform
+1. **Apply targeted quick fixes based on issue type**
+   - **Linting issues**:
+     - Java: Run `mvn checkstyle:check -f /apis/{{moduleName}}/pom.xml` and apply common fixes
+     - Angular: Run `npx nx lint {{moduleName}} --fix` to auto-fix linting issues
+     - SCSS: Run `npx stylelint "styles/{{moduleName}}/**/*.scss" --fix`
+   
+   - **Compilation issues**:
+     - Java: Check for missing imports, incorrect package declarations
+     - Angular: Check for missing imports, incorrect component declarations, standalone component issues
+     - SCSS: Check for missing variables, incorrect syntax
+   
+   - **Dependency issues**:
+     - Java: Run `mvn dependency:resolve -f /apis/{{moduleName}}/pom.xml`
+     - Angular: Check package.json and tsconfig.json for missing dependencies
+   
+   - **Formatting issues**:
+     - Java: Run `mvn formatter:format -f /apis/{{moduleName}}/pom.xml`
+     - Angular: Run `npx prettier --write "apps/{{moduleName}}/src/**/*.{ts,html,scss}"` or `npx prettier --write "libs/{{moduleName}}/src/**/*.{ts,html,scss}"`
+     - SCSS: Apply consistent formatting rules
+
+2. **Verify the fix**
+   - Rerun the appropriate build/lint command to confirm the issue is resolved
+   - For Java: `mvn compile -f /apis/{{moduleName}}/pom.xml`
+   - For Angular apps: `npx nx build {{moduleName}} --configuration=development`
+   - For Angular libs: `npx nx build {{moduleName}}`
+   - For SCSS: `sass styles/{{moduleName}}/_index.scss styles/compiled/{{moduleName}}.css`
+
+3. **Update knowledge base if this is a new solution**
+   - If the fix required a novel approach, create a new KB article
+   - If an existing KB article was used, increment its frequency counter
+
+## finalize
+1. Confirm the quick fix was successful
+2. Provide a brief summary of what was fixed
+3. Suggest running full tests if the fix was significant
+4. Note any remaining issues that might need attention
+
+5. **Complete the quick fix task**
+   - Use @complete-task.mdc directly with:
+     - taskId: {{taskId}}
+   - This will mark the task as completed and move it to the completed tasks directory
+   - Ensure this step is ALWAYS executed to properly close the task
+
+6. Provide recommendation: "For a more thorough fix including style issues and code quality improvements, run the full @fix.mdc command"

@@ -1,0 +1,89 @@
+---
+description: This file defines all available custom commands for the Laundry App project.
+globs: 
+alwaysApply: true
+---
+## Command Categories
+- **ops**: Operations commands for development workflows
+- **task**: Task management commands
+- **service**: Backend service creation commands
+- **web**: Frontend component creation commands
+
+## Command Structure
+Each command is defined in a markdown file (.mdc) with the following structure:
+
+### Arguments Section
+```markdown
+## arguments
+- argument1: Description of the first argument
+- argument2: Description of the second argument
+```
+
+Arguments are extracted from conversational context in the user's request. If any required argument is not provided, the system will prompt the user to enter it. For example, a command might need a "description" or "module name" that should be extracted from the conversation.
+
+### Init Section
+```markdown
+## init
+1. Initial validation steps
+2. Environment checks
+3. Preparation tasks
+```
+
+The init section defines preliminary checks and setup required before executing the command.
+
+### Perform Section
+```markdown
+## perform
+1. Step 1 of the command execution
+   - Substep A
+   - Substep B
+2. Step 2 of the command execution
+   - Substep A
+   - Substep B
+```
+
+The perform section contains the main steps for executing the command.
+
+### Finalize Section
+```markdown
+## finalize
+1. Final confirmation steps
+2. Status reporting
+3. Cleanup tasks
+```
+
+The finalize section handles command completion and reporting results.
+
+## Available Commands
+
+### Operations Commands
+- `commit`: Commit code changes following conventional commit format
+- `deploy`: Deploy backend services to Docker-based environments
+- `fix`: Automatically identify and fix common linting and compilation issues
+- `validate`: Validate and test REST APIs after deployment
+- `create-kb`: Create new knowledge base articles documenting solutions to recurring issues
+- `search-kb`: Search existing knowledge base articles by keywords, categories, or tags
+- `quick-fix`: Apply quick fixes for common issues based on knowledge base solutions
+- `cleanup`: Remove a service and its registrations for testing and recreation purposes
+
+### Task Commands
+- `list-tasks`: List all existing tasks in the project
+- `create-task`: Create a new task with metadata (title, assignee, priority, due date)
+- `complete-task`: Mark a task as completed and update its status
+- `resume-task`: Resume working on an existing task
+- `update-task-journal`: Add new entries to a task's journal and optionally update subtask status
+
+### Service Commands (Backend - Node.js/Express/Prisma)
+- `create-controller`: Generate a REST API controller for the Laundry App backend
+- `create-service`: Generate a service class for business logic with Prisma integration
+- `create-prisma-model`: Generate a Prisma model schema for the PostgreSQL database
+
+### Web Commands (Frontend - React/Flutter)
+- `create-react-component`: Generate a React component for the admin panel
+
+## Usage
+- `/command`: List all available commands
+- `/command [category]`: List all commands in a specific category (e.g., `/command ops`, `/command service`)
+- `/command [command-name]`: Execute a specific command (e.g., `/command create-task`, `/command create-controller`)
+- `/command create-kb [article-title]`: Create a new knowledge base article
+- `/command search-kb [search-term]`: Search the knowledge base for solutions

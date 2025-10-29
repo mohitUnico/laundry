@@ -1,0 +1,169 @@
+---
+description: Laundry App follows a REST API architecture with separate web admin panel and mobile applications. The system is designed with service layer patterns and database-first approach using Prisma ORM.
+alwaysApply: true
+---
+
+## Frontend Architecture
+
+### Admin Panel (React)
+- React-based web application for mart administration
+- Component-driven development with functional components and hooks
+- Context API or Redux for state management
+- React Router for navigation and routing
+- Responsive design with Material-UI or custom component library
+- Feature-based organization with lazy loading
+- Custom hooks for reusable logic
+- Axios for API communication
+- Form handling with React Hook Form or Formik
+- Data visualization with Chart.js or Recharts for analytics dashboard
+
+### Mobile Applications (Flutter)
+- Two separate Flutter applications: Customer App and Delivery Partner App
+- Dart language with strong typing
+- Provider or Bloc pattern for state management
+- Flutter navigation system for routing
+- Material Design widgets for consistent UI
+- Platform-specific customizations for iOS and Android
+- Real-time location tracking with Google Maps integration
+- Camera integration for proof photos
+- Push notifications for order updates
+- Offline support for basic functionality
+- Image optimization and caching
+
+## Backend Architecture
+
+### API Structure
+The backend follows a layered architecture pattern:
+- **Controllers (Routes)**: HTTP request handling, validation, and response formatting
+- **Services**: Business logic, orchestration, and transaction management
+- **Repositories (Prisma Client)**: Database access layer with type-safe queries
+- **Middleware**: Authentication, logging, error handling, request validation
+- **Utils**: Helper functions, constants, and shared utilities
+
+### Service Layer Patterns
+- **Service Classes**: Encapsulate business logic for each domain (orders, customers, delivery, etc.)
+- **Transaction Management**: Use Prisma transactions for atomic operations
+- **Data Transfer Objects (DTOs)**: Request and response payload validation
+- **Error Handling**: Centralized error handling with custom error classes
+- **Logging**: Structured logging for debugging and monitoring
+- **Validation**: Input validation using Joi or Zod schemas
+
+### Design Principles
+- Clear separation of concerns (routes, services, data access)
+- Single responsibility principle for services and controllers
+- Dependency injection where applicable
+- RESTful API design with proper HTTP methods and status codes
+- Stateless API design with JWT authentication
+- Database-first approach with Prisma migrations
+- Type safety with TypeScript throughout the stack
+
+## Integration Patterns
+- RESTful API with Express.js framework
+- JWT-based authentication with refresh tokens
+- File upload handling with Multer
+- S3 integration for image storage (profiles, proofs, service images)
+- Real-time updates using WebSocket or Server-Sent Events (optional)
+- SMS/OTP integration for authentication
+- Payment gateway integration (Stripe/Razorpay)
+- Push notification service (FCM for mobile apps)
+- Email service for notifications
+- Geolocation services for distance calculation
+- Correlation IDs for request tracing
+- Standardized error responses with error codes
+
+## Deployment Architecture
+- Docker containerization for consistent environments
+- PostgreSQL database with connection pooling
+- S3 for static assets and uploaded images
+- Environment-based configuration (development, staging, production)
+- Docker Compose for local development
+- Container orchestration (Kubernetes or Docker Swarm) for production
+- CI/CD pipeline using GitHub Actions
+- Database migrations managed through Prisma
+- Health check endpoints for monitoring
+- Logging aggregation and monitoring
+
+# Technology Stack
+
+## Backend
+- **Language**: JavaScript/TypeScript
+- **Runtime**: Node.js (v18 or higher)
+- **Framework**: Express.js
+- **Database**: PostgreSQL
+- **ORM**: Prisma
+- **Authentication**: JWT (jsonwebtoken), bcrypt for password hashing
+- **File Upload**: Multer
+- **Storage**: Amazon S3 (AWS SDK)
+- **Validation**: Joi or Zod
+- **API Documentation**: Swagger/OpenAPI
+- **Testing**: Jest, Supertest
+- **Logging**: Winston or Pino
+- **Environment**: dotenv
+- **Containerization**: Docker
+
+## Admin Panel (React)
+- **Framework**: React 18
+- **Language**: JavaScript/TypeScript
+- **UI Library**: Material-UI (MUI) or Ant Design
+- **State Management**: Context API, Redux Toolkit, or Zustand
+- **Routing**: React Router v6
+- **HTTP Client**: Axios
+- **Forms**: React Hook Form or Formik
+- **Data Visualization**: Chart.js, Recharts, or ApexCharts
+- **Date Handling**: date-fns or day.js
+- **Build Tool**: Vite or Create React App
+- **CSS**: CSS Modules, Styled Components, or Tailwind CSS
+- **Testing**: Jest, React Testing Library
+
+## Mobile Apps (Flutter)
+- **Framework**: Flutter
+- **Language**: Dart
+- **State Management**: Provider, Riverpod, or Bloc
+- **Navigation**: Flutter Navigator 2.0
+- **HTTP Client**: dio or http package
+- **Maps**: google_maps_flutter
+- **Location**: geolocator, location packages
+- **Camera**: camera, image_picker packages
+- **Push Notifications**: firebase_messaging
+- **Local Storage**: shared_preferences, hive
+- **Image Handling**: cached_network_image
+- **Forms**: flutter_form_builder
+- **UI Components**: Material Design, custom widgets
+- **Testing**: flutter_test, integration_test
+
+## Database
+- **Primary Database**: PostgreSQL 14+
+- **ORM**: Prisma (schema-first approach)
+- **Migrations**: Prisma Migrate
+- **Connection Pooling**: Built into Prisma
+- **Indexes**: Optimized for geolocation queries and frequent lookups
+- **JSON Support**: For flexible fields (service_radius_km, bank_account_details)
+
+## Cloud Services & Infrastructure
+- **Storage**: Amazon S3 for images and documents
+- **Containerization**: Docker
+- **Container Registry**: Docker Hub or AWS ECR
+- **Orchestration**: Docker Compose (local), Kubernetes or ECS (production)
+- **CI/CD**: GitHub Actions
+- **Monitoring**: CloudWatch, DataDog, or New Relic
+- **SMS/OTP**: Twilio, AWS SNS, or MSG91
+- **Payment Gateway**: Stripe or Razorpay
+- **Push Notifications**: Firebase Cloud Messaging (FCM)
+- **Email**: SendGrid or AWS SES
+
+## Development Tools
+- **Version Control**: Git, GitHub
+- **API Testing**: Postman, Insomnia
+- **Database Client**: pgAdmin, DBeaver, or Prisma Studio
+- **Code Formatting**: Prettier
+- **Linting**: ESLint (JavaScript/TypeScript), Dart analyzer (Flutter)
+- **Documentation**: Swagger UI for API docs
+- **Local Dev**: Docker Compose for running PostgreSQL and other services
+
+## Testing
+- **Backend Testing**: Jest for unit and integration tests, Supertest for API testing
+- **Frontend Testing (React)**: Jest, React Testing Library
+- **Mobile Testing (Flutter)**: flutter_test for unit tests, integration_test for E2E
+- **API Testing**: Postman collections, automated API tests
+- **Database Testing**: Test database with seed data
+- **Test Coverage**: Minimum 70% coverage target

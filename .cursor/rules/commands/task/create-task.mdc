@@ -1,0 +1,51 @@
+---
+description: This rule provides a command to create a new task file in Markdown format using the DoorSync task template, generating appropriate metadata and subtasks.
+globs: 
+alwaysApply: false
+---
+## arguments
+- title: Title of the task
+- description: Detailed description of the task to be performed
+- assignee: Primary assignee responsible for the task
+- priority: Task priority (Low, Medium, High)
+- dueDate: Expected due date in YYYY-MM-DD format
+- type: Optional task type (Feature, Bug, Documentation, etc.)
+- component: Optional component the task relates to
+
+## init
+1. Generate a unique task ID: format YYMMDD-XX where XX is a 2-digit hex code
+2. Analyze description to derive task type, component, category if not provided
+3. Set default values:
+   - Status: "Not Started"
+   - Priority: "Medium" if not specified
+   - CreatedDate: current date/time
+
+## perform
+1. **Generate task metadata**
+   - Fill in the task template header with provided arguments
+   - Use current date for createdDate
+   - Set initial status to "Not Started"
+
+2. **Analyze and create subtasks**
+   - Parse the description to identify logical work units
+   - Create appropriate subtasks with descriptions
+   - Set all subtask statuses to "Not Started"
+   - Assign subtasks to the main assignee by default
+
+3. **Generate acceptance criteria**
+   - Analyze task description to identify key deliverables
+   - Create clear, testable acceptance criteria
+   - Format as a checklist with checkboxes
+
+4. **Add initial journal entry**
+   - Add timestamp for task creation
+   - Include basic information about task purpose
+
+5. **Save the task file**
+   - Save to `.cursor/ctx-store/tasks/active/{{taskId}}.md`
+   - Ensure proper formatting and structure
+
+## finalize
+1. Confirm successful task creation
+2. Show summary of the created task
+3. Ask if user wants to begin working on the task immediately

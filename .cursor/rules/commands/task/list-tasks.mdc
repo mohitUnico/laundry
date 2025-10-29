@@ -1,0 +1,46 @@
+---
+description: This rule provides a command to list all tasks in the system with filtering options by status, assignee, and other metadata.
+globs: 
+alwaysApply: false
+---
+## arguments
+- status: Optional filter for task status (All, Not Started, In Progress, Completed, Archived)
+- assignee: Optional filter for tasks assigned to a specific person
+- priority: Optional filter for tasks with a specific priority level
+- category: Optional filter for tasks of a specific category
+- component: Optional filter for tasks related to a specific component
+
+## init
+1. Set default filter to show active tasks (Not Started + In Progress)
+2. Apply any provided filters based on arguments
+3. Determine which task directories to scan based on status filter
+
+## perform
+1. **Gather task information**
+   - Scan active, completed, and/or archived task directories as appropriate
+   - Parse each task file to extract metadata (title, status, assignee, etc.)
+   - Filter tasks based on provided criteria
+   - Sort tasks by priority and status (customizable)
+
+2. **Format and display results**
+   - Present tasks in a tabular format with key information
+   - Group tasks by status and/or assignee if requested
+   - For each task, show:
+     - Task ID
+     - Title
+     - Status
+     - Assignee
+     - Priority
+     - Due Date
+     - Progress (percent of completed subtasks)
+
+3. **Provide summary statistics**
+   - Total number of tasks matching filter criteria
+   - Distribution by status
+   - Tasks approaching or past due date
+   - Tasks with no recent activity
+
+## finalize
+1. Present option to view detailed information for a specific task
+2. Offer to rerun with different filter criteria
+3. Suggest task management actions based on results (e.g., "2 tasks are past due")

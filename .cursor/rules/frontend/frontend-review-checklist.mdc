@@ -1,0 +1,377 @@
+---
+description: Laundry App Frontend Code Review Checklist - React & Flutter
+globs: *.jsx,*.tsx,*.dart,admin-panel/**/*,customer-app/**/*,delivery-app/**/*
+alwaysApply: false
+---
+
+# React Admin Panel Review Checklist
+
+## Architecture Compliance
+- [ ] Code follows component-based architecture
+- [ ] Proper separation between pages, components, services, and utilities
+- [ ] Components are small and focused (< 200 lines)
+- [ ] Smart (container) vs presentational component pattern followed
+- [ ] Custom hooks extract reusable logic
+- [ ] Feature-based organization for related components
+
+## Component Structure
+- [ ] Functional components with hooks (no class components)
+- [ ] Props properly typed with TypeScript interfaces
+- [ ] Prop destructuring in function signature
+- [ ] Default prop values provided where appropriate
+- [ ] Children prop properly typed (React.ReactNode)
+- [ ] Event handlers named with handle prefix (handleClick, handleSubmit)
+- [ ] Early returns for conditional rendering
+
+## TypeScript (if applicable)
+- [ ] Proper type annotations for props and state
+- [ ] No use of `any` type (use specific types or `unknown`)
+- [ ] Interfaces defined for complex objects
+- [ ] Type/interface exports for reusability
+- [ ] Enums or union types for fixed values
+- [ ] Generic types used appropriately
+
+## React Hooks
+- [ ] useState with proper initial values and types
+- [ ] useEffect with correct dependencies array
+- [ ] Cleanup functions in useEffect where needed
+- [ ] useCallback used for callbacks passed to memoized children
+- [ ] useMemo used for expensive calculations
+- [ ] useRef used appropriately (DOM refs, mutable values)
+- [ ] Custom hooks follow naming convention (use prefix)
+- [ ] No missing dependencies (ESLint warnings addressed)
+
+## State Management
+- [ ] Local state for component-specific data
+- [ ] Context API or Redux for global state
+- [ ] State updates are immutable
+- [ ] Reducers are pure functions (if using Redux)
+- [ ] Action creators properly defined
+- [ ] Selectors used to access Redux state
+- [ ] No prop drilling (use context or state management)
+
+## API Integration
+- [ ] API calls in services, not components
+- [ ] Axios interceptors for auth and error handling
+- [ ] Loading states handled properly
+- [ ] Error states handled and displayed to user
+- [ ] API responses properly typed
+- [ ] No hardcoded API URLs (use environment variables)
+
+## Performance
+- [ ] React.memo used for expensive components
+- [ ] useMemo used for expensive calculations
+- [ ] useCallback used to prevent unnecessary re-renders
+- [ ] Code splitting with React.lazy for routes
+- [ ] Suspense boundaries for lazy-loaded components
+- [ ] Images optimized and lazy-loaded
+- [ ] No unnecessary re-renders (check with React DevTools)
+
+## Code Quality
+- [ ] Code is free from linting errors (ESLint)
+- [ ] Code is formatted consistently (Prettier)
+- [ ] No unused variables or imports
+- [ ] No console.log statements in production code
+- [ ] Proper use of const and let (no var)
+- [ ] Arrow functions used appropriately
+- [ ] Destructuring used for props and objects
+- [ ] Template literals for string concatenation
+- [ ] No magic numbers or strings (use constants)
+
+## Error Handling
+- [ ] Error boundaries implemented for component trees
+- [ ] Try-catch blocks for async operations
+- [ ] User-friendly error messages displayed
+- [ ] Errors logged appropriately
+- [ ] Failed API calls handled gracefully
+- [ ] Form validation errors shown clearly
+
+## Forms
+- [ ] Form libraries used (React Hook Form or Formik)
+- [ ] Input validation implemented
+- [ ] Validation errors displayed to user
+- [ ] Form submission handled properly
+- [ ] Loading states during submission
+- [ ] Success/error feedback after submission
+- [ ] Disabled state during submission
+
+## Styling
+- [ ] CSS Modules or styled-components used consistently
+- [ ] No inline styles (use style objects or classes)
+- [ ] Classnames library used for conditional classes
+- [ ] Responsive design implemented
+- [ ] Consistent spacing and layout
+- [ ] Theme variables used for colors, fonts, spacing
+- [ ] No hard-coded colors or dimensions
+
+## Routing
+- [ ] React Router used for navigation
+- [ ] Routes properly defined
+- [ ] Protected routes for authenticated pages
+- [ ] Route parameters typed and validated
+- [ ] Programmatic navigation uses navigate hook
+- [ ] 404 page for unknown routes
+
+## Accessibility
+- [ ] Semantic HTML elements used
+- [ ] ARIA labels where necessary
+- [ ] Keyboard navigation supported
+- [ ] Focus management handled properly
+- [ ] Color contrast meets WCAG standards
+- [ ] Alt text for images
+- [ ] Form inputs have associated labels
+
+## Testing
+- [ ] Unit tests for components
+- [ ] Tests for custom hooks
+- [ ] Integration tests for user flows
+- [ ] Tests use React Testing Library
+- [ ] Mock API calls in tests
+- [ ] Tests cover happy and error paths
+- [ ] Meaningful test descriptions
+
+## Security
+- [ ] No sensitive data in client-side code
+- [ ] XSS prevention (proper escaping)
+- [ ] No dangerouslySetInnerHTML without sanitization
+- [ ] CSRF tokens for mutations (if applicable)
+- [ ] Authentication tokens stored securely
+- [ ] No secrets in code (use environment variables)
+
+## Documentation
+- [ ] Complex components have JSDoc comments
+- [ ] README updated if adding new features
+- [ ] Prop types documented for reusable components
+- [ ] API service methods documented
+
+---
+
+# Flutter Mobile Apps Review Checklist
+
+## Architecture Compliance
+- [ ] Code follows feature-based folder structure
+- [ ] Screens, widgets, providers, services properly organized
+- [ ] Widgets are small and focused
+- [ ] Stateless widgets used where possible
+- [ ] State management pattern used consistently (Provider/Bloc)
+
+## Widget Structure
+- [ ] Widgets properly organized (screens vs widgets)
+- [ ] Const constructors used wherever possible
+- [ ] Widget lifecycle methods properly implemented
+- [ ] Private methods prefixed with underscore
+- [ ] Build methods are concise and readable
+- [ ] Complex widgets extracted into separate files
+
+## Dart/Flutter Best Practices
+- [ ] Strong typing used (no dynamic)
+- [ ] Null safety handled properly
+- [ ] Named constructors for clarity
+- [ ] Factory constructors for JSON parsing
+- [ ] copyWith methods for immutable updates
+- [ ] Extension methods for enums and models
+- [ ] Proper use of final and const
+
+## State Management (Provider)
+- [ ] ChangeNotifier classes properly structured
+- [ ] notifyListeners() called after state changes
+- [ ] Provider properly scoped in widget tree
+- [ ] Consumer used for specific rebuilds
+- [ ] Provider.of with listen: false for actions
+- [ ] No unnecessary rebuilds
+
+## State Management (Bloc - if used)
+- [ ] Events, states, and blocs properly defined
+- [ ] Bloc pattern followed consistently
+- [ ] BlocProvider properly scoped
+- [ ] BlocBuilder/BlocConsumer used appropriately
+- [ ] State classes are immutable
+
+## Data Models
+- [ ] Models properly structured with required fields
+- [ ] fromJson and toJson methods implemented
+- [ ] copyWith method for immutable updates
+- [ ] Equality operators overridden (== and hashCode)
+- [ ] toString method overridden for debugging
+- [ ] Enums used for fixed values
+
+## API Integration
+- [ ] Dio or http package used for API calls
+- [ ] API service centralized and organized
+- [ ] Interceptors for auth and error handling
+- [ ] Error handling for network failures
+- [ ] Timeouts configured appropriately
+- [ ] Loading states managed properly
+- [ ] No hardcoded API URLs
+
+## Performance
+- [ ] Const constructors used extensively
+- [ ] ListView.builder for long lists
+- [ ] Keys used for list items
+- [ ] Expensive operations not in build method
+- [ ] Images cached (cached_network_image)
+- [ ] Proper disposal of controllers and streams
+- [ ] No memory leaks
+
+## Navigation
+- [ ] Named routes used consistently
+- [ ] Route arguments properly typed
+- [ ] Navigation properly structured
+- [ ] Back button behavior handled
+- [ ] Deep linking configured (if needed)
+
+## Code Quality
+- [ ] Code is free from analyzer warnings
+- [ ] Code is formatted (dartfmt)
+- [ ] No unused variables or imports
+- [ ] No print statements in production code
+- [ ] Meaningful variable and function names
+- [ ] Proper indentation and spacing
+- [ ] Comments for complex logic
+
+## Error Handling
+- [ ] Try-catch blocks for async operations
+- [ ] User-friendly error messages
+- [ ] Network errors handled gracefully
+- [ ] Dio errors properly categorized
+- [ ] Loading and error states in UI
+- [ ] Snackbars or dialogs for errors
+
+## Forms & Validation
+- [ ] Input validation implemented
+- [ ] Validation errors displayed
+- [ ] Form state managed properly
+- [ ] TextEditingController disposed
+- [ ] Focus nodes managed correctly
+- [ ] Submit button disabled during submission
+
+## Styling & Theming
+- [ ] Theme data centralized
+- [ ] Colors defined in constants
+- [ ] Text styles use Theme.of(context)
+- [ ] Consistent spacing (SizedBox, Padding)
+- [ ] Responsive design (MediaQuery, LayoutBuilder)
+- [ ] Platform-specific UI handled (iOS/Android)
+
+## Platform-Specific
+- [ ] iOS and Android both tested
+- [ ] Platform differences handled
+- [ ] Safe area insets considered
+- [ ] Status bar style configured
+- [ ] Back button behavior (Android)
+- [ ] Permissions requested properly
+
+## Assets & Resources
+- [ ] Images properly added to pubspec.yaml
+- [ ] Image formats optimized (WebP where possible)
+- [ ] Font files properly referenced
+- [ ] Icons use official icon packages
+- [ ] Asset paths correct and accessible
+
+## Permissions
+- [ ] Required permissions declared (Android manifest, iOS plist)
+- [ ] Runtime permission requests implemented
+- [ ] Permission denied cases handled
+- [ ] User notified why permissions needed
+
+## Third-Party Packages
+- [ ] Packages are up-to-date
+- [ ] No deprecated packages used
+- [ ] Package versions pinned appropriately
+- [ ] Only necessary packages included
+- [ ] Platform-specific configuration done
+
+## Local Storage
+- [ ] shared_preferences or hive used appropriately
+- [ ] Sensitive data encrypted
+- [ ] Storage keys defined as constants
+- [ ] Storage errors handled
+- [ ] Data migrations handled (if needed)
+
+## Camera & Images
+- [ ] Camera permissions handled
+- [ ] Image picker properly configured
+- [ ] Image compression implemented
+- [ ] Image upload progress shown
+- [ ] Error handling for image operations
+
+## Maps & Location
+- [ ] Google Maps API key configured
+- [ ] Location permissions handled
+- [ ] Location services check implemented
+- [ ] Map markers and polylines optimized
+- [ ] Location updates disposed properly
+
+## Push Notifications
+- [ ] FCM configured for both platforms
+- [ ] Notification permissions requested
+- [ ] Notification handlers implemented
+- [ ] Deep links from notifications work
+- [ ] Notification icons configured (Android)
+
+## Accessibility
+- [ ] Semantic labels provided
+- [ ] Screen reader support
+- [ ] Touch targets minimum 48x48dp
+- [ ] Color contrast adequate
+- [ ] Text scaling supported
+
+## Testing
+- [ ] Widget tests for critical widgets
+- [ ] Unit tests for models and services
+- [ ] Integration tests for key flows
+- [ ] Test coverage for business logic
+- [ ] Mocks used for API calls
+
+## Security
+- [ ] No sensitive data in code
+- [ ] API keys not hardcoded
+- [ ] Auth tokens stored securely (flutter_secure_storage)
+- [ ] SSL pinning (if required)
+- [ ] Input sanitization
+
+## Build & Deployment
+- [ ] App builds successfully for both platforms
+- [ ] Build variants configured (debug, release)
+- [ ] ProGuard/R8 rules configured (Android)
+- [ ] App signing configured
+- [ ] Version numbers properly set
+- [ ] App icons configured for both platforms
+- [ ] Splash screen implemented
+
+## Documentation
+- [ ] README has setup instructions
+- [ ] Complex widgets documented
+- [ ] API service methods documented
+- [ ] Environment setup documented
+
+---
+
+# Common Checklist (Both Platforms)
+
+## Git & Version Control
+- [ ] Meaningful commit messages
+- [ ] Feature branches used (not committing to main)
+- [ ] No secrets or API keys committed
+- [ ] .gitignore properly configured
+- [ ] No unnecessary files committed
+
+## Code Review Specific
+- [ ] Code addresses requirements completely
+- [ ] No commented-out code
+- [ ] TODOs have associated tickets
+- [ ] Code follows existing patterns
+- [ ] Breaking changes documented
+- [ ] Performance impact considered
+- [ ] Backward compatibility maintained
+
+## Final Checks
+- [ ] Application runs without errors
+- [ ] All tests pass
+- [ ] No linting/analyzer warnings
+- [ ] Build succeeds
+- [ ] UI matches designs/mockups
+- [ ] Functionality tested on target devices
+- [ ] Edge cases handled
+- [ ] Loading states work correctly
+- [ ] Error states work correctly

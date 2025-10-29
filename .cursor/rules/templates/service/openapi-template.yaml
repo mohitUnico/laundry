@@ -1,0 +1,88 @@
+openapi: 3.0.3
+info:
+  title: {{serviceName}} Service API
+  description: |
+    {{serviceDescription}}
+    - Tenant identity is resolved from JWT claims configured by `DOORSYNC_TENANT_CLAIM` (default `tenantId`).
+    - All responses include the `X-Correlation-Id` header for tracing.
+  version: {{apiVersion}}
+  contact:
+    name: API Support
+    email: support@DoorSync.com
+  license:
+    name: Proprietary
+    url: https://DoorSync.com/license
+servers:
+  - url: /api/v1/{{serviceName}}
+    description: Relative server (behind API Gateway)
+  - url: https://{host}/api/v1/{{serviceName}}
+    variables:
+      host:
+        default: api.example.com
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token for authentication (Cognito). Tenant is resolved from JWT claims.
+
+  headers:
+    X-Correlation-Id:
+      description: Correlation ID for tracing; always included in responses.
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    ErrorResponse:
+      type: object
+      description: Standard error envelope
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: Error code
+        message:
+          type: string
+          description: Error message
+        details:
+          type: object
+          additionalProperties: true
+          description: Additional error details
+        correlationId:
+          type: string
+          description: Correlation ID echoed from `X-Correlation-Id` header
+    PageRequest:
+      type: object
+      properties:
+        size:
+          type: integer
+          format: int32
+          minimum: 1
+          default: 25
+        cursor:
+          type: string
+          nullable: true
+          description: Opaque, signed cursor returned by prior response
+    PagedResult:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+        nextCursor:
+          type: string
+          nullable: true
+          description: Opaque, signed cursor for fetching the next page
+{{schemaDefinitions}}
+
+paths:
+{{pathDefinitions}}
+
+security:
+  - bearerAuth: []

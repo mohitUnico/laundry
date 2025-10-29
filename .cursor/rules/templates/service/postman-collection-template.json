@@ -1,0 +1,92 @@
+{
+  "info": {
+    "_postman_id": "{{serviceName}}-service-collection",
+    "name": "{{serviceName}} Service API",
+    "description": "{{serviceDescription}}",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "jwt_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "api_version",
+      "value": "v1",
+      "type": "string"
+    },
+    {
+      "key": "correlation_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "x_tenant_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "api_key",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Set Authorization header if provided",
+          "let token = pm.environment.get('jwt_token') || pm.collectionVariables.get('jwt_token') || pm.variables.get('jwt_token');",
+          "if (token) {",
+          "  const headerValue = token.startsWith('Bearer ') ? token : `Bearer ${token}`;",
+          "  pm.request.headers.upsert({ key: 'Authorization', value: headerValue });",
+          "  pm.collectionVariables.set('jwt_token', token);",
+          "} else {",
+          "  pm.request.headers.remove('Authorization');",
+          "}",
+          "// Generate correlation id if not provided",
+          "let cid = pm.variables.get('correlation_id');",
+          "if (!cid) {",
+          "  cid = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : pm.variables.replaceIn('{{$guid}}');",
+          "  pm.collectionVariables.set('correlation_id', cid);",
+          "}",
+          "pm.request.headers.upsert({ key: 'X-Correlation-Id', value: cid });",
+          "// Optional tenant header (disabled by default)",
+          "const tenant = pm.environment.get('x_tenant_id') || pm.collectionVariables.get('x_tenant_id') || pm.variables.get('x_tenant_id');",
+          "if (tenant) { pm.request.headers.upsert({ key: 'X-Tenant-Id', value: tenant }); }",
+          "// Optional API key header",
+          "const apiKey = pm.environment.get('api_key') || pm.collectionVariables.get('api_key') || pm.variables.get('api_key');",
+          "if (apiKey) { pm.request.headers.upsert({ key: 'x-api-key', value: apiKey }); }"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const hasToken = !!pm.collectionVariables.get('jwt_token');",
+          "if (hasToken) {",
+          "  pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+          "  pm.test('X-Correlation-Id present', function () { pm.expect(pm.response.headers.get('X-Correlation-Id')).to.be.ok; });",
+          "} else {",
+          "  pm.test('Unauthorized without token', function () { pm.response.to.have.status(401); });",
+          "}",
+          "// Persist correlation id for later requests",
+          "const rcid = pm.response.headers.get('X-Correlation-Id'); if (rcid) pm.collectionVariables.set('correlation_id', rcid);",
+          "// Capture nextCursor if present",
+          "try { const body = pm.response.json(); if (body && body.nextCursor) { pm.collectionVariables.set('next_cursor', body.nextCursor); } } catch (e) {}"
+        ]
+      }
+    }
+  ],
+  "item": {{requestDefinitions}}
+} 

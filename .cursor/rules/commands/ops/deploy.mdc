@@ -1,0 +1,396 @@
+---
+description: This rule provides a command to deploy backend services to Docker-based environments with proper validation, build steps, and environment-specific configuration.
+globs: 
+alwaysApply: false
+---
+## arguments
+- service: Name of the service to deploy (default: backend, options: backend, admin-panel)
+- environment: Target environment for deployment (default: dev, options: dev, staging, prod)
+- taskDescription: Description of the deployment task (default value: Deploy {{service}} to {{environment}} environment)
+- taskId: The ID of the task to update (will be set after task creation)
+- registry: Docker registry to push images to (default: docker.io, options: docker.io, AWS ECR, etc.)
+- imageTag: Tag for the Docker image (default: latest or git commit hash)
+- runTests: Run API tests after deployment (default: true)
+
+## init
+1. **Create task for tracking deployment**
+   - Use @create-task.mdc directly with:
+     - title: "Deploy {{service}} to {{environment}}"
+     - description: "{{taskDescription}}"
+     - assignee: (current user)
+     - priority: "Medium"
+     - type: "Deployment"
+     - component: "DevOps"
+   - Note the created task ID and store it in the taskId variable
+   - IMPORTANT: The task creation MUST be completed before proceeding
+
+2. Verify required deployment tools are available:
+   - Docker (version 20.10+ recommended)
+   - Docker Compose (if deploying locally)
+   - kubectl (if deploying to Kubernetes)
+   - git (for version tagging)
+
+3. Validate service name against available services:
+   - backend: Node.js/Express API
+   - admin-panel: React web application
+
+4. Verify environment configuration:
+   - Check for .env.{{environment}} file in the service directory
+   - Verify all required environment variables are set
+   - Confirm database connection details (if applicable)
+
+5. Use @update-task-journal.mdc with:
+   - taskId: {{taskId}}
+   - entry: "Verified deployment prerequisites and tools"
+
+## perform
+1. **Pre-deployment validation**
+   - Change directory to the service folder (`backend/` or `admin-panel/`)
+   - Verify Dockerfile exists
+   - Check for uncommitted changes that should be committed first
+   - Read current package.json version (for backend)
+   - Use @update-task-journal.mdc with:
+     - taskId: {{taskId}}
+     - entry: "Completed pre-deployment validation (Dockerfile verified, git status checked)"
+     - subtaskIndex: 1
+     - subtaskStatus: "Completed"
+
+2. **Determine image tag**
+   - If imageTag is not provided:
+     - For dev/staging: Use git commit hash (short): `git rev-parse --short HEAD`
+     - For production: Use semantic version from package.json or prompt for version
+   - Full image name: `{{registry}}/laundry-app-{{service}}:{{imageTag}}`
+   - Use @update-task-journal.mdc with:
+     - taskId: {{taskId}}
+     - entry: "Determined image tag: {{imageTag}}"
+
+3. **Build Docker image**
+   - For backend:
+     ```bash
+     cd backend/
+     docker build \
+       -t {{registry}}/laundry-app-backend:{{imageTag}} \
+       -t {{registry}}/laundry-app-backend:{{environment}} \
+       --build-arg NODE_ENV={{environment}} \
+       --target production \
+       .
+     ```
+   
+   - For admin-panel:
+     ```bash
+     cd admin-panel/
+     docker build \
+       -t {{registry}}/laundry-app-admin:{{imageTag}} \
+       -t {{registry}}/laundry-app-admin:{{environment}} \
+       --build-arg REACT_APP_ENV={{environment}} \
+       --build-arg REACT_APP_API_URL=https://api-{{environment}}.laundryapp.com \
+       .
+     ```
+   
+   - Verify build completes successfully without errors
+   - Check image size: `docker images {{registry}}/laundry-app-{{service}}:{{imageTag}}`
+   - Use @update-task-journal.mdc with:
+     - taskId: {{taskId}}
+     - entry: "Built Docker image successfully: {{registry}}/laundry-app-{{service}}:{{imageTag}}"
+     - subtaskIndex: 2
+     - subtaskStatus: "Completed"
+
+4. **Run pre-deployment tests (local)**
+   - Start a test container with the new image:
+     ```bash
+     docker run -d --name test-{{service}}-{{imageTag}} \
+       --env-file .env.test \
+       -p 3000:3000 \
+       {{registry}}/laundry-app-{{service}}:{{imageTag}}
+     ```
+   
+   - Wait for service to be ready (check health endpoint):
+     ```bash
+     sleep 10
+     curl http://localhost:3000/health || echo "Health check failed"
+     ```
+   
+   - Stop and remove test container:
+     ```bash
+     docker stop test-{{service}}-{{imageTag}}
+     docker rm test-{{service}}-{{imageTag}}
+     ```
+   
+   - Use @update-task-journal.mdc with:
+     - taskId: {{taskId}}
+     - entry: "Verified Docker image runs successfully in test container"
+     - subtaskIndex: 3
+     - subtaskStatus: "Completed"
+
+5. **Push image to registry**
+   - Login to Docker registry (if not already logged in):
+     - For Docker Hub: `docker login`
+     - For AWS ECR: `aws ecr get-login-password --region {{region}} | docker login --username AWS --password-stdin {{registry}}`
+   
+   - Push both tags:
+     ```bash
+     docker push {{registry}}/laundry-app-{{service}}:{{imageTag}}
+     docker push {{registry}}/laundry-app-{{service}}:{{environment}}
+     ```
+   
+   - Verify images are available in registry
+   - Use @update-task-journal.mdc with:
+     - taskId: {{taskId}}
+     - entry: "Pushed Docker image to registry: {{registry}}/laundry-app-{{service}}:{{imageTag}}"
+     - subtaskIndex: 4
+     - subtaskStatus: "Completed"
+
+6. **Deploy to target environment**
+   
+   **Option A: Docker Compose (for dev/staging single-server deployments)**
+   ```bash
+   # SSH to deployment server
+   ssh deploy@{{environment}}-server.laundryapp.com
+   
+   # Pull latest docker-compose.yml
+   cd /opt/laundry-app
+   git pull origin main
+   
+   # Set environment variables
+   export IMAGE_TAG={{imageTag}}
+   export ENVIRONMENT={{environment}}
+   
+   # Pull new image
+   docker-compose pull {{service}}
+   
+   # Stop old container, start new one (zero-downtime with healthcheck)
+   docker-compose up -d {{service}}
+   
+   # Verify deployment
+   docker-compose ps
+   docker-compose logs --tail=50 {{service}}
+   ```
+   
+   **Option B: Kubernetes (for production multi-server deployments)**
+   ```bash
+   # Update deployment with new image
+   kubectl set image deployment/laundry-{{service}} \
+     {{service}}={{registry}}/laundry-app-{{service}}:{{imageTag}} \
+     -n laundry-{{environment}}
+   
+   # Wait for rollout to complete
+   kubectl rollout status deployment/laundry-{{service}} -n laundry-{{environment}}
+   
+   # Verify pods are running
+   kubectl get pods -n laundry-{{environment}} -l app=laundry-{{service}}
+   
+   # Check logs
+   kubectl logs -n laundry-{{environment}} -l app=laundry-{{service}} --tail=50
+   ```
+   
+   **Option C: Docker Swarm (alternative)**
+   ```bash
+   # Update service with new image
+   docker service update \
+     --image {{registry}}/laundry-app-{{service}}:{{imageTag}} \
+     laundry-{{environment}}_{{service}}
+   
+   # Monitor update progress
+   docker service ps laundry-{{environment}}_{{service}}
+   ```
+   
+   - Use @update-task-journal.mdc with:
+     - taskId: {{taskId}}
+     - entry: "Deployed {{service}} to {{environment}} environment"
+     - subtaskIndex: 5
+     - subtaskStatus: "Completed"
+
+7. **Database migrations (backend only)**
+   - If service is backend, run Prisma migrations:
+     ```bash
+     # For Docker Compose
+     docker-compose exec backend npm run migrate:deploy
+     
+     # For Kubernetes
+     kubectl exec -n laundry-{{environment}} \
+       deployment/laundry-backend -- \
+       npm run migrate:deploy
+     ```
+   
+   - Verify migrations completed successfully
+   - Use @update-task-journal.mdc with:
+     - taskId: {{taskId}}
+     - entry: "Applied database migrations successfully"
+     - subtaskIndex: 6
+     - subtaskStatus: "Completed"
+
+8. **Post-deployment verification**
+   - Determine service URL based on environment:
+     - dev: `http://dev.laundryapp.com/api/v1` or `http://localhost:3000/api/v1`
+     - staging: `https://staging.laundryapp.com/api/v1`
+     - prod: `https://api.laundryapp.com/api/v1`
+   
+   - For backend: Check health endpoint
+     ```bash
+     curl -f {{serviceUrl}}/health || echo "Health check failed"
+     ```
+   
+   - For backend: Verify version endpoint
+     ```bash
+     curl {{serviceUrl}}/version
+     ```
+   
+   - For admin-panel: Check if website loads
+     ```bash
+     curl -I https://admin-{{environment}}.laundryapp.com
+     ```
+   
+   - If runTests is true, run Postman/Newman tests:
+     ```bash
+     newman run backend/tests/postman/laundry-api.postman_collection.json \
+       --environment backend/tests/postman/{{environment}}.postman_environment.json \
+       --reporters cli,json \
+       --reporter-json-export newman-results.json
+     ```
+   
+   - Check application logs for errors:
+     ```bash
+     # Docker Compose
+     docker-compose logs --tail=100 {{service}} | grep -i error
+     
+     # Kubernetes
+     kubectl logs -n laundry-{{environment}} \
+       -l app=laundry-{{service}} --tail=100 | grep -i error
+     ```
+   
+   - Use @update-task-journal.mdc with:
+     - taskId: {{taskId}}
+     - entry: "Verified deployment with health checks and API tests"
+     - subtaskIndex: 7
+     - subtaskStatus: "Completed"
+
+## finalize
+1. Display deployment summary:
+   ```
+   ===== Deployment Summary =====
+   Service: {{service}}
+   Environment: {{environment}}
+   Image: {{registry}}/laundry-app-{{service}}:{{imageTag}}
+   Status: ✓ Deployed Successfully
+   
+   Service URL: {{serviceUrl}}
+   Health Check: ✓ Passed
+   API Tests: ✓ Passed (if runTests=true)
+   
+   Deployment Time: {{timestamp}}
+   Deployed By: {{currentUser}}
+   Git Commit: {{gitCommitHash}}
+   ```
+
+2. Tag the git commit for production deployments:
+   ```bash
+   if [ "{{environment}}" = "prod" ]; then
+     git tag -a "{{service}}-v{{version}}-prod" -m "Production deployment of {{service}} version {{version}}"
+     git push origin "{{service}}-v{{version}}-prod"
+   fi
+   ```
+
+3. Record deployment in deployment history:
+   - Append to `deployment-history.md`:
+     ```
+     ## {{date}} - {{service}} {{environment}}
+     - Image: {{imageTag}}
+     - Deployer: {{currentUser}}
+     - Commit: {{gitCommitHash}}
+     - Status: Success
+     ```
+
+4. Provide rollback commands for emergencies:
+   ```
+   ===== Rollback Commands (if needed) =====
+   
+   Docker Compose:
+   docker-compose up -d {{service}} --scale {{service}}=0
+   docker-compose up -d {{service}}
+   
+   Kubernetes:
+   kubectl rollout undo deployment/laundry-{{service}} -n laundry-{{environment}}
+   
+   Docker Swarm:
+   docker service update --rollback laundry-{{environment}}_{{service}}
+   ```
+
+5. Send deployment notification (optional):
+   - Slack/Teams notification with deployment details
+   - Email to stakeholders for production deployments
+
+6. Use @update-task-journal.mdc with:
+   - taskId: {{taskId}}
+   - entry: "Deployment completed successfully with summary report and rollback instructions"
+
+7. **Complete the deployment task**
+   - Use @complete-task.mdc directly with:
+     - taskId: {{taskId}}
+   - This will mark the task as completed and move it to the completed tasks directory
+   - Ensure this step is ALWAYS executed to properly close the task
+
+## Environment-Specific Configuration
+
+### Development (.env.dev)
+```
+NODE_ENV=development
+PORT=3000
+DATABASE_URL=postgresql://user:password@localhost:5432/laundry_dev
+JWT_SECRET=dev-secret-key
+AWS_S3_BUCKET=laundry-dev
+LOG_LEVEL=debug
+```
+
+### Staging (.env.staging)
+```
+NODE_ENV=production
+PORT=3000
+DATABASE_URL=postgresql://user:password@staging-db:5432/laundry_staging
+JWT_SECRET=${STAGING_JWT_SECRET}
+AWS_S3_BUCKET=laundry-staging
+LOG_LEVEL=info
+```
+
+### Production (.env.prod)
+```
+NODE_ENV=production
+PORT=3000
+DATABASE_URL=${PROD_DATABASE_URL}
+JWT_SECRET=${PROD_JWT_SECRET}
+AWS_S3_BUCKET=laundry-prod
+LOG_LEVEL=warn
+```
+
+## Troubleshooting
+
+If deployment fails:
+
+1. **Check Docker logs**:
+   ```bash
+   docker logs {{containerName}}
+   ```
+
+2. **Check container status**:
+   ```bash
+   docker ps -a | grep {{service}}
+   ```
+
+3. **Verify environment variables**:
+   ```bash
+   docker inspect {{containerName}} | grep -A 20 Env
+   ```
+
+4. **Check network connectivity**:
+   ```bash
+   docker exec {{containerName}} ping database-host
+   ```
+
+5. **Check disk space**:
+   ```bash
+   docker system df
+   ```
+
+6. **Prune unused Docker resources** (if disk space issue):
+   ```bash
+   docker system prune -a --volumes
+   ```

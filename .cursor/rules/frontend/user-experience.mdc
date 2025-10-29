@@ -1,0 +1,93 @@
+---
+description: This document maps the frontend application structure to UI screens and components, based on the navigation menu defined in `menu.service.ts`. Each section contains links to the respective documentation and Figma designs.
+globs: *.ts,*.html,*.scss,apps/**/*,libs/**/*
+alwaysApply: false
+---
+# DoorSync User Experience Documentation
+## Shell Application
+**Path**: `.cursor/ctx-store/architecture/experience/web/shell/README.md`
+
+### Components
+- App Switcher: `.cursor/ctx-store/architecture/experience/web/shell/app-switcher/README.md`
+- Header: `.cursor/ctx-store/architecture/experience/web/shell/header/README.md`
+- Side Navigation: `.cursor/ctx-store/architecture/experience/web/shell/side-nav/README.md`
+- Notification Panel: `.cursor/ctx-store/architecture/experience/web/shell/notification-panel/README.md`
+- User Profile: `.cursor/ctx-store/architecture/experience/web/shell/user-profile/README.md`
+- Announcement Bar: `.cursor/ctx-store/architecture/experience/web/shell/announcement-bar/README.md`
+
+## Learn Application
+**Path**: `.cursor/ctx-store/architecture/experience/web/learn/README.md`
+
+### Screens
+- Home Dashboard: `.cursor/ctx-store/architecture/experience/web/learn/home/README.md`
+- My Activity:
+  - Activities Overview: `.cursor/ctx-store/architecture/experience/web/learn/my-activities/README.md`
+  - Learnings: `.cursor/ctx-store/architecture/experience/web/learn/my-activities/learnings/README.md`
+  - Tasks: `.cursor/ctx-store/architecture/experience/web/learn/my-activities/tasks/README.md`
+- Courses: `.cursor/ctx-store/architecture/experience/web/learn/courses/README.md`
+- References: `.cursor/ctx-store/architecture/experience/web/learn/references/README.md`
+- Tests: `.cursor/ctx-store/architecture/experience/web/learn/tests/README.md`
+- Batches: `.cursor/ctx-store/architecture/experience/web/learn/batches/README.md`
+- Calendar: `.cursor/ctx-store/architecture/experience/web/learn/calendar/README.md`
+- Reports: `.cursor/ctx-store/architecture/experience/web/learn/reports/README.md`
+- Help: `.cursor/ctx-store/architecture/experience/web/learn/help/README.md`
+
+## Hire Application
+**Path**: `.cursor/ctx-store/architecture/experience/web/hire/README.md`
+
+### Screens
+- Home Dashboard: `.cursor/ctx-store/architecture/experience/web/hire/home/README.md`
+- My Activity:
+  - Activities Overview: `.cursor/ctx-store/architecture/experience/web/hire/my-activities/README.md`
+  - Jobs: `.cursor/ctx-store/architecture/experience/web/hire/my-activities/jobs/README.md`
+  - Tasks: `.cursor/ctx-store/architecture/experience/web/hire/my-activities/tasks/README.md`
+- Jobs: `.cursor/ctx-store/architecture/experience/web/hire/jobs/README.md`
+- Interviews: `.cursor/ctx-store/architecture/experience/web/hire/interviews/README.md`
+- Screen: `.cursor/ctx-store/architecture/experience/web/hire/screen/README.md`
+- Tests: `.cursor/ctx-store/architecture/experience/web/hire/tests/README.md`
+- Calendar: `.cursor/ctx-store/architecture/experience/web/hire/calendar/README.md`
+- Reports: `.cursor/ctx-store/architecture/experience/web/hire/reports/README.md`
+- Help: `.cursor/ctx-store/architecture/experience/web/hire/help/README.md`
+
+## Onboard Application
+**Path**: `.cursor/ctx-store/architecture/experience/web/onboard/README.md`
+
+### Screens
+- Home Dashboard: `.cursor/ctx-store/architecture/experience/web/onboard/home/README.md`
+- My Activity:
+  - Activities Overview: `.cursor/ctx-store/architecture/experience/web/onboard/my-activities/README.md`
+  - Learnings: `.cursor/ctx-store/architecture/experience/web/onboard/my-activities/learnings/README.md`
+  - Tasks: `.cursor/ctx-store/architecture/experience/web/onboard/my-activities/tasks/README.md`
+- Calendar: `.cursor/ctx-store/architecture/experience/web/onboard/calendar/README.md`
+- Reports: `.cursor/ctx-store/architecture/experience/web/onboard/reports/README.md`
+- Help: `.cursor/ctx-store/architecture/experience/web/onboard/help/README.md`
+
+## Admin Application
+**Path**: `.cursor/ctx-store/architecture/experience/web/admin/README.md`
+
+### Screens
+- Home Dashboard: `.cursor/ctx-store/architecture/experience/web/admin/home/README.md`
+- Companies: `.cursor/ctx-store/architecture/experience/web/admin/companies/README.md`
+- Users: `.cursor/ctx-store/architecture/experience/web/admin/users/README.md`
+- Content:
+  - Content Overview: `.cursor/ctx-store/architecture/experience/web/admin/content/README.md`
+  - Courses: `.cursor/ctx-store/architecture/experience/web/admin/content/courses/README.md`
+  - References: `.cursor/ctx-store/architecture/experience/web/admin/content/references/README.md`
+- Groups: `.cursor/ctx-store/architecture/experience/web/admin/groups/README.md`
+- Roles: `.cursor/ctx-store/architecture/experience/web/admin/roles/README.md`
+- Audits: `.cursor/ctx-store/architecture/experience/web/admin/audits/README.md`
+- Settings: `.cursor/ctx-store/architecture/experience/web/admin/settings/README.md`
+- Reports: `.cursor/ctx-store/architecture/experience/web/admin/reports/README.md`
+- Help: `.cursor/ctx-store/architecture/experience/web/admin/help/README.md`
+
+## Design System
+**Path**: `.cursor/ctx-store/architecture/experience/web/design-system/README.md`
+
+### Components
+Each README.md file contains:
+1. Screen/component description
+2. Usage instructions
+3. Link to Figma design file
+4. Corresponding Angular component path
+
+This structure maps directly to the routes and menus defined in `menu.service.ts`, providing a comprehensive overview of the UX architecture for the DoorSync platform.

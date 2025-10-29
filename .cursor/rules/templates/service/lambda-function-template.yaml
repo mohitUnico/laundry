@@ -1,0 +1,63 @@
+  {{functionName}}Function:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: {{codeUri}}
+      Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest
+      AutoPublishAlias: live
+      SnapStart:
+        ApplyOn: PublishedVersions
+      MemorySize: !Ref LambdaMemorySize
+      Timeout: !Ref LambdaTimeout
+      Environment:
+        Variables:
+          SSM_PREFIX: !Sub /${Environment}/{{serviceName}}-service
+          SPRING_CLOUD_FUNCTION_DEFINITION: {{functionBeanName}}
+          SPRING_CLOUD_FUNCTION_SCAN_PACKAGES: {{basePackage}}
+          SPRING_MAIN_WEB_APPLICATION_TYPE: none
+          MAIN_CLASS: {{mainClass}}
+          DOORSYNC_TENANT_REQUIRE_CLAIM: 'true'
+          DOORSYNC_TENANT_CLAIM: 'custom:tenantId'
+          DOORSYNC_TENANT_ALLOW_HEADER_OVERRIDE: 'false'
+          DOORSYNC_CURSOR_HMAC_KID: !Ref CursorHmacKidValue
+          DOORSYNC_CURSOR_HMAC_SECRET: !Ref CursorHmacSecretValue
+          DOORSYNC_CURSOR_TTL_HOURS: '24'
+      Events:
+        {{functionName}}:
+          Type: Api
+          Properties:
+            RestApiId: !Ref {{apiIdLogicalName}}
+            Path: {{apiPath}}
+            Method: {{httpMethod}}
+            Auth:
+              ApiKeyRequired: true
+            RequestModel:
+              Model: GenericJsonBody
+              Required: true
+        WarmUp:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+            Input: '{"warmup": true}'
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:GetItem
+                - dynamodb:Query
+                - dynamodb:DeleteItem
+                - dynamodb:DescribeTable
+              Resource:
+                - !Ref DynamoTableArn
+                - !Ref OutboxTableArn
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+                - ssm:GetParameters
+                - ssm:GetParameterHistory
+              Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Environment}/{{serviceName}}-service/*
+            - Effect: Allow
+              Action:
+                - sqs:SendMessage
+              Resource: !Ref SqsQueueArn

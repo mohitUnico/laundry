@@ -1,0 +1,60 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: {{serviceName | lower}} Service - Messaging (SQS)
+
+Parameters:
+  Environment:
+    Type: String
+  SQSQueueName:
+    Type: String
+
+Resources:
+  SQSQueueUrlParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /${Environment}/{{serviceName}}-service/sqs/queue-url
+      Type: String
+      Value: !Ref {{CamelServiceName}}EventsQueue
+      Description: SQS queue URL for {{serviceName}} events
+
+  {{CamelServiceName}}EventsDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${SQSQueueName}-dlq-${Environment}
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+
+  {{CamelServiceName}}EventsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${SQSQueueName}-${Environment}
+      VisibilityTimeout: 30
+      MessageRetentionPeriod: 1209600
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt {{CamelServiceName}}EventsDLQ.Arn
+        maxReceiveCount: 5
+      SqsManagedSseEnabled: true
+
+  {{CamelServiceName}}EventsDLQDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub {{serviceName}}-events-dlq-depth-${Environment}
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !Sub ${SQSQueueName}-dlq-${Environment}
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+Outputs:
+  {{CamelServiceName}}EventsQueueArn:
+    Value: !GetAtt {{CamelServiceName}}EventsQueue.Arn
+  {{CamelServiceName}}EventsQueueUrl:
+    Value: !Ref {{CamelServiceName}}EventsQueue
+
+

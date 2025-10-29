@@ -1,0 +1,46 @@
+---
+description: This rule provides a command to safely commit code changes following conventional commit format, handling conflict resolution and ensuring code quality.
+globs: 
+alwaysApply: false
+---
+## arguments
+- description: Optional description of the change
+
+## init
+1. Verify git is available and current directory is within a git repository
+2. Check for uncommitted changes using `git status`
+3. Identify the current branch with `git branch --show-current`
+4. Define the commit message format based on conventional commits
+
+## perform
+1. **Pull latest changes**
+   - Run `git fetch` to get latest remote state
+   - Run `git pull --rebase` to incorporate remote changes
+   - Check if pull introduces any conflicts
+   - If conflicts exist:
+     - Identify conflicted files
+     - Attempt automated resolution where possible
+     - Prompt for manual intervention on unresolvable conflicts
+
+2. **Pre-commit validation**
+   - Run relevant linters based on changed files
+
+3. **Construct commit message**
+   - Format using conventional commits: `type(scope): description`
+   - Validate the commit message follows standards
+
+4. **Perform commit**
+   - Stage files with `git add` (either all changes or specific files based on user input)
+   - Create commit with constructed message
+   - Handle any commit failures and provide recovery options
+
+5. **Post-commit sync**
+   - push to remote
+   - If pushing creates conflicts:
+     - Pull with rebase again
+     - Resolve any additional conflicts
+     - Push changes
+
+## finalize
+1. Confirm successful commit with summary of changes
+2. Display status of local vs. remote branches

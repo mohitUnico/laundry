@@ -1,0 +1,580 @@
+---
+description: Laundry App Backend Architecture Guidelines
+globs: *.js,*.ts,backend/**/*.js,backend/**/*.ts
+alwaysApply: false
+---
+
+## Technology Stack Guidelines
+
+- Use Node.js (v18 or higher) as the JavaScript runtime for all backend services
+- Build REST APIs using Express.js framework with proper middleware architecture
+- Use TypeScript for type safety and better developer experience (recommended but not mandatory)
+- Deploy backend services as Docker containers for consistent environments
+- Store data in PostgreSQL database following relational database best practices
+- Use Prisma as the ORM for type-safe database access and migrations
+- Implement CI/CD pipelines with GitHub Actions for automated builds, tests, and deployments
+- Structure the project with clear separation of concerns (controllers, services, middleware, utils)
+- Use environment variables for configuration management
+- Implement structured logging with Winston or Pino for debugging and monitoring
+
+## Key Dependency Guidelines
+
+- Use Express.js as the primary web framework for REST API development
+- Implement JWT authentication using jsonwebtoken library
+- Hash passwords with bcrypt before storing in the database
+- Handle file uploads using Multer middleware
+- Integrate with Amazon S3 using AWS SDK for image and document storage
+- Validate request payloads using Joi or Zod schema validation libraries
+- Document APIs using Swagger/OpenAPI with swagger-jsdoc and swagger-ui-express
+- Write tests using Jest for unit tests and Supertest for API integration tests
+- Use dotenv for environment variable management
+- Implement CORS using the cors middleware
+- Use Prisma Client for all database operations with type safety
+- Never use dependencies with known security vulnerabilities or incompatible licenses
+
+## Project Structure
+
+The backend follows a layered architecture pattern with clear separation of concerns:
+
+```
+backend/
+├── src/
+│   ├── controllers/     # HTTP request handlers and route logic
+│   ├── services/        # Business logic and orchestration
+│   ├── middleware/      # Express middleware functions
+│   ├── utils/           # Helper functions and utilities
+│   ├── config/          # Configuration and environment setup
+│   ├── types/           # TypeScript type definitions
+│   └── constants/       # Application constants and enums
+├── prisma/
+│   ├── schema.prisma    # Database schema definition
+│   ├── migrations/      # Database migration files
+│   └── seed.ts          # Database seeding script
+├── tests/               # Test files
+├── uploads/             # Temporary upload directory
+├── logs/                # Application logs
+├── Dockerfile           # Docker container configuration
+├── .env.example         # Environment variable template
+└── package.json         # Dependencies and scripts
+```
+
+## Controller Layer Guidelines
+
+### Purpose
+Controllers handle HTTP requests, validate input, call appropriate services, and format responses.
+
+### Best Practices
+- Keep controllers thin - delegate business logic to services
+- Validate request payloads using middleware or validation libraries
+- Handle only HTTP-specific concerns (request/response, status codes, headers)
+- Use async/await for asynchronous operations
+- Call services for business logic and data operations
+- Format responses consistently across all endpoints
+- Handle errors by passing them to error handling middleware
+- Use descriptive route names following REST conventions
+- Group related routes using Express Router
+- Document all endpoints with JSDoc comments for Swagger generation
+
+### Controller Structure
+```javascript
+// controllers/order.controller.js
+const orderService = require('../services/order.service');
+const { validateOrderCreation } = require('../middleware/validation');
+
+exports.createOrder = async (req, res, next) => {
+  try {
+    const userId = req.user.id; // From auth middleware
+    const orderData = req.body;
+    
+    const order = await orderService.createOrder(userId, orderData);
+    
+    res.status(201).json({
+      success: true,
+      data: order,
+      message: 'Order created successfully'
+    });
+  } catch (error) {
+    next(error); // Pass to error handling middleware
+  }
+};
+```
+
+## Service Layer Guidelines
+
+### Purpose
+Services contain business logic, orchestrate operations, manage transactions, and interact with the database.
+
+### Best Practices
+- Implement all business logic in services, not in controllers
+- Use Prisma Client for database operations
+- Wrap multiple database operations in transactions for atomicity
+- Validate business rules and constraints
+- Handle errors with custom error classes
+- Keep services focused on a single domain (orders, customers, delivery, etc.)
+- Use dependency injection where applicable
+- Implement proper error handling and logging
+- Calculate derived values (e.g., delivery fees, totals) in services
+- Emit events or notifications after state changes
+- Document complex business logic with comments
+
+### Service Structure
+```javascript
+// services/order.service.js
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+const { AppError } = require('../utils/errors');
+const billingService = require('./billing.service');
+const notificationService = require('./notification.service');
+
+class OrderService {
+  async createOrder(customerId, orderData) {
+    // Validate business rules
+    if (!orderData.items || orderData.items.length === 0) {
+      throw new AppError('Order must contain at least one item', 400);
+    }
+
+    // Use transaction for atomicity
+    const result = await prisma.$transaction(async (tx) => {
+      // Create order
+      const order = await tx.orders.create({
+        data: {
+          customer_id: customerId,
+          mart_id: orderData.martId,
+          is_per_unit_piece: orderData.isPerUnitPiece,
+          pickup_required: orderData.pickupRequired,
+          // ... other fields
+        },
+      });
+
+      // Create order items
+      if (orderData.isPerUnitPiece) {
+        await tx.order_items.createMany({
+          data: orderData.items.map(item => ({
+            order_id: order.order_id,
+            item_id: item.itemId,
+            item_counts: item.quantity,
+            subtotal: item.subtotal,
+          })),
+        });
+      } else {
+        await tx.order_items_kg.createMany({
+          data: orderData.items.map(item => ({
+            order_id: order.order_id,
+            service_id: item.serviceId,
+            quantity: item.weightKg,
+            unit_weight_price: item.pricePerKg,
+            subtotal: item.subtotal,
+          })),
+        });
+      }
+
+      // Create bill
+      await billingService.createBill(order.order_id, orderData, tx);
+
+      return order;
+    });
+
+    // Send notification
+    await notificationService.sendOrderConfirmation(customerId, result.order_id);
+
+    return result;
+  }
+
+  async getOrderById(orderId) {
+    const order = await prisma.orders.findUnique({
+      where: { order_id: orderId },
+      include: {
+        order_items: {
+          include: { clothes_items: true }
+        },
+        order_items_kg: {
+          include: { services: true }
+        },
+        bills: true,
+      },
+    });
+
+    if (!order) {
+      throw new AppError('Order not found', 404);
+    }
+
+    return order;
+  }
+
+  // ... other methods
+}
+
+module.exports = new OrderService();
+```
+
+## Middleware Guidelines
+
+### Authentication Middleware
+```javascript
+// middleware/auth.middleware.js
+const jwt = require('jsonwebtoken');
+const { AppError } = require('../utils/errors');
+
+exports.authenticateJWT = async (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    
+    if (!token) {
+      throw new AppError('No token provided', 401);
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (error) {
+    next(new AppError('Invalid or expired token', 401));
+  }
+};
+
+exports.authorize = (...roles) => {
+  return (req, res, next) => {
+    if (!roles.includes(req.user.role)) {
+      return next(new AppError('Insufficient permissions', 403));
+    }
+    next();
+  };
+};
+```
+
+### Validation Middleware
+```javascript
+// middleware/validation.middleware.js
+const Joi = require('joi');
+
+exports.validate = (schema) => {
+  return (req, res, next) => {
+    const { error, value } = schema.validate(req.body, {
+      abortEarly: false,
+      stripUnknown: true,
+    });
+
+    if (error) {
+      const errors = error.details.map(detail => ({
+        field: detail.path.join('.'),
+        message: detail.message,
+      }));
+
+      return res.status(400).json({
+        success: false,
+        errors,
+        message: 'Validation failed',
+      });
+    }
+
+    req.body = value;
+    next();
+  };
+};
+```
+
+### Error Handling Middleware
+```javascript
+// middleware/error.middleware.js
+const logger = require('../utils/logger');
+
+exports.errorHandler = (err, req, res, next) => {
+  // Log error
+  logger.error({
+    message: err.message,
+    stack: err.stack,
+    url: req.originalUrl,
+    method: req.method,
+    correlationId: req.correlationId,
+  });
+
+  // Determine status code
+  const statusCode = err.statusCode || 500;
+  
+  // Format response
+  res.status(statusCode).json({
+    success: false,
+    message: err.message || 'Internal server error',
+    errorCode: err.code,
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+  });
+};
+```
+
+## Database Guidelines (Prisma)
+
+### Schema Design
+- Follow PostgreSQL best practices for table design and normalization
+- Use UUIDs for primary keys for distributed systems
+- Add appropriate indexes for frequently queried fields
+- Use enums for fields with fixed values
+- Leverage JSON fields for flexible schema parts (e.g., service_radius_km)
+- Add timestamps (created_at, updated_at) to all tables
+- Define foreign key constraints with appropriate cascade rules
+- Use meaningful table and column names (snake_case for database, camelCase in Prisma models)
+
+### Prisma Client Usage
+```javascript
+// Good: Use Prisma Client with proper error handling
+try {
+  const orders = await prisma.orders.findMany({
+    where: {
+      customer_id: customerId,
+      order_status: 'delivered',
+    },
+    include: {
+      bills: true,
+      customers: {
+        select: {
+          full_name: true,
+          email: true,
+        },
+      },
+    },
+    orderBy: {
+      created_at: 'desc',
+    },
+    take: 10,
+  });
+} catch (error) {
+  logger.error('Database query failed', error);
+  throw new AppError('Failed to fetch orders', 500);
+}
+
+// Good: Use transactions for multiple operations
+await prisma.$transaction(async (tx) => {
+  const delivery = await tx.delivery.create({
+    data: { /* ... */ },
+  });
+  
+  await tx.orders.update({
+    where: { order_id: orderId },
+    data: { order_status: 'out_for_delivery' },
+  });
+});
+```
+
+## Error Handling Guidelines
+
+### Custom Error Classes
+```javascript
+// utils/errors.js
+class AppError extends Error {
+  constructor(message, statusCode, code) {
+    super(message);
+    this.statusCode = statusCode;
+    this.code = code;
+    this.isOperational = true;
+    Error.captureStackTrace(this, this.constructor);
+  }
+}
+
+class ValidationError extends AppError {
+  constructor(message, errors) {
+    super(message, 400, 'VALIDATION_ERROR');
+    this.errors = errors;
+  }
+}
+
+class NotFoundError extends AppError {
+  constructor(resource) {
+    super(`${resource} not found`, 404, 'NOT_FOUND');
+  }
+}
+
+class UnauthorizedError extends AppError {
+  constructor(message = 'Unauthorized') {
+    super(message, 401, 'UNAUTHORIZED');
+  }
+}
+
+module.exports = { AppError, ValidationError, NotFoundError, UnauthorizedError };
+```
+
+### Error Response Format
+```json
+{
+  "success": false,
+  "message": "Validation failed",
+  "errorCode": "VALIDATION_ERROR",
+  "errors": [
+    {
+      "field": "email",
+      "message": "Invalid email format"
+    }
+  ]
+}
+```
+
+## API Response Guidelines
+
+### Standardized Response Format
+```javascript
+// Success response
+{
+  "success": true,
+  "data": { /* response data */ },
+  "message": "Operation successful"
+}
+
+// Error response
+{
+  "success": false,
+  "message": "Error message",
+  "errorCode": "ERROR_CODE",
+  "errors": [ /* validation errors */ ]
+}
+
+// Paginated response
+{
+  "success": true,
+  "data": [ /* items */ ],
+  "pagination": {
+    "page": 1,
+    "limit": 10,
+    "total": 100,
+    "totalPages": 10
+  }
+}
+```
+
+## Testing Strategy
+
+### Unit Tests (Jest)
+```javascript
+// tests/services/order.service.test.js
+const orderService = require('../../src/services/order.service');
+const prisma = require('../../src/config/database');
+
+jest.mock('../../src/config/database');
+
+describe('OrderService', () => {
+  describe('createOrder', () => {
+    it('should create order successfully', async () => {
+      const mockOrder = { order_id: '123', customer_id: 'cust-1' };
+      prisma.$transaction.mockResolvedValue(mockOrder);
+
+      const result = await orderService.createOrder('cust-1', { /* orderData */ });
+
+      expect(result).toEqual(mockOrder);
+      expect(prisma.$transaction).toHaveBeenCalled();
+    });
+
+    it('should throw error if no items provided', async () => {
+      await expect(
+        orderService.createOrder('cust-1', { items: [] })
+      ).rejects.toThrow('Order must contain at least one item');
+    });
+  });
+});
+```
+
+### Integration Tests (Supertest)
+```javascript
+// tests/integration/order.test.js
+const request = require('supertest');
+const app = require('../../src/app');
+
+describe('POST /api/v1/orders', () => {
+  it('should create order when authenticated', async () => {
+    const response = await request(app)
+      .post('/api/v1/orders')
+      .set('Authorization', `Bearer ${validToken}`)
+      .send(orderData)
+      .expect(201);
+
+    expect(response.body.success).toBe(true);
+    expect(response.body.data).toHaveProperty('order_id');
+  });
+
+  it('should return 401 without authentication', async () => {
+    await request(app)
+      .post('/api/v1/orders')
+      .send(orderData)
+      .expect(401);
+  });
+});
+```
+
+## Logging and Observability Guidelines
+
+### Structured Logging
+```javascript
+// utils/logger.js
+const winston = require('winston');
+
+const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.errors({ stack: true }),
+    winston.format.json()
+  ),
+  defaultMeta: { service: 'laundry-api' },
+  transports: [
+    new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
+    new winston.transports.File({ filename: 'logs/combined.log' }),
+  ],
+});
+
+if (process.env.NODE_ENV !== 'production') {
+  logger.add(new winston.transports.Console({
+    format: winston.format.simple(),
+  }));
+}
+
+module.exports = logger;
+```
+
+### Usage
+```javascript
+logger.info('Order created', {
+  orderId: order.order_id,
+  customerId: customer.customer_id,
+  amount: bill.final_amount,
+  correlationId: req.correlationId,
+});
+
+logger.error('Payment processing failed', {
+  orderId: order.order_id,
+  error: error.message,
+  correlationId: req.correlationId,
+});
+```
+
+## Security Guidelines
+
+- Always hash passwords using bcrypt before storing
+- Use JWT tokens with appropriate expiration times
+- Implement refresh token mechanism for long-lived sessions
+- Validate all user inputs to prevent SQL injection and XSS attacks
+- Use parameterized queries (Prisma handles this automatically)
+- Implement rate limiting to prevent abuse
+- Use HTTPS in production
+- Store sensitive configuration in environment variables
+- Never commit secrets to version control
+- Implement CORS with appropriate origin restrictions
+- Sanitize file uploads and validate file types
+- Implement proper authentication and authorization for all protected routes
+
+## Performance Guidelines
+
+- Use database indexes for frequently queried fields
+- Implement pagination for list endpoints
+- Use Prisma connection pooling
+- Cache frequently accessed data (Redis recommended)
+- Optimize database queries with proper includes and selects
+- Use batch operations where possible
+- Implement lazy loading for large datasets
+- Monitor query performance and optimize slow queries
+- Use CDN for static assets
+- Compress responses with gzip
+
+## Reference Templates
+
+Backend code templates are located in `.cursor/rules/templates/backend/`:
+
+- **Controller Templates**: REST API endpoint handlers
+- **Service Templates**: Business logic and database operations
+- **Middleware Templates**: Authentication, validation, error handling
+- **Prisma Schema Templates**: Database models and relationships
+- **Test Templates**: Unit and integration test examples

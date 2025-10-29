@@ -1,0 +1,247 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+# Laundry App Vocabulary
+
+This document defines the terminology and vocabulary used throughout the Laundry App codebase to ensure consistent and precise communication when interacting with the AI assistant.
+
+## Project Structure
+
+### Top-Level Directories
+
+- **`backend/`**: Node.js/Express REST API backend
+- **`admin-panel/`**: React-based web application for mart administration
+- **`customer-app/`**: Flutter mobile application for customers
+- **`delivery-app/`**: Flutter mobile application for delivery partners
+- **`shared/`**: Shared utilities, types, and configurations across applications
+- **`docs/`**: Project documentation, API specs, and architecture diagrams
+- **`.tmp/`**: Temporary files and experimental code (excluded from version control)
+- **`.cursor/`**: AI assistant configuration and context storage
+- **`docker/`**: Docker configuration and compose files
+- **`scripts/`**: Build, deployment, and utility scripts
+
+## Backend Terminology
+
+### Backend Structure (`backend/`)
+
+- **`src/`**: Source code directory
+  - **`controllers/`**: HTTP request handlers and route definitions
+  - **`services/`**: Business logic and orchestration layer
+  - **`middleware/`**: Express middleware (auth, validation, error handling, logging)
+  - **`utils/`**: Helper functions and utilities
+  - **`config/`**: Configuration files and environment setup
+  - **`types/`**: TypeScript type definitions and interfaces
+  - **`constants/`**: Application constants and enums
+- **`prisma/`**: Database schema and migrations
+  - **`schema.prisma`**: Prisma schema definition
+  - **`migrations/`**: Database migration files
+  - **`seed.ts`**: Database seeding script
+- **`tests/`**: Test files (unit and integration tests)
+- **`uploads/`**: Temporary upload directory (excluded from git)
+- **`logs/`**: Application logs (excluded from git)
+- **`Dockerfile`**: Docker container configuration
+- **`package.json`**: Node.js dependencies and scripts
+- **`.env.example`**: Environment variable template
+
+### Backend Components
+
+- **Controller**: Handles HTTP requests, validates input, calls services, formats responses
+- **Service**: Contains business logic, orchestrates operations, manages transactions
+- **Middleware**: Intercepts requests for authentication, validation, logging, error handling
+- **Util**: Helper functions for common operations (distance calculation, file upload, etc.)
+- **DTO**: Data Transfer Object for request/response validation
+- **Model**: Prisma-generated database model types
+- **Route**: Express route definition mapping URLs to controllers
+- **Repository Pattern**: Direct usage of Prisma Client for database operations
+
+## Frontend Terminology
+
+### Admin Panel (`admin-panel/`)
+
+React-based web application with the following structure:
+
+- **`src/`**: Source code directory
+  - **`components/`**: Reusable React components
+    - **`common/`**: Common UI components (buttons, inputs, cards, etc.)
+    - **`layout/`**: Layout components (header, sidebar, footer)
+    - **`features/`**: Feature-specific components
+  - **`pages/`**: Page components mapped to routes
+    - **`Dashboard/`**: Analytics and metrics dashboard
+    - **`Orders/`**: Order management pages
+    - **`Customers/`**: Customer management pages
+    - **`Delivery/`**: Delivery staff management pages
+    - **`Services/`**: Service catalog management
+    - **`Reports/`**: Reporting and analytics pages
+  - **`hooks/`**: Custom React hooks
+  - **`services/`**: API client services
+  - **`store/`**: State management (Context API or Redux)
+  - **`utils/`**: Utility functions
+  - **`types/`**: TypeScript type definitions
+  - **`constants/`**: Application constants
+  - **`assets/`**: Static assets (images, fonts, etc.)
+  - **`styles/`**: Global styles and themes
+
+### Mobile Applications (Flutter)
+
+#### Customer App (`customer-app/`)
+
+Flutter application with the following structure:
+
+- **`lib/`**: Dart source code
+  - **`screens/`**: Full-screen pages
+    - **`auth/`**: Login, registration, OTP verification
+    - **`home/`**: Home screen with mart discovery
+    - **`service_catalog/`**: Browse services and items
+    - **`order/`**: Order creation, tracking, history
+    - **`profile/`**: User profile and settings
+  - **`widgets/`**: Reusable widgets
+  - **`providers/`**: State management (Provider/Bloc)
+  - **`services/`**: API services and business logic
+  - **`models/`**: Data models
+  - **`utils/`**: Helper functions
+  - **`constants/`**: App constants
+- **`assets/`**: Images, fonts, and other assets
+- **`android/`**: Android-specific configuration
+- **`ios/`**: iOS-specific configuration
+
+#### Delivery Partner App (`delivery-app/`)
+
+Flutter application with similar structure:
+
+- **`lib/`**: Dart source code
+  - **`screens/`**: Full-screen pages
+    - **`auth/`**: Login and onboarding
+    - **`home/`**: Dashboard with available orders
+    - **`delivery/`**: Active delivery tracking
+    - **`profile/`**: Partner profile and performance
+    - **`earnings/`**: Earnings and payment history
+  - **`widgets/`**: Reusable widgets
+  - **`providers/`**: State management
+  - **`services/`**: API and location services
+  - **`models/`**: Data models
+  - **`utils/`**: Helper functions
+
+### Component Terminology
+
+- **Screen/Page**: A full-screen view in the application
+- **Widget/Component**: A reusable UI element
+- **Hook**: Custom React hook for reusable logic (admin panel)
+- **Provider**: State management provider (Flutter)
+- **Service**: API client or business logic service
+- **Model**: Data structure representing domain entities
+- **Util**: Helper function or utility
+
+## API Terminology
+
+### Backend API Modules
+
+The backend is organized by domain modules in the services layer:
+
+- **Auth Service**: Authentication, OTP verification, JWT token management
+- **Mart Service**: Laundry mart management, configuration, and analytics
+- **Customer Service**: Customer registration, profile, and address management
+- **Service Catalog**: Service categories, services, and clothing items
+- **Order Service**: Order creation, tracking, and status management
+- **Billing Service**: Invoice generation, payment processing, and reconciliation
+- **Delivery Service**: Delivery partner management, assignment, and tracking
+- **Notification Service**: Push notifications, SMS, and email
+- **Upload Service**: File upload handling and S3 integration
+- **Analytics Service**: Metrics calculation and reporting
+
+### API Endpoint Structure
+
+RESTful API endpoints follow this pattern:
+
+- **Resource-based URLs**: `/api/v1/resource` (e.g., `/api/v1/orders`, `/api/v1/customers`)
+- **HTTP Methods**: GET (read), POST (create), PUT/PATCH (update), DELETE (delete)
+- **Versioning**: `/api/v1/` prefix for API version 1
+- **Authentication**: Bearer token in Authorization header
+- **Response Format**: JSON with standardized structure
+
+## Business Terminology
+
+### Core Domains
+
+- **Customer Management**: Customer registration, authentication, profile, and address management
+- **Service Catalog**: Service categories, services, clothing items, and pricing
+- **Order Management**: Order creation, tracking, status updates, and history
+- **Billing & Payments**: Invoice generation, payment processing, and transaction tracking
+- **Delivery Management**: Delivery partner onboarding, assignment, tracking, and proof capture
+- **Mart Administration**: Mart configuration, analytics, staff management, and operations
+- **Analytics & Reporting**: Metrics, dashboards, and business intelligence
+
+### Business Entities
+
+- **Laundry Mart**: A multi-tenant laundry service provider location with geolocation and service radius
+- **User**: Admin panel user associated with a mart (owner, manager, or staff)
+- **Customer**: End-user who places orders through the mobile app
+- **Customer Address**: Geocoded address with label (work, home, friend) and default selection
+- **Customer-Mart Profile**: Relationship tracking between customer and mart with order history
+- **Service Category**: Grouping of related services (Regular Wash, Pro Clean, Luxury Care, Home Linens)
+- **Service**: Individual laundry service with pricing (base price and per-kg price)
+- **Clothing Item**: Specific clothing piece with per-unit pricing
+- **Order**: Main order entity with dual pricing model support (per-piece or per-kg)
+- **Order Item**: Individual clothing item in a per-piece order
+- **Order Item Kg**: Bulk item priced by weight in kg
+- **Bill**: Invoice for an order with subtotal, delivery fee, tax, discount, and final amount
+- **Delivery Staff**: Delivery partner with vehicle details, documents, and real-time location
+- **Delivery**: Delivery assignment for pickup or drop with tracking and proof
+- **Pickup for Delivery**: Pickup task with address and mandatory photo proof
+- **Drop for Delivery**: Drop-off task with address and mandatory photo proof
+- **Mart Daily Metrics**: Daily aggregated analytics per mart (orders, revenue, completion rate)
+
+### Order Lifecycle States
+
+- **Pickup Status**: scheduled → on_the_way → picked_up
+- **Order Status**: pickup → in_process → ready → out_for_delivery → delivered
+- **Drop Status**: scheduled → on_the_way → dropped
+- **Payment Status**: pending → completed / failed / refunded
+- **Delivery Status**: picked_up → on_the_way → delivered
+
+### Pricing Models
+
+- **Per-Piece Pricing**: Individual clothing items charged separately (e.g., shirt ₹40, pants ₹50)
+- **Per-Kg Pricing**: Bulk items charged by weight (e.g., ₹100 per kg for mixed laundry)
+- **Mixed Order**: Single order can contain both per-piece and per-kg items
+- **Delivery Fee**: Calculated based on distance using service radius pricing tiers
+- **Service Radius**: JSON field defining distance-based pricing (e.g., 0-5km: ₹20/km, 5-10km: ₹40/km)
+
+## Development Tools and Practices
+
+- **Node.js**: JavaScript runtime for backend API
+- **Express.js**: Web framework for REST API
+- **Prisma**: ORM and database toolkit for PostgreSQL
+- **PostgreSQL**: Relational database for data persistence
+- **React**: JavaScript library for admin panel UI
+- **Flutter**: Cross-platform framework for mobile apps
+- **Docker**: Containerization for consistent deployment
+- **Docker Compose**: Multi-container orchestration for local development
+- **Jest**: Testing framework for backend and React
+- **Supertest**: HTTP assertion library for API testing
+- **ESLint**: Linting tool for JavaScript/TypeScript code quality
+- **Prettier**: Code formatting tool
+- **Postman**: API testing and documentation tool
+- **Prisma Studio**: Database GUI for viewing and editing data
+- **Git**: Version control system
+- **GitHub Actions**: CI/CD automation
+
+## Common Abbreviations
+
+- **API**: Application Programming Interface
+- **REST**: Representational State Transfer
+- **JWT**: JSON Web Token
+- **OTP**: One-Time Password
+- **ORM**: Object-Relational Mapping
+- **DTO**: Data Transfer Object
+- **CRUD**: Create, Read, Update, Delete
+- **UUID**: Universally Unique Identifier
+- **S3**: Amazon Simple Storage Service
+- **FCM**: Firebase Cloud Messaging
+- **CI/CD**: Continuous Integration/Continuous Deployment
+- **JSON**: JavaScript Object Notation
+- **HTTP**: Hypertext Transfer Protocol
+- **HTTPS**: HTTP Secure
+- **URL**: Uniform Resource Locator
+- **URI**: Uniform Resource Identifier

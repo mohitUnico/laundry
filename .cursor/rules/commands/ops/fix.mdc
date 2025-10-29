@@ -1,0 +1,183 @@
+---
+description: This rule provides a command to automatically identify and fix common linting and compilation issues in a specified module, and verify the fixes are successful.
+alwaysApply: false
+---
+## arguments
+## arguments
+## arguments
+## arguments
+## arguments
+- moduleName: The name of the module to fix (e.g., course-service, ui-components, DoorSync-core, learn, shell, main.scss)
+- taskDescription: Description of the fix task  default value: Fix linting and compilation issues in {{moduleName}} module
+- taskId: The ID of the task to update (will be set after task creation)
+
+## init
+1. **Create task for tracking fixes**
+   - Use @create-task.mdc directly with:
+     - title: "Fix issues in {{moduleName}} module"
+     - description: "{{taskDescription}}"
+     - assignee: (current user)
+     - priority: "Medium"
+     - type: "Maintenance"
+     - component: "DevOps"
+   - Note the created task ID and store it in the taskId variable
+   - IMPORTANT: The task creation MUST be completed before proceeding
+
+2. Determine module type and path based on provided name:
+   - Backend service (Java) - in `/apis` directory:
+     - task-service: `/apis/task-service`
+     - course-service: `/apis/course-service`
+     - event-service: `/apis/event-service`
+     - company-service: `/apis/company-service`
+     - reference-service: `/apis/reference-service`
+     - audit-service: `/apis/audit-service`
+     - author-service: `/apis/author-service`
+     - batch-service: `/apis/batch-service`
+     - test-service: `/apis/test-service`
+     - learner-service: `/apis/learner-service`
+     - metadata-service: `/apis/metadata-service`
+     - communication-service: `/apis/communication-service`
+     - caching-service: `/apis/caching-service`
+     - rewards-service: `/apis/rewards-service`
+     - platform-admin-service: `/apis/platform-admin-service`
+     - iam-service: `/apis/iam-service`
+     - document-service: `/apis/document-service`
+     - user-service: `/apis/user-service`
+     - DoorSync-core: `/libs/DoorSync-core`
+     - Builder: Maven (`mvn`)
+
+   - Frontend feature app - in `/apps` directory:
+     - shell: `/apps/shell`
+     - admin: `/apps/admin`
+     - onboard: `/apps/onboard`
+     - hire: `/apps/hire`
+     - learn: `/apps/learn`
+     - auth: `/apps/auth`
+     - Builder: Nx with Angular (`npx nx`)
+
+   - Libraries - in `/libs` directory:
+     - ui-components: `/libs/ui-components`
+     - DoorSync-core: `/libs/DoorSync-core`
+     - shared-utils: `/libs/shared-utils`
+     - data-access: `/libs/data-access`
+     - Builder: Nx with Angular (`npx nx`)
+
+   - SCSS styling - in `/styles` directory:
+     - main.scss: `/styles/main.scss`
+     - Builder: SASS compiler (`sass`)
+
+3. Identify appropriate linting and build tools based on module type:
+   - Java: Maven, Checkstyle, PMD, SpotBugs
+   - Angular: ESLint via Nx, Prettier
+   - SCSS: Stylelint, SASS compiler
+
+4. Validate that the module exists in the workspace
+5. Use @update-task-journal.mdc with:
+   - taskId: {{taskId}}
+   - entry: "Identified module type and appropriate tools for {{moduleName}}"
+
+## perform
+1. **Identify issues**
+   - For Java modules (backend services):
+     - Run `mvn validate -f /apis/{{moduleName}}/pom.xml` to check for Maven configuration issues
+     - Run `mvn compile -f /apis/{{moduleName}}/pom.xml` for compilation errors
+     - Run `mvn checkstyle:check -f /apis/{{moduleName}}/pom.xml` for code style issues
+     - Run `mvn pmd:check -f /apis/{{moduleName}}/pom.xml` for code quality issues
+   - For Angular/Frontend modules:
+     - For apps: Run `npx nx lint {{moduleName}}` to identify TypeScript/HTML linting issues
+     - For libs: Run `npx nx lint {{moduleName}}` to identify TypeScript/HTML linting issues
+     - For apps: Run `npx nx build {{moduleName}} --configuration=development` to check for compile errors
+     - For libs: Run `npx nx build {{moduleName}}` to check for compile errors
+   - For SCSS files:
+     - Run `npx stylelint "styles/{{moduleName}}/**/*.scss"` to check for SCSS linting issues
+     - For main.scss: Run `sass styles/main.scss styles/compiled/main.css` to verify compilation success
+     - For other styles: Run `sass styles/{{moduleName}}/_index.scss styles/compiled/{{moduleName}}.css` to verify compilation success
+   - Use @update-task-journal.mdc with:
+     - taskId: {{taskId}}
+     - entry: "Identified issues in {{moduleName}} module"
+     - subtaskIndex: 1
+     - subtaskStatus: "Completed"
+
+2. **Apply automated fixes**
+   - For Java modules:
+     - Run `mvn formatter:format -f /apis/{{moduleName}}/pom.xml` to auto-format code
+     - Run `mvn imports:fix -f /apis/{{moduleName}}/pom.xml` to organize imports
+     - Run Maven dependency plugin to fix dependency issues if detected
+   - For Angular/Frontend modules:
+     - For apps: Run `npx nx lint {{moduleName}} --fix` to automatically fix linting issues
+     - For libs: Run `npx nx lint {{moduleName}} --fix` to automatically fix linting issues
+     - For apps: Run `npx prettier --write "apps/{{moduleName}}/src/**/*.{ts,html,scss}"` for formatting
+     - For libs: Run `npx prettier --write "libs/{{moduleName}}/src/**/*.{ts,html,scss}"` for formatting
+   - For SCSS files:
+     - Run `npx stylelint "styles/{{moduleName}}/**/*.scss" --fix` to automatically fix styling issues
+     - Fix common SASS compilation errors (missing variables, syntax errors)
+   - Use @update-task-journal.mdc with:
+     - taskId: {{taskId}}
+     - entry: "Applied automated fixes to {{moduleName}} module"
+     - subtaskIndex: 2
+     - subtaskStatus: "Completed"
+
+3. **Check and fix Angular component architecture issues**
+   - Check for component standalone property mismatches with modules:
+     - Run `grep -r "standalone: true" apps/{{moduleName}}/src` to find standalone components
+     - For components declared in NgModules, ensure they aren't marked as standalone
+     - For standalone components, ensure they aren't declared in NgModules
+   - Check for empty constructors and unused imports:
+     - Fix empty constructors by removing them
+     - Fix unused imports by removing them
+   - Use @update-task-journal.mdc with:
+     - taskId: {{taskId}}
+     - entry: "Fixed component architecture issues in {{moduleName}} module"
+     - subtaskIndex: 3
+     - subtaskStatus: "Completed"
+
+4. **Generate report of identified issues and applied fixes**
+   - Create a summary of:
+     - Total issues found
+     - Issues automatically fixed
+     - Issues requiring manual intervention
+   - For each issue requiring manual intervention:
+     - File path and line number
+     - Issue description
+     - Suggested fix approach
+   - Use @update-task-journal.mdc with:
+     - taskId: {{taskId}}
+     - entry: "Generated report of issues and fixes for {{moduleName}} module"
+     - subtaskIndex: 4
+     - subtaskStatus: "Completed"
+
+5. **Verify fixes**
+   - Rerun linting/compilation tools to confirm issues are resolved:
+     - Java: `mvn verify -f /apis/{{moduleName}}/pom.xml`
+     - Angular apps: `npx nx build {{moduleName}} --configuration=development`
+     - Angular libs: `npx nx build {{moduleName}}`
+     - SCSS main: `sass styles/main.scss styles/compiled/main.css`
+     - SCSS modules: `sass styles/{{moduleName}}/_index.scss styles/compiled/{{moduleName}}.css`
+   - If new issues appear, attempt additional automated fixes
+   - Identify any remaining issues that require manual intervention
+   - Use @update-task-journal.mdc with:
+     - taskId: {{taskId}}
+     - entry: "Verified fixes in {{moduleName}} module"
+     - subtaskIndex: 5
+     - subtaskStatus: "Completed"
+
+## finalize
+1. Confirm successful fixes with summary statistics
+2. Recompile or rebuild to verify everything works:
+   - Java: `mvn clean install -f /apis/{{moduleName}}/pom.xml`
+   - Angular apps: `npx nx build {{moduleName}} --configuration=production`
+   - Angular libs: `npx nx build {{moduleName}} --configuration=production`
+   - SCSS main: `sass styles/main.scss styles/compiled/main.css --style=compressed`
+   - SCSS modules: `sass styles/{{moduleName}}/_index.scss styles/compiled/{{moduleName}}.css --style=compressed`
+3. Provide detailed report of what was fixed and what still needs attention
+4. Suggest next steps (e.g., "Run tests to ensure fixes don't introduce regressions")
+5. For Angular projects, note any remaining TypeScript warnings about unused files
+6. Use @update-task-journal.mdc with:
+   - taskId: {{taskId}}
+   - entry: "Completed fixing issues in {{moduleName}} module"
+
+7. **Complete the fix task**
+   - Use @complete-task.mdc directly with:
+     - taskId: {{taskId}}
+   - This will mark the task as completed and move it to the completed tasks directory
+   - Ensure this step is ALWAYS executed to properly close the task

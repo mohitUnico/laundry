@@ -1,0 +1,42 @@
+---
+description:This rule provides a command to resume working on an existing task, loading its context and current state.
+globs:
+alwaysApply: false
+---
+## arguments
+- taskId: The ID of the task to resume (format: YYMMDD-XX)
+
+## init
+1. Verify the task exists in `.cursor/ctx-store/tasks/active/`
+2. Load the task file to extract current details
+3. Check if task status is "Not Started" or "In Progress"
+4. If "Not Started", update to "In Progress"
+
+## perform
+1. **Load task context**
+   - Parse the task file to extract all metadata
+   - Read journal entries to understand previous work
+   - Identify incomplete subtasks and acceptance criteria
+   - Load any related files or resources mentioned in the journal
+
+2. **Update task status**
+   - If task is currently "Not Started", change to "In Progress"
+   - Add journal entry with timestamp noting task resumption
+   - Update last activity timestamp
+
+3. **Restore work context**
+   - Present summary of task status and progress
+   - Show all subtasks with their completion status
+   - Display most recent journal entries
+   - List acceptance criteria with current status
+
+4. **Suggest next actions**
+   - Identify next incomplete subtask to work on
+   - Suggest files that need to be edited based on journal entries
+   - Provide context on what was last being worked on
+   - Highlight any blockers or issues mentioned in the journal
+
+## finalize
+1. Confirm successful task resumption
+2. Present clear next steps and suggested actions
+3. Remind of task due date if approaching

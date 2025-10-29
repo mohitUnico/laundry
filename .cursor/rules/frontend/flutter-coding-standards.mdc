@@ -1,0 +1,1046 @@
+---
+description: Laundry App Flutter/Dart Coding Standards for Mobile Apps
+globs: *.dart,customer-app/**/*.dart,delivery-app/**/*.dart
+alwaysApply: false
+---
+
+## General Principles
+
+- Write clean, readable, and idiomatic Dart code
+- Follow Flutter best practices and widget composition patterns
+- Use strong typing and avoid `dynamic` where possible
+- Keep widgets small, focused, and reusable
+- Prefer composition over inheritance
+- Use const constructors wherever possible for performance
+- Handle errors gracefully with proper user feedback
+- Write accessible applications
+- Follow Material Design guidelines
+- Optimize for both iOS and Android platforms
+
+## Project Structure
+
+### Directory Organization
+```
+customer-app/ (or delivery-app/)
+├── lib/
+│   ├── main.dart                 # App entry point
+│   ├── app.dart                  # Root widget
+│   ├── screens/                  # Full-screen pages
+│   │   ├── auth/
+│   │   │   ├── login_screen.dart
+│   │   │   ├── register_screen.dart
+│   │   │   └── otp_screen.dart
+│   │   ├── home/
+│   │   │   └── home_screen.dart
+│   │   ├── orders/
+│   │   │   ├── orders_list_screen.dart
+│   │   │   ├── order_details_screen.dart
+│   │   │   └── create_order_screen.dart
+│   │   └── profile/
+│   │       └── profile_screen.dart
+│   ├── widgets/                  # Reusable widgets
+│   │   ├── common/               # Generic widgets
+│   │   │   ├── custom_button.dart
+│   │   │   ├── custom_input.dart
+│   │   │   ├── loading_spinner.dart
+│   │   │   └── error_message.dart
+│   │   └── features/             # Feature-specific widgets
+│   │       ├── orders/
+│   │       │   ├── order_card.dart
+│   │       │   └── order_status_badge.dart
+│   │       └── delivery/
+│   │           └── delivery_map.dart
+│   ├── providers/                # State management (Provider)
+│   │   ├── auth_provider.dart
+│   │   ├── order_provider.dart
+│   │   └── delivery_provider.dart
+│   ├── blocs/                    # State management (Bloc)
+│   │   ├── auth/
+│   │   └── orders/
+│   ├── models/                   # Data models
+│   │   ├── order.dart
+│   │   ├── customer.dart
+│   │   └── delivery.dart
+│   ├── services/                 # API and business logic services
+│   │   ├── api_service.dart
+│   │   ├── order_service.dart
+│   │   ├── auth_service.dart
+│   │   └── location_service.dart
+│   ├── utils/                    # Utility functions
+│   │   ├── constants.dart
+│   │   ├── helpers.dart
+│   │   └── validators.dart
+│   ├── routes/                   # Route configuration
+│   │   └── app_routes.dart
+│   └── theme/                    # Theme configuration
+│       ├── app_theme.dart
+│       └── app_colors.dart
+├── assets/
+│   ├── images/
+│   ├── fonts/
+│   └── icons/
+├── test/
+├── android/
+├── ios/
+└── pubspec.yaml
+```
+
+## Naming Conventions
+
+### Files and Directories
+```dart
+// Use lowercase_with_underscores for files and directories
+order_card.dart
+auth_provider.dart
+home_screen.dart
+api_service.dart
+
+// Not: OrderCard.dart, order-card.dart, orderCard.dart
+```
+
+### Classes
+```dart
+// Use UpperCamelCase for classes, enums, typedefs
+class OrderCard extends StatelessWidget { }
+class OrderService { }
+enum OrderStatus { pickup, inProcess, ready, delivered }
+typedef OrderCallback = void Function(Order order);
+```
+
+### Variables, Functions, Parameters
+```dart
+// Use lowerCamelCase for variables, functions, parameters
+String orderId = 'order-123';
+int totalAmount = 150;
+
+void calculateDeliveryFee(double distance) {
+  // Implementation
+}
+
+Future<Order> createOrder(OrderData orderData) async {
+  // Implementation
+}
+```
+
+### Constants
+```dart
+// Use lowerCamelCase even for constants
+const double maxDistance = 50.0;
+const int maxFileSize = 5 * 1024 * 1024;
+const String apiBaseUrl = 'https://api.laundryapp.com';
+
+// EXCEPTION: ALL_CAPS for environment/config constants is acceptable
+const String API_KEY = 'your-api-key';
+```
+
+### Private Members
+```dart
+// Use underscore prefix for private members
+class OrderService {
+  String _apiKey = 'secret';
+  
+  Future<void> _validateOrder(Order order) async {
+    // Private method
+  }
+  
+  // Public method
+  Future<Order> createOrder(OrderData data) async {
+    await _validateOrder(order);
+    return order;
+  }
+}
+```
+
+## Widget Structure
+
+### Stateless Widgets
+
+```dart
+// Good: Simple, reusable stateless widget
+class OrderCard extends StatelessWidget {
+  final Order order;
+  final VoidCallback? onTap;
+  final bool showActions;
+
+  const OrderCard({
+    Key? key,
+    required this.order,
+    this.onTap,
+    this.showActions = true,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(order.orderId, style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              Text(order.customerName),
+              Text('₹${order.totalAmount}'),
+              if (showActions) _buildActions(context),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActions(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        TextButton(
+          onPressed: onTap,
+          child: const Text('View Details'),
+        ),
+      ],
+    );
+  }
+}
+```
+
+### Stateful Widgets
+
+```dart
+// Good: Stateful widget with lifecycle methods
+class OrdersListScreen extends StatefulWidget {
+  const OrdersListScreen({Key? key}) : super(key: key);
+
+  @override
+  State<OrdersListScreen> createState() => _OrdersListScreenState();
+}
+
+class _OrdersListScreenState extends State<OrdersListScreen> {
+  // State variables
+  List<Order> _orders = [];
+  bool _isLoading = false;
+  String? _error;
+  
+  // Controllers
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOrders();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadOrders() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final orders = await OrderService().getOrders();
+      setState(() {
+        _orders = orders;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels ==
+        _scrollController.position.maxScrollExtent) {
+      // Load more orders
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Orders')),
+      body: _buildBody(),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => Navigator.pushNamed(context, '/create-order'),
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_error != null) {
+      return Center(child: Text('Error: $_error'));
+    }
+
+    if (_orders.isEmpty) {
+      return const Center(child: Text('No orders found'));
+    }
+
+    return ListView.builder(
+      controller: _scrollController,
+      itemCount: _orders.length,
+      itemBuilder: (context, index) {
+        return OrderCard(
+          order: _orders[index],
+          onTap: () => _navigateToDetails(_orders[index]),
+        );
+      },
+    );
+  }
+
+  void _navigateToDetails(Order order) {
+    Navigator.pushNamed(
+      context,
+      '/order-details',
+      arguments: order.orderId,
+    );
+  }
+}
+```
+
+## Const Constructors
+
+Use `const` wherever possible for performance:
+
+```dart
+// Good: Const constructors for widgets that don't change
+const SizedBox(height: 16)
+const EdgeInsets.all(8.0)
+const Text('Static text')
+const Icon(Icons.check)
+
+// Good: Const constructor for custom widget
+class CustomButton extends StatelessWidget {
+  final String label;
+  final VoidCallback? onPressed;
+
+  const CustomButton({
+    Key? key,
+    required this.label,
+    this.onPressed,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return ElevatedButton(
+      onPressed: onPressed,
+      child: Text(label),
+    );
+  }
+}
+
+// Usage with const
+const CustomButton(label: 'Submit')
+```
+
+## State Management (Provider Pattern)
+
+### Provider Setup
+
+```dart
+// providers/order_provider.dart
+import 'package:flutter/foundation.dart';
+import '../models/order.dart';
+import '../services/order_service.dart';
+
+class OrderProvider with ChangeNotifier {
+  final OrderService _orderService;
+
+  OrderProvider(this._orderService);
+
+  // State
+  List<Order> _orders = [];
+  bool _isLoading = false;
+  String? _error;
+
+  // Getters
+  List<Order> get orders => _orders;
+  bool get isLoading => _isLoading;
+  String? get error => _error;
+
+  // Actions
+  Future<void> fetchOrders({Map<String, dynamic>? filters}) async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      _orders = await _orderService.getOrders(filters: filters);
+    } catch (e) {
+      _error = e.toString();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> createOrder(Map<String, dynamic> orderData) async {
+    try {
+      final newOrder = await _orderService.createOrder(orderData);
+      _orders.insert(0, newOrder);
+      notifyListeners();
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> updateOrderStatus(String orderId, String status) async {
+    try {
+      await _orderService.updateOrderStatus(orderId, status);
+      final index = _orders.indexWhere((o) => o.orderId == orderId);
+      if (index != -1) {
+        _orders[index] = _orders[index].copyWith(orderStatus: status);
+        notifyListeners();
+      }
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  void clearError() {
+    _error = null;
+    notifyListeners();
+  }
+}
+```
+
+### Provider Usage in App
+
+```dart
+// main.dart
+import 'package:provider/provider.dart';
+
+void main() {
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(
+          create: (_) => AuthProvider(AuthService()),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => OrderProvider(OrderService()),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => DeliveryProvider(DeliveryService()),
+        ),
+      ],
+      child: const MyApp(),
+    ),
+  );
+}
+```
+
+### Consumer Widget
+
+```dart
+// Good: Using Consumer for specific rebuilds
+class OrdersListScreen extends StatefulWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Orders')),
+      body: Consumer<OrderProvider>(
+        builder: (context, orderProvider, child) {
+          if (orderProvider.isLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (orderProvider.error != null) {
+            return Center(child: Text('Error: ${orderProvider.error}'));
+          }
+
+          if (orderProvider.orders.isEmpty) {
+            return const Center(child: Text('No orders'));
+          }
+
+          return ListView.builder(
+            itemCount: orderProvider.orders.length,
+            itemBuilder: (context, index) {
+              return OrderCard(order: orderProvider.orders[index]);
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+// Good: Using Provider.of for actions (no rebuild needed)
+class CreateOrderButton extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return ElevatedButton(
+      onPressed: () async {
+        try {
+          await Provider.of<OrderProvider>(context, listen: false)
+              .createOrder(orderData);
+          Navigator.pop(context);
+        } catch (e) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e')),
+          );
+        }
+      },
+      child: const Text('Create Order'),
+    );
+  }
+}
+```
+
+## Data Models
+
+### Model Class Structure
+
+```dart
+// models/order.dart
+class Order {
+  final String orderId;
+  final String martId;
+  final String customerId;
+  final String customerName;
+  final OrderStatus orderStatus;
+  final double totalAmount;
+  final DateTime createdAt;
+  final List<OrderItem> items;
+
+  const Order({
+    required this.orderId,
+    required this.martId,
+    required this.customerId,
+    required this.customerName,
+    required this.orderStatus,
+    required this.totalAmount,
+    required this.createdAt,
+    required this.items,
+  });
+
+  // Factory constructor for JSON deserialization
+  factory Order.fromJson(Map<String, dynamic> json) {
+    return Order(
+      orderId: json['orderId'] as String,
+      martId: json['martId'] as String,
+      customerId: json['customerId'] as String,
+      customerName: json['customerName'] as String,
+      orderStatus: OrderStatus.values.firstWhere(
+        (e) => e.name == json['orderStatus'],
+      ),
+      totalAmount: (json['totalAmount'] as num).toDouble(),
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      items: (json['items'] as List)
+          .map((item) => OrderItem.fromJson(item as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  // Method for JSON serialization
+  Map<String, dynamic> toJson() {
+    return {
+      'orderId': orderId,
+      'martId': martId,
+      'customerId': customerId,
+      'customerName': customerName,
+      'orderStatus': orderStatus.name,
+      'totalAmount': totalAmount,
+      'createdAt': createdAt.toIso8601String(),
+      'items': items.map((item) => item.toJson()).toList(),
+    };
+  }
+
+  // copyWith method for immutable updates
+  Order copyWith({
+    String? orderId,
+    String? martId,
+    String? customerId,
+    String? customerName,
+    OrderStatus? orderStatus,
+    double? totalAmount,
+    DateTime? createdAt,
+    List<OrderItem>? items,
+  }) {
+    return Order(
+      orderId: orderId ?? this.orderId,
+      martId: martId ?? this.martId,
+      customerId: customerId ?? this.customerId,
+      customerName: customerName ?? this.customerName,
+      orderStatus: orderStatus ?? this.orderStatus,
+      totalAmount: totalAmount ?? this.totalAmount,
+      createdAt: createdAt ?? this.createdAt,
+      items: items ?? this.items,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is Order && other.orderId == orderId;
+  }
+
+  @override
+  int get hashCode => orderId.hashCode;
+
+  @override
+  String toString() => 'Order(orderId: $orderId, status: $orderStatus)';
+}
+
+enum OrderStatus {
+  pickup,
+  inProcess,
+  ready,
+  outForDelivery,
+  delivered,
+}
+
+extension OrderStatusExtension on OrderStatus {
+  String get displayName {
+    switch (this) {
+      case OrderStatus.pickup:
+        return 'Pickup';
+      case OrderStatus.inProcess:
+        return 'In Process';
+      case OrderStatus.ready:
+        return 'Ready';
+      case OrderStatus.outForDelivery:
+        return 'Out for Delivery';
+      case OrderStatus.delivered:
+        return 'Delivered';
+    }
+  }
+
+  Color get color {
+    switch (this) {
+      case OrderStatus.pickup:
+        return Colors.orange;
+      case OrderStatus.inProcess:
+        return Colors.blue;
+      case OrderStatus.ready:
+        return Colors.green;
+      case OrderStatus.outForDelivery:
+        return Colors.purple;
+      case OrderStatus.delivered:
+        return Colors.grey;
+    }
+  }
+}
+```
+
+## API Services
+
+### API Service Structure
+
+```dart
+// services/api_service.dart
+import 'package:dio/dio.dart';
+import '../utils/storage.dart';
+
+class ApiService {
+  late final Dio _dio;
+
+  ApiService() {
+    _dio = Dio(
+      BaseOptions(
+        baseUrl: 'https://api.laundryapp.com/api/v1',
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      ),
+    );
+
+    // Request interceptor
+    _dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) async {
+          final token = await Storage.getAuthToken();
+          if (token != null) {
+            options.headers['Authorization'] = 'Bearer $token';
+          }
+          return handler.next(options);
+        },
+        onError: (error, handler) async {
+          if (error.response?.statusCode == 401) {
+            await Storage.removeAuthToken();
+            // Navigate to login (implement your navigation logic)
+          }
+          return handler.next(error);
+        },
+      ),
+    );
+  }
+
+  Future<Response<T>> get<T>(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+  }) {
+    return _dio.get<T>(path, queryParameters: queryParameters);
+  }
+
+  Future<Response<T>> post<T>(
+    String path, {
+    dynamic data,
+  }) {
+    return _dio.post<T>(path, data: data);
+  }
+
+  Future<Response<T>> put<T>(
+    String path, {
+    dynamic data,
+  }) {
+    return _dio.put<T>(path, data: data);
+  }
+
+  Future<Response<T>> patch<T>(
+    String path, {
+    dynamic data,
+  }) {
+    return _dio.patch<T>(path, data: data);
+  }
+
+  Future<Response<T>> delete<T>(String path) {
+    return _dio.delete<T>(path);
+  }
+}
+```
+
+### Domain Service
+
+```dart
+// services/order_service.dart
+import '../models/order.dart';
+import 'api_service.dart';
+
+class OrderService {
+  final ApiService _apiService = ApiService();
+
+  Future<List<Order>> getOrders({Map<String, dynamic>? filters}) async {
+    try {
+      final response = await _apiService.get<Map<String, dynamic>>(
+        '/orders',
+        queryParameters: filters,
+      );
+
+      final ordersJson = response.data!['data'] as List;
+      return ordersJson
+          .map((json) => Order.fromJson(json as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      throw Exception('Failed to fetch orders: $e');
+    }
+  }
+
+  Future<Order> getOrderById(String orderId) async {
+    try {
+      final response = await _apiService.get<Map<String, dynamic>>(
+        '/orders/$orderId',
+      );
+
+      return Order.fromJson(response.data!['data'] as Map<String, dynamic>);
+    } catch (e) {
+      throw Exception('Failed to fetch order: $e');
+    }
+  }
+
+  Future<Order> createOrder(Map<String, dynamic> orderData) async {
+    try {
+      final response = await _apiService.post<Map<String, dynamic>>(
+        '/orders',
+        data: orderData,
+      );
+
+      return Order.fromJson(response.data!['data'] as Map<String, dynamic>);
+    } catch (e) {
+      throw Exception('Failed to create order: $e');
+    }
+  }
+
+  Future<void> updateOrderStatus(String orderId, String status) async {
+    try {
+      await _apiService.patch<Map<String, dynamic>>(
+        '/orders/$orderId/status',
+        data: {'status': status},
+      );
+    } catch (e) {
+      throw Exception('Failed to update order status: $e');
+    }
+  }
+}
+```
+
+## Navigation
+
+### Route Configuration
+
+```dart
+// routes/app_routes.dart
+import 'package:flutter/material.dart';
+import '../screens/auth/login_screen.dart';
+import '../screens/home/home_screen.dart';
+import '../screens/orders/orders_list_screen.dart';
+import '../screens/orders/order_details_screen.dart';
+
+class AppRoutes {
+  static const String login = '/login';
+  static const String home = '/home';
+  static const String orders = '/orders';
+  static const String orderDetails = '/order-details';
+  static const String createOrder = '/create-order';
+
+  static Route<dynamic> generateRoute(RouteSettings settings) {
+    switch (settings.name) {
+      case login:
+        return MaterialPageRoute(builder: (_) => const LoginScreen());
+      
+      case home:
+        return MaterialPageRoute(builder: (_) => const HomeScreen());
+      
+      case orders:
+        return MaterialPageRoute(builder: (_) => const OrdersListScreen());
+      
+      case orderDetails:
+        final orderId = settings.arguments as String;
+        return MaterialPageRoute(
+          builder: (_) => OrderDetailsScreen(orderId: orderId),
+        );
+      
+      case createOrder:
+        return MaterialPageRoute(builder: (_) => const CreateOrderScreen());
+      
+      default:
+        return MaterialPageRoute(
+          builder: (_) => Scaffold(
+            body: Center(
+              child: Text('No route defined for ${settings.name}'),
+            ),
+          ),
+        );
+    }
+  }
+}
+
+// Usage in main.dart
+class MyApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Laundry App',
+      initialRoute: AppRoutes.login,
+      onGenerateRoute: AppRoutes.generateRoute,
+    );
+  }
+}
+```
+
+### Navigation Examples
+
+```dart
+// Navigate to named route
+Navigator.pushNamed(context, AppRoutes.orders);
+
+// Navigate with arguments
+Navigator.pushNamed(
+  context,
+  AppRoutes.orderDetails,
+  arguments: orderId,
+);
+
+// Navigate and replace
+Navigator.pushReplacementNamed(context, AppRoutes.home);
+
+// Navigate and remove all previous routes
+Navigator.pushNamedAndRemoveUntil(
+  context,
+  AppRoutes.home,
+  (route) => false,
+);
+
+// Pop back
+Navigator.pop(context);
+
+// Pop with result
+Navigator.pop(context, result);
+```
+
+## Error Handling
+
+```dart
+// Good: Proper error handling in async operations
+Future<void> _loadOrders() async {
+  setState(() {
+    _isLoading = true;
+    _error = null;
+  });
+
+  try {
+    final orders = await orderService.getOrders();
+    setState(() {
+      _orders = orders;
+      _isLoading = false;
+    });
+  } on DioException catch (e) {
+    setState(() {
+      _error = _handleDioError(e);
+      _isLoading = false;
+    });
+  } catch (e) {
+    setState(() {
+      _error = 'An unexpected error occurred';
+      _isLoading = false;
+    });
+  }
+}
+
+String _handleDioError(DioException error) {
+  if (error.type == DioExceptionType.connectionTimeout) {
+    return 'Connection timeout. Please check your internet connection.';
+  } else if (error.type == DioExceptionType.receiveTimeout) {
+    return 'Server is taking too long to respond.';
+  } else if (error.response?.statusCode == 404) {
+    return 'Resource not found.';
+  } else if (error.response?.statusCode == 401) {
+    return 'Unauthorized. Please login again.';
+  } else {
+    return error.message ?? 'An error occurred';
+  }
+}
+```
+
+## Performance Optimization
+
+### Use Keys Appropriately
+
+```dart
+// Good: Using keys for list items
+ListView.builder(
+  itemCount: orders.length,
+  itemBuilder: (context, index) {
+    return OrderCard(
+      key: ValueKey(orders[index].orderId),
+      order: orders[index],
+    );
+  },
+);
+```
+
+### Use ListView.builder for Long Lists
+
+```dart
+// Good: ListView.builder for efficient rendering
+ListView.builder(
+  itemCount: orders.length,
+  itemBuilder: (context, index) {
+    return OrderCard(order: orders[index]);
+  },
+);
+
+// Bad: Don't use ListView with all children at once for long lists
+// ListView(
+//   children: orders.map((order) => OrderCard(order: order)).toList(),
+// );
+```
+
+### Use Const Widgets
+
+```dart
+// Good: Const widgets don't rebuild
+const Text('Static text')
+const Icon(Icons.home)
+const SizedBox(height: 16)
+
+// Good: Const constructor for custom widget
+class Header extends StatelessWidget {
+  const Header({Key? key}) : super(key: key);
+  
+  @override
+  Widget build(BuildContext context) {
+    return const Text('Header');
+  }
+}
+```
+
+## Testing
+
+### Widget Tests
+
+```dart
+// test/widgets/order_card_test.dart
+import 'package:flutter_test/flutter_test.dart';
+import 'package:customer_app/widgets/orders/order_card.dart';
+import 'package:customer_app/models/order.dart';
+
+void main() {
+  group('OrderCard', () {
+    final mockOrder = Order(
+      orderId: 'order-123',
+      customerName: 'John Doe',
+      orderStatus: OrderStatus.inProcess,
+      totalAmount: 150.0,
+      // ... other required fields
+    );
+
+    testWidgets('displays order information', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: OrderCard(order: mockOrder),
+          ),
+        ),
+      );
+
+      expect(find.text('order-123'), findsOneWidget);
+      expect(find.text('John Doe'), findsOneWidget);
+      expect(find.text('₹150.0'), findsOneWidget);
+    });
+
+    testWidgets('calls onTap when tapped', (WidgetTester tester) async {
+      bool tapped = false;
+      
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: OrderCard(
+              order: mockOrder,
+              onTap: () => tapped = true,
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byType(OrderCard));
+      expect(tapped, true);
+    });
+  });
+}
+```
+
+## Best Practices Summary
+
+1. **Use Const**: Use const constructors wherever possible
+2. **Strong Typing**: Avoid `dynamic`, use specific types
+3. **Small Widgets**: Break down complex widgets into smaller ones
+4. **State Management**: Use Provider or Bloc consistently
+5. **Null Safety**: Handle nullable types properly
+6. **Async/Await**: Use async/await for asynchronous operations
+7. **Error Handling**: Always handle errors with try-catch
+8. **Performance**: Use ListView.builder, const widgets, keys appropriately
+9. **Code Organization**: Follow consistent file and folder structure
+10. **Testing**: Write widget tests for critical components
+11. **Platform Awareness**: Handle iOS and Android differences
+12. **Accessibility**: Use semantic labels and proper contrast

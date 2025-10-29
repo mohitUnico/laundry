@@ -1,0 +1,931 @@
+---
+description: Laundry App React Coding Standards for Admin Panel
+globs: *.jsx,*.tsx,admin-panel/**/*.jsx,admin-panel/**/*.tsx
+alwaysApply: false
+---
+
+## General Principles
+
+- Write functional components with hooks (no class components)
+- Keep components small, focused, and reusable (< 200 lines)
+- Use TypeScript for type safety and better IDE support
+- Follow React best practices and latest patterns
+- Prioritize composition over inheritance
+- Write self-documenting code with clear intent
+- Use meaningful component and variable names
+- Optimize performance with appropriate React hooks
+- Handle errors gracefully with error boundaries
+- Write accessible components following WCAG guidelines
+
+## Project Structure
+
+### File Organization
+```
+admin-panel/src/
+├── components/
+│   ├── common/          # Generic reusable components
+│   │   ├── Button/
+│   │   │   ├── Button.tsx
+│   │   │   ├── Button.test.tsx
+│   │   │   ├── Button.styles.ts (or .module.css)
+│   │   │   └── index.ts
+│   │   ├── Input/
+│   │   └── Modal/
+│   ├── layout/          # Layout components
+│   │   ├── Header/
+│   │   ├── Sidebar/
+│   │   └── Footer/
+│   └── features/        # Feature-specific components
+│       ├── orders/
+│       ├── customers/
+│       └── delivery/
+├── pages/               # Page-level components
+├── hooks/               # Custom hooks
+├── services/            # API services
+├── store/               # State management
+├── utils/               # Utility functions
+├── types/               # TypeScript types
+└── constants/           # Constants and enums
+```
+
+### Naming Conventions
+
+**Components:**
+- PascalCase for component files and names
+- Match filename to component name
+- Use descriptive names that explain purpose
+
+```tsx
+// Good
+OrderCard.tsx → export const OrderCard
+CustomerList.tsx → export const CustomerList
+DeliveryStatusBadge.tsx → export const DeliveryStatusBadge
+
+// Bad
+ordercard.tsx
+Order-Card.tsx
+order_card.tsx
+```
+
+**Files:**
+```
+// Component files
+OrderCard.tsx
+OrderCard.test.tsx
+OrderCard.styles.ts
+index.ts (barrel export)
+
+// Hooks
+useOrders.ts
+useAuth.ts
+useDebounce.ts
+
+// Services
+order.service.ts
+auth.service.ts
+
+// Utils
+format.utils.ts
+validation.utils.ts
+
+// Types
+order.types.ts
+user.types.ts
+```
+
+**Variables and Functions:**
+```tsx
+// camelCase for variables, functions, and methods
+const orderTotal = 150.00;
+const isLoading = false;
+
+function calculateDeliveryFee(distance: number) {
+  return distance * 40;
+}
+
+// PascalCase for components and classes
+const OrderCard = () => { /* ... */ };
+class ApiService { /* ... */ }
+
+// UPPER_SNAKE_CASE for constants
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const API_BASE_URL = 'https://api.laundryapp.com';
+```
+
+## Component Structure
+
+### Functional Components
+
+**Basic Structure:**
+```tsx
+import React from 'react';
+import { SomeType } from '../../types/some.types';
+import './ComponentName.styles.css';
+
+interface ComponentNameProps {
+  prop1: string;
+  prop2: number;
+  onAction?: () => void;
+}
+
+export const ComponentName: React.FC<ComponentNameProps> = ({
+  prop1,
+  prop2,
+  onAction,
+}) => {
+  // 1. Hooks
+  const [state, setState] = useState<string>('');
+  const customHook = useCustomHook();
+
+  // 2. Event Handlers
+  const handleClick = () => {
+    console.log('clicked');
+    onAction?.();
+  };
+
+  // 3. Effects
+  useEffect(() => {
+    // Effect logic
+  }, [dependencies]);
+
+  // 4. Helper functions (or extract to utils)
+  const formatValue = (value: string) => {
+    return value.toUpperCase();
+  };
+
+  // 5. Early returns
+  if (!prop1) {
+    return <div>Loading...</div>;
+  }
+
+  // 6. JSX
+  return (
+    <div className="component-name">
+      <h2>{formatValue(prop1)}</h2>
+      <button onClick={handleClick}>Action</button>
+    </div>
+  );
+};
+```
+
+### Component Best Practices
+
+**1. Props Interface**
+```tsx
+// Good: Clear interface with optional props marked
+interface OrderCardProps {
+  order: Order;
+  onViewDetails: (orderId: string) => void;
+  onEdit?: (orderId: string) => void;
+  showActions?: boolean;
+  className?: string;
+}
+
+// Bad: Unclear types
+interface OrderCardProps {
+  data: any;
+  onClick: Function;
+}
+```
+
+**2. Destructuring Props**
+```tsx
+// Good: Destructure in function signature
+export const OrderCard: React.FC<OrderCardProps> = ({
+  order,
+  onViewDetails,
+  showActions = true,
+}) => {
+  return (
+    <div>
+      <h3>{order.orderId}</h3>
+      {showActions && <button onClick={() => onViewDetails(order.orderId)}>View</button>}
+    </div>
+  );
+};
+
+// Bad: Access props directly
+export const OrderCard: React.FC<OrderCardProps> = (props) => {
+  return (
+    <div>
+      <h3>{props.order.orderId}</h3>
+      <button onClick={() => props.onViewDetails(props.order.orderId)}>View</button>
+    </div>
+  );
+};
+```
+
+**3. Default Props**
+```tsx
+// Good: Default values in destructuring
+export const Pagination: React.FC<PaginationProps> = ({
+  page = 1,
+  limit = 10,
+  onPageChange,
+}) => {
+  // ...
+};
+
+// Or use defaultProps for class components (legacy)
+```
+
+**4. Children Prop**
+```tsx
+// Good: Properly typed children
+interface CardProps {
+  title: string;
+  children: React.ReactNode;
+}
+
+export const Card: React.FC<CardProps> = ({ title, children }) => {
+  return (
+    <div className="card">
+      <h3>{title}</h3>
+      <div className="card-body">{children}</div>
+    </div>
+  );
+};
+
+// Usage
+<Card title="Order Details">
+  <OrderInfo order={order} />
+</Card>
+```
+
+## TypeScript Best Practices
+
+### Type Definitions
+
+**Component Props:**
+```tsx
+// Define clear interfaces for props
+interface ButtonProps {
+  variant: 'primary' | 'secondary' | 'danger';
+  size: 'small' | 'medium' | 'large';
+  disabled?: boolean;
+  loading?: boolean;
+  onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  children: React.ReactNode;
+  type?: 'button' | 'submit' | 'reset';
+  className?: string;
+}
+
+// Use Pick/Omit for derived types
+type IconButtonProps = Omit<ButtonProps, 'children'> & {
+  icon: React.ReactNode;
+};
+
+// Extend HTML element props
+interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+  label: string;
+  error?: string;
+}
+```
+
+**Data Models:**
+```tsx
+// types/order.types.ts
+export interface Order {
+  orderId: string;
+  martId: string;
+  customerId: string;
+  customerName: string;
+  orderStatus: OrderStatus;
+  totalAmount: number;
+  createdAt: string;
+  items: OrderItem[];
+}
+
+export interface OrderItem {
+  itemId: string;
+  itemName: string;
+  quantity: number;
+  price: number;
+  subtotal: number;
+}
+
+export type OrderStatus = 
+  | 'pickup' 
+  | 'in_process' 
+  | 'ready' 
+  | 'out_for_delivery' 
+  | 'delivered';
+
+export enum PaymentMethod {
+  CARD = 'card',
+  COD = 'cod',
+  UPI = 'upi',
+  WALLET = 'wallet',
+}
+```
+
+**Generic Types:**
+```tsx
+// Generic API response type
+interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  message?: string;
+  error?: string;
+}
+
+// Usage
+const response: ApiResponse<Order[]> = await orderService.getOrders();
+const orders = response.data; // Type: Order[]
+```
+
+### Avoid `any`
+
+```tsx
+// Bad: Using any
+const processData = (data: any) => {
+  return data.value;
+};
+
+// Good: Use specific types
+interface DataType {
+  value: number;
+  label: string;
+}
+
+const processData = (data: DataType) => {
+  return data.value;
+};
+
+// Good: Use unknown for truly unknown types
+const parseJson = (json: string): unknown => {
+  return JSON.parse(json);
+};
+
+// Then narrow the type
+const data = parseJson(jsonString);
+if (isOrder(data)) {
+  // data is now typed as Order
+  console.log(data.orderId);
+}
+```
+
+## React Hooks
+
+### useState
+
+```tsx
+// Good: Type inference works
+const [count, setCount] = useState(0); // Type: number
+const [name, setName] = useState(''); // Type: string
+
+// Good: Explicit typing for complex types
+const [order, setOrder] = useState<Order | null>(null);
+const [filters, setFilters] = useState<OrderFilters>({
+  status: undefined,
+  page: 1,
+  limit: 10,
+});
+
+// Good: Functional updates for state based on previous state
+const incrementCount = () => {
+  setCount(prevCount => prevCount + 1);
+};
+
+// Bad: Direct state mutation
+const updateOrder = () => {
+  order.status = 'delivered'; // WRONG!
+  setOrder(order);
+};
+
+// Good: Immutable updates
+const updateOrder = () => {
+  setOrder(prevOrder => prevOrder ? { ...prevOrder, status: 'delivered' } : null);
+};
+```
+
+### useEffect
+
+```tsx
+// Good: Proper dependencies
+useEffect(() => {
+  fetchOrders(filters);
+}, [filters]); // Re-run when filters change
+
+// Good: Cleanup function
+useEffect(() => {
+  const timer = setTimeout(() => {
+    console.log('Delayed action');
+  }, 1000);
+
+  return () => clearTimeout(timer); // Cleanup
+}, []);
+
+// Good: Async operations
+useEffect(() => {
+  let cancelled = false;
+
+  const loadData = async () => {
+    try {
+      const data = await fetchOrders();
+      if (!cancelled) {
+        setOrders(data);
+      }
+    } catch (error) {
+      if (!cancelled) {
+        setError(error.message);
+      }
+    }
+  };
+
+  loadData();
+
+  return () => {
+    cancelled = true; // Prevent state updates after unmount
+  };
+}, []);
+
+// Bad: Missing dependencies (ESLint will warn)
+useEffect(() => {
+  fetchOrders(filters);
+}, []); // filters is missing from dependencies!
+```
+
+### useCallback
+
+```tsx
+// Good: Memoize callbacks passed to child components
+const OrdersList: React.FC<OrdersListProps> = ({ orders }) => {
+  const handleViewDetails = useCallback((orderId: string) => {
+    navigate(`/orders/${orderId}`);
+  }, [navigate]);
+
+  return (
+    <div>
+      {orders.map(order => (
+        <OrderCard 
+          key={order.orderId}
+          order={order}
+          onViewDetails={handleViewDetails} // Stable reference
+        />
+      ))}
+    </div>
+  );
+};
+
+// When to use: When passing callbacks to optimized child components (React.memo)
+// When not to use: For simple inline handlers that don't cause re-renders
+```
+
+### useMemo
+
+```tsx
+// Good: Memoize expensive calculations
+const OrdersPage: React.FC = () => {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const filteredOrders = useMemo(() => {
+    return orders.filter(order =>
+      order.orderId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.customerName.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [orders, searchTerm]); // Recalculate only when these change
+
+  const totalAmount = useMemo(() => {
+    return filteredOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+  }, [filteredOrders]);
+
+  return (
+    <div>
+      <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+      <p>Total: ₹{totalAmount}</p>
+      <OrdersList orders={filteredOrders} />
+    </div>
+  );
+};
+
+// When to use: For expensive calculations or complex filtering/mapping
+// When not to use: For simple operations that are fast
+```
+
+### useRef
+
+```tsx
+// Good: Access DOM elements
+const InputWithFocus: React.FC = () => {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  return <input ref={inputRef} />;
+};
+
+// Good: Store mutable values without causing re-renders
+const Timer: React.FC = () => {
+  const [count, setCount] = useState(0);
+  const intervalRef = useRef<number>();
+
+  const start = () => {
+    intervalRef.current = window.setInterval(() => {
+      setCount(c => c + 1);
+    }, 1000);
+  };
+
+  const stop = () => {
+    clearInterval(intervalRef.current);
+  };
+
+  return (
+    <div>
+      <p>Count: {count}</p>
+      <button onClick={start}>Start</button>
+      <button onClick={stop}>Stop</button>
+    </div>
+  );
+};
+```
+
+## Custom Hooks
+
+Extract reusable logic into custom hooks:
+
+```tsx
+// hooks/useOrders.ts
+import { useState, useCallback } from 'react';
+import { orderService } from '../services/order.service';
+import { Order } from '../types/order.types';
+
+interface UseOrdersReturn {
+  orders: Order[];
+  loading: boolean;
+  error: string | null;
+  fetchOrders: (filters?: any) => Promise<void>;
+  updateOrderStatus: (orderId: string, status: string) => Promise<void>;
+  refreshOrders: () => Promise<void>;
+}
+
+export const useOrders = (): UseOrdersReturn => {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastFilters, setLastFilters] = useState<any>(null);
+
+  const fetchOrders = useCallback(async (filters?: any) => {
+    setLoading(true);
+    setError(null);
+    setLastFilters(filters);
+
+    try {
+      const response = await orderService.getOrders(filters);
+      setOrders(response.data.orders);
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch orders');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const updateOrderStatus = useCallback(async (orderId: string, status: string) => {
+    try {
+      await orderService.updateOrderStatus(orderId, status);
+      // Update local state optimistically
+      setOrders(prevOrders =>
+        prevOrders.map(order =>
+          order.orderId === orderId ? { ...order, orderStatus: status } : order
+        )
+      );
+    } catch (err: any) {
+      setError(err.message);
+      throw err;
+    }
+  }, []);
+
+  const refreshOrders = useCallback(async () => {
+    if (lastFilters) {
+      await fetchOrders(lastFilters);
+    }
+  }, [lastFilters, fetchOrders]);
+
+  return { orders, loading, error, fetchOrders, updateOrderStatus, refreshOrders };
+};
+
+// Usage in component
+const OrdersPage: React.FC = () => {
+  const { orders, loading, error, fetchOrders } = useOrders();
+
+  useEffect(() => {
+    fetchOrders({ status: 'in_process' });
+  }, [fetchOrders]);
+
+  if (loading) return <LoadingSpinner />;
+  if (error) return <ErrorMessage error={error} />;
+
+  return <OrdersList orders={orders} />;
+};
+```
+
+**Common Custom Hooks:**
+```tsx
+// useDebounce.ts
+export const useDebounce = <T,>(value: T, delay: number): T => {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+
+  return debouncedValue;
+};
+
+// useLocalStorage.ts
+export const useLocalStorage = <T,>(key: string, initialValue: T) => {
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const item = window.localStorage.getItem(key);
+      return item ? JSON.parse(item) : initialValue;
+    } catch {
+      return initialValue;
+    }
+  });
+
+  const setStoredValue = (newValue: T) => {
+    setValue(newValue);
+    window.localStorage.setItem(key, JSON.stringify(newValue));
+  };
+
+  return [value, setStoredValue] as const;
+};
+
+// useMediaQuery.ts
+export const useMediaQuery = (query: string): boolean => {
+  const [matches, setMatches] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    if (media.matches !== matches) {
+      setMatches(media.matches);
+    }
+    const listener = () => setMatches(media.matches);
+    media.addEventListener('change', listener);
+    return () => media.removeEventListener('change', listener);
+  }, [matches, query]);
+
+  return matches;
+};
+```
+
+## Performance Optimization
+
+### React.memo
+
+```tsx
+// Good: Memoize expensive components
+export const OrderCard = React.memo<OrderCardProps>(({ order, onViewDetails }) => {
+  return (
+    <div className="order-card">
+      <h3>{order.orderId}</h3>
+      <p>{order.customerName}</p>
+      <button onClick={() => onViewDetails(order.orderId)}>View</button>
+    </div>
+  );
+});
+
+// Custom comparison function
+export const OrderCard = React.memo<OrderCardProps>(
+  ({ order, onViewDetails }) => {
+    // Component implementation
+  },
+  (prevProps, nextProps) => {
+    // Return true if props are equal (skip re-render)
+    return prevProps.order.orderId === nextProps.order.orderId;
+  }
+);
+```
+
+### Code Splitting
+
+```tsx
+// Good: Lazy load routes
+import { lazy, Suspense } from 'react';
+
+const DashboardPage = lazy(() => import('../pages/Dashboard/DashboardPage'));
+const OrdersPage = lazy(() => import('../pages/Orders/OrdersPage'));
+const CustomersPage = lazy(() => import('../pages/Customers/CustomersPage'));
+
+export const AppRoutes: React.FC = () => {
+  return (
+    <Suspense fallback={<LoadingSpinner />}>
+      <Routes>
+        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/orders" element={<OrdersPage />} />
+        <Route path="/customers" element={<CustomersPage />} />
+      </Routes>
+    </Suspense>
+  );
+};
+```
+
+## Error Handling
+
+### Error Boundaries
+
+```tsx
+// components/common/ErrorBoundary.tsx
+import React, { Component, ErrorInfo, ReactNode } from 'react';
+
+interface Props {
+  children: ReactNode;
+  fallback?: ReactNode;
+}
+
+interface State {
+  hasError: boolean;
+  error?: Error;
+}
+
+export class ErrorBoundary extends Component<Props, State> {
+  constructor(props: Props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error): State {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('Error caught by boundary:', error, errorInfo);
+    // Log to error reporting service
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback || (
+        <div className="error-boundary">
+          <h2>Something went wrong</h2>
+          <p>{this.state.error?.message}</p>
+          <button onClick={() => this.setState({ hasError: false })}>
+            Try again
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+// Usage
+<ErrorBoundary fallback={<ErrorFallback />}>
+  <OrdersPage />
+</ErrorBoundary>
+```
+
+### Error Handling in Components
+
+```tsx
+const OrderDetailsPage: React.FC = () => {
+  const { orderId } = useParams();
+  const [order, setOrder] = useState<Order | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadOrder = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await orderService.getOrderById(orderId!);
+        setOrder(response.data.order);
+      } catch (err: any) {
+        setError(err.message || 'Failed to load order');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadOrder();
+  }, [orderId]);
+
+  if (loading) return <LoadingSpinner />;
+  if (error) return <ErrorMessage message={error} />;
+  if (!order) return <NotFound />;
+
+  return <OrderDetails order={order} />;
+};
+```
+
+## Styling
+
+### CSS Modules (Recommended)
+
+```tsx
+// OrderCard.module.css
+.card {
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.status {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+// OrderCard.tsx
+import styles from './OrderCard.module.css';
+
+export const OrderCard: React.FC<OrderCardProps> = ({ order }) => {
+  return (
+    <div className={styles.card}>
+      <div className={styles.header}>
+        <span>{order.orderId}</span>
+        <span className={styles.status}>{order.orderStatus}</span>
+      </div>
+    </div>
+  );
+};
+```
+
+### Conditional Classes
+
+```tsx
+import classNames from 'classnames';
+
+// Good: Using classnames library
+<button
+  className={classNames('btn', {
+    'btn-primary': variant === 'primary',
+    'btn-secondary': variant === 'secondary',
+    'btn-disabled': disabled,
+  })}
+>
+  {children}
+</button>
+
+// Or template literals
+<div className={`card ${isActive ? 'card-active' : ''} ${className}`}>
+```
+
+## Testing
+
+### Component Tests
+
+```tsx
+// OrderCard.test.tsx
+import { render, screen, fireEvent } from '@testing-library/react';
+import { OrderCard } from './OrderCard';
+
+const mockOrder: Order = {
+  orderId: 'order-123',
+  customerName: 'John Doe',
+  orderStatus: 'in_process',
+  totalAmount: 150,
+  // ... other fields
+};
+
+describe('OrderCard', () => {
+  it('renders order information', () => {
+    render(<OrderCard order={mockOrder} onViewDetails={jest.fn()} />);
+    
+    expect(screen.getByText('order-123')).toBeInTheDocument();
+    expect(screen.getByText('John Doe')).toBeInTheDocument();
+    expect(screen.getByText('₹150')).toBeInTheDocument();
+  });
+
+  it('calls onViewDetails when button is clicked', () => {
+    const handleViewDetails = jest.fn();
+    render(<OrderCard order={mockOrder} onViewDetails={handleViewDetails} />);
+    
+    fireEvent.click(screen.getByText('View Details'));
+    
+    expect(handleViewDetails).toHaveBeenCalledWith('order-123');
+  });
+
+  it('displays status badge with correct style', () => {
+    render(<OrderCard order={mockOrder} onViewDetails={jest.fn()} />);
+    
+    const badge = screen.getByText('in_process');
+    expect(badge).toHaveClass('badge-in-process');
+  });
+});
+```
+
+## Best Practices Summary
+
+1. **Use Functional Components**: Always use functional components with hooks
+2. **TypeScript**: Use TypeScript for type safety
+3. **Component Size**: Keep components small and focused (< 200 lines)
+4. **Custom Hooks**: Extract reusable logic into custom hooks
+5. **Performance**: Use React.memo, useMemo, useCallback appropriately
+6. **Error Handling**: Implement error boundaries and proper error states
+7. **Accessibility**: Use semantic HTML and ARIA attributes
+8. **Code Splitting**: Lazy load routes and heavy components
+9. **Testing**: Write tests for components and custom hooks
+10. **Consistent Styling**: Use CSS Modules or styled-components consistently

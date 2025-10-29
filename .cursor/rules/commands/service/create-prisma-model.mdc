@@ -1,0 +1,333 @@
+---
+description: Generate a Prisma model schema for the Laundry App database with proper field types, relations, and indexes.
+globs: 
+alwaysApply: false
+---
+
+## arguments
+- modelName: Name of the Prisma model (e.g., Order, Customer, DeliveryStaff) - PascalCase
+- tableName: Database table name (optional, defaults to snake_case plural of modelName)
+- fields: Comma-separated list of fields in format "name:type" (e.g., "email:String,age:Int")
+- includeTimestamps: Include created_at and updated_at fields (default: true)
+- generateMigration: Automatically generate Prisma migration (default: true)
+
+## init
+1. Validate inputs:
+   - modelName must be in PascalCase (e.g., Order, Customer, DeliveryStaff)
+   - tableName defaults to snake_case plural (Order -> orders, Customer -> customers)
+   - Verify Prisma is set up: check for `backend/prisma/schema.prisma`
+
+2. Parse fields argument (if provided):
+   - Split by comma: "email:String,age:Int,status:String"
+   - Parse field name and type
+   - Validate Prisma field types
+
+3. Display summary:
+   ```
+   Creating Prisma model: ${modelName}
+   Table name: ${tableName}
+   
+   Fields to be added:
+   ${fields || '(will add template fields)'}
+   
+   Timestamps: ${includeTimestamps ? 'Yes (created_at, updated_at)' : 'No'}
+   Migration: ${generateMigration ? 'Will be generated' : 'Manual'}
+   
+   File to be modified:
+   - backend/prisma/schema.prisma
+   ```
+
+4. Confirm with user before proceeding
+
+## perform
+1. **Read existing schema.prisma file**
+   - Open `backend/prisma/schema.prisma`
+   - Check if model already exists
+   - Preserve existing models and configuration
+
+2. **Generate model definition**
+
+   Add to `backend/prisma/schema.prisma`:
+
+```prisma
+model ${modelName} {
+  // Primary Key
+  ${tableName.slice(0, -1)}_id String @id @default(uuid()) @map("${tableName.slice(0, -1)}_id")
+  
+  // TODO: Add your fields here
+  // Example fields (customize based on your needs):
+  // name           String
+  // email          String    @unique
+  // status         String    @default("active")
+  // is_active      Boolean   @default(true)
+  // total_amount   Decimal   @db.Decimal(10, 2)
+  // count          Int       @default(0)
+  
+  ${fields ? fields.split(',').map(field => {
+    const [name, type] = field.split(':');
+    const fieldName = name.trim();
+    const fieldType = type.trim();
+    
+    // Map common types
+    const typeMapping = {
+      'String': 'String',
+      'Int': 'Int',
+      'Float': 'Float',
+      'Boolean': 'Boolean',
+      'DateTime': 'DateTime',
+      'Decimal': 'Decimal   @db.Decimal(10, 2)',
+      'JSON': 'Json',
+    };
+    
+    return `${fieldName.replace(/-/g, '_')}    ${typeMapping[fieldType] || fieldType}`;
+  }).join('\n  ') : ''}
+  
+  // Relations (add as needed)
+  // Example: One-to-Many
+  // customer_id    String?
+  // customer       Customer?  @relation(fields: [customer_id], references: [customer_id])
+  
+  // Example: Many-to-Many (requires join table)
+  // tags           Tag[]
+  
+  ${includeTimestamps ? `
+  // Timestamps
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+  ` : ''}
+  
+  @@map("${tableName}")
+  
+  // Indexes (add as needed for performance)
+  // @@index([customer_id])
+  // @@index([status])
+  // @@index([created_at])
+  
+  // Unique constraints
+  // @@unique([customer_id, order_date])
+}
+```
+
+3. **Add helpful comments**
+
+   Add above the model:
+
+```prisma
+// ============================================
+// ${modelName} Model
+// Table: ${tableName}
+// Description: [TODO: Add description]
+// ============================================
+```
+
+4. **Format the schema**
+   ```bash
+   cd backend && npx prisma format
+   ```
+
+5. **Validate the schema**
+   ```bash
+   cd backend && npx prisma validate
+   ```
+
+6. **Generate migration (if generateMigration is true)**
+   ```bash
+   cd backend && npx prisma migrate dev --name add_${tableName}_table --create-only
+   ```
+
+   This creates a migration file without applying it, allowing review first.
+
+7. **Display the generated model**
+   ```
+   ✓ Model added to schema.prisma
+   
+   Generated Prisma Model:
+   ───────────────────────────────────────
+   [Display the model code here]
+   ───────────────────────────────────────
+   ```
+
+8. **Display next steps**
+   ```
+   ✓ Prisma model created successfully!
+   
+   Next steps:
+   1. Review the model in: backend/prisma/schema.prisma
+   2. Customize fields, add relations, and indexes
+   3. Review migration: backend/prisma/migrations/[timestamp]_add_${tableName}_table
+   4. Apply migration: npm run migrate:dev
+   5. Generate Prisma Client: npm run prisma:generate
+   6. Create service: /command create-service ${modelName}
+   7. Create controller: /command create-controller ${modelName}
+   
+   Common field types:
+   - String: Text data
+   - Int: Integer numbers
+   - Float/Decimal: Decimal numbers
+   - Boolean: true/false values
+   - DateTime: Date and time
+   - Json: JSON objects
+   
+   Common relation patterns:
+   - One-to-Many: customer Customer @relation(fields: [customer_id], references: [customer_id])
+   - Many-to-Many: tags Tag[]
+   - Optional: customer_id String? (nullable foreign key)
+   ```
+
+## finalize
+1. **Verify schema is valid**
+   ```bash
+   npx prisma validate
+   ```
+   - Check for syntax errors
+   - Verify relations are correct
+   - Confirm no naming conflicts
+
+2. **Generate Prisma Client**
+   ```bash
+   npx prisma generate
+   ```
+   - This updates the @prisma/client with new model
+   - Makes the model available in code
+
+3. **Display summary**
+   ```
+   ===== Prisma Model Creation Summary =====
+   Model: ${modelName}
+   Table: ${tableName}
+   
+   File Modified:
+   ✓ backend/prisma/schema.prisma
+   
+   ${generateMigration ? `Migration Created:
+   ✓ backend/prisma/migrations/[timestamp]_add_${tableName}_table/` : ''}
+   
+   Fields:
+   - ${tableName.slice(0, -1)}_id (UUID, Primary Key)
+   ${fields ? fields.split(',').map(f => `- ${f.split(':')[0]}`).join('\n   ') : '- [Custom fields]'}
+   ${includeTimestamps ? '- created_at (DateTime)\n   - updated_at (DateTime)' : ''}
+   
+   Status: ✓ Ready to use
+   ```
+
+4. **Show example usage**
+   ```javascript
+   // Example: Using the new model in your code
+   const { PrismaClient } = require('@prisma/client');
+   const prisma = new PrismaClient();
+
+   // Create
+   const new${modelName} = await prisma.${modelName.charAt(0).toLowerCase() + modelName.slice(1)}.create({
+     data: {
+       // Your fields here
+     }
+   });
+
+   // Find
+   const ${modelName.toLowerCase()}s = await prisma.${modelName.charAt(0).toLowerCase() + modelName.slice(1)}.findMany({
+     where: {
+       // Your conditions
+     }
+   });
+
+   // Update
+   const updated = await prisma.${modelName.charAt(0).toLowerCase() + modelName.slice(1)}.update({
+     where: { ${tableName.slice(0, -1)}_id: id },
+     data: {
+       // Your updates
+     }
+   });
+
+   // Delete
+   await prisma.${modelName.charAt(0).toLowerCase() + modelName.slice(1)}.delete({
+     where: { ${tableName.slice(0, -1)}_id: id }
+   });
+   ```
+
+5. **Apply migration reminder**
+   ```
+   ⚠️  Don't forget to apply the migration:
+   
+   cd backend && npm run migrate:dev
+   
+   Or in production:
+   npm run migrate:deploy
+   ```
+
+## examples
+
+### Example 1: Simple model with basic fields
+```
+/command create-prisma-model Order --fields="customer_id:String,status:String,total_amount:Decimal"
+```
+
+### Example 2: Model without timestamps
+```
+/command create-prisma-model ServiceCategory --includeTimestamps=false
+```
+
+### Example 3: Custom table name
+```
+/command create-prisma-model DeliveryStaff --tableName=delivery_staffs
+```
+
+### Example 4: Complete order model
+```
+/command create-prisma-model Order --fields="mart_id:String,customer_id:String,order_status:String,total_amount:Decimal,is_per_unit_piece:Boolean"
+```
+
+## Common Prisma Field Types
+
+```prisma
+// Basic Types
+field_name    String      // Text
+field_name    Int         // Integer
+field_name    Float       // Floating point
+field_name    Boolean     // True/False
+field_name    DateTime    // Date and time
+field_name    Decimal     @db.Decimal(10, 2)  // Precise decimals
+field_name    Json        // JSON data
+
+// Modifiers
+field_name    String?     // Optional (nullable)
+field_name    String      @unique  // Unique constraint
+field_name    String      @default("value")  // Default value
+field_name    DateTime    @default(now())  // Current timestamp
+field_name    DateTime    @updatedAt  // Auto-update on change
+
+// Relations
+customer_id   String
+customer      Customer    @relation(fields: [customer_id], references: [customer_id])
+
+// Arrays
+tags          String[]    // Array of strings
+items         OrderItem[] // One-to-many relation
+
+// Enums
+status        OrderStatus // Enum type (define separately)
+```
+
+## Migration Commands
+
+```bash
+# Create migration (dev)
+npm run migrate:dev
+
+# Apply migrations (production)
+npm run migrate:deploy
+
+# Reset database (dev only)
+npm run migrate:reset
+
+# Generate Prisma Client
+npm run prisma:generate
+
+# View database in Prisma Studio
+npm run prisma:studio
+
+# Format schema
+npx prisma format
+
+# Validate schema
+npx prisma validate
+```

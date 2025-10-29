@@ -1,0 +1,51 @@
+---
+alwaysApply: false
+---
+## arguments
+- title: Clear problem statement in the form of a question or declaration
+- category: Technical area classification (e.g., backend, frontend, devops, general)
+- subcategory: Specific technical area (e.g., database, unit-testing, state-management)
+- problem: Concise explanation of the issue (keep under 3 sentences)
+- rootCause: Brief analysis of why the issue occurs (keep under 3 sentences)
+- solution: Clear, concise steps to resolve the issue
+- tags: Keywords for improved searchability (comma-separated)
+- codeExample: Optional code snippet demonstrating the solution
+
+## init
+1. Verify that the `.cursor/ctx-store/kb/` directory structure exists
+2. **Search for similar KB articles**
+   - Extract key terms from the title, problem, and tags
+   - Search the KB directory for similar articles using these terms
+   - Check titles, problems, and tags in existing KB articles for similarity
+   - If similar articles found, display them with a similarity score
+   - Prompt the user to either:
+     - Continue creating a new article
+     - Update an existing article
+     - Link the existing article as related
+3. Generate a unique KB article ID in format KB-YYMMDD-XXX where XXX is a 3-digit sequential number
+4. Determine the target directory based on category: `.cursor/ctx-store/kb/{category}/`
+5. Check if the KB index file exists at `.cursor/ctx-store/kb/index.md`
+6. If any directory or the index file doesn't exist, create it with the appropriate structure
+
+## perform
+1. **Create KB article file**
+   - Fill in the KB article template with provided arguments
+   - Set current date for 'Created' and 'Updated' fields
+   - Initialize frequency counter to 1
+   - Format the article according to the KB template
+   - Save to `.cursor/ctx-store/kb/{category}/{id}.md`
+
+2. **Update KB index**
+   - Open the KB index file at `.cursor/ctx-store/kb/index.md`
+   - Check if the category and subcategory exist in the index
+   - If not, add them with appropriate Markdown heading structure
+   - Add the new article to the subcategory section
+   - Ensure the article is properly linked to its file location
+   - If subcategory already has 5 entries, check if this should replace any based on priority
+   - Sort entries by frequency if needed
+   - Save the updated index file
+
+## finalize
+1. Confirm successful KB article creation
+2. Provide a direct link to the created article file
+3. Summarize the changes made to the KB index

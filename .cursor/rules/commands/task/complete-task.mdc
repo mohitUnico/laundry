@@ -1,0 +1,33 @@
+---
+description:This rule provides a command to mark a task as completed, move it to the completed tasks directory, and update its status.
+alwaysApply: false
+---
+## arguments
+- taskId: The ID of the task to be completed (format: YYMMDD-XX)
+
+## init
+1. Verify the task exists in `.cursor/ctx-store/tasks/active/`
+2. Load the task file to extract current details
+3. Prompt for confirmation to complete the task
+4. Check if all acceptance criteria are met
+5. Check if all subtasks are completed
+
+## perform
+1. **Validate task completion readiness**
+   - Verify all subtasks are marked as completed
+   - Verify all acceptance criteria are checked
+   - If any are incomplete, warn the user and ask for confirmation to proceed
+
+2. **Update task metadata**
+   - Change status from "In Progress" to "Completed"
+   - Add completion date timestamp
+   - Add final journal entry noting completion
+
+3. **Move the task file**
+   - Copy the updated task file to `.cursor/ctx-store/tasks/completed/`
+   - Remove the task file from `.cursor/ctx-store/tasks/active/`
+
+## finalize
+1. Confirm successful task completion
+2. Provide brief summary of the completed task
+3. Suggest next available tasks if any exist

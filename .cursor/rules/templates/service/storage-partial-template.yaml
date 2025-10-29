@@ -1,0 +1,170 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: {{serviceName | lower}} Service - Storage (DynamoDB)
+
+Parameters:
+  Environment:
+    Type: String
+  DynamoDBTableName:
+    Type: String
+  OutboxTableName:
+    Type: String
+
+Resources:
+  DynamoDBTableNameParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /${Environment}/{{serviceName}}-service/dynamodb/table-name
+      Type: String
+      Value: !Ref {{CamelServiceName}}DynamoTable
+      Description: DynamoDB table name for {{serviceName}} service
+
+  {{CamelServiceName}}DynamoTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub ${DynamoDBTableName}-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  {{CamelServiceName}}OutboxTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub ${OutboxTableName}-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      StreamSpecification:
+        StreamViewType: NEW_IMAGE
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  # DynamoDB Alarms for throttles and system errors (main table)
+  {{CamelServiceName}}TableReadThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub {{serviceName}}-ddb-read-throttle-${Environment}
+      Namespace: AWS/DynamoDB
+      MetricName: ReadThrottleEvents
+      Dimensions:
+        - Name: TableName
+          Value: !Ref {{CamelServiceName}}DynamoTable
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  {{CamelServiceName}}TableWriteThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub {{serviceName}}-ddb-write-throttle-${Environment}
+      Namespace: AWS/DynamoDB
+      MetricName: WriteThrottleEvents
+      Dimensions:
+        - Name: TableName
+          Value: !Ref {{CamelServiceName}}DynamoTable
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  {{CamelServiceName}}TableSystemErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub {{serviceName}}-ddb-system-errors-${Environment}
+      Namespace: AWS/DynamoDB
+      MetricName: SystemErrors
+      Dimensions:
+        - Name: TableName
+          Value: !Ref {{CamelServiceName}}DynamoTable
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  # DynamoDB Alarms (outbox table)
+  {{CamelServiceName}}OutboxReadThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub {{serviceName}}-outbox-read-throttle-${Environment}
+      Namespace: AWS/DynamoDB
+      MetricName: ReadThrottleEvents
+      Dimensions:
+        - Name: TableName
+          Value: !Ref {{CamelServiceName}}OutboxTable
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  {{CamelServiceName}}OutboxWriteThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub {{serviceName}}-outbox-write-throttle-${Environment}
+      Namespace: AWS/DynamoDB
+      MetricName: WriteThrottleEvents
+      Dimensions:
+        - Name: TableName
+          Value: !Ref {{CamelServiceName}}OutboxTable
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  {{CamelServiceName}}OutboxSystemErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub {{serviceName}}-outbox-system-errors-${Environment}
+      Namespace: AWS/DynamoDB
+      MetricName: SystemErrors
+      Dimensions:
+        - Name: TableName
+          Value: !Ref {{CamelServiceName}}OutboxTable
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+Outputs:
+  {{CamelServiceName}}DynamoTableArn:
+    Value: !GetAtt {{CamelServiceName}}DynamoTable.Arn
+  {{CamelServiceName}}DynamoTableName:
+    Value: !Ref {{CamelServiceName}}DynamoTable
+  {{CamelServiceName}}OutboxTableArn:
+    Value: !GetAtt {{CamelServiceName}}OutboxTable.Arn
+  {{CamelServiceName}}OutboxStreamArn:
+    Value: !GetAtt {{CamelServiceName}}OutboxTable.StreamArn
+  {{CamelServiceName}}OutboxTableName:
+    Value: !Ref {{CamelServiceName}}OutboxTable
+
+

@@ -1,0 +1,101 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: {{serviceName | lower}} Service - Functions, IAM, Alarms
+
+Parameters:
+  Environment:
+    Type: String
+  LambdaMemorySize:
+    Type: Number
+  LambdaTimeout:
+    Type: Number
+  HasCognitoArn:
+    Type: String
+    AllowedValues: ["true", "false"]
+  CognitoUserPoolArn:
+    Type: String
+  CursorHmacKidValue:
+    Type: String
+  CursorHmacSecretValue:
+    Type: String
+    NoEcho: true
+  DynamoTableArn:
+    Type: String
+  DynamoTableName:
+    Type: String
+  OutboxTableArn:
+    Type: String
+  OutboxTableName:
+    Type: String
+  OutboxStreamArn:
+    Type: String
+  SqsQueueArn:
+    Type: String
+  SqsQueueUrl:
+    Type: String
+
+Globals:
+  Function:
+    Runtime: java17
+    MemorySize: !Ref LambdaMemorySize
+    Timeout: !Ref LambdaTimeout
+    Tracing: Active
+    Environment:
+      Variables:
+        DYNAMODB_TABLE_NAME: !Ref DynamoTableName
+        SQS_QUEUE_URL: !Ref SqsQueueUrl
+        ENVIRONMENT: !Ref Environment
+        LOG_LEVEL: !If [IsProd, "INFO", "DEBUG"]
+        SSM_PREFIX: !Sub /${Environment}/{{serviceName}}-service
+        COGNITO_USER_POOL_ID: !Sub '{{resolve:ssm:/${Environment}/{{serviceName}}-service/cognito/user-pool-id}}'
+        COGNITO_AWS_REGION: !Sub '{{resolve:ssm:/${Environment}/{{serviceName}}-service/cognito/aws-region}}'
+        COGNITO_CLIENT_ID: !Sub '{{resolve:ssm:/${Environment}/{{serviceName}}-service/cognito/client-id}}'
+        DOORSYNC_TENANT_REQUIRE_CLAIM: 'true'
+        DOORSYNC_TENANT_CLAIM: 'custom:tenantId'
+        DOORSYNC_TENANT_ALLOW_HEADER_OVERRIDE: 'false'
+
+Conditions:
+  IsProd: !Equals [!Ref Environment, prod]
+  IsCognitoProvided: !Equals [!Ref HasCognitoArn, "true"]
+
+Resources:
+  {{serviceName}}ServiceApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub {{serviceName}}-service-${Environment}
+      StageName: !Ref Environment
+      TracingEnabled: true
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        AddDefaultAuthorizerToCorsPreflight: false
+        Authorizers:
+          CognitoAuthorizer:
+            UserPoolArn: !If
+              - IsCognitoProvided
+              - !Ref CognitoUserPoolArn
+              - !Sub 'arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/{{resolve:ssm:/${Environment}/{{serviceName}}-service/cognito/user-pool-id}}'
+      Cors:
+        AllowMethods: "'*'"
+        AllowHeaders: "'*'"
+        AllowOrigin: !Sub "'https://${Environment}.DoorSync.com'"
+      Models:
+        GenericJsonBody:
+          type: object
+          additionalProperties: true
+
+{{lambdaFunctions}}
+
+  # Log groups with retention for prod only
+{{logGroups}}
+
+  # Lambda alarms
+{{lambdaAlarms}}
+
+Outputs:
+  RestApiId:
+    Value: !Ref {{serviceName}}ServiceApi
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub "https://${{{serviceName}}ServiceApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}"
+
+

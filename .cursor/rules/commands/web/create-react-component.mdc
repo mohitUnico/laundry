@@ -16,12 +16,12 @@ alwaysApply: false
 1. Validate inputs:
    - componentName must be in PascalCase
    - If componentType is 'feature', featureModule is required
-   - Verify admin-panel/src/components directory exists
+   - Verify mart-admin/src/components directory exists
 
 2. Determine component path:
-   - common: `admin-panel/src/components/common/${componentName}/`
-   - feature: `admin-panel/src/components/features/${featureModule}/${componentName}/`
-   - layout: `admin-panel/src/components/layout/${componentName}/`
+   - common: `mart-admin/src/components/common/${componentName}/`
+   - feature: `mart-admin/src/components/features/${featureModule}/${componentName}/`
+   - layout: `mart-admin/src/components/layout/${componentName}/`
 
 3. Check for existing component:
    - Component file: `${componentPath}/${componentName}.${useTypeScript ? 'tsx' : 'jsx'}`
@@ -35,7 +35,7 @@ alwaysApply: false
    Files to be created:
    - ${componentPath}/${componentName}.${useTypeScript ? 'tsx' : 'jsx'}
    - ${componentPath}/index.ts
-   ${includeStyles ? `- ${componentPath}/${componentName}.module.css` : ''}
+   ${includeStyles ? `- ${componentPath}/${componentName}.module.scss` : ''}
    ${includeTests ? `- ${componentPath}/${componentName}.test.${useTypeScript ? 'tsx' : 'jsx'}` : ''}
    ```
 
@@ -53,7 +53,7 @@ alwaysApply: false
 
 ```typescript
 ${useTypeScript ? `import React from 'react';
-${includeStyles ? `import styles from './${componentName}.module.css';` : ''}
+${includeStyles ? `import styles from './${componentName}.module.scss';` : ''}
 
 interface ${componentName}Props {
   // TODO: Define your props
@@ -88,7 +88,7 @@ export const ${componentName}: React.FC<${componentName}Props> = ({
     </div>
   );
 };` : `import React from 'react';
-${includeStyles ? `import styles from './${componentName}.module.css';` : ''}
+${includeStyles ? `import styles from './${componentName}.module.scss';` : ''}
 
 export const ${componentName} = ({
   // TODO: Destructure your props
@@ -127,9 +127,9 @@ ${useTypeScript ? `export type { ${componentName}Props } from './${componentName
 
 4. **Create styles file (if includeStyles is true)**
 
-   Generate `${componentPath}/${componentName}.module.css`:
+   Generate `${componentPath}/${componentName}.module.scss`:
 
-```css
+```scss
 /* ${componentName} Component Styles */
 
 .${componentName.charAt(0).toLowerCase() + componentName.slice(1)} {
@@ -225,7 +225,7 @@ function ${featureModule.charAt(0).toUpperCase() + featureModule.slice(1)}Page()
    Next steps:
    1. Define props interface in: ${componentPath}/${componentName}.${useTypeScript ? 'tsx' : 'jsx'}
    2. Implement component logic and UI
-   3. Add styles in: ${componentPath}/${componentName}.module.css
+   3. Add styles in: ${componentPath}/${componentName}.module.scss
    4. Write tests in: ${componentPath}/${componentName}.test.${useTypeScript ? 'tsx' : 'jsx'}
    5. Import and use component:
       import { ${componentName} } from '${componentPath}';
@@ -249,7 +249,7 @@ function ${featureModule.charAt(0).toUpperCase() + featureModule.slice(1)}Page()
 
 2. **Run linter**
    ```bash
-   cd admin-panel && npm run lint ${componentPath}
+   cd mart-admin && npm run lint ${componentPath}
    ```
 
 3. **Display summary**
@@ -262,11 +262,11 @@ function ${featureModule.charAt(0).toUpperCase() + featureModule.slice(1)}Page()
    Files Created:
    ✓ ${componentPath}/${componentName}.${useTypeScript ? 'tsx' : 'jsx'}
    ✓ ${componentPath}/index.ts
-   ${includeStyles ? `✓ ${componentPath}/${componentName}.module.css` : ''}
+   ${includeStyles ? `✓ ${componentPath}/${componentName}.module.scss` : ''}
    ${includeTests ? `✓ ${componentPath}/${componentName}.test.${useTypeScript ? 'tsx' : 'jsx'}` : ''}
    
    TypeScript: ${useTypeScript ? 'Yes' : 'No'}
-   Styles: ${includeStyles ? 'CSS Modules' : 'None'}
+   Styles: ${includeStyles ? 'SCSS Modules' : 'None'}
    Tests: ${includeTests ? 'Included' : 'Not included'}
    ```
 
@@ -274,9 +274,6 @@ function ${featureModule.charAt(0).toUpperCase() + featureModule.slice(1)}Page()
    ```typescript
    // Import in your code:
    import { ${componentName} } from '@/components/${componentType}/${componentType === 'feature' ? featureModule + '/' : ''}${componentName}';
-   
-   // Or relative import:
-   import { ${componentName} } from '../components/${componentType}/${componentType === 'feature' ? featureModule + '/' : ''}${componentName}';
    
    // Usage:
    <${componentName} 
@@ -320,19 +317,19 @@ function ${featureModule.charAt(0).toUpperCase() + featureModule.slice(1)}Page()
 ```
 /command create-react-component OrderCard --componentType=common
 ```
-Creates: admin-panel/src/components/common/OrderCard/
+Creates: mart-admin/src/components/common/OrderCard/
 
 ### Example 2: Create feature component
 ```
 /command create-react-component OrderList --componentType=feature --featureModule=orders
 ```
-Creates: admin-panel/src/components/features/orders/OrderList/
+Creates: mart-admin/src/components/features/orders/OrderList/
 
 ### Example 3: Create layout component without tests
 ```
 /command create-react-component Header --componentType=layout --includeTests=false
 ```
-Creates: admin-panel/src/components/layout/Header/
+Creates: mart-admin/src/components/layout/Header/
 
 ### Example 4: JavaScript component (no TypeScript)
 ```

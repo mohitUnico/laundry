@@ -4,7 +4,7 @@ globs:
 alwaysApply: false
 ---
 ## arguments
-- service: Name of the service to deploy (default: backend, options: backend, admin-panel)
+- service: Name of the service to deploy (default: backend, options: backend, mart-admin)
 - environment: Target environment for deployment (default: dev, options: dev, staging, prod)
 - taskDescription: Description of the deployment task (default value: Deploy {{service}} to {{environment}} environment)
 - taskId: The ID of the task to update (will be set after task creation)
@@ -32,7 +32,7 @@ alwaysApply: false
 
 3. Validate service name against available services:
    - backend: Node.js/Express API
-   - admin-panel: React web application
+   - mart-admin: React web application
 
 4. Verify environment configuration:
    - Check for .env.{{environment}} file in the service directory
@@ -45,7 +45,7 @@ alwaysApply: false
 
 ## perform
 1. **Pre-deployment validation**
-   - Change directory to the service folder (`backend/` or `admin-panel/`)
+   - Change directory to the service folder (`backend/` or `mart-admin/`)
    - Verify Dockerfile exists
    - Check for uncommitted changes that should be committed first
    - Read current package.json version (for backend)
@@ -76,9 +76,9 @@ alwaysApply: false
        .
      ```
    
-   - For admin-panel:
+   - For mart-admin:
      ```bash
-     cd admin-panel/
+     cd mart-admin/
      docker build \
        -t {{registry}}/laundry-app-admin:{{imageTag}} \
        -t {{registry}}/laundry-app-admin:{{environment}} \
@@ -235,7 +235,7 @@ alwaysApply: false
      curl {{serviceUrl}}/version
      ```
    
-   - For admin-panel: Check if website loads
+   - For mart-admin: Check if website loads
      ```bash
      curl -I https://admin-{{environment}}.laundryapp.com
      ```

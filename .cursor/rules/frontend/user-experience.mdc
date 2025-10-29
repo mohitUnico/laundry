@@ -3,6 +3,10 @@ description: This document maps the frontend application structure to UI screens
 globs: *.ts,*.html,*.scss,apps/**/*,libs/**/*
 alwaysApply: false
 ---
+# NOTE: Not applicable to Laundry App React Admin Panel
+
+This document references DoorSync/Angular UX files and `menu.service.ts`. It is not part of the Laundry App React admin panel. Keep this file disabled for enforcement and ignore its contents for React work.
+
 # DoorSync User Experience Documentation
 ## Shell Application
 **Path**: `.cursor/ctx-store/architecture/experience/web/shell/README.md`

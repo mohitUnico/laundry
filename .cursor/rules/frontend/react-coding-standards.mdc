@@ -1,6 +1,6 @@
 ---
 description: Laundry App React Coding Standards for Admin Panel
-globs: *.jsx,*.tsx,admin-panel/**/*.jsx,admin-panel/**/*.tsx
+globs: *.jsx,*.tsx,mart-admin/**/*.jsx,mart-admin/**/*.tsx
 alwaysApply: false
 ---
 
@@ -21,13 +21,13 @@ alwaysApply: false
 
 ### File Organization
 ```
-admin-panel/src/
+mart-admin/src/
 ├── components/
 │   ├── common/          # Generic reusable components
 │   │   ├── Button/
 │   │   │   ├── Button.tsx
 │   │   │   ├── Button.test.tsx
-│   │   │   ├── Button.styles.ts (or .module.css)
+│   │   │   ├── Button.module.scss
 │   │   │   └── index.ts
 │   │   ├── Input/
 │   │   └── Modal/
@@ -673,6 +673,101 @@ export const useMediaQuery = (query: string): boolean => {
 };
 ```
 
+## TypeScript Configuration
+
+### Required tsconfig.json Settings
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "baseUrl": "src",
+    "paths": {
+      "@/*": ["*"]
+    }
+  },
+  "include": ["src"]
+}
+```
+
+### Path Aliases Setup (Vite)
+
+```ts
+// vite.config.ts
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import path from 'path';
+
+export default defineConfig({
+  plugins: [react()],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
+});
+```
+
+## Code Quality Tools
+
+### ESLint (required plugins)
+
+```json
+{
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended",
+    "plugin:react/recommended",
+    "plugin:react-hooks/recommended",
+    "plugin:jsx-a11y/recommended"
+  ],
+  "rules": {
+    "@typescript-eslint/no-explicit-any": "error",
+    "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+    "react/react-in-jsx-scope": "off",
+    "react/prop-types": "off"
+  }
+}
+```
+
+### Prettier
+
+```json
+{
+  "semi": true,
+  "trailingComma": "es5",
+  "singleQuote": true,
+  "printWidth": 100,
+  "tabWidth": 2
+}
+```
+
+## React 18 Features
+
+```tsx
+// useTransition example
+import { useTransition } from 'react';
+const [isPending, startTransition] = useTransition();
+startTransition(() => setSearchQuery(value));
+
+// useDeferredValue example
+import { useDeferredValue } from 'react';
+const deferredQuery = useDeferredValue(searchQuery);
+```
+
 ## Performance Optimization
 
 ### React.memo
@@ -816,10 +911,10 @@ const OrderDetailsPage: React.FC = () => {
 
 ## Styling
 
-### CSS Modules (Recommended)
+### SCSS Modules (Recommended)
 
 ```tsx
-// OrderCard.module.css
+// OrderCard.module.scss
 .card {
   border: 1px solid #ddd;
   border-radius: 8px;
@@ -839,7 +934,7 @@ const OrderDetailsPage: React.FC = () => {
 }
 
 // OrderCard.tsx
-import styles from './OrderCard.module.css';
+import styles from './OrderCard.module.scss';
 
 export const OrderCard: React.FC<OrderCardProps> = ({ order }) => {
   return (
@@ -878,7 +973,8 @@ import classNames from 'classnames';
 ### Component Tests
 
 ```tsx
-// OrderCard.test.tsx
+// OrderCard.test.tsx (Vitest)
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { OrderCard } from './OrderCard';
 
@@ -892,7 +988,7 @@ const mockOrder: Order = {
 
 describe('OrderCard', () => {
   it('renders order information', () => {
-    render(<OrderCard order={mockOrder} onViewDetails={jest.fn()} />);
+    render(<OrderCard order={mockOrder} onViewDetails={vi.fn()} />);
     
     expect(screen.getByText('order-123')).toBeInTheDocument();
     expect(screen.getByText('John Doe')).toBeInTheDocument();
@@ -900,7 +996,7 @@ describe('OrderCard', () => {
   });
 
   it('calls onViewDetails when button is clicked', () => {
-    const handleViewDetails = jest.fn();
+    const handleViewDetails = vi.fn();
     render(<OrderCard order={mockOrder} onViewDetails={handleViewDetails} />);
     
     fireEvent.click(screen.getByText('View Details'));
@@ -909,7 +1005,7 @@ describe('OrderCard', () => {
   });
 
   it('displays status badge with correct style', () => {
-    render(<OrderCard order={mockOrder} onViewDetails={jest.fn()} />);
+    render(<OrderCard order={mockOrder} onViewDetails={vi.fn()} />);
     
     const badge = screen.getByText('in_process');
     expect(badge).toHaveClass('badge-in-process');
@@ -928,4 +1024,4 @@ describe('OrderCard', () => {
 7. **Accessibility**: Use semantic HTML and ARIA attributes
 8. **Code Splitting**: Lazy load routes and heavy components
 9. **Testing**: Write tests for components and custom hooks
-10. **Consistent Styling**: Use CSS Modules or styled-components consistently
+10. **Consistent Styling**: Use SCSS Modules or styled-components consistently

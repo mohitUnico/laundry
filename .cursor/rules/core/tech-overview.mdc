@@ -112,8 +112,8 @@ The backend follows a layered architecture pattern:
 - **Data Visualization**: Chart.js, Recharts, or ApexCharts
 - **Date Handling**: date-fns or day.js
 - **Build Tool**: Vite or Create React App
-- **CSS**: CSS Modules, Styled Components, or Tailwind CSS
-- **Testing**: Jest, React Testing Library
+- **CSS**: SCSS Modules, Styled Components, or Tailwind CSS
+- **Testing**: Vitest, React Testing Library
 
 ## Mobile Apps (Flutter)
 - **Framework**: Flutter
@@ -162,7 +162,7 @@ The backend follows a layered architecture pattern:
 
 ## Testing
 - **Backend Testing**: Jest for unit and integration tests, Supertest for API testing
-- **Frontend Testing (React)**: Jest, React Testing Library
+- **Frontend Testing (React)**: Vitest, React Testing Library
 - **Mobile Testing (Flutter)**: flutter_test for unit tests, integration_test for E2E
 - **API Testing**: Postman collections, automated API tests
 - **Database Testing**: Test database with seed data

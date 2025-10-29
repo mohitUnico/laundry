@@ -1,6 +1,6 @@
 ---
 description: Laundry App Frontend Architecture Guidelines
-globs: *.jsx,*.tsx,*.dart,admin-panel/**/*,customer-app/**/*,delivery-app/**/*
+globs: *.jsx,*.tsx,*.dart,mart-admin/**/*,customer-app/**/*,delivery-app/**/*
 alwaysApply: false
 ---
 
@@ -30,38 +30,489 @@ Each application follows modern architecture patterns with clear separation of c
 
 ### Project Structure
 ```
-admin-panel/
+mart-admin/
 ├── public/
 │   ├── index.html
+│   ├── favicon.ico
+│   ├── logo.svg
+│   ├── manifest.json
+│   ├── robots.txt
 │   └── assets/
+│       ├── images/
+│       │   ├── logo-light.png
+│       │   ├── logo-dark.png
+│       │   └── placeholder-avatar.png
+│       └── icons/
+│           ├── dashboard.svg
+│           ├── orders.svg
+│           ├── customers.svg
+│           ├── delivery.svg
+│           ├── services.svg
+│           ├── promotions.svg
+│           ├── analytics.svg
+│           ├── notifications.svg
+│           └── settings.svg
+│
 ├── src/
-│   ├── components/          # Reusable components
-│   │   ├── common/          # Generic UI components
-│   │   ├── layout/          # Layout components (Header, Sidebar, Footer)
-│   │   └── features/        # Feature-specific components
-│   ├── pages/               # Page components (route level)
+│   ├── App.tsx                 # Root component
+│   ├── App.module.scss         # Root component styles
+│   ├── main.tsx                # Application entry point
+│   ├── index.scss              # Global styles entry
+│   ├── vite-env.d.ts           # Vite type definitions
+│   ├── react-app-env.d.ts      # React type definitions
+│   │
+│   ├── assets/
+│   │   ├── icons/              # SVG icons
+│   │   │   ├── arrow-up.svg
+│   │   │   ├── arrow-down.svg
+│   │   │   ├── external-link.svg
+│   │   │   ├── bell.svg
+│   │   │   ├── search.svg
+│   │   │   ├── filter.svg
+│   │   │   ├── export.svg
+│   │   │   └── index.ts
+│   │   ├── images/
+│   │   │   └── index.ts
+│   │   └── styles/             # Global style files
+│   │       ├── global.scss
+│   │       ├── variables.scss
+│   │       ├── mixins.scss
+│   │       ├── animations.scss
+│   │       └── reset.scss
+│   │
+│   ├── components/
+│   │   ├── common/             # Reusable UI components
+│   │   │   ├── Button/
+│   │   │   │   ├── Button.tsx
+│   │   │   │   ├── Button.module.scss
+│   │   │   │   ├── Button.types.ts
+│   │   │   │   ├── Button.test.tsx
+│   │   │   │   └── index.ts
+│   │   │   ├── Card/
+│   │   │   ├── Badge/
+│   │   │   ├── Avatar/
+│   │   │   ├── Input/
+│   │   │   ├── Dropdown/
+│   │   │   ├── Modal/
+│   │   │   ├── Table/
+│   │   │   ├── Loader/
+│   │   │   ├── SearchBar/
+│   │   │   ├── StatusBadge/
+│   │   │   ├── EmptyState/
+│   │   │   ├── ErrorBoundary/
+│   │   │   └── index.ts
+│   │   │
+│   │   ├── layout/             # Layout components
+│   │   │   ├── Sidebar/
+│   │   │   │   ├── Sidebar.tsx
+│   │   │   │   ├── Sidebar.module.scss
+│   │   │   │   ├── SidebarItem.tsx
+│   │   │   │   ├── Sidebar.types.ts
+│   │   │   │   ├── sidebarConfig.ts
+│   │   │   │   └── index.ts
+│   │   │   ├── Header/
+│   │   │   │   ├── Header.tsx
+│   │   │   │   ├── Header.module.scss
+│   │   │   │   ├── UserMenu.tsx
+│   │   │   │   ├── NotificationDropdown.tsx
+│   │   │   │   ├── Header.types.ts
+│   │   │   │   └── index.ts
+│   │   │   ├── MainLayout/
+│   │   │   ├── Footer/
+│   │   │   └── index.ts
+│   │   │
+│   │   ├── dashboard/          # Dashboard feature components
+│   │   │   ├── MetricCard/
+│   │   │   ├── OrderStatusWidget/
+│   │   │   ├── RevenueChart/
+│   │   │   ├── AlertCard/
+│   │   │   ├── TopPerformers/
+│   │   │   ├── RecentOrders/
+│   │   │   ├── CustomerSatisfaction/
+│   │   │   ├── QuickActions/
+│   │   │   └── index.ts
+│   │   │
+│   │   ├── orders/             # Orders feature components
+│   │   │   ├── OrdersTable/
+│   │   │   ├── OrderCard/
+│   │   │   ├── OrderDetails/
+│   │   │   ├── OrderForm/
+│   │   │   ├── OrderFilters/
+│   │   │   ├── OrderActions/
+│   │   │   ├── ExportOrders/
+│   │   │   └── index.ts
+│   │   │
+│   │   ├── customers/          # Customers feature components
+│   │   │   ├── CustomersList/
+│   │   │   ├── CustomerCard/
+│   │   │   ├── CustomerDetails/
+│   │   │   ├── CustomerForm/
+│   │   │   ├── CustomerStats/
+│   │   │   ├── ExportCustomers/
+│   │   │   └── index.ts
+│   │   │
+│   │   ├── delivery/           # Delivery feature components
+│   │   │   ├── DeliveryStaffList/
+│   │   │   ├── StaffCard/
+│   │   │   ├── StaffForm/
+│   │   │   ├── LiveLocationMap/
+│   │   │   ├── StaffStats/
+│   │   │   ├── DeliveryAssignment/
+│   │   │   └── index.ts
+│   │   │
+│   │   ├── services/           # Services feature components
+│   │   │   ├── ServicesList/
+│   │   │   ├── ServiceCard/
+│   │   │   ├── ServiceForm/
+│   │   │   ├── ServiceTypes/
+│   │   │   ├── QuickStats/
+│   │   │   └── index.ts
+│   │   │
+│   │   ├── promotions/         # Promotions feature components
+│   │   │   ├── PromoList/
+│   │   │   ├── PromoCard/
+│   │   │   ├── PromoForm/
+│   │   │   ├── PromoStats/
+│   │   │   ├── CouponGenerator/
+│   │   │   └── index.ts
+│   │   │
+│   │   ├── notifications/      # Notifications feature components
+│   │   │   ├── NotificationsList/
+│   │   │   ├── NotificationCard/
+│   │   │   ├── SupportTickets/
+│   │   │   ├── AutomatedNotifications/
+│   │   │   ├── QuickSender/
+│   │   │   ├── NotificationStats/
+│   │   │   └── index.ts
+│   │   │
+│   │   ├── settings/           # Settings feature components
+│   │   │   ├── BusinessInfo/
+│   │   │   ├── PaymentSettings/
+│   │   │   ├── TeamManagement/
+│   │   │   ├── RolePermissions/
+│   │   │   ├── SettingsMenu/
+│   │   │   └── index.ts
+│   │   │
+│   │   └── analytics/          # Analytics feature components
+│   │       ├── AnalyticsChart/
+│   │       ├── PerformanceMetrics/
+│   │       └── index.ts
+│   │
+│   ├── pages/                  # Page-level components (routes)
 │   │   ├── Dashboard/
+│   │   │   ├── DashboardPage.tsx
+│   │   │   ├── DashboardPage.module.scss
+│   │   │   └── index.ts
 │   │   ├── Orders/
+│   │   │   ├── OrdersPage.tsx
+│   │   │   ├── OrdersPage.module.scss
+│   │   │   ├── OrderDetailsPage.tsx
+│   │   │   ├── AddOrderPage.tsx
+│   │   │   └── index.ts
 │   │   ├── Customers/
-│   │   ├── Delivery/
+│   │   │   ├── CustomersPage.tsx
+│   │   │   ├── CustomersPage.module.scss
+│   │   │   ├── CustomerDetailsPage.tsx
+│   │   │   ├── AddCustomerPage.tsx
+│   │   │   └── index.ts
+│   │   ├── DeliveryStaff/
+│   │   │   ├── DeliveryStaffPage.tsx
+│   │   │   ├── DeliveryStaffPage.module.scss
+│   │   │   ├── AddStaffPage.tsx
+│   │   │   └── index.ts
 │   │   ├── Services/
-│   │   ├── Reports/
-│   │   └── Settings/
-│   ├── hooks/               # Custom React hooks
-│   ├── services/            # API client services
-│   ├── store/               # State management
-│   │   ├── slices/          # Redux slices (if using Redux)
-│   │   └── context/         # Context providers
-│   ├── utils/               # Utility functions
-│   ├── types/               # TypeScript type definitions
-│   ├── constants/           # Application constants
-│   ├── routes/              # Route configuration
-│   ├── assets/              # Static assets
-│   ├── styles/              # Global styles
-│   ├── App.tsx              # Root component
-│   └── index.tsx            # Entry point
+│   │   │   ├── ServicesPage.tsx
+│   │   │   ├── ServicesPage.module.scss
+│   │   │   ├── AddServicePage.tsx
+│   │   │   └── index.ts
+│   │   ├── Promotions/
+│   │   │   ├── PromotionsPage.tsx
+│   │   │   ├── PromotionsPage.module.scss
+│   │   │   ├── AddPromoPage.tsx
+│   │   │   └── index.ts
+│   │   ├── Analytics/
+│   │   │   ├── AnalyticsPage.tsx
+│   │   │   ├── AnalyticsPage.module.scss
+│   │   │   └── index.ts
+│   │   ├── Notifications/
+│   │   │   ├── NotificationsPage.tsx
+│   │   │   ├── NotificationsPage.module.scss
+│   │   │   └── index.ts
+│   │   ├── Settings/
+│   │   │   ├── SettingsPage.tsx
+│   │   │   ├── SettingsPage.module.scss
+│   │   │   ├── BusinessInfoPage.tsx
+│   │   │   ├── PaymentSettingsPage.tsx
+│   │   │   ├── TeamRolesPage.tsx
+│   │   │   └── index.ts
+│   │   ├── Auth/
+│   │   │   ├── LoginPage.tsx
+│   │   │   ├── LoginPage.module.scss
+│   │   │   ├── ForgotPasswordPage.tsx
+│   │   │   └── index.ts
+│   │   └── NotFound/
+│   │       ├── NotFoundPage.tsx
+│   │       ├── NotFoundPage.module.scss
+│   │       └──ութindex.ts
+│   │
+│   ├── hooks/
+│   │   ├── common/             # Common utility hooks
+│   │   │   ├── useAuth.ts
+│   │   │   ├── usePermissions.ts
+│   │   │   ├── useDebounce.ts
+│   │   │   ├── useLocalStorage.ts
+│   │   │   ├── useSessionStorage.ts
+│   │   │   ├── useWindowSize.ts
+│   │   │   ├── useMediaQuery.ts
+│   │   │   ├── useClickOutside.ts
+│   │   │   ├── useToggle.ts
+│   │   │   └── index.ts
+│   │   ├── api/                # API-related hooks
+│   │   │   ├── useDashboard.ts
+│   │   │   ├── useOrders.ts
+│   │   │   ├── useCustomers.ts
+│   │   │   ├── useDeliveryStaff.ts
+│   │   │   ├── useServices.ts
+│   │   │   ├── usePromotions.ts
+│   │   │   ├── useNotifications.ts
+│   │   │   ├── useSettings.ts
+│   │   │   └── index.ts
+│   │   └── index.ts
+│   │
+│   ├── context/                # React Context providers
+│   │   ├── AuthContext/
+│   │   │   ├── AuthContext.tsx
+│   │   │   ├── AuthContext.types.ts
+│   │   │   ├── AuthProvider.tsx
+│   │   │   └── index.ts
+│   │   ├── ThemeContext/
+│   │   │   ├── ThemeContext.tsx
+│   │   │   ├── ThemeContext.types.ts
+│   │   │   ├── ThemeProvider.tsx
+│   │   │   └── index.ts
+│   │   ├── NotificationContext/
+│   │   │   ├── NotificationContext.tsx
+│   │   │   ├── NotificationContext.types.ts
+│   │   │   ├── NotificationProvider.tsx
+│   │   │   └── index.ts
+│   │   └── index.ts
+│   │
+│   ├── store/                  # Redux store (if using Redux)
+│   │   ├── slices/
+│   │   │   ├── authSlice.ts
+│   │   │   ├── dashboardSlice.ts
+│   │   │   ├── ordersSlice.ts
+│   │   │   ├── customersSlice.ts
+│   │   │   ├── deliveryStaffSlice.ts
+│   │   │   ├── servicesSlice.ts
+│   │   │   ├── promotionsSlice.ts
+│   │   │   ├── notificationsSlice.ts
+│   │   │   ├── settingsSlice.ts
+│   │   │   └── index.ts
+│   │   ├── store.ts
+│   │   ├── hooks.ts
+│   │   ├── middleware.ts
+│   │   └── selectors.ts
+│   │
+│   ├── services/
+│   │   ├── api/
+│   │   │   ├── config/
+│   │   │   │   ├── axios.config.ts
+│   │   │   │   ├── endpoints.ts
+│   │   │   │   └── interceptors.ts
+│   │   │   ├── modules/
+│   │   │   │   ├── authApi.ts
+│   │   │   │   ├── dashboardApi.ts
+│   │   │   │   ├── ordersApi.ts
+│   │   │   │   ├── customersApi.ts
+│   │   │   │   ├── deliveryStaffApi.ts
+│   │   │   │   ├── servicesApi.ts
+│   │   │   │   ├── promotionsApi.ts
+│   │   │   │   ├── notificationsApi.ts
+│   │   │   │   └── settingsApi.ts
+│   │   │   └── index.ts
+│   │   ├── websocket/
+│   │   │   ├── socketService.ts
+│   │   │   ├── eventHandlers.ts
+│   │   │   ├── socketConfig.ts
+│   │   │   └── index.ts
+│   │   └── storage/
+│   │       ├── localStorage.service.ts
+│   │       ├── sessionStorage.service.ts
+│   │       ├── indexedDB.service.ts
+│   │       └── index.ts
+│   │
+│   ├── utils/
+│   │   ├── formatters/
+│   │   │   ├── currencyFormatter.ts
+│   │   │   ├── dateFormatter.ts
+│   │   │   ├── numberFormatter.ts
+│   │   │   ├── percentageFormatter.ts
+│   │   │   ├── phoneFormatter.ts
+│   │   │   └── index.ts
+│   │   ├── validators/
+│   │   │   ├── formValidators.ts
+│   │   │   ├── emailValidator.ts
+│   │   │   ├── phoneValidator.ts
+│   │   │   ├── orderValidator.ts
+│   │   │   ├── passwordValidator.ts
+│   │   │   └── index.ts
+│   │   ├── helpers/
+│   │   │   ├── calcPercentage.ts
+│   │   │   ├── generateId.ts
+│   │   │   ├── sortHelpers.ts
+│   │   │   ├── filterHelpers.ts
+│   │   │   ├── chartHelpers.ts
+│   │   │   ├── arrayHelpers.ts
+│   │   │   ├── objectHelpers.ts
+│   │   │   ├── stringHelpers.ts
+│   │   │   └── index.ts
+│   │   ├── constants/
+│   │   │   ├── appConstants.ts
+│   │   │   ├── apiEndpoints.ts
+│   │   │   ├── routes.constants.ts
+│   │   │   ├── orderStatus.constants.ts
+│   │   │   ├── paymentStatus.constants.ts
+│   │   │   ├── deliveryStatus.constants.ts
+│   │   │   ├── rolePermissions.constants.ts
+│   │   │   ├── messages.constants.ts
+│   │   │   └── index.ts
+│   │   └── exporters/
+│   │       ├── csvExporter.ts
+│   │       ├── pdfExporter.ts
+│   │       ├── excelExporter.ts
+│   │       └── index.ts
+│   │
+│   ├── routes/
+│   │   ├── AppRoutes.tsx
+│   │   ├── PrivateRoute.tsx
+│   │   ├── PublicRoute.tsx
+│   │   ├── routeConfig.ts
+│   │   └── index.ts
+│   │
+│   ├── types/                  # TypeScript type definitions
+│   │   ├── common.types.ts
+│   │   ├── api.types.ts
+│   │   ├── auth.types.ts
+│   │   ├── dashboard.types.ts
+│   │   ├── order.types.ts
+│   │   ├── customer.types.ts
+│   │   ├── deliveryStaff.types.ts
+│   │   ├── service.types.ts
+│   │   ├── promotion.types.ts
+│   │   ├── notification.types.ts
+│   │   ├── settings.types.ts
+│   │   ├── chart.types.ts
+│   │   ├── user.types.ts
+│   │   └── index.ts
+│   │
+│   ├── interfaces/             # TypeScript interfaces
+│   │   ├── IOrder.ts
+│   │   ├── ICustomer.ts
+│   │   ├── IDeliveryStaff.ts
+│   │   ├── IService.ts
+│   │   ├── IPromotion.ts
+│   │   ├── IUser.ts
+│   │   ├── INotification.ts
+│   │   └── index.ts
+│   │
+│   └── enums/                  # TypeScript enums
+│       ├── OrderStatus.enum.ts
+│       ├── PaymentStatus.enum.ts
+│       ├── PaymentMethod.enum.ts
+│       ├── DeliveryStatus.enum.ts
+│       ├── UserRole.enum.ts
+│       ├── NotificationType.enum.ts
+│       ├── ServiceStatus.enum.ts
+│       ├── PromoType.enum.ts
+│       └── index.ts
+│
+├── tests/
+│   ├── unit/
+│   │   ├── components/
+│   │   │   ├── common/
+│   │   │   │   ├── Button.test.tsx
+│   │   │   │   ├── Card.test.tsx
+│   │   │   │   ├── Modal.test.tsx
+│   │   │   │   └── Table.test.tsx
+│   │   │   ├── dashboard/
+│   │   │   │   ├── MetricCard.test.tsx
+│   │   │   │   └── RevenueChart.test.tsx
+│   │   │   └── orders/
+│   │   │       ├── OrderCard.test.tsx
+│   │   │       └── OrderForm.test.tsx
+│   │   ├── hooks/
+│   │   │   ├── useAuth.test.ts
+│   │   │   ├── useDashboard.test.ts
+│   │   │   ├── useOrders.test.ts
+│   │   │   └── useDebounce.test.ts
+│   │   ├── store/
+│   │   │   ├── authSlice.test.ts
+│   │   │   ├── ordersSlice.test.ts
+│   │   │   └── dashboardSlice.test.ts
+│   │   └── utils/
+│   │       ├── formatters.test.ts
+│   │       ├── validators.test.ts
+│   │       └── helpers.test.ts
+│   ├── integration/
+│   │   ├── api/
+│   │   │   ├── ordersApi.test.ts
+│   │   │   ├── customersApi.test.ts
+│   │   │   └── authApi.test.ts
+│   │   ├── pages/
+│   │   │   ├── DashboardPage.test.tsx
+│   │   │   ├── OrdersPage.test.tsx
+│   │   │   └── LoginPage.test.tsx
+│   │   └── flows/
+│   │       ├── OrderCreation.test.tsx
+│   │       ├── CustomerManagement.test.tsx
+│   │       └── Authentication.test.tsx
+│   ├── e2e/
+│   │   ├── dashboard.spec.ts
+│   │   ├── orders.spec.ts
+│   │   ├── customers.spec.ts
+│   │   ├── login.spec.ts
+│   │   └── settings.spec.ts
+│   ├── mocks/
+│   │   ├── handlers/
+│   │   │   ├── authHandlers.ts
+│   │   │   ├── ordersHandlers.ts
+│   │   │   ├── customersHandlers.ts
+│   │   │   └── index.ts
+│   │   ├── data/
+│   │   │   ├── mockOrders.ts
+│   │   │   ├── mockCustomers.ts
+│   │   │   ├── mockUsers.ts
+│   │   │   └── index.ts
+│   │   ├── server.ts
+│   │   └── browser.ts
+│   ├── setup.ts
+│   └── setupTests.ts
+│
+├── .env
+├── .env.example
+├── .env.development
+├── .env.production
+├── .env.staging
+├── .gitignore
+├── .eslintrc.json
+├── .eslintignore
+├── .prettierrc
+├── .prettierignore
+├── .editorconfig
+├── .husky/
+│   ├── pre-commit
+│   └── pre-push
+├── tsconfig.json
+├── tsconfig.node.json
+├── vite.config.ts
+├── vitest.config.ts
 ├── package.json
-└── tsconfig.json (if using TypeScript)
+├── package-lock.json
+├── README.md
+├── CHANGELOG.md
+├── CONTRIBUTING.md
+└── docker-compose.yml
 ```
 
 ### Component Architecture
@@ -381,7 +832,7 @@ class ApiService {
 
   constructor() {
     this.axiosInstance = axios.create({
-      baseURL: process.env.REACT_APP_API_BASE_URL,
+      baseURL: import.meta.env.VITE_API_BASE_URL,
       timeout: 10000,
       headers: {
         'Content-Type': 'application/json',
@@ -468,6 +919,32 @@ class OrderService {
 
 export const orderService = new OrderService();
 ```
+
+## Vite Build Tool Configuration
+
+### Environment Variables
+- Prefix public environment variables with `VITE_`
+- Access them via `import.meta.env.VITE_*`
+- Add `src/env.d.ts` for type safety:
+
+```ts
+/// <reference types="vite/client" />
+interface ImportMetaEnv {
+  readonly VITE_API_BASE_URL: string;
+}
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}
+```
+
+### Asset Handling
+- Place static assets in `public/` for direct serving
+- Import assets from `src/` to get hashed filenames
+- Use `?url` for URL imports and `?raw` for raw text
+
+### Build & Code Splitting
+- Prefer dynamic imports for route-level code splitting
+- Wrap lazy routes with `Suspense` and an `ErrorBoundary`
 
 ### Routing
 

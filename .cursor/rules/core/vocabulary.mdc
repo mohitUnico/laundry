@@ -12,7 +12,7 @@ This document defines the terminology and vocabulary used throughout the Laundry
 ### Top-Level Directories
 
 - **`backend/`**: Node.js/Express REST API backend
-- **`admin-panel/`**: React-based web application for mart administration
+- **`mart-admin/`**: React-based web application for mart administration
 - **`customer-app/`**: Flutter mobile application for customers
 - **`delivery-app/`**: Flutter mobile application for delivery partners
 - **`shared/`**: Shared utilities, types, and configurations across applications
@@ -58,7 +58,7 @@ This document defines the terminology and vocabulary used throughout the Laundry
 
 ## Frontend Terminology
 
-### Admin Panel (`admin-panel/`)
+### Admin Panel (`mart-admin/`)
 
 React-based web application with the following structure:
 

@@ -1,6 +1,6 @@
 ---
 description: Laundry App Frontend Code Review Checklist - React & Flutter
-globs: *.jsx,*.tsx,*.dart,admin-panel/**/*,customer-app/**/*,delivery-app/**/*
+globs: *.jsx,*.tsx,*.dart,mart-admin/**/*,customer-app/**/*,delivery-app/**/*
 alwaysApply: false
 ---
 
@@ -96,7 +96,7 @@ alwaysApply: false
 - [ ] Disabled state during submission
 
 ## Styling
-- [ ] CSS Modules or styled-components used consistently
+- [ ] SCSS Modules or styled-components used consistently
 - [ ] No inline styles (use style objects or classes)
 - [ ] Classnames library used for conditional classes
 - [ ] Responsive design implemented

@@ -4,7 +4,7 @@ globs:
 alwaysApply: false
 ---
 ## arguments
-- service: Name of the service to validate (default: backend, options: backend, admin-panel)
+- service: Name of the service to validate (default: backend, options: backend, mart-admin)
 - environment: Target environment for validation (default: dev, options: dev, staging, prod)
 - baseUrl: Base URL for the API (optional, auto-detected if not provided)
 - authToken: JWT authentication token for secured endpoints (optional, will generate if not provided)

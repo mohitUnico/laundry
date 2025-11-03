@@ -1,5 +1,5 @@
 import React from 'react';
-import './StatusBadge.module.scss';
+import styles from './StatusBadge.module.scss';
 
 interface StatusBadgeProps {
   status: string;
@@ -7,5 +7,5 @@ interface StatusBadgeProps {
 }
 
 export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, variant = 'info' }) => {
-  return <span className={`status-badge status-badge-${variant}`}>{status}</span>;
+  return <span className={`${styles['status-badge']} ${styles[`status-badge-${variant}`]}`}>{status}</span>;
 };

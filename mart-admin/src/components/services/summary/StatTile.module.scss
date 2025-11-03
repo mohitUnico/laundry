@@ -1,0 +1,28 @@
+.tile {
+  padding: 14px 16px;
+}
+
+.labelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.label {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+}
+
+.value {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+

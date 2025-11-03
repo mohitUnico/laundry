@@ -1,6 +1,6 @@
 import React from 'react';
 import classNames from 'classnames';
-import './Button.module.scss';
+import styles from './Button.module.scss';
 
 interface ButtonProps {
   children: React.ReactNode;
@@ -23,10 +23,16 @@ export const Button: React.FC<ButtonProps> = ({
   type = 'button',
   className,
 }) => {
-  const btnClass = classNames('btn', `btn-${variant}`, `btn-${size}`, {
-    'btn-disabled': disabled,
-    'btn-loading': loading,
-  }, className);
+  const btnClass = classNames(
+    styles.btn,
+    styles[`btn-${variant}`],
+    styles[`btn-${size}`],
+    {
+      [styles['btn-disabled']]: disabled,
+      [styles['btn-loading']]: loading,
+    },
+    className
+  );
 
   return (
     <button type={type} className={btnClass} onClick={onClick} disabled={disabled || loading}>

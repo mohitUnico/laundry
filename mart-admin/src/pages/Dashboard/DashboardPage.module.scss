@@ -6,25 +6,13 @@
   }
 }
 
-.dashboard-grid {
+.metrics-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
 }
 
-.metric {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-
-  &-value {
-    font-size: 32px;
-    font-weight: 700;
-    color: #1e293b;
-  }
-
-  &-label {
-    font-size: 14px;
-    color: #64748b;
-  }
-}
+.row-2 { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 16px; }
+.row-3 { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 16px; }
+.row-4 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 16px; }

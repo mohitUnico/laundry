@@ -1,5 +1,9 @@
 export const ROUTES = {
   LOGIN: '/login',
+  SIGNUP: '/signup',
+  SIGNUP_OTP: '/signup/otp',
+  SIGNUP_PROFILE: '/signup/profile',
+  SIGNUP_LOCATION: '/signup/location',
   DASHBOARD: '/dashboard',
   ORDERS: '/orders',
   ORDER_DETAILS: '/orders/:orderId',
@@ -8,6 +12,7 @@ export const ROUTES = {
   DELIVERY_STAFF: '/delivery-staff',
   SERVICES: '/services',
   PROMOTIONS: '/promotions',
+  PAYMENTS: '/payments',
   ANALYTICS: '/analytics',
   NOTIFICATIONS: '/notifications',
   SETTINGS: '/settings',

@@ -1,0 +1,61 @@
+.card {
+  padding: 16px 16px 12px;
+}
+
+.headerRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.title {
+  font-weight: 600;
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+
+.subtitle {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.metaRow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0 12px;
+}
+
+.metaItem {
+  display: flex;
+  flex-direction: column;
+}
+
+.metaLabel {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.metaValue {
+  font-weight: 600;
+}
+
+.actionsRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.fullWidthBtn {
+  width: 88%;
+  background-color: #2563eb !important; /* stronger blue like screenshot */
+}
+
+.rightKnob {
+  width: 24px;
+  height: 16px;
+  border-radius: 8px;
+  background: #e5e7eb;
+}
+
+

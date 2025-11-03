@@ -13,6 +13,7 @@ export const sidebarConfig: SidebarItem[] = [
   { label: 'Delivery Staff', path: ROUTES.DELIVERY_STAFF, icon: 'delivery' },
   { label: 'Services', path: ROUTES.SERVICES, icon: 'services' },
   { label: 'Promotions', path: ROUTES.PROMOTIONS, icon: 'promotions' },
+  { label: 'Payments', path: ROUTES.PAYMENTS, icon: 'payments' },
   { label: 'Analytics', path: ROUTES.ANALYTICS, icon: 'analytics' },
   { label: 'Notifications', path: ROUTES.NOTIFICATIONS, icon: 'notifications' },
   { label: 'Settings', path: ROUTES.SETTINGS, icon: 'settings' },

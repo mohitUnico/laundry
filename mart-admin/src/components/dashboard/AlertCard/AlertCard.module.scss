@@ -1,0 +1,40 @@
+.alert-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.badge {
+  background: #1d4ed8;
+  color: white;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.content {
+  flex: 1;
+}
+
+.title {
+  color: #0f172a;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.subtitle {
+  color: #475569;
+  font-size: 14px;
+}
+
+.cta {
+  background: #111827;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+

@@ -1,10 +1,10 @@
 import React from 'react';
-import './Loader.module.scss';
+import styles from './Loader.module.scss';
 
 export const Loader: React.FC = () => {
   return (
-    <div className="loader-container">
-      <div className="loader"></div>
+    <div className={styles['loader-container']}>
+      <div className={styles.loader}></div>
     </div>
   );
 };

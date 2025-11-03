@@ -27,4 +27,24 @@ export const API_ENDPOINTS = {
   DASHBOARD: {
     METRICS: '/dashboard/metrics',
   },
+  NOTIFICATIONS: {
+    SEND: '/notifications/send',
+  },
+  SETTINGS: {
+    SAVE: '/settings',
+    SERVICE_AREAS: {
+      LIST: '/settings/service-areas',
+      CREATE: '/settings/service-areas',
+      DELETE: (id: string) => `/settings/service-areas/${id}`,
+    },
+    TEAM: {
+      SUMMARY: '/settings/team/summary',
+      MEMBERS: '/settings/team/members',
+      MEMBER: (id: string) => `/settings/team/members/${id}`,
+    },
+    SECURITY: {
+      CHANGE_PASSWORD: '/settings/security/change-password',
+      ACTIVITY_LOG: '/settings/security/activity-log',
+    },
+  },
 };

@@ -1,33 +1,42 @@
-import { logger } from '../utils/logger.js'
+const logger = require('../utils/logger');
+const { v4: uuidv4 } = require('uuid');
 
-export const requestLogger = (req, res, next) => {
-    const start = Date.now()
+/**
+ * Middleware to log HTTP requests with duration and correlation ID
+ */
+exports.requestLogger = (req, res, next) => {
+  const start = Date.now();
 
-    // Log when response is finished
-    res.on('finish', () => {
-        const duration = Date.now() - start
-        const logData = {
-            method: req.method,
-            url: req.originalUrl,
-            status: res.statusCode,
-            duration: `${duration}ms`,
-            ip: req.ip,
-            userAgent: req.get('user-agent'),
-        }
+  // Generate correlation ID for request tracking
+  req.correlationId = req.headers['x-correlation-id'] || uuidv4();
+  res.setHeader('X-Correlation-ID', req.correlationId);
 
-        const logMessage = `${logData.method} ${logData.url} ${logData.status} ${logData.duration}`
+  // Log when response is finished
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    const logData = {
+      method: req.method,
+      url: req.originalUrl,
+      status: res.statusCode,
+      duration: `${duration}ms`,
+      ip: req.ip,
+      userAgent: req.get('user-agent'),
+      correlationId: req.correlationId,
+    };
 
-        if (res.statusCode >= 500) {
-            logger.error(logMessage, logData)
-        } else if (res.statusCode >= 400) {
-            logger.warn(logMessage, logData)
-        } else {
-            logger.info(logMessage, logData)
-        }
-    })
+    const logMessage = `${logData.method} ${logData.url} ${logData.status} ${logData.duration}`;
 
-    next()
-}
+    if (res.statusCode >= 500) {
+      logger.error(logMessage, logData);
+    } else if (res.statusCode >= 400) {
+      logger.warn(logMessage, logData);
+    } else {
+      logger.info(logMessage, logData);
+    }
+  });
 
-export default requestLogger
+  next();
+};
+
+module.exports = exports;
 

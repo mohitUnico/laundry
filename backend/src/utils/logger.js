@@ -1,33 +1,22 @@
-import winston from 'winston'
-import path from 'path'
-import { fileURLToPath } from 'url'
+const winston = require('winston');
+const path = require('path');
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-
-const { combine, timestamp, printf, colorize, errors } = winston.format
+const { combine, timestamp, printf, colorize, errors } = winston.format;
 
 // Custom log format
-const logFormat = printf(({ level, message, timestamp, stack }) => {
-    return `${timestamp} ${level}: ${stack || message}`
-})
+const logFormat = printf(({ level, message, timestamp, stack, ...meta }) => {
+    const metaStr = Object.keys(meta).length ? JSON.stringify(meta) : '';
+    return `${timestamp} ${level}: ${stack || message} ${metaStr}`;
+});
 
 // Create logger instance
-export const logger = winston.createLogger({
+const logger = winston.createLogger({
     level: process.env.LOG_LEVEL || 'info',
-    format: combine(
-        timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-        errors({ stack: true }),
-        logFormat
-    ),
+    format: combine(timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }), errors({ stack: true }), logFormat),
     transports: [
         // Console transport
         new winston.transports.Console({
-            format: combine(
-                colorize(),
-                timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-                logFormat
-            ),
+            format: combine(colorize(), timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }), logFormat),
         }),
         // File transport for errors
         new winston.transports.File({
@@ -53,16 +42,16 @@ export const logger = winston.createLogger({
             filename: path.join(__dirname, '../../logs/rejections.log'),
         }),
     ],
-})
+});
 
 // Don't log to console in test environment
 if (process.env.NODE_ENV === 'test') {
     logger.transports.forEach((transport) => {
         if (transport instanceof winston.transports.Console) {
-            transport.silent = true
+            transport.silent = true;
         }
-    })
+    });
 }
 
-export default logger
+module.exports = logger;
 

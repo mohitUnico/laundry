@@ -23,6 +23,7 @@ model LaundryMart {
   address             String   @db.Text
   latitude            Decimal  @db.Decimal(10, 8)
   longitude           Decimal  @db.Decimal(11, 8)
+  profile_image_url   String?  @db.Text // Optional URL to mart profile image (S3)
   service_radius_km   Json     // JSON field for distance-based pricing tiers
   is_active           Boolean  @default(true)
   created_at          DateTime @default(now())
@@ -39,16 +40,16 @@ model LaundryMart {
 }
 
 model User {
-  user_id    String   @id @default(uuid())
-  mart_id    String
-  full_name  String   @db.VarChar(255)
-  email      String   @unique @db.VarChar(255)
-  phone      String   @db.VarChar(20)
-  password   String   @db.VarChar(255)
-  role       String   @db.VarChar(50) // super_admin, admin, manager, staff
-  is_active  Boolean  @default(true)
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  user_id           String   @id @default(uuid())
+  mart_id           String
+  full_name         String   @db.VarChar(255)
+  email             String   @unique @db.VarChar(255)
+  phone             String?  @db.VarChar(20) // Optional contact information
+  password          String?  @db.VarChar(255) // Optional - using OTP-based auth
+  role              String   @db.VarChar(50) // super_admin, admin, manager, staff
+  is_active         Boolean  @default(true)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
 
   mart LaundryMart @relation(fields: [mart_id], references: [mart_id])
 
@@ -57,14 +58,14 @@ model User {
 }
 
 model Customer {
-  customer_id String   @id @default(uuid())
-  full_name   String   @db.VarChar(255)
-  email       String   @unique @db.VarChar(255)
-  phone       String   @unique @db.VarChar(20)
-  password    String   @db.VarChar(255)
-  is_active   Boolean  @default(true)
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
+  customer_id       String   @id @default(uuid())
+  full_name         String   @db.VarChar(255)
+  email             String   @unique @db.VarChar(255)
+  phone             String?  @db.VarChar(20) // Optional contact information
+  password          String?  @db.VarChar(255) // Optional - using OTP-based auth
+  is_active         Boolean  @default(true)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
 
   addresses             CustomerAddress[]
   orders                Order[]
@@ -265,23 +266,23 @@ model Bill {
 // ============================================================================
 
 model DeliveryStaff {
-  staff_id            String   @id @default(uuid())
-  mart_id             String
-  full_name           String   @db.VarChar(255)
-  phone               String   @unique @db.VarChar(20)
-  email               String?  @unique @db.VarChar(255)
-  password            String   @db.VarChar(255)
-  vehicle_type        String   @db.VarChar(50) // bike, car, scooter
-  vehicle_number      String   @db.VarChar(50)
-  license_number      String   @db.VarChar(50)
-  document_url        String?  @db.VarChar(500) // S3 URL for documents
-  bank_account_details Json?   // JSON field for bank info
-  verification_status String   @db.VarChar(50) // pending, approved, rejected
-  is_active           Boolean  @default(true)
-  average_rating      Decimal? @db.Decimal(3, 2)
-  total_deliveries    Int      @default(0)
-  created_at          DateTime @default(now())
-  updated_at          DateTime @updatedAt
+  staff_id             String   @id @default(uuid())
+  mart_id              String
+  full_name            String   @db.VarChar(255)
+  email                String   @unique @db.VarChar(255)
+  phone                String?  @db.VarChar(20) // Optional contact information
+  password             String?  @db.VarChar(255) // Optional - using OTP-based auth
+  vehicle_type         String   @db.VarChar(50) // bike, car, scooter
+  vehicle_number       String   @db.VarChar(50)
+  license_number       String   @db.VarChar(50)
+  document_url         String?  @db.VarChar(500) // S3 URL for documents
+  bank_account_details Json?    // JSON field for bank info
+  verification_status  String   @db.VarChar(50) // pending, approved, rejected
+  is_active            Boolean  @default(true)
+  average_rating       Decimal? @db.Decimal(3, 2)
+  total_deliveries     Int      @default(0)
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
 
   mart       LaundryMart @relation(fields: [mart_id], references: [mart_id])
   deliveries Delivery[]
@@ -378,5 +379,48 @@ model MartDailyMetrics {
   @@index([mart_id])
   @@index([metric_date])
   @@map("mart_daily_metrics")
+}
+
+// ============================================================================
+// OTP VERIFICATION & AUTHENTICATION (Email-First)
+// ============================================================================
+
+// Stores OTP codes for verification via email
+model OtpVerification {
+  otp_id       String   @id @default(uuid())
+  email        String   @db.VarChar(255)
+  otp_code     String   @db.VarChar(6)
+  purpose      String   @db.VarChar(50) // login_or_signup, email_change, password_reset
+  user_type    String   @db.VarChar(30) // owner, manager, customer, delivery_staff
+  is_verified  Boolean  @default(false)
+  expires_at   DateTime
+  created_at   DateTime @default(now())
+  attempts     Int      @default(0)
+  max_attempts Int      @default(5)
+
+  @@index([email, purpose])
+  @@index([expires_at])
+  @@index([is_verified])
+  @@map("otp_verifications")
+}
+
+// Tracks verified email sessions before registration completion
+model OtpSession {
+  session_id           String   @id @default(uuid())
+  email                String   @db.VarChar(255)
+  user_type            String   @db.VarChar(30) // owner, manager, customer, delivery_staff
+  is_new_user          Boolean  // true = needs registration, false = existing user (logged in)
+  user_id              String?  // If existing user, store their ID
+  session_token        String   @unique @db.VarChar(500) // Temporary session token
+  is_completed         Boolean  @default(false) // true when registration is completed
+  mart_email           String?  @db.VarChar(255) // For owner registration: mart's contact email
+  mart_email_verified  Boolean  @default(false) // true when mart email OTP is verified
+  expires_at           DateTime
+  created_at           DateTime @default(now())
+
+  @@index([email])
+  @@index([session_token])
+  @@index([expires_at])
+  @@map("otp_sessions")
 }
 

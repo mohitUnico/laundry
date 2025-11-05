@@ -16,6 +16,7 @@ alwaysApply: false
 - Structure the project with clear separation of concerns (controllers, services, middleware, utils)
 - Use environment variables for configuration management
 - Implement structured logging with Winston or Pino for debugging and monitoring
+- **Use OTP-based passwordless authentication for all user types** (mart owners, managers, customers, delivery staff)
 
 ## Key Dependency Guidelines
 
@@ -541,20 +542,192 @@ logger.error('Payment processing failed', {
 });
 ```
 
+## Email-First OTP Authentication
+
+### Overview
+The system uses **Email-First OTP (One-Time Password) Authentication** - a passwordless authentication system that provides a secure and cost-effective way to verify users. Unlike SMS-based systems, email OTP eliminates SMS costs while maintaining security and user experience.
+
+### Why Email-First?
+- ✅ **Cost-Effective**: No SMS charges - email is free
+- ✅ **Universal**: Everyone has an email address
+- ✅ **Secure**: OTP codes expire in 5 minutes with rate limiting
+- ✅ **Reliable**: Email delivery is more reliable than SMS in many regions
+- ✅ **Professional**: Branded email templates enhance user experience
+
+### Authentication Philosophy
+- **Email-first**: User starts by entering email address only
+- **Smart detection**: System checks if user exists after OTP verification
+- **Context-aware**: Existing users are logged in, new users are prompted for profile details
+- **Passwordless**: No passwords used or stored anywhere in the system
+- **Session-based registration**: Temporary session tokens for completing new user registration
+
+### User Types
+1. **Mart Owners (Admin)**: Two-step email verification (owner email + mart business email) + Mart and owner details
+2. **Managers**: Email verification + Manager details, must be added by owner with mart ID
+3. **Customers**: Email verification + Customer profile details
+4. **Delivery Staff**: Email verification + Delivery staff details including vehicle info
+
+### Email-First Authentication Flow
+
+#### Universal Flow (All User Types)
+```
+Step 1: User enters email address
+        POST /auth/{userType}/send-otp
+        { email: "user@example.com" }
+        ↓
+        OTP sent via Email (or console in dev)
+        ↓
+Step 2: User receives email and enters OTP code
+        POST /auth/{userType}/verify-otp
+        { email: "user@example.com", otp: "123456" }
+        ↓
+        System checks if user exists
+        ↓
+        ┌───────────────┴───────────────┐
+        │                               │
+   User EXISTS                   User DOES NOT EXIST
+        │                               │
+        ↓                               ↓
+  Return JWT Token              Return Session Token
+  isNewUser: false              isNewUser: true
+  (Login Complete)              (Registration Required)
+        │                               │
+        ↓                               ↓
+   Dashboard                    Show Registration Form
+                                        ↓
+                            User enters profile details
+                                        ↓
+                POST /auth/{userType}/complete-registration
+                { sessionToken, userData }
+                                        ↓
+                    Account Created + JWT Token
+                                        ↓
+                                   Dashboard
+```
+
+### Database Schema for OTP
+```prisma
+// OTP verification codes sent via email
+model OtpVerification {
+  otp_id       String   @id @default(uuid())
+  email        String   @db.VarChar(255)
+  otp_code     String   @db.VarChar(6)
+  purpose      String   @db.VarChar(50) // login_or_signup, email_change, password_reset
+  user_type    String   @db.VarChar(30) // owner, manager, customer, delivery_staff
+  is_verified  Boolean  @default(false)
+  expires_at   DateTime
+  created_at   DateTime @default(now())
+  attempts     Int      @default(0)
+  max_attempts Int      @default(5)
+
+  @@index([email, purpose])
+  @@map("otp_verifications")
+}
+
+// Verified email sessions before registration completion
+model OtpSession {
+  session_id           String   @id @default(uuid())
+  email                String   @db.VarChar(255)
+  user_type            String   @db.VarChar(30)
+  is_new_user          Boolean  // true = needs registration, false = logged in
+  user_id              String?  // If existing user, their ID
+  session_token        String   @unique @db.VarChar(500) // Temporary session token
+  is_completed         Boolean  @default(false) // true when registration is completed
+  mart_email           String?  @db.VarChar(255) // For owner: verified mart business email
+  mart_email_verified  Boolean  @default(false) // true when mart email OTP verified
+  expires_at           DateTime // Session expires in 30 minutes
+  created_at           DateTime @default(now())
+
+  @@index([email])
+  @@map("otp_sessions")
+}
+
+// All user tables have:
+email    String  @unique @db.VarChar(255) // Required, primary authentication
+phone    String? @db.VarChar(20)         // Optional contact info
+password String? @db.VarChar(255)        // Optional, null for OTP-only auth
+```
+
+### OTP Service Methods
+- `sendOtp(email, userType)` - Send OTP to email for login or signup
+- `verifyOtp(email, otp, userType)` - Verify OTP and check if user exists
+  - Returns JWT token if user exists (login)
+  - Returns session token if new user (registration required)
+- **Mart Email Verification (Owner Registration Only)**:
+  - `sendMartEmailOtp(sessionToken, martEmail)` - Send OTP to mart's business email
+  - `verifyMartEmailOtp(sessionToken, martEmail, otp)` - Verify mart email OTP
+- `completeOwnerRegistration(sessionToken, martData, ownerData)` - Complete owner + mart registration (requires mart email verified)
+- `completeManagerRegistration(sessionToken, managerData)` - Complete manager registration
+- `completeCustomerRegistration(sessionToken, customerData)` - Complete customer registration
+- `completeDeliveryRegistration(sessionToken, deliveryData)` - Complete delivery staff registration
+- `resendOtp(email, userType)` - Resend OTP
+- `cleanupExpired()` - Clean up expired OTPs and sessions
+
+### Email Service Methods
+- `sendOtpEmail(email, otp, userType)` - Send OTP verification email
+- `sendWelcomeEmail(email, userName, userType)` - Send welcome email after registration
+- **Development Mode**: Logs emails to console
+- **Production Mode**: Sends via SMTP (Gmail, SendGrid, AWS SES, etc.)
+
+### OTP Security Rules
+- **Rate Limiting**: Maximum 1 OTP request per minute per email address
+- **OTP Expiry**: OTPs expire after 5 minutes
+- **Max Attempts**: Maximum 5 failed verification attempts before requiring new OTP
+- **One-Time Use**: OTPs can only be used once and are marked as verified after use
+- **Auto Cleanup**: Expired OTPs are automatically cleaned up via cron job
+- **Email Normalization**: Emails are normalized (lowercase, trimmed) to prevent duplicates
+
+### Email Provider Integration
+- **Development**: OTPs logged to console (no email sent)
+- **Production**: SMTP-based email sending:
+  - **Gmail**: smtp.gmail.com (requires App Password)
+  - **SendGrid**: smtp.sendgrid.net (use API key)
+  - **AWS SES**: email-smtp.region.amazonaws.com (SMTP credentials)
+  - **Mailgun**: smtp.mailgun.org (SMTP credentials)
+  - **Mailjet**: in-v3.mailjet.com (API credentials)
+
+### Environment Variables
+```env
+# OTP Settings
+OTP_EXPIRY_MINUTES=5
+OTP_MAX_ATTEMPTS=5
+OTP_RATE_LIMIT_SECONDS=60
+
+# SMTP Email Configuration (Production)
+# Leave empty for development mode (logs to console)
+SMTP_HOST="smtp.gmail.com"
+SMTP_PORT=587
+SMTP_SECURE="false"
+SMTP_USER="your-email@gmail.com"
+SMTP_PASSWORD="your-app-specific-password"
+SMTP_FROM_EMAIL="Laundry App <noreply@laundryapp.com>"
+```
+
+### Email Templates
+- **OTP Email**: Professional HTML template with branded header, large OTP code, expiry warning
+- **Welcome Email**: Sent after successful registration with feature highlights
+- **Mobile-Responsive**: All templates work on mobile and desktop
+- **Spam-Filter Optimized**: Proper headers and content structure
+
 ## Security Guidelines
 
-- Always hash passwords using bcrypt before storing
-- Use JWT tokens with appropriate expiration times
-- Implement refresh token mechanism for long-lived sessions
+- **Use OTP-based passwordless authentication** - No passwords stored in database
+- **Email verification required** for all user signups via OTP
+- Use JWT tokens with appropriate expiration times (7 days default)
+- Implement refresh token mechanism for long-lived sessions (optional)
 - Validate all user inputs to prevent SQL injection and XSS attacks
 - Use parameterized queries (Prisma handles this automatically)
-- Implement rate limiting to prevent abuse
+- **Implement rate limiting for OTP requests** (1 OTP per minute per email)
+- **OTP expiry**: 5 minutes validity
+- **Max OTP attempts**: 5 failed attempts before requiring new OTP
 - Use HTTPS in production
-- Store sensitive configuration in environment variables
+- Store sensitive configuration in environment variables (JWT_SECRET, SMTP credentials)
 - Never commit secrets to version control
 - Implement CORS with appropriate origin restrictions
 - Sanitize file uploads and validate file types
 - Implement proper authentication and authorization for all protected routes
+- **Email OTP Integration**: Use Gmail, SendGrid, AWS SES, or Mailgun for production OTP delivery
+- **Email Domain Authentication**: Set up SPF, DKIM, and DMARC records to prevent emails from being marked as spam
 
 ## Performance Guidelines
 

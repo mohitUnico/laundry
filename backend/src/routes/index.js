@@ -1,33 +1,62 @@
-import express from 'express'
-// Import route modules here as they are created
-// import orderRoutes from './order.routes.js'
-// import customerRoutes from './customer.routes.js'
-// import deliveryRoutes from './delivery.routes.js'
+const express = require('express');
+const authRoutes = require('./auth.routes');
+const martRoutes = require('./mart.routes');
+const orderRoutes = require('./order.routes');
 
-const router = express.Router()
+const router = express.Router();
 
 // API information endpoint
 router.get('/', (req, res) => {
     res.json({
         name: 'Laundry App API',
         version: '1.0.0',
-        description: 'REST API for Laundry App platform',
+        description: 'REST API for Laundry App platform - OTP-based Passwordless Authentication',
         endpoints: {
             health: '/health',
             api: '/api/v1',
-            // auth: '/api/v1/auth',
-            // orders: '/api/v1/orders',
-            // customers: '/api/v1/customers',
-            // delivery: '/api/v1/delivery',
-            // services: '/api/v1/services',
+            auth: '/api/v1/auth',
+            marts: '/api/v1/marts',
+            orders: '/api/v1/orders',
         },
-    })
-})
+        authentication: {
+            type: 'OTP-based Passwordless',
+            flows: {
+                martRegistration: {
+                    step1: 'POST /api/v1/auth/mart/verify-phone/send-otp',
+                    step2: 'POST /api/v1/auth/mart/verify-phone/verify-otp',
+                    step3: 'POST /api/v1/auth/mart/verify-owner/send-otp',
+                    step4: 'POST /api/v1/auth/mart/verify-owner/verify-otp',
+                    step5: 'POST /api/v1/marts/register'
+                },
+                adminLogin: {
+                    step1: 'POST /api/v1/auth/admin/login/send-otp',
+                    step2: 'POST /api/v1/auth/admin/login/verify-otp'
+                },
+                customerSignup: {
+                    step1: 'POST /api/v1/auth/customer/signup/send-otp',
+                    step2: 'POST /api/v1/auth/customer/signup/verify-otp'
+                },
+                customerLogin: {
+                    step1: 'POST /api/v1/auth/customer/login/send-otp',
+                    step2: 'POST /api/v1/auth/customer/login/verify-otp'
+                },
+                deliverySignup: {
+                    step1: 'POST /api/v1/auth/delivery/signup/send-otp',
+                    step2: 'POST /api/v1/auth/delivery/signup/verify-otp'
+                },
+                deliveryLogin: {
+                    step1: 'POST /api/v1/auth/delivery/login/send-otp',
+                    step2: 'POST /api/v1/auth/delivery/login/verify-otp'
+                }
+            }
+        }
+    });
+});
 
 // Mount route modules
-// router.use('/orders', orderRoutes)
-// router.use('/customers', customerRoutes)
-// router.use('/delivery', deliveryRoutes)
+router.use('/auth', authRoutes);
+router.use('/marts', martRoutes);
+router.use('/orders', orderRoutes);
 
-export default router
+module.exports = router;
 

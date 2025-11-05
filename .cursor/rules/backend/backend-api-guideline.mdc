@@ -357,18 +357,132 @@ async getOrders(options) {
 
 ## Authentication and Authorization
 
+### Email-First OTP Passwordless Authentication
+
+The Laundry App uses **Email-First OTP (One-Time Password) Authentication** - a passwordless, cost-effective authentication system. No passwords or SMS costs.
+
+#### Authentication Flow Overview
+```
+SIGNUP: Email + OTP → Verify OTP → Create Account → Return JWT Token
+LOGIN:  Email → Send OTP → Verify OTP → Return JWT Token
+```
+
+#### OTP Authentication Endpoints
+
+**Owner Registration & Login**
+```javascript
+// Send OTP to email
+POST /api/v1/auth/owner/send-otp
+Body: { "email": "owner@example.com" }
+
+// Verify OTP (returns JWT if existing, session token if new)
+POST /api/v1/auth/owner/verify-otp
+Body: { "email": "owner@example.com", "otp": "123456" }
+
+// Complete registration (new owners only)
+POST /api/v1/auth/owner/complete-registration
+Body: {
+  "sessionToken": "abc123...",
+  "martData": { 
+    "martName": "...",
+    "martEmail": "...", // Optional, must match verified email
+    "martContact": "...", // Optional
+    "address": "...",
+    "profileImageUrl": "...", // Optional, S3 URL
+    "martCoordinates": { "latitude": 0, "longitude": 0 },
+    "serviceRadiusKm": {} // Optional
+  },
+  "ownerData": { 
+    "ownerName": "...",
+    "ownerPhone": "...", // Optional
+    "ownerEmail": "..." // Optional, must match verified email
+  }
+}
+```
+
+**Manager Registration & Login**
+```javascript
+POST /api/v1/auth/manager/send-otp
+POST /api/v1/auth/manager/verify-otp
+POST /api/v1/auth/manager/complete-registration
+```
+
+**Customer Signup & Login**
+```javascript
+POST /api/v1/auth/customer/send-otp
+POST /api/v1/auth/customer/verify-otp
+POST /api/v1/auth/customer/complete-registration
+```
+
+**Delivery Staff Signup & Login**
+```javascript
+POST /api/v1/auth/delivery/send-otp
+POST /api/v1/auth/delivery/verify-otp
+POST /api/v1/auth/delivery/complete-registration
+```
+
+**Resend OTP**
+```javascript
+POST /api/v1/auth/resend-otp
+Body: { "email": "user@example.com", "userType": "customer" }
+```
+
+#### Example: Customer Login Flow
+```javascript
+// 1. Send OTP to email
+const response1 = await fetch('/api/v1/auth/customer/send-otp', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email: 'customer@example.com' })
+});
+// Response: { success: true, data: { email: "...", expiresIn: 300 } }
+
+// 2. Verify OTP
+const response2 = await fetch('/api/v1/auth/customer/verify-otp', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email: 'customer@example.com', otp: '123456' })
+});
+// Response (Existing User): 
+// { 
+//   success: true, 
+//   data: { 
+//     isNewUser: false,
+//     token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+//     user: {...}
+//   } 
+// }
+// Response (New User):
+// {
+//   success: true,
+//   data: {
+//     isNewUser: true,
+//     sessionToken: "abc123...",
+//     expiresIn: 1800
+//   }
+// }
+
+// 3. Use JWT token for subsequent requests
+const response3 = await fetch('/api/v1/orders', {
+  headers: { 
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  }
+});
+```
+
 ### JWT Authentication
 ```javascript
 // middleware/auth.middleware.js
 const jwt = require('jsonwebtoken');
-const { UnauthorizedError } = require('../utils/errors');
+const { AuthenticationError } = require('../utils/errors');
 
 exports.authenticateJWT = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new UnauthorizedError('No token provided');
+      throw new AuthenticationError('No token provided');
     }
     
     const token = authHeader.substring(7);
@@ -376,17 +490,19 @@ exports.authenticateJWT = async (req, res, next) => {
     
     // Attach user info to request
     req.user = {
-      id: decoded.userId,
-      role: decoded.role,
-      martId: decoded.martId // for admin users
+      user_id: decoded.user_id,
+      email: decoded.email,
+      role: decoded.role,  // admin, manager, customer, delivery_staff
+      mart_id: decoded.mart_id, // for admin/manager/delivery_staff
+      full_name: decoded.full_name
     };
     
     next();
   } catch (error) {
     if (error.name === 'TokenExpiredError') {
-      next(new UnauthorizedError('Token expired'));
+      next(new AuthenticationError('Token expired'));
     } else if (error.name === 'JsonWebTokenError') {
-      next(new UnauthorizedError('Invalid token'));
+      next(new AuthenticationError('Invalid token'));
     } else {
       next(error);
     }
@@ -406,23 +522,35 @@ exports.authorize = (...allowedRoles) => {
 
 ### Protected Routes
 ```javascript
-// Public routes (no authentication)
-router.post('/auth/register', registerController);
-router.post('/auth/login', loginController);
+// Public routes (no authentication) - All OTP-based
+router.post('/auth/customer/signup/send-otp', sendCustomerSignupOtpController);
+router.post('/auth/customer/signup/verify-otp', verifyCustomerSignupOtpController);
+router.post('/auth/customer/login/send-otp', sendCustomerLoginOtpController);
+router.post('/auth/customer/login/verify-otp', verifyCustomerLoginOtpController);
 router.get('/health', healthCheckController);
 
 // Customer routes (customer role)
 router.get('/orders', authenticateJWT, authorize('customer'), getOrdersController);
 router.post('/orders', authenticateJWT, authorize('customer'), createOrderController);
 
-// Admin routes (admin, manager, staff roles)
-router.get('/admin/dashboard', authenticateJWT, authorize('admin', 'manager', 'staff'), getDashboardController);
-router.patch('/orders/:orderId/status', authenticateJWT, authorize('admin', 'staff'), updateOrderStatusController);
+// Admin routes (admin, manager roles)
+router.get('/admin/dashboard', authenticateJWT, authorize('admin', 'manager'), getDashboardController);
+router.post('/manager/add/send-otp', authenticateJWT, authorize('admin'), sendManagerOtpController);
+router.patch('/orders/:orderId/status', authenticateJWT, authorize('admin', 'manager'), updateOrderStatusController);
 
-// Delivery partner routes (delivery_partner role)
-router.get('/delivery/available', authenticateJWT, authorize('delivery_partner'), getAvailableDeliveriesController);
-router.patch('/delivery/:deliveryId/status', authenticateJWT, authorize('delivery_partner'), updateDeliveryStatusController);
+// Delivery partner routes (delivery_staff role)
+router.get('/delivery/available', authenticateJWT, authorize('delivery_staff'), getAvailableDeliveriesController);
+router.patch('/delivery/:deliveryId/status', authenticateJWT, authorize('delivery_staff'), updateDeliveryStatusController);
 ```
+
+### OTP Validation Rules
+- **Email Format**: Valid email address (validated, normalized to lowercase)
+- **OTP Format**: 6-digit numeric code
+- **OTP Expiry**: 5 minutes
+- **Max Attempts**: 5 failed attempts before requiring new OTP
+- **Rate Limiting**: 1 OTP request per minute per email address
+- **One-Time Use**: OTPs are invalidated after successful verification
+- **Session Expiry**: 30 minutes for new user registration session tokens
 
 ## Validation
 

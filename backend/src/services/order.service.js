@@ -1,14 +1,14 @@
 // Sample Order Service
 // This is a template - implement full logic as needed
 
-import { prisma } from '../config/database.js'
-import { NotFoundError, ValidationError } from '../utils/errors.js'
-import { ORDER_STATUS } from '../constants/index.js'
+const prisma = require('../config/database');
+const { NotFoundError, ValidationError } = require('../utils/errors');
+const { ORDER_STATUS } = require('../constants');
 
-export const createOrder = async (customerId, orderData) => {
+exports.createOrder = async (customerId, orderData) => {
     // Validate order data
     if (!orderData.mart_id || !orderData.pickup_address_id) {
-        throw new ValidationError('Missing required fields')
+        throw new ValidationError('Missing required fields');
     }
 
     // Use Prisma transaction for atomic operations
@@ -35,7 +35,7 @@ export const createOrder = async (customerId, orderData) => {
                     select: { mart_name: true, contact_phone: true },
                 },
             },
-        })
+        });
 
         // Create order items (per-piece)
         if (orderData.items && orderData.items.length > 0) {
@@ -47,7 +47,7 @@ export const createOrder = async (customerId, orderData) => {
                     unit_price: item.unit_price,
                     subtotal: item.quantity * item.unit_price,
                 })),
-            })
+            });
         }
 
         // Create order items (per-kg)
@@ -60,7 +60,7 @@ export const createOrder = async (customerId, orderData) => {
                     price_per_kg: item.price_per_kg,
                     subtotal: item.weight_kg * item.price_per_kg,
                 })),
-            })
+            });
         }
 
         // Create bill
@@ -75,19 +75,19 @@ export const createOrder = async (customerId, orderData) => {
                 payment_method: orderData.payment_method,
                 payment_status: 'pending',
             },
-        })
+        });
 
-        return order
-    })
-}
+        return order;
+    });
+};
 
-export const getOrders = async (customerId, filters) => {
-    const { page, limit, status } = filters
+exports.getOrders = async (customerId, filters) => {
+    const { page, limit, status } = filters;
 
     const where = {
         customer_id: customerId,
         ...(status && { order_status: status }),
-    }
+    };
 
     const [orders, total] = await Promise.all([
         prisma.order.findMany({
@@ -103,7 +103,7 @@ export const getOrders = async (customerId, filters) => {
             take: limit,
         }),
         prisma.order.count({ where }),
-    ])
+    ]);
 
     return {
         orders,
@@ -111,10 +111,10 @@ export const getOrders = async (customerId, filters) => {
         page,
         limit,
         totalPages: Math.ceil(total / limit),
-    }
-}
+    };
+};
 
-export const getOrderById = async (orderId) => {
+exports.getOrderById = async (orderId) => {
     return await prisma.order.findUnique({
         where: { order_id: orderId },
         include: {
@@ -143,47 +143,40 @@ export const getOrderById = async (orderId) => {
                 },
             },
         },
-    })
-}
+    });
+};
 
-export const updateOrderStatus = async (orderId, newStatus) => {
+exports.updateOrderStatus = async (orderId, newStatus) => {
     // Validate status transition
-    const validStatuses = Object.values(ORDER_STATUS)
+    const validStatuses = Object.values(ORDER_STATUS);
     if (!validStatuses.includes(newStatus)) {
-        throw new ValidationError('Invalid order status')
+        throw new ValidationError('Invalid order status');
     }
 
     return await prisma.order.update({
         where: { order_id: orderId },
         data: { order_status: newStatus },
-    })
-}
+    });
+};
 
-export const cancelOrder = async (orderId) => {
+exports.cancelOrder = async (orderId) => {
     // Check if order can be cancelled
     const order = await prisma.order.findUnique({
         where: { order_id: orderId },
-    })
+    });
 
     if (!order) {
-        throw new NotFoundError('Order')
+        throw new NotFoundError('Order');
     }
 
     if (order.order_status === ORDER_STATUS.DELIVERED) {
-        throw new ValidationError('Cannot cancel delivered order')
+        throw new ValidationError('Cannot cancel delivered order');
     }
 
     // Delete order (cascade deletes related records)
     await prisma.order.delete({
         where: { order_id: orderId },
-    })
-}
+    });
+};
 
-export default {
-    createOrder,
-    getOrders,
-    getOrderById,
-    updateOrderStatus,
-    cancelOrder,
-}
-
+module.exports = exports;

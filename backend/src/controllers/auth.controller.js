@@ -1,0 +1,653 @@
+/**
+ * Authentication Controller - Email-First OTP Authentication
+ * 
+ * All authentication flows follow the same pattern:
+ * 1. Send OTP to email
+ * 2. Verify OTP (returns token if existing user, session token if new)
+ * 3. If new user, complete registration with session token
+ */
+
+const otpService = require('../services/otp.service');
+const logger = require('../utils/logger');
+
+// ============================================================================
+// OWNER AUTHENTICATION
+// ============================================================================
+
+/**
+ * Send OTP to owner email
+ * POST /api/v1/auth/owner/send-otp
+ */
+const sendOwnerOtp = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    const result = await otpService.sendOtp(email, otpService.USER_TYPES.OWNER);
+
+    res.status(200).json({
+      success: true,
+      message: 'OTP sent successfully to your email',
+      data: {
+        email,
+        expiresIn: result.expiresIn
+      }
+    });
+  } catch (error) {
+    logger.error('Send owner OTP failed', { error: error.message });
+    next(error);
+  }
+};
+
+/**
+ * Verify owner OTP
+ * POST /api/v1/auth/owner/verify-otp
+ * 
+ * Response:
+ * - Existing owner: { isNewUser: false, token, user }
+ * - New owner: { isNewUser: true, sessionToken, expiresIn }
+ */
+const verifyOwnerOtp = async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+
+    const result = await otpService.verifyOtp(email, otp, otpService.USER_TYPES.OWNER);
+
+    if (result.isNewUser) {
+      // New owner - needs to complete registration
+      res.status(200).json({
+        success: true,
+        message: 'Email verified. Please complete your mart registration.',
+        data: {
+          isNewUser: true,
+          sessionToken: result.sessionToken,
+          expiresIn: result.expiresIn
+        }
+      });
+    } else {
+      // Existing owner - login complete
+      res.status(200).json({
+        success: true,
+        message: 'Login successful',
+        data: {
+          isNewUser: false,
+          token: result.token,
+          user: result.user
+        }
+      });
+    }
+  } catch (error) {
+    logger.error('Verify owner OTP failed', { error: error.message });
+    next(error);
+  }
+};
+
+/**
+ * Send OTP to mart email for verification
+ * POST /api/v1/auth/owner/verify-mart-email/send-otp
+ * 
+ * Requires sessionToken from owner email verification
+ */
+const sendMartEmailOtp = async (req, res, next) => {
+  try {
+    const { sessionToken, martEmail } = req.body;
+
+    const result = await otpService.sendMartEmailOtp(sessionToken, martEmail);
+
+    res.status(200).json({
+      success: true,
+      message: 'OTP sent successfully to mart email',
+      data: {
+        martEmail: result.martEmail,
+        expiresIn: result.expiresIn
+      }
+    });
+  } catch (error) {
+    logger.error('Send mart email OTP failed', { error: error.message });
+    next(error);
+  }
+};
+
+/**
+ * Verify OTP for mart email
+ * POST /api/v1/auth/owner/verify-mart-email/verify-otp
+ * 
+ * Requires sessionToken and mart email OTP
+ */
+const verifyMartEmailOtp = async (req, res, next) => {
+  try {
+    const { sessionToken, martEmail, otp } = req.body;
+
+    const result = await otpService.verifyMartEmailOtp(sessionToken, martEmail, otp);
+
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: {
+        martEmail: result.martEmail,
+        martEmailVerified: true
+      }
+    });
+  } catch (error) {
+    logger.error('Verify mart email OTP failed', { error: error.message });
+    next(error);
+  }
+};
+
+/**
+ * Complete owner registration (Owner + Mart)
+ * POST /api/v1/auth/owner/complete-registration
+ * 
+ * Requires sessionToken from verify-otp response
+ * Requires mart email to be verified first
+ */
+const completeOwnerRegistration = async (req, res, next) => {
+  try {
+    const { sessionToken, martData, ownerData } = req.body;
+
+    const result = await otpService.completeOwnerRegistration(
+      sessionToken,
+      martData,
+      ownerData
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Registration completed successfully. Welcome to Laundry App!',
+      data: {
+        token: result.token,
+        mart: result.mart,
+        owner: result.owner
+      }
+    });
+  } catch (error) {
+    logger.error('Complete owner registration failed', { error: error.message });
+    next(error);
+  }
+};
+
+// ============================================================================
+// MANAGER AUTHENTICATION
+// ============================================================================
+
+/**
+ * Send OTP to manager email
+ * POST /api/v1/auth/manager/send-otp
+ */
+const sendManagerOtp = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    const result = await otpService.sendOtp(email, otpService.USER_TYPES.MANAGER);
+
+    res.status(200).json({
+      success: true,
+      message: 'OTP sent successfully to your email',
+      data: {
+        email,
+        expiresIn: result.expiresIn
+      }
+    });
+  } catch (error) {
+    logger.error('Send manager OTP failed', { error: error.message });
+    next(error);
+  }
+};
+
+/**
+ * Verify manager OTP
+ * POST /api/v1/auth/manager/verify-otp
+ */
+const verifyManagerOtp = async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+
+    const result = await otpService.verifyOtp(email, otp, otpService.USER_TYPES.MANAGER);
+
+    if (result.isNewUser) {
+      // New manager - needs to complete registration
+      res.status(200).json({
+        success: true,
+        message: 'Email verified. Please complete your registration.',
+        data: {
+          isNewUser: true,
+          sessionToken: result.sessionToken,
+          expiresIn: result.expiresIn
+        }
+      });
+    } else {
+      // Existing manager - login complete
+      res.status(200).json({
+        success: true,
+        message: 'Login successful',
+        data: {
+          isNewUser: false,
+          token: result.token,
+          user: result.user
+        }
+      });
+    }
+  } catch (error) {
+    logger.error('Verify manager OTP failed', { error: error.message });
+    next(error);
+  }
+};
+
+/**
+ * Complete manager registration
+ * POST /api/v1/auth/manager/complete-registration
+ * 
+ * Requires:
+ * - Owner token in Authorization header (Bearer token)
+ * - sessionToken from verify-otp response
+ * - managerData with martId (must match owner's mart)
+ */
+const completeManagerRegistration = async (req, res, next) => {
+  try {
+    const { sessionToken, managerData } = req.body;
+    const ownerToken = req.user; // From authenticateJWT middleware
+
+    // Validate token has required fields
+    if (!ownerToken) {
+      logger.error('No user data in token');
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid token: no user data',
+        errorCode: 'AUTHENTICATION_ERROR'
+      });
+    }
+
+    // Get user identifier from token (support both user_id and userId)
+    const userId = ownerToken.user_id || ownerToken.userId;
+    const userEmail = ownerToken.email;
+
+    if (!userId && !userEmail) {
+      logger.error('Token missing user identifier', { tokenFields: Object.keys(ownerToken) });
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid token: missing user identifier',
+        errorCode: 'AUTHENTICATION_ERROR'
+      });
+    }
+
+    // Fetch owner from database to get actual mart_id (token might not have it)
+    const prisma = require('../config/database');
+    const ownerUser = await prisma.user.findUnique({
+      where: userId ? { user_id: userId } : { email: userEmail },
+      select: {
+        user_id: true,
+        email: true,
+        full_name: true,
+        role: true,
+        mart_id: true
+      }
+    });
+
+    if (!ownerUser) {
+      logger.error('Owner not found in database', {
+        userId: userId || 'undefined',
+        email: userEmail || 'undefined',
+        tokenFields: Object.keys(ownerToken)
+      });
+      return res.status(401).json({
+        success: false,
+        message: 'Owner not found in database',
+        errorCode: 'AUTHENTICATION_ERROR'
+      });
+    }
+
+    // Use owner from database (not token) for verification
+    const owner = {
+      user_id: ownerUser.user_id,
+      email: ownerUser.email,
+      full_name: ownerUser.full_name,
+      role: ownerUser.role,
+      mart_id: ownerUser.mart_id
+    };
+
+    logger.info('Manager registration request', {
+      ownerId: owner.user_id,
+      ownerRole: owner.role,
+      ownerMartId: owner.mart_id,
+      requestMartId: managerData?.martId,
+      tokenMartId: ownerToken.mart_id
+    });
+
+    // Verify owner is an owner/admin
+    if (owner.role !== 'owner' && owner.role !== 'admin') {
+      logger.warn('Unauthorized manager registration attempt', {
+        userId: owner.user_id,
+        role: owner.role
+      });
+      return res.status(403).json({
+        success: false,
+        message: 'Only mart owners can add managers',
+        errorCode: 'AUTHORIZATION_ERROR'
+      });
+    }
+
+    // Verify martId matches owner's mart (case-insensitive comparison for UUIDs)
+    const ownerMartId = String(owner.mart_id || '').toLowerCase();
+    const requestMartId = String(managerData?.martId || '').toLowerCase();
+
+    if (!ownerMartId) {
+      logger.error('Owner has no mart_id', { userId: owner.user_id });
+      return res.status(400).json({
+        success: false,
+        message: 'Owner is not associated with any mart',
+        errorCode: 'VALIDATION_ERROR'
+      });
+    }
+
+    if (requestMartId !== ownerMartId) {
+      logger.warn('Mart ID mismatch', {
+        ownerMartId: ownerMartId,
+        requestMartId: requestMartId,
+        ownerId: owner.user_id
+      });
+      return res.status(403).json({
+        success: false,
+        message: 'Mart ID does not match owner\'s mart',
+        errorCode: 'AUTHORIZATION_ERROR',
+        details: {
+          ownerMartId: ownerMartId,
+          requestMartId: requestMartId
+        }
+      });
+    }
+
+    const result = await otpService.completeManagerRegistration(
+      sessionToken,
+      managerData,
+      owner
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Manager registration completed successfully',
+      data: {
+        token: result.token,
+        manager: result.manager,
+        owner: result.owner,
+        mart: result.mart
+      }
+    });
+  } catch (error) {
+    logger.error('Complete manager registration failed', { error: error.message });
+    next(error);
+  }
+};
+
+// ============================================================================
+// CUSTOMER AUTHENTICATION
+// ============================================================================
+
+/**
+ * Send OTP to customer email
+ * POST /api/v1/auth/customer/send-otp
+ */
+const sendCustomerOtp = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    const result = await otpService.sendOtp(email, otpService.USER_TYPES.CUSTOMER);
+
+    res.status(200).json({
+      success: true,
+      message: 'OTP sent successfully to your email',
+      data: {
+        email,
+        expiresIn: result.expiresIn
+      }
+    });
+  } catch (error) {
+    logger.error('Send customer OTP failed', { error: error.message });
+    next(error);
+  }
+};
+
+/**
+ * Verify customer OTP
+ * POST /api/v1/auth/customer/verify-otp
+ */
+const verifyCustomerOtp = async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+
+    const result = await otpService.verifyOtp(email, otp, otpService.USER_TYPES.CUSTOMER);
+
+    if (result.isNewUser) {
+      // New customer - needs to complete registration
+      res.status(200).json({
+        success: true,
+        message: 'Email verified. Please complete your profile.',
+        data: {
+          isNewUser: true,
+          sessionToken: result.sessionToken,
+          expiresIn: result.expiresIn
+        }
+      });
+    } else {
+      // Existing customer - login complete
+      res.status(200).json({
+        success: true,
+        message: 'Login successful',
+        data: {
+          isNewUser: false,
+          token: result.token,
+          user: result.user
+        }
+      });
+    }
+  } catch (error) {
+    logger.error('Verify customer OTP failed', { error: error.message });
+    next(error);
+  }
+};
+
+/**
+ * Complete customer registration
+ * POST /api/v1/auth/customer/complete-registration
+ */
+const completeCustomerRegistration = async (req, res, next) => {
+  try {
+    const { sessionToken, customerData } = req.body;
+
+    const result = await otpService.completeCustomerRegistration(
+      sessionToken,
+      customerData
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Registration completed successfully. Welcome to Laundry App!',
+      data: {
+        token: result.token,
+        customer: result.customer
+      }
+    });
+  } catch (error) {
+    logger.error('Complete customer registration failed', { error: error.message });
+    next(error);
+  }
+};
+
+// ============================================================================
+// DELIVERY STAFF AUTHENTICATION
+// ============================================================================
+
+/**
+ * Send OTP to delivery staff email
+ * POST /api/v1/auth/delivery/send-otp
+ */
+const sendDeliveryOtp = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    const result = await otpService.sendOtp(email, otpService.USER_TYPES.DELIVERY_STAFF);
+
+    res.status(200).json({
+      success: true,
+      message: 'OTP sent successfully to your email',
+      data: {
+        email,
+        expiresIn: result.expiresIn
+      }
+    });
+  } catch (error) {
+    logger.error('Send delivery OTP failed', { error: error.message });
+    next(error);
+  }
+};
+
+/**
+ * Verify delivery staff OTP
+ * POST /api/v1/auth/delivery/verify-otp
+ */
+const verifyDeliveryOtp = async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+
+    const result = await otpService.verifyOtp(email, otp, otpService.USER_TYPES.DELIVERY_STAFF);
+
+    if (result.isNewUser) {
+      // New delivery staff - needs to complete registration
+      res.status(200).json({
+        success: true,
+        message: 'Email verified. Please complete your registration.',
+        data: {
+          isNewUser: true,
+          sessionToken: result.sessionToken,
+          expiresIn: result.expiresIn
+        }
+      });
+    } else {
+      // Existing delivery staff - login complete
+      res.status(200).json({
+        success: true,
+        message: 'Login successful',
+        data: {
+          isNewUser: false,
+          token: result.token,
+          user: result.user
+        }
+      });
+    }
+  } catch (error) {
+    logger.error('Verify delivery OTP failed', { error: error.message });
+    next(error);
+  }
+};
+
+/**
+ * Complete delivery staff registration
+ * POST /api/v1/auth/delivery/complete-registration
+ */
+const completeDeliveryRegistration = async (req, res, next) => {
+  try {
+    const { sessionToken, deliveryData } = req.body;
+
+    const result = await otpService.completeDeliveryRegistration(
+      sessionToken,
+      deliveryData
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Registration completed successfully. Welcome to our delivery team!',
+      data: {
+        token: result.token,
+        deliveryStaff: result.deliveryStaff
+      }
+    });
+  } catch (error) {
+    logger.error('Complete delivery registration failed', { error: error.message });
+    next(error);
+  }
+};
+
+// ============================================================================
+// COMMON ENDPOINTS
+// ============================================================================
+
+/**
+ * Resend OTP
+ * POST /api/v1/auth/resend-otp
+ */
+const resendOtp = async (req, res, next) => {
+  try {
+    const { email, userType } = req.body;
+
+    const result = await otpService.resendOtp(email, userType);
+
+    res.status(200).json({
+      success: true,
+      message: 'OTP resent successfully to your email',
+      data: {
+        email,
+        expiresIn: result.expiresIn
+      }
+    });
+  } catch (error) {
+    logger.error('Resend OTP failed', { error: error.message });
+    next(error);
+  }
+};
+
+/**
+ * Logout
+ * POST /api/v1/auth/logout
+ * 
+ * Note: Since we're using JWT, logout is handled client-side by removing the token.
+ * This endpoint is provided for consistency and can be used for logging/analytics.
+ */
+const logout = async (req, res, next) => {
+  try {
+    // In a stateless JWT system, we don't need to do anything server-side
+    // The client should remove the token from storage
+
+    logger.info('User logged out', {
+      userId: req.user?.userId,
+      email: req.user?.email
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Logged out successfully'
+    });
+  } catch (error) {
+    logger.error('Logout failed', { error: error.message });
+    next(error);
+  }
+};
+
+// ============================================================================
+// EXPORTS
+// ============================================================================
+
+module.exports = {
+  // Owner
+  sendOwnerOtp,
+  verifyOwnerOtp,
+  sendMartEmailOtp,
+  verifyMartEmailOtp,
+  completeOwnerRegistration,
+
+  // Manager
+  sendManagerOtp,
+  verifyManagerOtp,
+  completeManagerRegistration,
+
+  // Customer
+  sendCustomerOtp,
+  verifyCustomerOtp,
+  completeCustomerRegistration,
+
+  // Delivery
+  sendDeliveryOtp,
+  verifyDeliveryOtp,
+  completeDeliveryRegistration,
+
+  // Common
+  resendOtp,
+  logout
+};

@@ -1,181 +1,129 @@
-// Sample Order Service
-// This is a template - implement full logic as needed
-
+const { Prisma } = require('@prisma/client');
 const prisma = require('../config/database');
 const { NotFoundError, ValidationError } = require('../utils/errors');
-const { ORDER_STATUS } = require('../constants');
 
-exports.createOrder = async (customerId, orderData) => {
-    // Validate order data
-    if (!orderData.mart_id || !orderData.pickup_address_id) {
-        throw new ValidationError('Missing required fields');
-    }
+exports.createOrder = async (customerId, payload) => {
+    const {
+        items,
+        pickup_address_id,
+        delivery_address_id,
+        pricing_model,
+        order_type,
+        pickup_date,
+        delivery_date,
+        special_instructions,
+    } = payload;
 
-    // Use Prisma transaction for atomic operations
-    return await prisma.$transaction(async (tx) => {
-        // Create order
+    return prisma.$transaction(async (tx) => {
+        const customer = await tx.customer.findUnique({
+            where: { customer_id: customerId },
+            select: { customer_id: true },
+        });
+
+        if (!customer) {
+            throw new NotFoundError('Customer');
+        }
+
+        const uniqueAddressIds = Array.from(new Set([pickup_address_id, delivery_address_id]));
+        const addressRecords = await tx.customerAddress.findMany({
+            where: {
+                customer_id: customerId,
+                address_id: { in: uniqueAddressIds },
+            },
+            select: { address_id: true },
+        });
+
+        if (addressRecords.length !== uniqueAddressIds.length) {
+            throw new ValidationError('Invalid pickup or delivery address');
+        }
+
+        const clothIds = items.map((item) => item.cloth_id);
+        const clothRecords = await tx.clothesItem.findMany({
+            where: { cloth_id: { in: clothIds } },
+            include: {
+                service: { select: { mart_id: true } },
+            },
+        });
+
+        if (clothRecords.length !== clothIds.length) {
+            throw new ValidationError('One or more cloth items are invalid or inactive');
+        }
+
+        const martId = clothRecords[0].service.mart_id;
+        const inconsistentMart = clothRecords.some((record) => record.service.mart_id !== martId);
+        if (inconsistentMart) {
+            throw new ValidationError('All cloth items must belong to the same mart');
+        }
+
+        const clothMap = new Map(clothRecords.map((record) => [record.cloth_id, record]));
+        const Decimal = Prisma.Decimal;
+        let totalAmount = new Decimal(0);
+
+        const orderItemsData = items.map((item) => {
+            const cloth = clothMap.get(item.cloth_id);
+            if (!cloth) {
+                throw new ValidationError(`Cloth item ${item.cloth_id} is not associated with this mart`);
+            }
+
+            const quantityDecimal = new Decimal(item.quantity);
+            const unitPrice = cloth.per_unit_price;
+            const subtotal = unitPrice.mul(quantityDecimal);
+            totalAmount = totalAmount.plus(subtotal);
+
+            return {
+                clothes_id: cloth.cloth_id,
+                quantity: item.quantity,
+                unit_price: unitPrice,
+                subtotal,
+            };
+        });
+
+        const pickupDate = pickup_date ? new Date(pickup_date) : new Date();
+        const deliveryDateValue = delivery_date ? new Date(delivery_date) : pickupDate;
+
         const order = await tx.order.create({
             data: {
                 customer_id: customerId,
-                mart_id: orderData.mart_id,
-                order_status: ORDER_STATUS.PICKUP,
-                pricing_model: orderData.pricing_model,
-                total_amount: orderData.total_amount,
-                pickup_address_id: orderData.pickup_address_id,
-                delivery_address_id: orderData.delivery_address_id,
-                pickup_date: new Date(orderData.pickup_date),
-                delivery_date: new Date(orderData.delivery_date),
-                special_instructions: orderData.special_instructions,
+                mart_id: martId,
+                order_status: 'pending',
+                pricing_model,
+                order_type,
+                pickup_address_id,
+                delivery_address_id,
+                pickup_date: pickupDate,
+                delivery_date: deliveryDateValue,
+                special_instructions: special_instructions || null,
+                total_amount: totalAmount,
             },
-            include: {
-                customer: {
-                    select: { full_name: true, email: true, phone: true },
-                },
-                mart: {
-                    select: { mart_name: true, contact_phone: true },
-                },
+            select: {
+                order_id: true,
+                pickup_address_id: true,
+                delivery_address_id: true,
+                pricing_model: true,
+                order_type: true,
             },
         });
 
-        // Create order items (per-piece)
-        if (orderData.items && orderData.items.length > 0) {
-            await tx.orderItem.createMany({
-                data: orderData.items.map((item) => ({
-                    order_id: order.order_id,
-                    clothes_id: item.clothes_id,
-                    quantity: item.quantity,
-                    unit_price: item.unit_price,
-                    subtotal: item.quantity * item.unit_price,
-                })),
-            });
-        }
-
-        // Create order items (per-kg)
-        if (orderData.items_kg && orderData.items_kg.length > 0) {
-            await tx.orderItemKg.createMany({
-                data: orderData.items_kg.map((item) => ({
-                    order_id: order.order_id,
-                    item_name: item.item_name,
-                    weight_kg: item.weight_kg,
-                    price_per_kg: item.price_per_kg,
-                    subtotal: item.weight_kg * item.price_per_kg,
-                })),
-            });
-        }
-
-        // Create bill
-        await tx.bill.create({
-            data: {
+        await tx.orderItem.createMany({
+            data: orderItemsData.map((item) => ({
+                ...item,
                 order_id: order.order_id,
-                subtotal: orderData.subtotal,
-                delivery_fee: orderData.delivery_fee,
-                tax_amount: orderData.tax_amount,
-                discount: orderData.discount || 0,
-                final_amount: orderData.total_amount,
-                payment_method: orderData.payment_method,
-                payment_status: 'pending',
-            },
+            })),
         });
 
-        return order;
-    });
-};
+        const itemsList = orderItemsData.map((item) => ({
+            cloth_id: item.clothes_id,
+            order_id: order.order_id,
+            quantity: item.quantity,
+        }));
 
-exports.getOrders = async (customerId, filters) => {
-    const { page, limit, status } = filters;
-
-    const where = {
-        customer_id: customerId,
-        ...(status && { order_status: status }),
-    };
-
-    const [orders, total] = await Promise.all([
-        prisma.order.findMany({
-            where,
-            include: {
-                mart: {
-                    select: { mart_name: true, contact_phone: true },
-                },
-                bill: true,
-            },
-            orderBy: { created_at: 'desc' },
-            skip: (page - 1) * limit,
-            take: limit,
-        }),
-        prisma.order.count({ where }),
-    ]);
-
-    return {
-        orders,
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-    };
-};
-
-exports.getOrderById = async (orderId) => {
-    return await prisma.order.findUnique({
-        where: { order_id: orderId },
-        include: {
-            customer: {
-                select: { full_name: true, email: true, phone: true },
-            },
-            mart: {
-                select: { mart_name: true, contact_phone: true, address: true },
-            },
-            pickup_address: true,
-            delivery_address: true,
-            order_items: {
-                include: {
-                    clothes: true,
-                },
-            },
-            order_items_kg: true,
-            bill: true,
-            delivery: {
-                include: {
-                    staff: {
-                        select: { full_name: true, phone: true, vehicle_type: true },
-                    },
-                    pickup: true,
-                    drop: true,
-                },
-            },
-        },
-    });
-};
-
-exports.updateOrderStatus = async (orderId, newStatus) => {
-    // Validate status transition
-    const validStatuses = Object.values(ORDER_STATUS);
-    if (!validStatuses.includes(newStatus)) {
-        throw new ValidationError('Invalid order status');
-    }
-
-    return await prisma.order.update({
-        where: { order_id: orderId },
-        data: { order_status: newStatus },
-    });
-};
-
-exports.cancelOrder = async (orderId) => {
-    // Check if order can be cancelled
-    const order = await prisma.order.findUnique({
-        where: { order_id: orderId },
-    });
-
-    if (!order) {
-        throw new NotFoundError('Order');
-    }
-
-    if (order.order_status === ORDER_STATUS.DELIVERED) {
-        throw new ValidationError('Cannot cancel delivered order');
-    }
-
-    // Delete order (cascade deletes related records)
-    await prisma.order.delete({
-        where: { order_id: orderId },
+        return {
+            items_list: itemsList,
+            pickup_address_id: order.pickup_address_id,
+            delivery_address_id: order.delivery_address_id,
+            pricing_model: order.pricing_model,
+            order_type: order.order_type,
+        };
     });
 };
 

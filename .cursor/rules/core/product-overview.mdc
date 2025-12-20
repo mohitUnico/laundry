@@ -21,33 +21,128 @@ alwaysApply: true
 
 ## Core Modules
 
-### Customer Management
-- Customer registration and authentication with OTP verification
-- Profile management (name, email, phone, saved addresses)
-- Multiple address management with geolocation and default selection
-- Order history and tracking by customer
-- Customer-mart relationship tracking (orders, spending, ratings)
-- FAQ and help section access
-- Feedback and rating system
+### User Management (6 User Types)
+1. **Admin (Mart Owner)**
+   - Monitor all operations and analytics
+   - Create and manage Collection Managers
+   - Create and manage Distribution Managers
+   - Create and manage Service Men
+   - Approve Delivery Partner verification
+   - Configure mart settings and pricing
+   - Generate reports and analytics
+
+2. **Customer**
+   - Registration and authentication with OTP verification
+   - Profile management (name, email, phone, saved addresses)
+   - Multiple address management with geolocation
+   - Cart management with service selection
+   - Place orders with dual pricing model (per-piece and per-kg)
+   - Real-time order tracking with detailed status
+   - Order history and filtering
+   - Feedback and rating system
+
+3. **Delivery Partner**
+   - Self-registration with email authentication
+   - Profile setup with vehicle and document details
+   - Admin verification required before activation
+   - Real-time pickup and drop requests
+   - Accept/decline delivery assignments
+   - Weight machine indicator (for per-kg orders)
+   - Photo proof capture for pickups and deliveries
+   - Payment confirmation on delivery
+   - Earnings and delivery history tracking
+
+4. **Collection Manager**
+   - Email-based login with OTP verification
+   - Created by Admin
+   - Manage three order stages:
+     * **Incoming Orders**: Newly placed orders awaiting pickup
+     * **Orders Received**: Orders picked up and delivered to collection center
+     * **Orders Submitted**: Orders assigned to service men
+   - Auto-assign delivery partners (2-minute window)
+   - Manual delivery partner assignment fallback
+   - Mark orders as received after pickup
+   - Assign orders to service men (auto-distributed to service queues)
+   - Track order progress
+
+5. **Service Man**
+   - One service man per service (1:1 relationship)
+   - Email-based login with OTP verification
+   - Created by Admin with service assignment
+   - Manage service-specific item queue (FIFO)
+   - View pending items by order
+   - Mark items/orders as "in progress" or "completed"
+   - Add comments on item status
+   - Track completion history
+
+6. **Distribution Manager**
+   - Email-based login with OTP verification
+   - Created by Admin
+   - Manage three views:
+     * **Services Completed**: Individual services marked complete
+     * **Orders Completed**: Orders with all services finished, ready for dispatch
+     * **Orders Dispatched**: Orders sent out for delivery
+   - Assign delivery partners for final delivery
+   - Dispatch orders to customers
+   - Track delivery status
+
+### Cart Management
+- Service category browsing
+- Service selection within categories
+- Pricing type selection (per-piece or per-kg)
+- Item selection with quantity for per-piece
+- Weight entry for per-kg items
+- Multi-service cart support
+- Cart persistence across sessions
+- Checkout with address and scheduling
 
 ### Service Catalog
 - Service category management (Regular Wash, Pro Clean, Luxury Care, Home Linens)
 - Individual service definitions with pricing and duration estimates
 - Clothing item catalog with per-piece pricing
 - Per-kg pricing for bulk items
+- Service-specific item lists
+- Service man assignment (one per service)
 - Service icons and imagery
 - Active/inactive service management
 - Display order configuration for UI
 
-### Order Management
+### Order Management (New Workflow)
+**Order Lifecycle:**
+1. **Placed**: Customer places order from cart
+2. **Pickup Assigned**: Delivery partner auto-assigned (2-min window) or manually assigned
+3. **Picked Up**: Delivery partner picks up from customer (with photo proof)
+4. **Received by Collection**: Collection Manager receives and marks order
+5. **Submitted to Services**: Order items distributed to service queues (FIFO)
+6. **Services in Progress**: Service men working on items
+7. **Services Completed**: All items processed
+8. **Dispatch Assigned**: Distribution Manager assigns delivery partner
+9. **Out for Delivery**: Order being delivered to customer
+10. **Payment Pending**: Delivered, awaiting payment confirmation
+11. **Delivered**: Payment confirmed by delivery partner
+12. **Closed**: Order completed
+
+**Features:**
 - Dual pricing model support (per-piece and per-kg)
-- Order creation with item selection and quantity
+- Cart-based order creation
 - Pickup and delivery scheduling
-- Address selection for pickup and delivery
-- Order status tracking (pickup → in_process → ready → out_for_delivery → delivered)
-- Real-time order updates and notifications
-- Order history and filtering
-- Order cancellation and modification
+- Auto-assignment with fallback to manual
+- Weight machine requirement indicator
+- Item-level status tracking
+- Service queue management (FIFO)
+- Real-time status updates and notifications
+- Photo proof for pickup and delivery
+- Payment confirmation on delivery
+
+### Service Queue Management (FIFO)
+- Automatic item distribution to service-specific queues
+- FIFO (First In, First Out) ordering
+- Order-based item grouping
+- Item status tracking (pending, in_progress, completed)
+- Service man assignment
+- Priority management
+- Completion timestamps
+- Comments and notes
 
 ### Billing & Payments
 - Invoice generation with item-wise breakdown
@@ -55,40 +150,35 @@ alwaysApply: true
 - Tax and discount application
 - Multiple payment methods (Card, COD, UPI, Wallet)
 - Payment status tracking (pending, completed, failed, refunded)
+- Payment confirmation by delivery partner on delivery
 - Transaction ID tracking
 - Digital receipts
 
 ### Delivery Management
-- Delivery partner onboarding with document verification
-- Real-time location tracking of delivery partners
-- Delivery assignment for pickup and drop
+- Delivery partner self-registration
+- Admin verification and approval required
+- Document verification (license, vehicle, ID proof)
+- Real-time pickup and drop requests
+- Accept/decline functionality
 - Route navigation and distance calculation
-- Pickup and delivery proof with mandatory photo capture
+- Weight machine indicator for per-kg orders
+- Pickup proof with photo (mandatory)
+- Delivery proof with photo (mandatory)
+- Payment confirmation on delivery
 - Delivery duration tracking (estimated vs actual)
-- Delivery fee calculation
 - Partner availability status management
 - Delivery ratings and feedback
-
-### Mart Administration
-- Multi-tenant mart management with independent operations
-- Dashboard with revenue, orders, and delivery analytics
-- Daily metrics tracking (orders, revenue, completion rate)
-- Customer relationship management
-- Service and pricing configuration
-- Delivery staff management and verification
-- Order assignment and status updates
-- Performance monitoring (ratings, delivery times)
-- Promotional offers and discount management
-- Report generation and export
 
 ### Analytics & Reporting
 - Daily mart metrics (orders, revenue, cancellations)
 - Customer spending patterns and retention
 - Service popularity analysis
+- Service man performance (items completed, avg time)
 - Delivery performance metrics
+- Collection and distribution efficiency
 - Revenue trends and forecasting
 - Customer acquisition and engagement
-- Staff performance tracking
+- Staff performance tracking by role
 
 ## Architectural Principles
 

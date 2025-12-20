@@ -175,18 +175,25 @@ RESTful API endpoints follow this pattern:
 ### Business Entities
 
 - **Laundry Mart**: A multi-tenant laundry service provider location with geolocation and service radius
-- **User**: Admin panel user associated with a mart (owner, manager, or staff)
+- **Admin/Mart Owner**: Primary user who manages the mart, creates staff accounts, and monitors operations
 - **Customer**: End-user who places orders through the mobile app
 - **Customer Address**: Geocoded address with label (work, home, friend) and default selection
 - **Customer-Mart Profile**: Relationship tracking between customer and mart with order history
+- **Delivery Partner**: Independent delivery staff who handle pickups and deliveries, requires admin verification
+- **Collection Manager**: Staff member who receives incoming orders and assigns them to service men
+- **Service Man**: Dedicated staff member assigned to a specific service who processes items in FIFO order
+- **Distribution Manager**: Staff member who manages completed orders and assigns final delivery
 - **Service Category**: Grouping of related services (Regular Wash, Pro Clean, Luxury Care, Home Linens)
-- **Service**: Individual laundry service with pricing (base price and per-kg price)
-- **Clothing Item**: Specific clothing piece with per-unit pricing
+- **Service**: Individual laundry service with pricing (base price and per-kg price) and assigned service man
+- **Clothing Item**: Specific clothing piece with per-unit pricing, belongs to a service
+- **Cart**: Customer's shopping cart containing selected services and items before checkout
+- **Cart Item**: Service selection in cart with pricing type (per-piece or per-kg)
+- **Cart Item Selection**: Individual cloth items with quantities in a cart item
 - **Order**: Main order entity with dual pricing model support (per-piece or per-kg)
-- **Order Item**: Individual clothing item in a per-piece order
+- **Order Item**: Individual clothing item in an order with status tracking (pending, in_progress, completed)
 - **Order Item Kg**: Bulk item priced by weight in kg
+- **Service Queue Item**: Item in a service-specific queue assigned to service man (FIFO ordering)
 - **Bill**: Invoice for an order with subtotal, delivery fee, tax, discount, and final amount
-- **Delivery Staff**: Delivery partner with vehicle details, documents, and real-time location
 - **Delivery**: Delivery assignment for pickup or drop with tracking and proof
 - **Pickup for Delivery**: Pickup task with address and mandatory photo proof
 - **Drop for Delivery**: Drop-off task with address and mandatory photo proof
@@ -194,11 +201,47 @@ RESTful API endpoints follow this pattern:
 
 ### Order Lifecycle States
 
-- **Pickup Status**: scheduled → on_the_way → picked_up
-- **Order Status**: pickup → in_process → ready → out_for_delivery → delivered
-- **Drop Status**: scheduled → on_the_way → dropped
-- **Payment Status**: pending → completed / failed / refunded
-- **Delivery Status**: picked_up → on_the_way → delivered
+**Order Status (New Workflow):**
+1. **placed**: Customer places order from cart
+2. **pickup_assigned**: Delivery partner assigned for pickup (auto or manual)
+3. **picked_up**: Order picked up from customer with photo proof
+4. **received_by_collection**: Collection Manager receives order at collection center
+5. **submitted_to_services**: Order items distributed to service men queues
+6. **services_in_progress**: Service men working on items
+7. **services_completed**: All service items completed
+8. **dispatch_assigned**: Delivery partner assigned for final delivery
+9. **out_for_delivery**: Order being delivered to customer
+10. **payment_pending**: Delivered, awaiting payment confirmation
+11. **delivered**: Payment confirmed by delivery partner
+12. **closed**: Order completed and closed
+13. **cancelled**: Order cancelled
+
+**Order Item Status:**
+- **pending**: Item waiting in service queue
+- **in_progress**: Service man currently working on item
+- **completed**: Item service completed
+
+**Service Queue Status:**
+- **pending**: Item in queue, not started
+- **in_progress**: Service man working on item
+- **completed**: Item processing completed
+
+**Payment Status:**
+- **pending**: Payment not yet completed
+- **completed**: Payment received and confirmed
+- **failed**: Payment attempt failed
+- **refunded**: Payment refunded to customer
+
+**Delivery Status:**
+- **assigned**: Delivery partner assigned
+- **en_route**: On the way to pickup/delivery location
+- **reached**: Reached the location
+- **completed**: Pickup/delivery completed with proof
+
+**Delivery Partner Verification:**
+- **pending**: Awaiting admin verification
+- **verified**: Verified and approved by admin
+- **rejected**: Verification rejected
 
 ### Pricing Models
 

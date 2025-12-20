@@ -1,9 +1,6 @@
-// Prisma Schema for Laundry App
-// Database: PostgreSQL 14+
-// ORM: Prisma
-
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
 }
 
 datasource db {
@@ -11,65 +8,63 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ============================================================================
-// CORE ENTITIES
-// ============================================================================
-
-model LaundryMart {
-  mart_id             String   @id @default(uuid())
-  mart_name           String   @db.VarChar(255)
-  contact_email       String   @unique @db.VarChar(255)
-  contact_phone       String   @db.VarChar(20)
-  address             String   @db.Text
-  latitude            Decimal  @db.Decimal(10, 8)
-  longitude           Decimal  @db.Decimal(11, 8)
-  profile_image_url   String?  @db.Text // Optional URL to mart profile image (S3)
-  service_radius_km   Json     // JSON field for distance-based pricing tiers
-  is_active           Boolean  @default(true)
-  created_at          DateTime @default(now())
-  updated_at          DateTime @updatedAt
-
-  users                 User[]
-  orders                Order[]
-  services              Service[]
-  delivery_staffs       DeliveryStaff[]
-  mart_daily_metrics    MartDailyMetrics[]
-  customer_mart_profile CustomerMartProfile[]
-
-  @@map("laundry_mart")
-}
-
-model User {
-  user_id           String   @id @default(uuid())
-  mart_id           String
-  full_name         String   @db.VarChar(255)
-  email             String   @unique @db.VarChar(255)
-  phone             String?  @db.VarChar(20) // Optional contact information
-  password          String?  @db.VarChar(255) // Optional - using OTP-based auth
-  role              String   @db.VarChar(50) // super_admin, admin, manager, staff
+// ==================== LAUNDRY CONFIGURATION ====================
+// Single laundry business configuration
+model LaundryConfig {
+  config_id         String   @id @default(uuid())
+  business_name     String   @db.VarChar(255)
+  contact_email     String   @unique @db.VarChar(255)
+  contact_phone     String   @db.VarChar(20)
+  address           String
+  latitude          Decimal  @db.Decimal(10, 8)
+  longitude         Decimal  @db.Decimal(11, 8)
+  service_radius_km Json     // Distance-based delivery fee configuration
   is_active         Boolean  @default(true)
   created_at        DateTime @default(now())
   updated_at        DateTime @updatedAt
+  logo_url          String?
+  
+  @@map("laundry_config")
+}
 
-  mart LaundryMart @relation(fields: [mart_id], references: [mart_id])
+// ==================== USER MANAGEMENT ====================
 
-  @@index([mart_id])
+// Admin/Owner - Single admin for the laundry business
+model User {
+  user_id    String   @id @default(uuid())
+  full_name  String   @db.VarChar(255)
+  email      String   @unique @db.VarChar(255)
+  phone      String?  @db.VarChar(20)
+  password   String?  @db.VarChar(255)
+  role       UserRole @default(admin)
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([role])
   @@map("users")
 }
 
-model Customer {
-  customer_id       String   @id @default(uuid())
-  full_name         String   @db.VarChar(255)
-  email             String   @unique @db.VarChar(255)
-  phone             String?  @db.VarChar(20) // Optional contact information
-  password          String?  @db.VarChar(255) // Optional - using OTP-based auth
-  is_active         Boolean  @default(true)
-  created_at        DateTime @default(now())
-  updated_at        DateTime @updatedAt
+enum UserRole {
+  admin
+  owner
+}
 
-  addresses             CustomerAddress[]
-  orders                Order[]
-  customer_mart_profile CustomerMartProfile[]
+// Customer
+model Customer {
+  customer_id String            @id @default(uuid())
+  full_name   String            @db.VarChar(255)
+  email       String            @unique @db.VarChar(255)
+  phone       String?           @db.VarChar(20)
+  password    String?           @db.VarChar(255)
+  is_active   Boolean           @default(true)
+  total_orders Int              @default(0)
+  total_spent  Decimal          @default(0) @db.Decimal(10, 2)
+  created_at  DateTime          @default(now())
+  updated_at  DateTime          @updatedAt
+  addresses   CustomerAddress[]
+  orders      Order[]
+  carts       Cart[]
 
   @@map("customers")
 }
@@ -77,152 +72,323 @@ model Customer {
 model CustomerAddress {
   address_id      String   @id @default(uuid())
   customer_id     String
-  address_label   String   @db.VarChar(50) // home, work, friend, other
-  full_address    String   @db.Text
+  address_label   String   @db.VarChar(50)
+  full_address    String
   latitude        Decimal  @db.Decimal(10, 8)
   longitude       Decimal  @db.Decimal(11, 8)
   is_default      Boolean  @default(false)
-  delivery_note   String?  @db.Text
+  delivery_note   String?
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
-
-  customer Customer @relation(fields: [customer_id], references: [customer_id], onDelete: Cascade)
-
-  pickup_orders   Order[] @relation("PickupAddress")
-  delivery_orders Order[] @relation("DeliveryAddress")
+  customer        Customer @relation(fields: [customer_id], references: [customer_id], onDelete: Cascade)
+  delivery_orders Order[]  @relation("DeliveryAddress")
+  pickup_orders   Order[]  @relation("PickupAddress")
 
   @@index([customer_id])
   @@map("customer_addresses")
 }
 
-model CustomerMartProfile {
-  profile_id      String   @id @default(uuid())
-  customer_id     String
-  mart_id         String
-  total_orders    Int      @default(0)
-  total_spent     Decimal  @default(0) @db.Decimal(10, 2)
-  last_order_date DateTime?
-  customer_rating Decimal? @db.Decimal(3, 2) // Rating by mart
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
+// Delivery Partner/Staff
+model DeliveryStaff {
+  staff_id             String             @id @default(uuid())
+  full_name            String             @db.VarChar(255)
+  phone                String?            @db.VarChar(20)
+  email                String             @unique @db.VarChar(255)
+  password             String?            @db.VarChar(255)
+  vehicle_type         String             @db.VarChar(50)
+  vehicle_number       String             @db.VarChar(50)
+  license_number       String             @db.VarChar(50)
+  id_proof_type        String?            @db.VarChar(50) // Aadhaar, etc.
+  id_proof_url         String?            @db.VarChar(500)
+  document_url         String?            @db.VarChar(500)
+  bank_account_details Json?
+  verification_status  VerificationStatus @default(pending)
+  is_verified_by_admin Boolean            @default(false)
+  is_active            Boolean            @default(true)
+  average_rating       Decimal?           @db.Decimal(3, 2)
+  total_deliveries     Int                @default(0)
+  created_at           DateTime           @default(now())
+  updated_at           DateTime           @updatedAt
+  deliveries           Delivery[]
 
-  customer Customer     @relation(fields: [customer_id], references: [customer_id], onDelete: Cascade)
-  mart     LaundryMart  @relation(fields: [mart_id], references: [mart_id], onDelete: Cascade)
-
-  @@unique([customer_id, mart_id])
-  @@index([customer_id])
-  @@index([mart_id])
-  @@map("customer_mart_profile")
+  @@index([verification_status])
+  @@index([is_verified_by_admin])
+  @@map("delivery_staffs")
 }
 
-// ============================================================================
-// SERVICE CATALOG
-// ============================================================================
+enum VerificationStatus {
+  pending
+  verified
+  rejected
+}
+
+// Collection Manager
+model CollectionManager {
+  manager_id String   @id @default(uuid())
+  full_name  String   @db.VarChar(255)
+  email      String   @unique @db.VarChar(255)
+  phone      String?  @db.VarChar(20)
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  // Orders received by this manager
+  orders_received Order[] @relation("ReceivedByCollectionManager")
+
+  @@map("collection_managers")
+}
+
+// Service Man (one per service)
+model ServiceMan {
+  service_man_id String   @id @default(uuid())
+  service_id     String   @unique // One service man per service
+  full_name      String   @db.VarChar(255)
+  email          String   @unique @db.VarChar(255)
+  phone          String?  @db.VarChar(20)
+  is_active      Boolean  @default(true)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+  service        Service  @relation(fields: [service_id], references: [service_id])
+
+  // Service queue items assigned to this service man
+  service_queue_items ServiceQueueItem[]
+
+  @@index([service_id])
+  @@map("service_men")
+}
+
+// Distribution Manager
+model DistributionManager {
+  manager_id String   @id @default(uuid())
+  full_name  String   @db.VarChar(255)
+  email      String   @unique @db.VarChar(255)
+  phone      String?  @db.VarChar(20)
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  // Orders dispatched by this manager
+  orders_dispatched Order[] @relation("DispatchedByDistributionManager")
+
+  @@map("distribution_managers")
+}
+
+// ==================== SERVICE CATALOG ====================
 
 model ServiceCategory {
-  category_id   String   @id @default(uuid())
-  category_name String   @db.VarChar(100)
-  description   String?  @db.Text
-  icon_url      String?  @db.VarChar(500)
-  display_order Int      @default(0)
-  is_active     Boolean  @default(true)
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
-
-  services Service[]
+  category_id   String    @id @default(uuid())
+  category_name String    @db.VarChar(100)
+  description   String?
+  icon_url      String?   @db.VarChar(500)
+  display_order Int       @default(0)
+  is_active     Boolean   @default(true)
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  services      Service[]
 
   @@map("service_categories")
 }
 
 model Service {
-  service_id      String   @id @default(uuid())
+  service_id      String          @id @default(uuid())
   category_id     String
-  mart_id         String
-  service_name    String   @db.VarChar(255)
-  description     String?  @db.Text
-  base_price      Decimal  @db.Decimal(10, 2)
-  per_kg_price    Decimal? @db.Decimal(10, 2)
-  estimated_hours Int      // Processing time in hours
-  icon_url        String?  @db.VarChar(500)
-  is_active       Boolean  @default(true)
-  display_order   Int      @default(0)
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
+  service_name    String          @db.VarChar(255)
+  description     String?
+  base_price      Decimal         @db.Decimal(10, 2)
+  per_kg_price    Decimal?        @db.Decimal(10, 2)
+  estimated_hours Int
+  icon_url        String?         @db.VarChar(500)
+  is_active       Boolean         @default(true)
+  display_order   Int             @default(0)
+  created_at      DateTime        @default(now())
+  updated_at      DateTime        @updatedAt
+  category        ServiceCategory @relation(fields: [category_id], references: [category_id])
+  clothes_items   ClothesItem[]
+  service_man     ServiceMan? // One service man per service
 
-  category ServiceCategory @relation(fields: [category_id], references: [category_id])
-  mart     LaundryMart     @relation(fields: [mart_id], references: [mart_id])
+  // Cart items for this service
+  cart_items CartItem[]
+
+  // Service queue items
+  service_queue_items ServiceQueueItem[]
 
   @@index([category_id])
-  @@index([mart_id])
   @@map("services")
 }
 
 model ClothesItem {
-  item_id       String   @id @default(uuid())
-  item_name     String   @db.VarChar(100)
-  per_unit_price Decimal @db.Decimal(10, 2)
-  icon_url      String?  @db.VarChar(500)
-  is_active     Boolean  @default(true)
-  display_order Int      @default(0)
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
+  cloth_id       String      @id @default(uuid())
+  service_id     String
+  item_name      String      @db.VarChar(100)
+  per_unit_price Decimal     @db.Decimal(10, 2)
+  icon_url       String?     @db.VarChar(500)
+  is_active      Boolean     @default(true)
+  display_order  Int         @default(0)
+  created_at     DateTime    @default(now())
+  updated_at     DateTime    @updatedAt
+  service        Service     @relation(fields: [service_id], references: [service_id])
+  order_items    OrderItem[]
 
-  order_items OrderItem[]
+  // Cart item selections
+  cart_item_selections CartItemSelection[]
 
+  @@unique([service_id, item_name])
+  @@index([service_id])
   @@map("clothes_items")
 }
 
-// ============================================================================
-// ORDERS & BILLING
-// ============================================================================
+// ==================== CART MANAGEMENT ====================
 
-model Order {
-  order_id            String   @id @default(uuid())
-  customer_id         String
-  mart_id             String
-  order_status        String   @db.VarChar(50) // pickup, in_process, ready, out_for_delivery, delivered
-  pricing_model       String   @db.VarChar(50) // per-unit-piece, per-kg
-  total_amount        Decimal  @db.Decimal(10, 2)
-  pickup_address_id   String
-  delivery_address_id String
-  pickup_date         DateTime
-  delivery_date       DateTime
-  special_instructions String? @db.Text
-  customer_rating     Decimal? @db.Decimal(3, 2)
-  customer_review     String?  @db.Text
-  created_at          DateTime @default(now())
-  updated_at          DateTime @updatedAt
-
-  customer         Customer        @relation(fields: [customer_id], references: [customer_id])
-  mart             LaundryMart     @relation(fields: [mart_id], references: [mart_id])
-  pickup_address   CustomerAddress @relation("PickupAddress", fields: [pickup_address_id], references: [address_id])
-  delivery_address CustomerAddress @relation("DeliveryAddress", fields: [delivery_address_id], references: [address_id])
-
-  order_items    OrderItem[]
-  order_items_kg OrderItemKg[]
-  bill           Bill?
-  delivery       Delivery?
+model Cart {
+  cart_id     String     @id @default(uuid())
+  customer_id String
+  is_active   Boolean    @default(true)
+  created_at  DateTime   @default(now())
+  updated_at  DateTime   @updatedAt
+  customer    Customer   @relation(fields: [customer_id], references: [customer_id], onDelete: Cascade)
+  cart_items  CartItem[]
 
   @@index([customer_id])
-  @@index([mart_id])
+  @@map("carts")
+}
+
+model CartItem {
+  cart_item_id String              @id @default(uuid())
+  cart_id      String
+  service_id   String
+  pricing_type PricingModel        // per_unit or per_kg
+  created_at   DateTime            @default(now())
+  updated_at   DateTime            @updatedAt
+  cart         Cart                @relation(fields: [cart_id], references: [cart_id], onDelete: Cascade)
+  service      Service             @relation(fields: [service_id], references: [service_id])
+
+  // Individual cloth item selections (for per_unit pricing)
+  item_selections CartItemSelection[]
+
+  // Weight-based items (for per_kg pricing)
+  weight_kg Decimal? @db.Decimal(10, 2)
+
+  @@index([cart_id])
+  @@index([service_id])
+  @@map("cart_items")
+}
+
+model CartItemSelection {
+  selection_id String      @id @default(uuid())
+  cart_item_id String
+  cloth_id     String
+  quantity     Int
+  created_at   DateTime    @default(now())
+  cart_item    CartItem    @relation(fields: [cart_item_id], references: [cart_item_id], onDelete: Cascade)
+  cloth_item   ClothesItem @relation(fields: [cloth_id], references: [cloth_id])
+
+  @@index([cart_item_id])
+  @@index([cloth_id])
+  @@map("cart_item_selections")
+}
+
+// ==================== ORDER MANAGEMENT ====================
+
+model Order {
+  order_id                            String               @id @default(uuid())
+  customer_id                         String
+  order_status                        OrderStatus
+  pricing_model                       PricingModel
+  order_type                          OrderType            @default(both)
+  total_amount                        Decimal              @db.Decimal(10, 2)
+  pickup_address_id                   String
+  delivery_address_id                 String
+  pickup_date                         DateTime
+  delivery_date                       DateTime
+  special_instructions                String?
+  customer_rating                     Decimal?             @db.Decimal(3, 2)
+  customer_review                     String?
+  // New workflow tracking fields
+  received_by_collection_manager_id   String?
+  received_at                         DateTime?
+  submitted_to_services_at            DateTime?
+  dispatched_by_distribution_manager_id String?
+  dispatched_at                       DateTime?
+  payment_confirmed_at                DateTime?
+  created_at                          DateTime             @default(now())
+  updated_at                          DateTime             @updatedAt
+  bill                                Bill?
+  delivery                            Delivery?
+  order_items                         OrderItem[]
+  order_items_kg                      OrderItemKg[]
+  customer                            Customer             @relation(fields: [customer_id], references: [customer_id])
+  delivery_address                    CustomerAddress      @relation("DeliveryAddress", fields: [delivery_address_id], references: [address_id])
+  pickup_address                      CustomerAddress      @relation("PickupAddress", fields: [pickup_address_id], references: [address_id])
+
+  // Collection manager who received the order
+  received_by_manager CollectionManager? @relation("ReceivedByCollectionManager", fields: [received_by_collection_manager_id], references: [manager_id])
+
+  // Distribution manager who dispatched the order
+  dispatched_by_manager DistributionManager? @relation("DispatchedByDistributionManager", fields: [dispatched_by_distribution_manager_id], references: [manager_id])
+
+  // Service queue items for this order
+  service_queue_items ServiceQueueItem[]
+
+  @@index([customer_id])
   @@index([order_status])
   @@index([created_at])
+  @@index([received_by_collection_manager_id])
+  @@index([dispatched_by_distribution_manager_id])
   @@map("orders")
 }
 
+enum OrderStatus {
+  placed                 // Customer placed order
+  pickup_assigned        // Delivery partner assigned for pickup
+  picked_up              // Order picked up from customer
+  received_by_collection // Collection manager received order
+  submitted_to_services  // Submitted to service men
+  services_in_progress   // Service men working on items
+  services_completed     // All services completed
+  dispatch_assigned      // Delivery partner assigned for delivery
+  out_for_delivery       // Out for delivery to customer
+  payment_pending        // Delivered, waiting for payment
+  delivered              // Delivered and payment confirmed
+  closed                 // Order closed
+  cancelled              // Order cancelled
+}
+
+enum PricingModel {
+  per_unit
+  per_kg
+}
+
+enum OrderType {
+  pickup_only
+  drop_only
+  both
+  express_delivery
+}
+
 model OrderItem {
-  item_id      String  @id @default(uuid())
+  item_id      String          @id @default(uuid())
   order_id     String
   clothes_id   String
   quantity     Int
-  unit_price   Decimal @db.Decimal(10, 2)
-  subtotal     Decimal @db.Decimal(10, 2)
-
-  order   Order       @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
-  clothes ClothesItem @relation(fields: [clothes_id], references: [item_id])
+  unit_price   Decimal         @db.Decimal(10, 2)
+  subtotal     Decimal         @db.Decimal(10, 2)
+  item_status  OrderItemStatus @default(pending)
+  assigned_at  DateTime?
+  completed_at DateTime?
+  created_at   DateTime        @default(now())
+  updated_at   DateTime        @updatedAt
+  clothes      ClothesItem     @relation(fields: [clothes_id], references: [cloth_id])
+  order        Order           @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
 
   @@index([order_id])
+  @@index([item_status])
   @@map("order_items")
+}
+
+enum OrderItemStatus {
+  pending
+  in_progress
+  completed
 }
 
 model OrderItemKg {
@@ -232,171 +398,181 @@ model OrderItemKg {
   weight_kg    Decimal @db.Decimal(10, 2)
   price_per_kg Decimal @db.Decimal(10, 2)
   subtotal     Decimal @db.Decimal(10, 2)
-
-  order Order @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
+  order        Order   @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
 
   @@index([order_id])
   @@map("order_items_kg")
 }
 
-model Bill {
-  bill_id        String   @id @default(uuid())
-  order_id       String   @unique
-  subtotal       Decimal  @db.Decimal(10, 2)
-  delivery_fee   Decimal  @db.Decimal(10, 2)
-  tax_amount     Decimal  @db.Decimal(10, 2)
-  discount       Decimal  @default(0) @db.Decimal(10, 2)
-  final_amount   Decimal  @db.Decimal(10, 2)
-  payment_method String   @db.VarChar(50) // card, cod, upi, wallet
-  payment_status String   @db.VarChar(50) // pending, completed, failed, refunded
-  transaction_id String?  @db.VarChar(255)
-  paid_at        DateTime?
-  created_at     DateTime @default(now())
-  updated_at     DateTime @updatedAt
+// ==================== SERVICE QUEUE (FIFO) ====================
 
-  order Order @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
+model ServiceQueueItem {
+  queue_id       String      @id @default(uuid())
+  order_id       String
+  service_id     String
+  service_man_id String
+  item_id        String // Reference to OrderItem
+  item_name      String      @db.VarChar(255)
+  quantity       Int
+  queue_status   QueueStatus @default(pending)
+  priority       Int         @default(0) // For FIFO ordering
+  assigned_at    DateTime    @default(now())
+  started_at     DateTime?
+  completed_at   DateTime?
+  comments       String?
+  created_at     DateTime    @default(now())
+  updated_at     DateTime    @updatedAt
+
+  order       Order      @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
+  service     Service    @relation(fields: [service_id], references: [service_id])
+  service_man ServiceMan @relation(fields: [service_man_id], references: [service_man_id])
+
+  @@index([service_id, queue_status, priority]) // For FIFO retrieval
+  @@index([order_id])
+  @@index([service_man_id])
+  @@map("service_queue")
+}
+
+enum QueueStatus {
+  pending
+  in_progress
+  completed
+}
+
+// ==================== BILLING ====================
+
+model Bill {
+  bill_id        String        @id @default(uuid())
+  order_id       String        @unique
+  subtotal       Decimal       @db.Decimal(10, 2)
+  delivery_fee   Decimal       @db.Decimal(10, 2)
+  tax_amount     Decimal       @db.Decimal(10, 2)
+  discount       Decimal       @default(0) @db.Decimal(10, 2)
+  final_amount   Decimal       @db.Decimal(10, 2)
+  payment_method String        @db.VarChar(50)
+  payment_status PaymentStatus @default(pending)
+  transaction_id String?       @db.VarChar(255)
+  paid_at        DateTime?
+  created_at     DateTime      @default(now())
+  updated_at     DateTime      @updatedAt
+  order          Order         @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
 
   @@index([payment_status])
   @@index([created_at])
   @@map("bills")
 }
 
-// ============================================================================
-// DELIVERY MANAGEMENT
-// ============================================================================
-
-model DeliveryStaff {
-  staff_id             String   @id @default(uuid())
-  mart_id              String
-  full_name            String   @db.VarChar(255)
-  email                String   @unique @db.VarChar(255)
-  phone                String?  @db.VarChar(20) // Optional contact information
-  password             String?  @db.VarChar(255) // Optional - using OTP-based auth
-  vehicle_type         String   @db.VarChar(50) // bike, car, scooter
-  vehicle_number       String   @db.VarChar(50)
-  license_number       String   @db.VarChar(50)
-  document_url         String?  @db.VarChar(500) // S3 URL for documents
-  bank_account_details Json?    // JSON field for bank info
-  verification_status  String   @db.VarChar(50) // pending, approved, rejected
-  is_active            Boolean  @default(true)
-  average_rating       Decimal? @db.Decimal(3, 2)
-  total_deliveries     Int      @default(0)
-  created_at           DateTime @default(now())
-  updated_at           DateTime @updatedAt
-
-  mart       LaundryMart @relation(fields: [mart_id], references: [mart_id])
-  deliveries Delivery[]
-
-  @@index([mart_id])
-  @@index([verification_status])
-  @@map("delivery_staffs")
+enum PaymentStatus {
+  pending
+  completed
+  failed
+  refunded
 }
 
-model Delivery {
-  delivery_id          String   @id @default(uuid())
-  order_id             String   @unique
-  staff_id             String
-  delivery_status      String   @db.VarChar(50) // picked_up, on_the_way, delivered
-  assigned_at          DateTime @default(now())
-  completed_at         DateTime?
-  delivery_rating      Decimal? @db.Decimal(3, 2)
-  delivery_review      String?  @db.Text
-  delivery_fee         Decimal  @db.Decimal(10, 2)
-  distance_km          Decimal? @db.Decimal(10, 2)
-  estimated_duration   Int?     // Minutes
-  actual_duration      Int?     // Minutes
-  created_at           DateTime @default(now())
-  updated_at           DateTime @updatedAt
+// ==================== DELIVERY MANAGEMENT ====================
 
-  order          Order                @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
-  staff          DeliveryStaff        @relation(fields: [staff_id], references: [staff_id])
-  pickup         PickupForDelivery?
-  drop           DropForDelivery?
+model Delivery {
+  delivery_id          String             @id @default(uuid())
+  order_id             String             @unique
+  staff_id             String
+  delivery_type        DeliveryType // pickup or drop
+  delivery_status      String             @db.VarChar(50)
+  assigned_at          DateTime           @default(now())
+  completed_at         DateTime?
+  delivery_rating      Decimal?           @db.Decimal(3, 2)
+  delivery_review      String?
+  delivery_fee         Decimal            @db.Decimal(10, 2)
+  distance_km          Decimal?           @db.Decimal(10, 2)
+  estimated_duration   Int?
+  actual_duration      Int?
+  needs_weight_machine Boolean            @default(false) // If order has per_kg items
+  created_at           DateTime           @default(now())
+  updated_at           DateTime           @updatedAt
+  order                Order              @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
+  staff                DeliveryStaff      @relation(fields: [staff_id], references: [staff_id])
+  drop                 DropForDelivery?
+  pickup               PickupForDelivery?
 
   @@index([staff_id])
   @@index([delivery_status])
+  @@index([delivery_type])
   @@map("delivery")
 }
 
-model PickupForDelivery {
-  pickup_id      String   @id @default(uuid())
-  delivery_id    String   @unique
-  pickup_address String   @db.Text
-  pickup_lat     Decimal  @db.Decimal(10, 8)
-  pickup_lng     Decimal  @db.Decimal(11, 8)
-  pickup_status  String   @db.VarChar(50) // scheduled, on_the_way, picked_up
-  pickup_time    DateTime?
-  pickup_proof   String   @db.VarChar(500) // S3 URL for photo
-  created_at     DateTime @default(now())
-  updated_at     DateTime @updatedAt
+enum DeliveryType {
+  pickup
+  drop
+}
 
-  delivery Delivery @relation(fields: [delivery_id], references: [delivery_id], onDelete: Cascade)
+model PickupForDelivery {
+  pickup_id      String    @id @default(uuid())
+  delivery_id    String    @unique
+  pickup_address String
+  pickup_lat     Decimal   @db.Decimal(10, 8)
+  pickup_lng     Decimal   @db.Decimal(11, 8)
+  pickup_status  String    @db.VarChar(50)
+  pickup_time    DateTime?
+  pickup_proof   String?   @db.VarChar(500) // Photo proof URL
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+  delivery       Delivery  @relation(fields: [delivery_id], references: [delivery_id], onDelete: Cascade)
 
   @@index([pickup_status])
   @@map("pickup_for_delivery")
 }
 
 model DropForDelivery {
-  drop_id      String   @id @default(uuid())
-  delivery_id  String   @unique
-  drop_address String   @db.Text
-  drop_lat     Decimal  @db.Decimal(10, 8)
-  drop_lng     Decimal  @db.Decimal(11, 8)
-  drop_status  String   @db.VarChar(50) // scheduled, on_the_way, dropped
+  drop_id      String    @id @default(uuid())
+  delivery_id  String    @unique
+  drop_address String
+  drop_lat     Decimal   @db.Decimal(10, 8)
+  drop_lng     Decimal   @db.Decimal(11, 8)
+  drop_status  String    @db.VarChar(50)
   drop_time    DateTime?
-  drop_proof   String   @db.VarChar(500) // S3 URL for photo
-  created_at   DateTime @default(now())
-  updated_at   DateTime @updatedAt
-
-  delivery Delivery @relation(fields: [delivery_id], references: [delivery_id], onDelete: Cascade)
+  drop_proof   String?   @db.VarChar(500) // Photo proof URL
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  delivery     Delivery  @relation(fields: [delivery_id], references: [delivery_id], onDelete: Cascade)
 
   @@index([drop_status])
   @@map("drop_for_delivery")
 }
 
-// ============================================================================
-// ANALYTICS
-// ============================================================================
+// ==================== ANALYTICS ====================
 
-model MartDailyMetrics {
-  metric_id         String   @id @default(uuid())
-  mart_id           String
-  metric_date       DateTime @db.Date
-  total_orders      Int      @default(0)
-  completed_orders  Int      @default(0)
-  cancelled_orders  Int      @default(0)
-  total_revenue     Decimal  @default(0) @db.Decimal(10, 2)
-  total_customers   Int      @default(0)
-  new_customers     Int      @default(0)
-  avg_order_value   Decimal  @default(0) @db.Decimal(10, 2)
-  completion_rate   Decimal  @default(0) @db.Decimal(5, 2)
-  created_at        DateTime @default(now())
-  updated_at        DateTime @updatedAt
+model DailyMetrics {
+  metric_id             String   @id @default(uuid())
+  metric_date           DateTime @db.Date
+  total_orders          Int      @default(0)
+  completed_orders      Int      @default(0)
+  cancelled_orders      Int      @default(0)
+  total_revenue         Decimal  @default(0) @db.Decimal(10, 2)
+  total_customers       Int      @default(0)
+  new_customers         Int      @default(0)
+  avg_order_value       Decimal  @default(0) @db.Decimal(10, 2)
+  completion_rate       Decimal  @default(0) @db.Decimal(5, 2)
+  created_at            DateTime @default(now())
+  updated_at            DateTime @updatedAt
+  avg_delivery_duration Int?
 
-  mart LaundryMart @relation(fields: [mart_id], references: [mart_id], onDelete: Cascade)
-
-  @@unique([mart_id, metric_date])
-  @@index([mart_id])
+  @@unique([metric_date])
   @@index([metric_date])
-  @@map("mart_daily_metrics")
+  @@map("daily_metrics")
 }
 
-// ============================================================================
-// OTP VERIFICATION & AUTHENTICATION (Email-First)
-// ============================================================================
+// ==================== OTP VERIFICATION ====================
 
-// Stores OTP codes for verification via email
 model OtpVerification {
   otp_id       String   @id @default(uuid())
-  email        String   @db.VarChar(255)
   otp_code     String   @db.VarChar(6)
-  purpose      String   @db.VarChar(50) // login_or_signup, email_change, password_reset
-  user_type    String   @db.VarChar(30) // owner, manager, customer, delivery_staff
+  user_type    String   @db.VarChar(30)
   is_verified  Boolean  @default(false)
   expires_at   DateTime
   created_at   DateTime @default(now())
   attempts     Int      @default(0)
   max_attempts Int      @default(5)
+  purpose      String   @db.VarChar(50)
+  email        String   @db.VarChar(255)
 
   @@index([email, purpose])
   @@index([expires_at])
@@ -404,23 +580,21 @@ model OtpVerification {
   @@map("otp_verifications")
 }
 
-// Tracks verified email sessions before registration completion
 model OtpSession {
-  session_id           String   @id @default(uuid())
-  email                String   @db.VarChar(255)
-  user_type            String   @db.VarChar(30) // owner, manager, customer, delivery_staff
-  is_new_user          Boolean  // true = needs registration, false = existing user (logged in)
-  user_id              String?  // If existing user, store their ID
-  session_token        String   @unique @db.VarChar(500) // Temporary session token
-  is_completed         Boolean  @default(false) // true when registration is completed
-  mart_email           String?  @db.VarChar(255) // For owner registration: mart's contact email
-  mart_email_verified  Boolean  @default(false) // true when mart email OTP is verified
-  expires_at           DateTime
-  created_at           DateTime @default(now())
+  session_id          String   @id @default(uuid())
+  user_type           String   @db.VarChar(30)
+  is_new_user         Boolean
+  user_id             String?
+  session_token       String   @unique @db.VarChar(500)
+  is_completed        Boolean  @default(false)
+  expires_at          DateTime
+  created_at          DateTime @default(now())
+  email               String   @db.VarChar(255)
+  business_email          String?  @db.VarChar(255)
+  business_email_verified Boolean  @default(false)
 
   @@index([email])
   @@index([session_token])
   @@index([expires_at])
   @@map("otp_sessions")
 }
-

@@ -27,6 +27,15 @@ Welcome to the Laundry App backend documentation! This folder contains all the g
 |----------|-------------|-------------|
 | **[GMAIL_SMTP_SETUP.md](GMAIL_SMTP_SETUP.md)** | Gmail SMTP configuration guide | Setting up Gmail for sending OTP emails |
 
+### 🏗️ Architecture Documentation (v2.0)
+
+| Document | Description | When to Use |
+|----------|-------------|-------------|
+| **[NEW_ARCHITECTURE_OVERVIEW.md](NEW_ARCHITECTURE_OVERVIEW.md)** | Complete Architecture v2.0 with 6 user roles, cart system, and service queue | Understanding new system, planning development, API reference |
+| **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)** | Migration guide from Architecture v1.0 to v2.0 | Performing migration, understanding changes, troubleshooting |
+| **[WORKFLOW_DIAGRAMS.md](WORKFLOW_DIAGRAMS.md)** | Visual workflow diagrams for all processes | Understanding flows visually, training staff |
+| **[ARCHITECTURE_V2_SUMMARY.md](ARCHITECTURE_V2_SUMMARY.md)** | Quick reference and change summary | Quick reference, planning, progress tracking |
+
 ### 📂 Archived Documentation
 
 | Folder | Description |
@@ -62,6 +71,27 @@ Welcome to the Laundry App backend documentation! This folder contains all the g
 
 **...test the authentication flows**  
 → Run `node test-email-first-auth.js`
+
+**...understand the new 6-user role architecture**  
+→ Read [NEW_ARCHITECTURE_OVERVIEW.md](NEW_ARCHITECTURE_OVERVIEW.md)
+
+**...migrate to the new architecture**  
+→ Follow [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)
+
+**...implement the cart system**  
+→ See Cart System section in [NEW_ARCHITECTURE_OVERVIEW.md](NEW_ARCHITECTURE_OVERVIEW.md#cart-system)
+
+**...implement service queues (FIFO)**  
+→ See Service Queue Management in [NEW_ARCHITECTURE_OVERVIEW.md](NEW_ARCHITECTURE_OVERVIEW.md#service-queue-management)
+
+**...see visual workflow diagrams**  
+→ Read [WORKFLOW_DIAGRAMS.md](WORKFLOW_DIAGRAMS.md)
+
+**...get a quick reference of all changes**  
+→ Read [ARCHITECTURE_V2_SUMMARY.md](ARCHITECTURE_V2_SUMMARY.md)
+
+**...track implementation progress**  
+→ Use checklists in [ARCHITECTURE_V2_SUMMARY.md](ARCHITECTURE_V2_SUMMARY.md#implementation-checklist)
 
 ---
 

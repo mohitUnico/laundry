@@ -16,6 +16,7 @@ const { generateToken } = require('../utils/jwt');
 const { AppError, ValidationError, NotFoundError, AuthenticationError, AuthorizationError } = require('../utils/errors');
 const crypto = require('crypto');
 const emailService = require('./email.service');
+const serviceService = require('./service.service');
 
 // ============================================================================
 // CONSTANTS
@@ -641,6 +642,27 @@ const completeOwnerRegistration = async (sessionToken, martData, ownerData) => {
             martId: result.mart.mart_id,
             userId: result.owner.user_id
         });
+
+        // Create default services and clothes for the new mart (non-blocking)
+        (async () => {
+            try {
+                const svcRes = await serviceService.createDefaultServices(result.mart.mart_id);
+                logger.info('Default services created for new mart', {
+                    martId: result.mart.mart_id,
+                    servicesCreated: svcRes.count
+                });
+                const clothRes = await serviceService.createDefaultClothesForMart(result.mart.mart_id);
+                logger.info('Default clothes created for new mart', {
+                    martId: result.mart.mart_id,
+                    itemsCreated: clothRes.count
+                });
+            } catch (err) {
+                logger.error('Failed creating defaults for new mart', {
+                    error: err.message,
+                    martId: result.mart.mart_id
+                });
+            }
+        })();
 
         // Send welcome email (non-blocking)
         emailService.sendWelcomeEmail(session.email, ownerData.ownerName, USER_TYPES.OWNER)

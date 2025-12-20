@@ -1,6 +1,13 @@
 const { PrismaClient } = require('@prisma/client');
 const logger = require('../utils/logger');
 
+// Allow overriding the Prisma connection string with a Supabase-specific URL.
+// This keeps local DATABASE_URL values intact while enabling Supabase via env only.
+if (process.env.SUPABASE_DATABASE_URL) {
+    process.env.DATABASE_URL = process.env.SUPABASE_DATABASE_URL;
+    logger.info('Using Supabase connection string from SUPABASE_DATABASE_URL');
+}
+
 const prismaClientOptions = {
     log: [
         { level: 'query', emit: 'event' },

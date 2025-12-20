@@ -11,6 +11,12 @@ interface ProfileDrawerProps {
 }
 
 export const ProfileDrawer: React.FC<ProfileDrawerProps> = ({ isOpen, onClose, user, onEditProfile, onLogout }) => {
+  const firstName = user?.firstName || 'User';
+  const lastName = user?.lastName || '';
+  const role = user?.role || 'Admin';
+  const email = user?.email || 'user@example.com';
+  const avatar = user?.avatarUrl || 'https://i.pravatar.cc/100?img=67';
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -40,14 +46,14 @@ export const ProfileDrawer: React.FC<ProfileDrawerProps> = ({ isOpen, onClose, u
             <div className="p-6">
               <div className="flex items-center gap-4 mb-6">
                 <img
-                  src={user?.avatarUrl || 'https://i.pravatar.cc/100?img=67'}
+                  src={avatar}
                   alt="Profile"
                   className="w-16 h-16 rounded-full object-cover"
                 />
                 <div>
-                  <p className="text-xl font-semibold text-slate-900">{user?.firstName} {user?.lastName}</p>
-                  <p className="text-sm text-slate-500">{user?.role || 'Admin'}</p>
-                  <p className="text-sm text-slate-500">{user?.email || 'user@example.com'}</p>
+                  <p className="text-xl font-semibold text-slate-900">{firstName} {lastName}</p>
+                  <p className="text-sm text-slate-500">{role}</p>
+                  <p className="text-sm text-slate-500">{email}</p>
                 </div>
               </div>
               <div className="flex gap-3">

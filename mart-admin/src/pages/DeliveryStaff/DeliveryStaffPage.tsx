@@ -60,18 +60,18 @@ const StatCard: React.FC<{
     value: string | number;
     right?: React.ReactNode;
 }> = ({ title, value, right }) => (
-    <div className="tw-card rounded-xl shadow-sm border border-slate-200 bg-white px-5 py-4 transition-all duration-150 ease-in-out hover:shadow md:min-w-[220px]">
-        <div className="flex items-center justify-between text-slate-500 text-sm font-medium">
+    <div className="tw-card rounded-lg sm:rounded-xl shadow-sm border border-slate-200 bg-white px-4 sm:px-5 py-3 sm:py-4 transition-all duration-150 ease-in-out hover:shadow">
+        <div className="flex items-center justify-between text-slate-500 text-xs sm:text-sm font-medium">
             <span>{title}</span>
             {right}
         </div>
-        <div className="mt-2 text-3xl font-semibold text-slate-900">{value}</div>
+        <div className="mt-2 text-2xl sm:text-3xl font-semibold text-slate-900">{value}</div>
     </div>
 );
 
 const MapWithMarkers: React.FC<{ staff: Staff[] }> = ({ staff }) => {
     return (
-        <div className="relative h-[520px] w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="relative h-[300px] sm:h-[400px] md:h-[480px] lg:h-[520px] w-full overflow-hidden rounded-xl sm:rounded-2xl border border-slate-200 bg-white shadow-sm">
             {/* Real map embed */}
             <iframe
                 title="map"
@@ -84,10 +84,10 @@ const MapWithMarkers: React.FC<{ staff: Staff[] }> = ({ staff }) => {
             {staff.map((s) => (
                 <div key={s.id} className="absolute" style={{ top: s.coords.top, left: s.coords.left, transform: 'translate(-50%, -50%)' }}>
                     <div className="relative">
-                        <div className={`h-9 w-9 ${s.avatarBg} ring-2 ring-white rounded-full flex items-center justify-center text-white text-[10px] font-semibold shadow`}>
+                        <div className={`h-7 w-7 sm:h-8 sm:w-8 md:h-9 md:w-9 ${s.avatarBg} ring-2 ring-white rounded-full flex items-center justify-center text-white text-[9px] sm:text-[10px] font-semibold shadow`}>
                             {s.initials}
                         </div>
-                        <div className="absolute -bottom-[6px] left-1/2 h-0 w-0 -translate-x-1/2 border-x-6 border-x-transparent border-t-6 border-t-rose-400" />
+                        <div className="absolute -bottom-[4px] sm:-bottom-[6px] left-1/2 h-0 w-0 -translate-x-1/2 border-x-4 sm:border-x-6 border-x-transparent border-t-4 sm:border-t-6 border-t-rose-400" />
                     </div>
                 </div>
             ))}
@@ -193,26 +193,26 @@ export const DeliveryStaffPage: React.FC = () => {
     return (
         <div className="w-full">
             {/* Header row with title and CTA */}
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-3 sm:mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
                 <div>
-                    <h1 className="text-[22px] font-semibold text-slate-900">Delivery Staff Management</h1>
-                    <p className="mt-1 text-sm text-slate-500">Track and manage delivery personnel in real-time.</p>
+                    <h1 className="text-lg sm:text-xl md:text-[22px] font-semibold text-slate-900">Delivery Staff Management</h1>
+                    <p className="mt-1 text-xs sm:text-sm text-slate-500">Track and manage delivery personnel in real-time.</p>
                 </div>
-                <button className="inline-flex items-center gap-2 rounded-lg bg-[#2A52F2] px-4 py-2 text-sm font-medium text-white shadow-sm transition duration-150 ease-in-out hover:brightness-110">
-                    <span className="text-lg leading-none">+</span>
-                    Add Delivery Staff
+                <button className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#2A52F2] px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white shadow-sm transition duration-150 ease-in-out hover:brightness-110 w-full sm:w-auto">
+                    <span className="text-base sm:text-lg leading-none">+</span>
+                    <span>Add Delivery Staff</span>
                 </button>
             </div>
 
             {/* Stats cards */}
-            <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mb-4 sm:mb-5 grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <div
                     onClick={() => handleStatCardClick('all')}
                     className={`cursor-pointer transition-transform duration-150 hover:-translate-y-0.5 ${
                         statusFilter === 'all' ? 'ring-2 ring-indigo-500 rounded-xl' : ''
                     }`}
                 >
-                    <StatCard title="Total Staff" value={stats.totalStaff} right={<UserOutlineIcon className="h-5 w-5 text-slate-400" />} />
+                    <StatCard title="Total Staff" value={stats.totalStaff} right={<UserOutlineIcon className="h-4 w-4 sm:h-5 sm:w-5 text-slate-400" />} />
                 </div>
                 <div
                     onClick={() => handleStatCardClick('available')}
@@ -220,7 +220,7 @@ export const DeliveryStaffPage: React.FC = () => {
                         statusFilter === 'available' ? 'ring-2 ring-indigo-500 rounded-xl' : ''
                     }`}
                 >
-                    <StatCard title="Available" value={stats.available} right={<span className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />} />
+                    <StatCard title="Available" value={stats.available} right={<span className="inline-flex h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full bg-emerald-500" />} />
                 </div>
                 <div
                     onClick={() => handleStatCardClick('onDelivery')}
@@ -228,24 +228,24 @@ export const DeliveryStaffPage: React.FC = () => {
                         statusFilter === 'onDelivery' ? 'ring-2 ring-indigo-500 rounded-xl' : ''
                     }`}
                 >
-                    <StatCard title="On Delivery" value={stats.onDelivery} right={<span className="inline-flex h-2.5 w-2.5 rounded-full bg-indigo-500" />} />
+                    <StatCard title="On Delivery" value={stats.onDelivery} right={<span className="inline-flex h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full bg-indigo-500" />} />
                 </div>
                 <div className="cursor-default">
-                    <StatCard title="Avg. Rating" value={stats.avgRating} right={<StarSolidIcon className="h-5 w-5 text-amber-400" />} />
+                    <StatCard title="Avg. Rating" value={stats.avgRating} right={<StarSolidIcon className="h-4 w-4 sm:h-5 sm:w-5 text-amber-400" />} />
                 </div>
             </div>
 
             {/* Map + Staff details layout */}
-            <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
-                <div className="xl:col-span-7 2xl:col-span-7">
+            <div className="grid grid-cols-1 gap-4 sm:gap-5 xl:grid-cols-12">
+                <div className="xl:col-span-7 2xl:col-span-7 order-2 xl:order-1">
                     <MapWithMarkers staff={staff} />
                 </div>
-                <div className="xl:col-span-5 2xl:col-span-5">
-                    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-                        <div className="flex items-center justify-between px-5 py-3">
-                            <div className="text-[15px] font-semibold text-slate-900">Staff Details</div>
+                <div className="xl:col-span-5 2xl:col-span-5 order-1 xl:order-2">
+                    <div className="rounded-xl sm:rounded-2xl border border-slate-200 bg-white shadow-sm">
+                        <div className="flex items-center justify-between px-4 sm:px-5 py-2.5 sm:py-3">
+                            <div className="text-sm sm:text-[15px] font-semibold text-slate-900">Staff Details</div>
                         </div>
-                        <div className="max-h-[560px] overflow-auto">
+                        <div className="max-h-[400px] sm:max-h-[500px] md:max-h-[560px] overflow-auto">
                             {staff.map((s) => (
                                 <StaffRow key={s.id} staff={s} expanded={expandedId === s.id} onToggle={() => setExpandedId((e) => (e === s.id ? '' : s.id))} />
                             ))}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 
 interface EditProfileModalProps {
@@ -13,6 +13,13 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
   const [lastName, setLastName] = useState(initial.lastName || '');
   const [email, setEmail] = useState(initial.email || '');
   const [role, setRole] = useState(initial.role || 'Admin');
+
+  useEffect(() => {
+    setFirstName(initial.firstName || '');
+    setLastName(initial.lastName || '');
+    setEmail(initial.email || '');
+    setRole(initial.role || 'Admin');
+  }, [initial.firstName, initial.lastName, initial.email, initial.role, isOpen]);
 
   const handleSave = () => {
     onSave({ firstName, lastName, email, role });

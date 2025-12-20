@@ -162,18 +162,18 @@ export const OrdersPage: React.FC = () => {
   });
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
+    <div className="min-h-screen bg-slate-50 p-3 sm:p-4 md:p-5 lg:p-6">
       <div className="mx-auto max-w-[1200px]">
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-slate-900">Order Management</h1>
-          <p className="mt-1 text-sm text-slate-500">Track and manage all customer orders.</p>
+        <div className="mb-4 sm:mb-5 md:mb-6">
+          <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Order Management</h1>
+          <p className="mt-1 text-xs sm:text-sm text-slate-500">Track and manage all customer orders.</p>
         </div>
 
-        <div className="grid grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
           {kpis.map((k) => {
             const isSelected = statusFilter === k.status;
             return (
-              <div key={k.label} className="col-span-12 sm:col-span-6 lg:col-span-3">
+              <div key={k.label}>
                 <SummaryCard 
                   title={k.label} 
                   value={k.value} 
@@ -185,7 +185,7 @@ export const OrdersPage: React.FC = () => {
           })}
         </div>
 
-        <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-md">
+        <div className="mt-4 sm:mt-5 md:mt-6 rounded-xl sm:rounded-2xl border border-slate-200 bg-white p-3 sm:p-4 shadow-md">
           <FilterBar
             search={search}
             onSearchChange={setSearch}
@@ -196,7 +196,7 @@ export const OrdersPage: React.FC = () => {
           />
         </div>
 
-        <div className="mt-6">
+        <div className="mt-4 sm:mt-5 md:mt-6">
           <OrderTable rows={rows} />
         </div>
       </div>

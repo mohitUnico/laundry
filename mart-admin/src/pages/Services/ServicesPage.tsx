@@ -222,34 +222,34 @@ export const ServicesPage: React.FC = () => {
   return (
     <>
       <div className="min-h-screen bg-gray-50">
-        <div className="max-w-[1280px] mx-auto px-4 py-5">
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_22rem] gap-5">
-            <main className="space-y-5">
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-                <div className="flex items-center justify-between">
+        <div className="max-w-[1280px] mx-auto px-3 sm:px-4 md:px-5 lg:px-6 py-4 sm:py-5">
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_22rem] gap-4 sm:gap-5">
+            <main className="space-y-4 sm:space-y-5">
+              <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-slate-100 p-4 sm:p-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
                   <div>
-                    <div className="text-xl font-semibold text-slate-900">Services & Inventory</div>
-                    <div className="text-[12px] text-slate-500 mt-1">Manage laundry services and pricing</div>
+                    <div className="text-lg sm:text-xl font-semibold text-slate-900">Services & Inventory</div>
+                    <div className="text-xs sm:text-[12px] text-slate-500 mt-1">Manage laundry services and pricing</div>
                   </div>
                   <button 
                     onClick={handleOpenAddModal}
-                    className="h-9 px-4 bg-indigo-700 hover:bg-indigo-600 text-white text-sm rounded-md"
+                    className="h-8 sm:h-9 px-3 sm:px-4 bg-indigo-700 hover:bg-indigo-600 text-white text-xs sm:text-sm rounded-lg sm:rounded-md transition-colors w-full sm:w-auto"
                   >
                     + Add Service
                   </button>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 <StatsCard title="Total Services" value={15} />
                 <StatsCard title="Active Services" value={15} dotColor="#10B981" />
                 <StatsCard title="Categories" value={32} />
               </div>
 
-              <section className="space-y-5">
+              <section className="space-y-4 sm:space-y-5">
                 <div>
-                  <div className="text-sm font-semibold text-slate-800 mb-3">Quick Wash</div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="text-xs sm:text-sm font-semibold text-slate-800 mb-2 sm:mb-3">Quick Wash</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                     {services.filter(s => s.category === 'Quick Wash').map(service => (
                       <TwServiceCard 
                         key={service.id}
@@ -266,8 +266,8 @@ export const ServicesPage: React.FC = () => {
                 </div>
 
                 <div>
-                  <div className="text-sm font-semibold text-slate-800 mb-3">Pro Clean</div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="text-xs sm:text-sm font-semibold text-slate-800 mb-2 sm:mb-3">Pro Clean</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                     {services.filter(s => s.category === 'Pro Clean').map(service => (
                       <TwServiceCard 
                         key={service.id}
@@ -284,8 +284,8 @@ export const ServicesPage: React.FC = () => {
                 </div>
 
                 <div>
-                  <div className="text-sm font-semibold text-slate-800 mb-3">Steam Press</div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="text-xs sm:text-sm font-semibold text-slate-800 mb-2 sm:mb-3">Steam Press</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                     {services.filter(s => s.category === 'Steam Press').map(service => (
                       <TwServiceCard 
                         key={service.id}
@@ -302,8 +302,8 @@ export const ServicesPage: React.FC = () => {
                 </div>
 
                 <div>
-                  <div className="text-sm font-semibold text-slate-800 mb-3">Luxury Care</div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="text-xs sm:text-sm font-semibold text-slate-800 mb-2 sm:mb-3">Luxury Care</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                     {services.filter(s => s.category === 'Luxury Care').map(service => (
                       <TwServiceCard 
                         key={service.id}
@@ -321,7 +321,7 @@ export const ServicesPage: React.FC = () => {
               </section>
             </main>
 
-            <aside className="space-y-5">
+            <aside className="space-y-4 sm:space-y-5 lg:order-last">
               <AddOnCard 
                 items={addOnServices} 
                 onAdd={handleOpenAddOnModal}

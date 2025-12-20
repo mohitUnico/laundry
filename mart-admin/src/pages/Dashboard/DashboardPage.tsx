@@ -73,12 +73,12 @@ export const DashboardPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <div className="space-y-3 sm:space-y-4 md:space-y-5 lg:space-y-6">
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
         <div
           onClick={() => setShowRevenueModal(true)}
-          className="cursor-pointer transform transition-all hover:scale-105 hover:shadow-lg"
+          className="cursor-pointer transform transition-all hover:scale-[1.02] active:scale-[0.98] hover:shadow-lg"
         >
           <SummaryCard
             title="Total Revenue"
@@ -89,51 +89,51 @@ export const DashboardPage: React.FC = () => {
         </div>
         <div
           onClick={() => setShowActiveOrdersModal(true)}
-          className="cursor-pointer transform transition-all hover:scale-105 hover:shadow-lg"
+          className="cursor-pointer transform transition-all hover:scale-[1.02] active:scale-[0.98] hover:shadow-lg"
         >
           <SummaryCard title="Active Orders" value={47} growth="+12.5%" />
         </div>
         <div
           onClick={() => setShowNewCustomersModal(true)}
-          className="cursor-pointer transform transition-all hover:scale-105 hover:shadow-lg"
+          className="cursor-pointer transform transition-all hover:scale-[1.02] active:scale-[0.98] hover:shadow-lg"
         >
           <SummaryCard title="New Customers" value={58} growth="+8.3%" />
         </div>
         <div
           onClick={() => setShowDeliveryAnalyticsModal(true)}
-          className="cursor-pointer transform transition-all hover:scale-105 hover:shadow-lg"
+          className="cursor-pointer transform transition-all hover:scale-[1.02] active:scale-[0.98] hover:shadow-lg"
         >
           <SummaryCard title="Avg. Delivery Time" value="28 min" growth="+12.5%" />
         </div>
       </div>
 
       {/* Order Status + Alert */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-        <div className="lg:col-span-2">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
+        <div className="lg:col-span-2 order-1 lg:order-1">
           <OrderStatusWidget onStatusClick={handleStatusClick} />
         </div>
-        <div>
+        <div className="order-2 lg:order-2">
           <AlertCard onCta={() => setShowLateDeliveryModal(true)} />
         </div>
       </div>
 
       {/* Revenue Chart + Top Performers */}
-      <div className="grid grid-cols-1 lg:grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">
-        <div className="xl:col-span-2">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
+        <div className="xl:col-span-2 order-1">
           <RevenueChart />
         </div>
-        <div>
+        <div className="order-2">
           <TopPerformers />
         </div>
       </div>
 
       {/* Recent Orders + Customer Satisfaction + Quick Actions */}
-      <div className="grid grid-cols-1 lg:grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">
-        <div className="xl:col-span-2">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
+        <div className="xl:col-span-2 order-1">
           <RecentOrders onViewAll={() => setShowAllRecentOrdersModal(true)} />
         </div>
-        <div className="xl:col-span-1">
-          <div className="space-y-4 sm:space-y-6">
+        <div className="xl:col-span-1 order-2">
+          <div className="space-y-3 sm:space-y-4 md:space-y-5 lg:space-y-6">
             <CustomerSatisfaction />
             <QuickActions
               onCreateOrder={() => setShowCreateOrderModal(true)}
@@ -179,23 +179,23 @@ export const DashboardPage: React.FC = () => {
         title="Revenue Breakdown"
         size="lg"
       >
-        <div className="space-y-6">
-          <div className="grid grid-cols-3 gap-4">
-            <div className="text-center p-4 bg-blue-50 rounded-xl">
-              <p className="text-sm text-slate-600 mb-1">Daily</p>
-              <p className="text-2xl font-bold text-blue-600">$3,210</p>
+        <div className="space-y-4 sm:space-y-5 md:space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+            <div className="text-center p-3 sm:p-4 bg-blue-50 rounded-lg sm:rounded-xl">
+              <p className="text-xs sm:text-sm text-slate-600 mb-1">Daily</p>
+              <p className="text-xl sm:text-2xl font-bold text-blue-600">$3,210</p>
             </div>
-            <div className="text-center p-4 bg-blue-50 rounded-xl">
-              <p className="text-sm text-slate-600 mb-1">Weekly</p>
-              <p className="text-2xl font-bold text-blue-600">$8,940</p>
+            <div className="text-center p-3 sm:p-4 bg-blue-50 rounded-lg sm:rounded-xl">
+              <p className="text-xs sm:text-sm text-slate-600 mb-1">Weekly</p>
+              <p className="text-xl sm:text-2xl font-bold text-blue-600">$8,940</p>
             </div>
-            <div className="text-center p-4 bg-blue-50 rounded-xl">
-              <p className="text-sm text-slate-600 mb-1">Monthly</p>
-              <p className="text-2xl font-bold text-blue-600">$12,845</p>
+            <div className="text-center p-3 sm:p-4 bg-blue-50 rounded-lg sm:rounded-xl">
+              <p className="text-xs sm:text-sm text-slate-600 mb-1">Monthly</p>
+              <p className="text-xl sm:text-2xl font-bold text-blue-600">$12,845</p>
             </div>
           </div>
-          <div className="h-64 bg-slate-50 rounded-xl flex items-center justify-center">
-            <p className="text-slate-500">Revenue Trend Chart</p>
+          <div className="h-48 sm:h-56 md:h-64 bg-slate-50 rounded-lg sm:rounded-xl flex items-center justify-center">
+            <p className="text-sm sm:text-base text-slate-500">Revenue Trend Chart</p>
           </div>
         </div>
       </Modal>

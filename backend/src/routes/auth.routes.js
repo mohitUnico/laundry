@@ -14,8 +14,11 @@ const { validate } = require('../middleware/validation.middleware');
 const { authenticateJWT, authorize } = require('../middleware/auth.middleware');
 const {
   sendOtpSchema,
+  sendPortalOtpSchema,
   verifyOtpSchema,
+  verifyPortalOtpSchema,
   completeOwnerRegistrationSchema,
+  completePortalRegistrationSchema,
   completeManagerRegistrationSchema,
   completeCustomerRegistrationSchema,
   completeDeliveryRegistrationSchema,
@@ -25,6 +28,49 @@ const {
 // ============================================================================
 // OWNER AUTHENTICATION ROUTES
 // ============================================================================
+
+/**
+ * @route   POST /api/v1/auth/send-otp
+ * @desc    Send OTP to email or phone identifier for portal login
+ * @access  Public
+ * @body    { identifier: "user@example.com" | "9876543210" }
+ */
+router.post(
+  '/send-otp',
+  validate(sendPortalOtpSchema),
+  authController.sendPortalOtp
+);
+
+/**
+ * @route   POST /api/v1/auth/verify-otp
+ * @desc    Verify OTP for portal login
+ * @access  Public
+ * @body    { identifier: "user@example.com" | "9876543210", otp: "123456" }
+ */
+router.post(
+  '/verify-otp',
+  validate(verifyPortalOtpSchema),
+  authController.verifyPortalOtp
+);
+
+/**
+ * @route   POST /api/v1/auth/portal/complete-registration
+ * @desc    Complete registration for new portal user after OTP verification
+ * @access  Public
+ * @body    {
+ *            sessionToken: "abc123...",
+ *            profile: {
+ *              name: "User Name",
+ *              email?: "user@example.com",
+ *              phone?: "9876543210"
+ *            }
+ *          }
+ */
+router.post(
+  '/portal/complete-registration',
+  validate(completePortalRegistrationSchema),
+  authController.completePortalRegistration
+);
 
 /**
  * @route   POST /api/v1/auth/owner/send-otp

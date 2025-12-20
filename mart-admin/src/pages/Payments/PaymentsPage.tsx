@@ -157,18 +157,20 @@ export const PaymentsPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#F9FAFB]">
-      <div className="max-w-[1280px] mx-auto px-8 lg:px-10 py-6 space-y-8">
+      <div className="max-w-[1280px] mx-auto px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10 py-4 sm:py-5 md:py-6 space-y-4 sm:space-y-5 md:space-y-6 lg:space-y-8">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
           <div>
-            <div className="text-2xl font-bold text-[#111827]">Payment Management</div>
-            <div className="text-sm text-slate-500 mt-1">Track and manage all payment transactions</div>
+            <div className="text-xl sm:text-2xl font-bold text-[#111827]">Payment Management</div>
+            <div className="text-xs sm:text-sm text-slate-500 mt-1">Track and manage all payment transactions</div>
           </div>
-          <button className="h-9 px-5 rounded-full bg-[#2B3AFF] hover:bg-[#253BFF] text-white text-sm font-medium shadow-sm">+ Process Refund</button>
+          <button className="h-8 sm:h-9 px-4 sm:px-5 rounded-full bg-[#2B3AFF] hover:bg-[#253BFF] text-white text-xs sm:text-sm font-medium shadow-sm transition-colors w-full sm:w-auto">
+            + Process Refund
+          </button>
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-5 lg:gap-6 xl:gap-8">
           {kpis.map((kpi) => (
             <PaymentStatCard 
               key={kpi.label} 
@@ -180,7 +182,7 @@ export const PaymentsPage: React.FC = () => {
         </div>
 
         {/* Filters */}
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+        <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-sm border border-slate-100">
           <PaymentFilterBar
             search={search}
             onSearchChange={setSearch}
@@ -192,7 +194,7 @@ export const PaymentsPage: React.FC = () => {
         </div>
 
         {/* Transaction Table */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
           <PaymentTable rows={rows} />
         </div>
       </div>

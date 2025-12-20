@@ -47,9 +47,9 @@ export const SendNotificationModal: React.FC<SendNotificationModalProps> = ({ is
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Send Notification" size="md">
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
+          <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-1.5 sm:mb-2">
             Message Title *
           </label>
           <input
@@ -57,13 +57,13 @@ export const SendNotificationModal: React.FC<SendNotificationModalProps> = ({ is
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Enter notification title"
-            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-3 sm:px-4 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             required
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
+          <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-1.5 sm:mb-2">
             Message Body *
           </label>
           <textarea
@@ -71,19 +71,19 @@ export const SendNotificationModal: React.FC<SendNotificationModalProps> = ({ is
             onChange={(e) => setMessage(e.target.value)}
             placeholder="Enter notification message"
             rows={4}
-            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+            className="w-full px-3 sm:px-4 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
             required
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
+          <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-1.5 sm:mb-2">
             Audience
           </label>
           <select
             value={audience}
             onChange={(e) => setAudience(e.target.value)}
-            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-3 sm:px-4 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           >
             <option value="all">All Customers</option>
             <option value="active">Active Customers</option>
@@ -91,20 +91,20 @@ export const SendNotificationModal: React.FC<SendNotificationModalProps> = ({ is
           </select>
         </div>
 
-        <div className="flex gap-3 pt-4">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-3 sm:pt-4">
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 font-medium transition-colors"
+            className="flex-1 px-4 py-2 text-xs sm:text-sm border border-slate-300 text-slate-700 rounded-lg sm:rounded-xl hover:bg-slate-50 font-medium transition-colors"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={submitting}
-            className="flex-1 px-4 py-2 bg-blue-600 disabled:opacity-60 text-white rounded-xl hover:bg-blue-700 font-medium transition-colors flex items-center justify-center gap-2"
+            className="flex-1 px-4 py-2 text-xs sm:text-sm bg-blue-600 disabled:opacity-60 text-white rounded-lg sm:rounded-xl hover:bg-blue-700 font-medium transition-colors flex items-center justify-center gap-1.5 sm:gap-2"
           >
-            <Send size={18} />
+            <Send size={16} className="sm:w-[18px] sm:h-[18px]" />
             {submitting ? 'Sending...' : 'Send Notification'}
           </button>
         </div>

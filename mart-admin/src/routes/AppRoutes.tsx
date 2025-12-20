@@ -19,7 +19,16 @@ const LoginPage = lazy(() => import('@/pages/Auth').then((m) => ({ default: m.Lo
 const SignUpPage = lazy(() => import('@/pages/Auth').then((m) => ({ default: m.SignUpPage })));
 const SignUpOtpPage = lazy(() => import('@/pages/Auth').then((m) => ({ default: m.SignUpOtpPage })));
 const SignUpProfilePage = lazy(() => import('@/pages/Auth/SignUpProfilePage').then((m) => ({ default: m.SignUpProfilePage })));
+const SignUpMartEmailOtpPage = lazy(() =>
+  import('@/pages/Auth/SignUpMartEmailOtpPage').then((m) => ({ default: m.SignUpMartEmailOtpPage }))
+);
+const SignUpOwnerDetailsPage = lazy(() =>
+  import('@/pages/Auth/SignUpOwnerDetailsPage').then((m) => ({ default: m.SignUpOwnerDetailsPage }))
+);
 const SignUpLocationPage = lazy(() => import('@/pages/Auth/SignUpLocationPage').then((m) => ({ default: m.SignUpLocationPage })));
+const PortalRegistrationPage = lazy(() =>
+  import('@/pages/Auth/PortalRegistrationPage').then((m) => ({ default: m.PortalRegistrationPage }))
+);
 
 export const AppRoutes: React.FC = () => {
     return (
@@ -31,7 +40,10 @@ export const AppRoutes: React.FC = () => {
                     <Route path={ROUTES.SIGNUP} element={<SignUpPage />} />
                     <Route path={ROUTES.SIGNUP_OTP} element={<SignUpOtpPage />} />
                     <Route path={ROUTES.SIGNUP_PROFILE} element={<SignUpProfilePage />} />
+                    <Route path={ROUTES.SIGNUP_MART_EMAIL_OTP} element={<SignUpMartEmailOtpPage />} />
+                    <Route path={ROUTES.SIGNUP_OWNER} element={<SignUpOwnerDetailsPage />} />
                     <Route path={ROUTES.SIGNUP_LOCATION} element={<SignUpLocationPage />} />
+                    <Route path={ROUTES.PORTAL_REGISTRATION} element={<PortalRegistrationPage />} />
                 </Route>
 
                 {/* Private routes */}

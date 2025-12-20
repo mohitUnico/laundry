@@ -50,18 +50,18 @@ export const FilterBar: React.FC<FilterBarProps> = ({
     : formatDisplayDate(new Date());
 
   return (
-    <div className="flex w-full items-center justify-between">
-      <div className="relative w-[420px]">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+    <div className="flex flex-col sm:flex-row w-full items-stretch sm:items-center justify-between gap-3 sm:gap-4">
+      <div className="relative flex-1 sm:max-w-md">
+        <Search size={14} className="sm:w-4 sm:h-4 absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 text-slate-400" />
         <input
           type="text"
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Search by order number or customer name..."
-          className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-slate-300 focus:outline-none"
+          placeholder="Search orders..."
+          className="w-full rounded-lg sm:rounded-xl border border-slate-200 bg-white py-2 sm:py-2.5 pl-8 sm:pl-9 pr-3 text-xs sm:text-sm text-slate-700 placeholder:text-slate-400 focus:border-slate-300 focus:outline-none"
         />
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
         <div className="relative inline-flex items-center">
           <label className="relative inline-flex items-center cursor-pointer">
             <input
@@ -89,16 +89,17 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                   }
                 }
               }}
-              className={`inline-flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm text-slate-700 transition-colors cursor-pointer ${
+              className={`inline-flex items-center gap-1.5 sm:gap-2 rounded-lg sm:rounded-xl border bg-white px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-slate-700 transition-colors cursor-pointer ${
                 dateFilter ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:border-slate-300'
               }`}
             >
-              <CalendarDays size={16} className="text-slate-500" />
-              <span>{displayDate}</span>
+              <CalendarDays size={14} className="sm:w-4 sm:h-4 text-slate-500" />
+              <span className="hidden sm:inline">{displayDate}</span>
+              <span className="sm:hidden text-xs">{new Date(displayDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
               {dateFilter && (
                 <X 
-                  size={14} 
-                  className="text-slate-400 hover:text-slate-600" 
+                  size={12} 
+                  className="sm:w-3.5 sm:h-3.5 text-slate-400 hover:text-slate-600" 
                   onClick={(e) => {
                     e.stopPropagation();
                     clearDateFilter(e);
@@ -111,7 +112,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         <select
           value={status}
           onChange={(e) => onStatusChange(e.target.value)}
-          className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+          className="rounded-lg sm:rounded-xl border border-slate-200 bg-white px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 flex-1 sm:flex-none min-w-[100px]"
         >
           <option value="all">All Status</option>
           <option value="pickup">Pending</option>
@@ -120,9 +121,9 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           <option value="delivered">Delivered</option>
           <option value="ready">Ready</option>
         </select>
-        <button className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:border-slate-300">
-          <Download size={16} className="text-slate-500" />
-          Export
+        <button className="inline-flex items-center gap-1.5 sm:gap-2 rounded-lg sm:rounded-xl border border-slate-200 bg-white px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-slate-700 hover:border-slate-300 transition-colors">
+          <Download size={14} className="sm:w-4 sm:h-4 text-slate-500" />
+          <span className="hidden sm:inline">Export</span>
         </button>
       </div>
     </div>

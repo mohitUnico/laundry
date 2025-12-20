@@ -7,6 +7,10 @@ import { ExportDropdown } from './ExportDropdown';
 import { NotificationDrawer, NotificationItem } from './NotificationDrawer';
 import { SearchBar } from './SearchBar';
 import { useToast } from '@/hooks/common';
+import { useAuth } from '@/hooks';
+import { useNavigate } from 'react-router-dom';
+import { ROUTES } from '@/routes';
+import { splitName } from '@/utils/helpers';
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -16,9 +20,29 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
   const { showToast } = useToast();
+  const navigate = useNavigate();
+  const { user, logout, updateProfile } = useAuth();
 
-  // Mock user (replace with Supabase/auth hook later)
-  const user = { firstName: 'Michael', lastName: 'Jackson', role: 'Admin', email: 'michael@example.com' };
+  const profileUser = useMemo((): { firstName: string; lastName?: string; role?: string; email?: string; avatarUrl?: string } | null => {
+    if (!user) {
+      return null;
+    }
+
+    const nameParts = splitName(user.name);
+    const fallbackFirst = nameParts.firstName || (user.email ? user.email.split('@')[0] : '');
+    const safeFirstName = fallbackFirst || 'User';
+
+    return {
+      firstName: safeFirstName,
+      lastName: nameParts.lastName || undefined,
+      role: user.role ?? 'Admin',
+      email: user.email || undefined,
+      avatarUrl: undefined,
+    };
+  }, [user]);
+
+  const displayFirstName = profileUser?.firstName ?? 'User';
+  const displayLastName = profileUser?.lastName ?? '';
 
   // UI state
   const [isProfileOpen, setProfileOpen] = useState(false);
@@ -61,39 +85,47 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('authToken');
+    logout();
     showToast('Logged out', 'success');
-    window.location.href = '/login';
+    navigate(ROUTES.LOGIN);
+  };
+
+  const handleProfileSave = (values: { firstName: string; lastName: string; email: string; role: string }) => {
+    updateProfile(values);
+    showToast('Profile updated!', 'success');
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-white border-b border-slate-200">
-      <div className="flex items-center justify-between px-3 sm:px-6 py-3 sm:py-4 gap-2 sm:gap-4">
+    <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm">
+      <div className="flex items-center justify-between px-3 sm:px-4 md:px-5 lg:px-6 py-2.5 sm:py-3 md:py-3.5 lg:py-4 gap-2 sm:gap-3 md:gap-4">
         {/* Search Bar */}
-        <div className="flex-1 max-w-md relative">
+        <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg relative">
           <SearchBar data={searchData} onNavigate={handleNavigate} />
           <button
             onClick={onMenuClick}
-            className="lg:hidden absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-600 rounded-md hover:bg-slate-100"
+            className="lg:hidden absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-600 rounded-md hover:bg-slate-100 transition-colors"
+            aria-label="Toggle menu"
           >
             <Menu size={20} />
           </button>
         </div>
 
         {/* Right Section */}
-        <div className="flex items-center gap-2 sm:gap-4">
+        <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 lg:gap-4">
           {/* Notification Bell */}
           <button
-            className="relative p-1.5 sm:p-2 text-slate-600 hover:text-slate-800 transition-colors"
+            className="relative p-1.5 sm:p-2 text-slate-600 hover:text-slate-800 transition-colors rounded-md hover:bg-slate-100"
             onClick={() => setNotifOpen(true)}
             aria-label="Open notifications"
           >
-            <Bell size={20} className="sm:w-6 sm:h-6" />
-            {hasUnread && <span className="absolute top-1 right-1 sm:top-1.5 sm:right-1.5 h-2 w-2 bg-red-500 rounded-full"></span>}
+            <Bell size={18} className="sm:w-5 sm:h-5 md:w-6 md:h-6" />
+            {hasUnread && (
+              <span className="absolute top-0.5 right-0.5 sm:top-1 sm:right-1 h-2 w-2 bg-red-500 rounded-full ring-2 ring-white"></span>
+            )}
           </button>
 
           {/* User Info */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3">
             <button
               onClick={() => setProfileOpen(true)}
               className="relative group"
@@ -102,40 +134,40 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
               <img
                 src="https://i.pravatar.cc/40?img=67"
                 alt="User"
-                className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 border-transparent group-hover:border-blue-500 transition-colors cursor-pointer"
+                className="w-7 h-7 sm:w-8 sm:h-8 md:w-9 md:h-9 lg:w-10 lg:h-10 rounded-full border-2 border-transparent group-hover:border-blue-500 transition-colors cursor-pointer"
               />
               <div className="absolute inset-0 rounded-full bg-blue-500 opacity-0 group-hover:opacity-10 transition-opacity"></div>
             </button>
-            <div className="hidden md:block">
+            <div className="hidden sm:block">
               <button
                 title="View Profile"
                 onClick={() => setProfileOpen(true)}
                 className="text-left group"
               >
-                <p className="text-xs sm:text-sm font-medium text-slate-900 group-hover:text-blue-600 transition-colors">
-                  {user.firstName} {user.lastName}
+                <p className="text-xs sm:text-sm font-medium text-slate-900 group-hover:text-blue-600 transition-colors truncate max-w-[120px] md:max-w-none">
+                  {displayFirstName} {displayLastName}
                 </p>
-                <p className="text-xs text-slate-500">{user.role}</p>
+                <p className="text-[10px] sm:text-xs text-slate-500 truncate max-w-[120px] md:max-w-none">{user?.email || 'Admin'}</p>
               </button>
             </div>
           </div>
 
           {/* Action Buttons */}
-          <div className="hidden xl:flex items-center gap-2">
+          <div className="hidden lg:flex items-center gap-2">
             <button 
               onClick={() => setReportOpen(true)}
-              className="flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full text-xs sm:text-sm font-medium transition-colors"
+              className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 md:px-4 py-1.5 sm:py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full text-xs sm:text-sm font-medium transition-colors"
             >
               <Plus size={14} className="sm:w-4 sm:h-4" />
-              <span className="hidden 2xl:inline">Add Report</span>
+              <span className="hidden xl:inline">Add Report</span>
             </button>
             <div className="relative">
               <button 
                 onClick={() => setExportOpen((v) => !v)}
-                className="flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 border border-blue-600 text-blue-600 hover:bg-blue-50 rounded-full text-xs sm:text-sm font-medium transition-colors"
+                className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 md:px-4 py-1.5 sm:py-2 border border-blue-600 text-blue-600 hover:bg-blue-50 rounded-full text-xs sm:text-sm font-medium transition-colors"
               >
                 <Download size={14} className="sm:w-4 sm:h-4" />
-                <span className="hidden 2xl:inline">Export Report</span>
+                <span className="hidden xl:inline">Export</span>
               </button>
               <ExportDropdown open={exportOpen} onClose={() => setExportOpen(false)} onSelect={handleExportSelect} />
             </div>
@@ -147,7 +179,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
       <ProfileDrawer
         isOpen={isProfileOpen}
         onClose={() => setProfileOpen(false)}
-        user={user}
+        user={profileUser}
         onEditProfile={() => setEditProfileOpen(true)}
         onLogout={handleLogout}
       />
@@ -156,8 +188,8 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
       <EditProfileModal
         isOpen={isEditProfileOpen}
         onClose={() => setEditProfileOpen(false)}
-        initial={user}
-        onSave={() => showToast('Profile updated!', 'success')}
+        initial={profileUser ?? {}}
+        onSave={handleProfileSave}
       />
     </header>
   );

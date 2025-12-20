@@ -8,7 +8,51 @@
  */
 
 const otpService = require('../services/otp.service');
+const portalAuthService = require('../services/portal-auth.service');
 const logger = require('../utils/logger');
+
+// ============================================================================
+// PORTAL AUTHENTICATION (EMAIL/PHONE OTP)
+// ============================================================================
+
+const sendPortalOtp = async (req, res, next) => {
+  try {
+    const { identifier } = req.body;
+
+    const result = await portalAuthService.sendOtp(identifier);
+
+    res.status(200).json(result);
+  } catch (error) {
+    logger.error('Send portal OTP failed', { error: error.message });
+    next(error);
+  }
+};
+
+const verifyPortalOtp = async (req, res, next) => {
+  try {
+    const { identifier, otp } = req.body;
+
+    const result = await portalAuthService.verifyOtp(identifier, otp);
+
+    res.status(200).json(result);
+  } catch (error) {
+    logger.error('Verify portal OTP failed', { error: error.message });
+    next(error);
+  }
+};
+
+const completePortalRegistration = async (req, res, next) => {
+  try {
+    const { sessionToken, profile } = req.body;
+
+    const result = await portalAuthService.completeRegistration(sessionToken, profile);
+
+    res.status(201).json(result);
+  } catch (error) {
+    logger.error('Complete portal registration failed', { error: error.message });
+    next(error);
+  }
+};
 
 // ============================================================================
 // OWNER AUTHENTICATION
@@ -86,21 +130,40 @@ const verifyOwnerOtp = async (req, res, next) => {
  * POST /api/v1/auth/owner/verify-mart-email/send-otp
  * 
  * Requires sessionToken from owner email verification
+ * Supports both portal auth flow and owner auth flow
  */
 const sendMartEmailOtp = async (req, res, next) => {
   try {
     const { sessionToken, martEmail } = req.body;
 
-    const result = await otpService.sendMartEmailOtp(sessionToken, martEmail);
-
-    res.status(200).json({
-      success: true,
-      message: 'OTP sent successfully to mart email',
-      data: {
-        martEmail: result.martEmail,
-        expiresIn: result.expiresIn
+    // Try portal auth service first (for portal registration flow)
+    try {
+      const result = await portalAuthService.sendMartEmailOtp(sessionToken, martEmail);
+      return res.status(200).json({
+        success: true,
+        message: result.message || 'OTP sent successfully to mart email',
+        data: {
+          martEmail: result.martEmail,
+          expiresIn: result.expiresIn
+        }
+      });
+    } catch (portalError) {
+      // If portal auth fails, try otp service (for owner auth flow)
+      // Only fallback if it's an authentication error (session not found)
+      if (portalError.code === 'AUTHENTICATION_ERROR' || portalError.message.includes('session')) {
+        const result = await otpService.sendMartEmailOtp(sessionToken, martEmail);
+        return res.status(200).json({
+          success: true,
+          message: 'OTP sent successfully to mart email',
+          data: {
+            martEmail: result.martEmail,
+            expiresIn: result.expiresIn
+          }
+        });
       }
-    });
+      // Re-throw if it's a different error (validation, etc.)
+      throw portalError;
+    }
   } catch (error) {
     logger.error('Send mart email OTP failed', { error: error.message });
     next(error);
@@ -112,21 +175,40 @@ const sendMartEmailOtp = async (req, res, next) => {
  * POST /api/v1/auth/owner/verify-mart-email/verify-otp
  * 
  * Requires sessionToken and mart email OTP
+ * Supports both portal auth flow and owner auth flow
  */
 const verifyMartEmailOtp = async (req, res, next) => {
   try {
     const { sessionToken, martEmail, otp } = req.body;
 
-    const result = await otpService.verifyMartEmailOtp(sessionToken, martEmail, otp);
-
-    res.status(200).json({
-      success: true,
-      message: result.message,
-      data: {
-        martEmail: result.martEmail,
-        martEmailVerified: true
+    // Try portal auth service first (for portal registration flow)
+    try {
+      const result = await portalAuthService.verifyMartEmailOtp(sessionToken, martEmail, otp);
+      return res.status(200).json({
+        success: true,
+        message: result.message,
+        data: {
+          martEmail: result.martEmail,
+          martEmailVerified: true
+        }
+      });
+    } catch (portalError) {
+      // If portal auth fails, try otp service (for owner auth flow)
+      // Only fallback if it's an authentication error (session not found)
+      if (portalError.code === 'AUTHENTICATION_ERROR' || portalError.message.includes('session')) {
+        const result = await otpService.verifyMartEmailOtp(sessionToken, martEmail, otp);
+        return res.status(200).json({
+          success: true,
+          message: result.message,
+          data: {
+            martEmail: result.martEmail,
+            martEmailVerified: true
+          }
+        });
       }
-    });
+      // Re-throw if it's a different error (validation, etc.)
+      throw portalError;
+    }
   } catch (error) {
     logger.error('Verify mart email OTP failed', { error: error.message });
     next(error);
@@ -139,26 +221,50 @@ const verifyMartEmailOtp = async (req, res, next) => {
  * 
  * Requires sessionToken from verify-otp response
  * Requires mart email to be verified first
+ * Supports both portal auth flow and owner auth flow
  */
 const completeOwnerRegistration = async (req, res, next) => {
   try {
     const { sessionToken, martData, ownerData } = req.body;
 
-    const result = await otpService.completeOwnerRegistration(
-      sessionToken,
-      martData,
-      ownerData
-    );
-
-    res.status(201).json({
-      success: true,
-      message: 'Registration completed successfully. Welcome to Laundry App!',
-      data: {
-        token: result.token,
-        mart: result.mart,
-        owner: result.owner
+    // Try portal auth service first (for portal registration flow)
+    try {
+      const result = await portalAuthService.completeOwnerRegistration(
+        sessionToken,
+        martData,
+        ownerData
+      );
+      return res.status(201).json({
+        success: true,
+        message: 'Registration completed successfully. Welcome to Laundry App!',
+        data: {
+          token: result.token,
+          mart: result.mart,
+          owner: result.owner
+        }
+      });
+    } catch (portalError) {
+      // If portal auth fails, try otp service (for owner auth flow)
+      // Only fallback if it's an authentication error (session not found)
+      if (portalError.code === 'AUTHENTICATION_ERROR' || portalError.message.includes('session')) {
+        const result = await otpService.completeOwnerRegistration(
+          sessionToken,
+          martData,
+          ownerData
+        );
+        return res.status(201).json({
+          success: true,
+          message: 'Registration completed successfully. Welcome to Laundry App!',
+          data: {
+            token: result.token,
+            mart: result.mart,
+            owner: result.owner
+          }
+        });
       }
-    });
+      // Re-throw if it's a different error (validation, etc.)
+      throw portalError;
+    }
   } catch (error) {
     logger.error('Complete owner registration failed', { error: error.message });
     next(error);
@@ -625,6 +731,11 @@ const logout = async (req, res, next) => {
 // ============================================================================
 
 module.exports = {
+  // Portal login
+  sendPortalOtp,
+  verifyPortalOtp,
+  completePortalRegistration,
+
   // Owner
   sendOwnerOtp,
   verifyOwnerOtp,

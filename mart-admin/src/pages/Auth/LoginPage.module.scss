@@ -65,9 +65,16 @@ $bg: #f8f9fb;
   padding: 24px;
 }
 
-.formCard {
+.rightPaneContent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   width: 100%;
   max-width: 560px;
+}
+
+.formCard {
+  width: 100%;
   padding: 56px;
   border-radius: 40px;
   background: linear-gradient(180deg, $primary 0%, $secondary 100%);
@@ -124,11 +131,45 @@ $bg: #f8f9fb;
   cursor: pointer;
   transition: background 0.2s ease;
   &:hover { background: #e8f0fe; }
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
 }
 
 .errorMessage {
   background: rgba(255, 255, 255, 0.15);
   color: #ffdddd;
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.errorAction {
+  margin-top: 8px;
+}
+
+.errorLink {
+  background: none;
+  border: none;
+  color: #ffffff;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  transition: opacity 0.2s ease;
+  &:hover {
+    opacity: 0.9;
+  }
+}
+
+.infoMessage {
+  background: rgba(255, 255, 255, 0.18);
+  color: #d6f4ff;
   padding: 10px 12px;
   border-radius: 8px;
   margin-bottom: 12px;
@@ -179,6 +220,65 @@ $bg: #f8f9fb;
   font-weight: 700;
   font-size: 16px;
   cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+  &:hover:not(:disabled) {
+    background: rgba(255,255,255,0.1);
+    border-color: rgba(255,255,255,0.9);
+  }
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+.resendSection {
+  margin-top: 16px;
+  text-align: center;
+}
+
+.resendBtn {
+  background: none;
+  border: none;
+  color: $text-light;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 8px 16px;
+  text-decoration: underline;
+  transition: opacity 0.2s ease;
+  font-family: inherit;
+  &:hover:not(:disabled) {
+    opacity: 0.85;
+  }
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    text-decoration: none;
+  }
+}
+
+.supportText {
+  margin-top: 24px;
+  font-size: 16px;
+  text-align: center;
+  color: $text-dark;
+  font-family: 'Inter', 'Poppins', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+}
+
+.supportLink {
+  background: none;
+  border: none;
+  color: $primary;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+  font-size: 16px;
+  font-family: inherit;
+  transition: color 0.2s ease;
+  &:hover {
+    color: $secondary;
+  }
 }
 
 /* Responsive */

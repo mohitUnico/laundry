@@ -78,23 +78,25 @@ export const NotificationsPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-[1280px] mx-auto px-4 py-6">
-        <div className="flex items-center justify-between mb-4">
+      <div className="max-w-[1280px] mx-auto px-3 sm:px-4 md:px-5 lg:px-6 py-4 sm:py-5 md:py-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-5 md:mb-6">
           <div>
-            <div className="text-2xl font-semibold text-slate-900">Notification & Communication</div>
-            <div className="text-[12px] text-slate-500">Send messages and manage communications</div>
+            <div className="text-xl sm:text-2xl font-semibold text-slate-900">Notification & Communication</div>
+            <div className="text-xs sm:text-[12px] text-slate-500">Send messages and manage communications</div>
           </div>
-          <button onClick={() => openSend('all')} className="h-10 px-4 rounded-full bg-indigo-700 text-white font-semibold">🚀 Send Notification</button>
+          <button onClick={() => openSend('all')} className="h-9 sm:h-10 px-3 sm:px-4 rounded-full bg-indigo-700 text-white text-xs sm:text-sm font-semibold transition-colors hover:bg-indigo-800 w-full sm:w-auto">
+            🚀 Send Notification
+          </button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-5 md:mb-6">
           <NotificationStatCard title="Total Sent" value={1247} sub="+12% this week" />
           <NotificationStatCard title="Delivered" value={1198} sub="96% delivery rate" />
           <NotificationStatCard title="Open Rate" value={'82%'} />
           <NotificationStatCard title="Active Chats" value={23} />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 sm:gap-5">
           {/* Left Column */}
           <div className="space-y-5">
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">

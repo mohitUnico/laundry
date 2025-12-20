@@ -27,9 +27,9 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, onSuc
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Create New Report" size="md">
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
+          <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-1.5 sm:mb-2">
             Report Name
           </label>
           <input
@@ -37,19 +37,19 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, onSuc
             value={reportName}
             onChange={(e) => setReportName(e.target.value)}
             placeholder="Enter report name"
-            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-3 sm:px-4 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             required
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
+          <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-1.5 sm:mb-2">
             Report Type
           </label>
           <select
             value={reportType}
             onChange={(e) => setReportType(e.target.value)}
-            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-3 sm:px-4 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           >
             <option value="sales">Sales Report</option>
             <option value="orders">Orders Report</option>
@@ -59,10 +59,10 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, onSuc
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
+          <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-1.5 sm:mb-2">
             Date Range
           </label>
-          <select className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+          <select className="w-full px-3 sm:px-4 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
             <option>Last 7 Days</option>
             <option>Last 30 Days</option>
             <option>This Month</option>
@@ -72,50 +72,50 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, onSuc
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-3">
+          <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-2 sm:mb-3">
             Export Format
           </label>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2 sm:gap-3">
             <button
               type="button"
               onClick={() => setFormat('pdf')}
-              className={`flex items-center gap-2 px-4 py-3 border-2 rounded-xl transition-colors ${
+              className={`flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-3 border-2 rounded-lg sm:rounded-xl transition-colors ${
                 format === 'pdf'
                   ? 'border-blue-600 bg-blue-50 text-blue-700'
                   : 'border-slate-200 hover:border-slate-300'
               }`}
             >
-              <FileText size={20} />
-              <span className="font-medium">PDF</span>
+              <FileText size={16} className="sm:w-5 sm:h-5" />
+              <span className="text-xs sm:text-sm font-medium">PDF</span>
             </button>
             <button
               type="button"
               onClick={() => setFormat('csv')}
-              className={`flex items-center gap-2 px-4 py-3 border-2 rounded-xl transition-colors ${
+              className={`flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-3 border-2 rounded-lg sm:rounded-xl transition-colors ${
                 format === 'csv'
                   ? 'border-blue-600 bg-blue-50 text-blue-700'
                   : 'border-slate-200 hover:border-slate-300'
               }`}
             >
-              <FileSpreadsheet size={20} />
-              <span className="font-medium">CSV</span>
+              <FileSpreadsheet size={16} className="sm:w-5 sm:h-5" />
+              <span className="text-xs sm:text-sm font-medium">CSV</span>
             </button>
           </div>
         </div>
 
-        <div className="flex gap-3 pt-4">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-3 sm:pt-4">
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 font-medium transition-colors"
+            className="flex-1 px-4 py-2 text-xs sm:text-sm border border-slate-300 text-slate-700 rounded-lg sm:rounded-xl hover:bg-slate-50 font-medium transition-colors"
           >
             Cancel
           </button>
           <button
             type="submit"
-            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-medium transition-colors flex items-center justify-center gap-2"
+            className="flex-1 px-4 py-2 text-xs sm:text-sm bg-blue-600 text-white rounded-lg sm:rounded-xl hover:bg-blue-700 font-medium transition-colors flex items-center justify-center gap-1.5 sm:gap-2"
           >
-            <Download size={18} />
+            <Download size={16} className="sm:w-[18px] sm:h-[18px]" />
             Generate Report
           </button>
         </div>

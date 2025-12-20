@@ -47,9 +47,9 @@ export const AddStaffModal: React.FC<AddStaffModalProps> = ({ isOpen, onClose, o
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Add New Staff Member" size="lg">
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
+          <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-1.5 sm:mb-2">
             Full Name *
           </label>
           <input
@@ -58,14 +58,14 @@ export const AddStaffModal: React.FC<AddStaffModalProps> = ({ isOpen, onClose, o
             value={formData.fullName}
             onChange={handleChange}
             placeholder="Enter full name"
-            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-3 sm:px-4 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             required
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
+            <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-1.5 sm:mb-2">
               Email Address *
             </label>
             <input
@@ -74,12 +74,12 @@ export const AddStaffModal: React.FC<AddStaffModalProps> = ({ isOpen, onClose, o
               value={formData.email}
               onChange={handleChange}
               placeholder="Email address"
-              className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-3 sm:px-4 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               required
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
+            <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-1.5 sm:mb-2">
               Phone Number *
             </label>
             <input
@@ -88,21 +88,21 @@ export const AddStaffModal: React.FC<AddStaffModalProps> = ({ isOpen, onClose, o
               value={formData.phone}
               onChange={handleChange}
               placeholder="Phone number"
-              className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-3 sm:px-4 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               required
             />
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
+          <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-1.5 sm:mb-2">
             Role *
           </label>
           <select
             name="role"
             value={formData.role}
             onChange={handleChange}
-            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-3 sm:px-4 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             required
           >
             <option value="">Select role</option>
@@ -115,9 +115,9 @@ export const AddStaffModal: React.FC<AddStaffModalProps> = ({ isOpen, onClose, o
 
         {formData.role === 'delivery' && (
           <>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
+                <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-1.5 sm:mb-2">
                   Vehicle Number
                 </label>
                 <input
@@ -126,11 +126,11 @@ export const AddStaffModal: React.FC<AddStaffModalProps> = ({ isOpen, onClose, o
                   value={formData.vehicleNumber}
                   onChange={handleChange}
                   placeholder="Vehicle number"
-                  className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 sm:px-4 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
+                <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-1.5 sm:mb-2">
                   License Number
                 </label>
                 <input
@@ -139,7 +139,7 @@ export const AddStaffModal: React.FC<AddStaffModalProps> = ({ isOpen, onClose, o
                   value={formData.licenseNumber}
                   onChange={handleChange}
                   placeholder="License number"
-                  className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 sm:px-4 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
             </div>
@@ -147,7 +147,7 @@ export const AddStaffModal: React.FC<AddStaffModalProps> = ({ isOpen, onClose, o
         )}
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
+          <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-1.5 sm:mb-2">
             Address *
           </label>
           <textarea
@@ -156,37 +156,37 @@ export const AddStaffModal: React.FC<AddStaffModalProps> = ({ isOpen, onClose, o
             onChange={handleChange}
             placeholder="Enter complete address"
             rows={3}
-            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+            className="w-full px-3 sm:px-4 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
             required
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
+          <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-1.5 sm:mb-2">
             Profile Photo
           </label>
-          <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center hover:border-blue-400 transition-colors">
-            <Upload size={32} className="mx-auto text-slate-400 mb-2" />
-            <p className="text-sm text-slate-600 mb-1">
+          <div className="border-2 border-dashed border-slate-300 rounded-lg sm:rounded-xl p-4 sm:p-6 md:p-8 text-center hover:border-blue-400 transition-colors">
+            <Upload size={24} className="sm:w-8 sm:h-8 mx-auto text-slate-400 mb-2" />
+            <p className="text-xs sm:text-sm text-slate-600 mb-1">
               <span className="text-blue-600 font-medium">Click to upload</span> or drag and drop
             </p>
-            <p className="text-xs text-slate-500">PNG, JPG or GIF (max. 5MB)</p>
+            <p className="text-[10px] sm:text-xs text-slate-500">PNG, JPG or GIF (max. 5MB)</p>
           </div>
         </div>
 
-        <div className="flex gap-3 pt-4">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-3 sm:pt-4">
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 font-medium transition-colors"
+            className="flex-1 px-4 py-2 text-xs sm:text-sm border border-slate-300 text-slate-700 rounded-lg sm:rounded-xl hover:bg-slate-50 font-medium transition-colors"
           >
             Cancel
           </button>
           <button
             type="submit"
-            className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-xl hover:bg-purple-700 font-medium transition-colors flex items-center justify-center gap-2"
+            className="flex-1 px-4 py-2 text-xs sm:text-sm bg-purple-600 text-white rounded-lg sm:rounded-xl hover:bg-purple-700 font-medium transition-colors flex items-center justify-center gap-1.5 sm:gap-2"
           >
-            <UserPlus size={18} />
+            <UserPlus size={16} className="sm:w-[18px] sm:h-[18px]" />
             Add Staff Member
           </button>
         </div>

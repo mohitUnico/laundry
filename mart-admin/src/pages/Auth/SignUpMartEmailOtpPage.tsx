@@ -1,50 +1,40 @@
 import axios from 'axios';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/hooks';
 import { ROUTES } from '@/routes';
-import { authApi, VerifyPortalOtpPendingData, VerifyPortalOtpRegisteredData } from '@/services';
+import { authApi } from '@/services';
 import styles from './SignUpOtpPage.module.scss';
 import {
-  clearPortalSignupSession,
   getPortalSignupSession,
-  maskSignupIdentifier,
   updatePortalSignupSession,
+  clearPortalSignupSession,
 } from './portalSignupSession';
 
-export const SignUpOtpPage: React.FC = () => {
+export const SignUpMartEmailOtpPage: React.FC = () => {
   const [otp, setOtp] = useState<string[]>(Array(6).fill(''));
   const [imgFailed, setImgFailed] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [loading, setLoading] = useState(false);
-  const [identifierMask, setIdentifierMask] = useState('');
-
   const inputsRef = useRef<Array<HTMLInputElement | null>>([]);
-  const navigate = useNavigate();
-  const { completeLogin } = useAuth();
 
+  const navigate = useNavigate();
   const session = useMemo(() => getPortalSignupSession(), []);
 
   useEffect(() => {
-    if (!session || !session.identifier) {
+    if (!session?.registration?.sessionToken || !session?.martEmail) {
       navigate(ROUTES.SIGNUP, { replace: true });
       return;
     }
-
-    if (session.registration?.sessionToken) {
-      navigate(ROUTES.SIGNUP_PROFILE, { replace: true });
-      return;
-    }
-
-    const masked = maskSignupIdentifier(session.identifier, session.identifierType);
-    setIdentifierMask(masked);
-    setInfo(`Enter the OTP we sent to ${masked}.`);
-
+    setInfo(`Enter the OTP sent to ${session.martEmail}.`);
     inputsRef.current[0]?.focus();
   }, [navigate, session]);
 
-  const isOtpComplete = useMemo(() => otp.every((digit) => digit && digit.length === 1), [otp]);
+  if (!session?.registration?.sessionToken || !session?.martEmail) {
+    return null;
+  }
+
+  const isOtpComplete = useMemo(() => otp.every((d) => d && d.length === 1), [otp]);
 
   const handleOtpChange = (index: number, value: string) => {
     const numeric = value.replace(/\D/g, '').slice(0, 1);
@@ -53,7 +43,6 @@ export const SignUpOtpPage: React.FC = () => {
       next[index] = numeric;
       return next;
     });
-
     if (numeric && index < inputsRef.current.length - 1) {
       inputsRef.current[index + 1]?.focus();
     }
@@ -68,12 +57,6 @@ export const SignUpOtpPage: React.FC = () => {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
 
-    if (!session || !session.identifier) {
-      setError('Signup session expired. Please start over.');
-      navigate(ROUTES.SIGNUP, { replace: true });
-      return;
-    }
-
     if (!isOtpComplete) {
       setError('Please enter the complete 6-digit OTP.');
       return;
@@ -84,8 +67,9 @@ export const SignUpOtpPage: React.FC = () => {
 
     try {
       const code = otp.join('');
-      const response = await authApi.verifyOtp({
-        identifier: session.identifier,
+      const response = await authApi.verifyMartEmailOtp({
+        sessionToken: session.registration.sessionToken,
+        martEmail: session.martEmail,
         otp: code,
       });
 
@@ -94,37 +78,13 @@ export const SignUpOtpPage: React.FC = () => {
         return;
       }
 
-      const data = response.data;
-
-      if ((data as VerifyPortalOtpRegisteredData).isRegistered) {
-        const { token, user } = data as VerifyPortalOtpRegisteredData;
-        clearPortalSignupSession();
-        completeLogin(user, token);
-        navigate(ROUTES.DASHBOARD, { replace: true });
-        return;
-      }
-
-      const pending = data as VerifyPortalOtpPendingData;
-      const next = updatePortalSignupSession((previous) => ({
+      updatePortalSignupSession((previous) => ({
         ...(previous ?? {}),
-        stage: 'profile',
-        identifier: pending.identifier,
-        identifierType: pending.identifierType,
-        registration: {
-          sessionToken: pending.sessionToken,
-          sessionExpiresAt: pending.sessionExpiresIn
-            ? Date.now() + pending.sessionExpiresIn * 1000
-            : undefined,
-        },
+        stage: 'owner',
+        martEmailVerified: true,
       }));
 
-      if (!next) {
-        setError('Signup session expired. Please request a new OTP.');
-        navigate(ROUTES.SIGNUP, { replace: true });
-        return;
-      }
-
-      navigate(ROUTES.SIGNUP_PROFILE, { replace: true });
+      navigate(ROUTES.SIGNUP_OWNER, { replace: true });
     } catch (err) {
       if (axios.isAxiosError(err)) {
         setError(err.response?.data?.message || 'Invalid OTP. Please try again.');
@@ -166,12 +126,8 @@ export const SignUpOtpPage: React.FC = () => {
 
       <div className={styles.rightPane}>
         <form className={styles.card} onSubmit={handleSubmit}>
-          <h2 className={styles.title}>
-            New here?
-            <br />
-            Let’s get started!
-          </h2>
-          <p className={styles.subtitle}>Sign up to experience easy laundry care.</p>
+          <h2 className={styles.title}>Verify mart email</h2>
+          <p className={styles.subtitle}>Enter the OTP sent to your mart email address.</p>
 
           <span className={styles.otpLabel}>Fill OTP</span>
           <div className={styles.otpBoxes}>
@@ -192,17 +148,7 @@ export const SignUpOtpPage: React.FC = () => {
           </div>
 
           {error && <div className={styles.errorMessage}>{error}</div>}
-          {!error && info && (
-            <div className={styles.infoMessage}>
-              {info}
-              {session?.otpExpiresAt
-                ? ` OTP expires in ${Math.max(
-                    1,
-                    Math.ceil((session.otpExpiresAt - Date.now()) / 60000)
-                  )} minute${Math.ceil((session.otpExpiresAt - Date.now()) / 60000) > 1 ? 's' : ''}.`
-                : null}
-            </div>
-          )}
+          {!error && info && <div className={styles.infoMessage}>{info}</div>}
 
           <button type="submit" className={styles.primaryBtn} disabled={loading || !isOtpComplete}>
             {loading ? 'Verifying…' : 'Next'}
@@ -211,11 +157,6 @@ export const SignUpOtpPage: React.FC = () => {
           <button type="button" className={styles.secondaryBtn} onClick={handleStartOver}>
             Use a different email / phone
           </button>
-
-          <div className={styles.supportText}>
-            Didn’t receive the code? Check your spam folder or{' '}
-            <span className={styles.highlightText}>{identifierMask}</span>.
-          </div>
         </form>
       </div>
     </div>

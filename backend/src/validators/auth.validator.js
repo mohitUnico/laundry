@@ -18,12 +18,31 @@ const emailSchema = Joi.string()
     'any.required': 'Email is required'
   });
 
+const identifierSchema = Joi.string()
+  .trim()
+  .min(4)
+  .max(255)
+  .required()
+  .messages({
+    'string.min': 'Identifier must be at least 4 characters',
+    'string.max': 'Identifier must not exceed 255 characters',
+    'any.required': 'Identifier is required'
+  });
+
 const phoneSchema = Joi.string()
   .pattern(/^[0-9]{10}$/)
   .allow(null, '')
   .optional()
   .messages({
     'string.pattern.base': 'Phone number must be exactly 10 digits'
+  });
+
+const flexiblePhoneSchema = Joi.string()
+  .pattern(/^[0-9]{6,15}$/)
+  .allow(null, '')
+  .optional()
+  .messages({
+    'string.pattern.base': 'Phone number must contain between 6 and 15 digits'
   });
 
 const otpSchema = Joi.string()
@@ -56,6 +75,10 @@ const sendOtpSchema = Joi.object({
   email: emailSchema
 });
 
+const sendPortalOtpSchema = Joi.object({
+  identifier: identifierSchema
+});
+
 // ============================================================================
 // VERIFY OTP VALIDATORS
 // ============================================================================
@@ -63,6 +86,32 @@ const sendOtpSchema = Joi.object({
 const verifyOtpSchema = Joi.object({
   email: emailSchema,
   otp: otpSchema
+});
+
+const verifyPortalOtpSchema = Joi.object({
+  identifier: identifierSchema,
+  otp: otpSchema
+});
+
+const completePortalRegistrationSchema = Joi.object({
+  sessionToken: sessionTokenSchema,
+  profile: Joi.object({
+    name: Joi.string().min(2).max(255).required().messages({
+      'string.min': 'Name must be at least 2 characters',
+      'string.max': 'Name must not exceed 255 characters',
+      'any.required': 'Name is required'
+    }),
+    email: Joi.string()
+      .email()
+      .lowercase()
+      .trim()
+      .allow(null, '')
+      .optional()
+      .messages({
+        'string.email': 'Email must be a valid email address'
+      }),
+    phone: flexiblePhoneSchema
+  }).required()
 });
 
 // ============================================================================
@@ -91,10 +140,9 @@ const completeOwnerRegistrationSchema = Joi.object({
       .messages({
         'string.pattern.base': 'Mart contact must be a valid phone number (10-15 digits)'
       }),
-    address: Joi.string().min(10).max(500).required().messages({
+    address: Joi.string().min(10).max(500).optional().allow(null, '').messages({
       'string.min': 'Address must be at least 10 characters',
-      'string.max': 'Address must not exceed 500 characters',
-      'any.required': 'Address is required'
+      'string.max': 'Address must not exceed 500 characters'
     }),
     profileImageUrl: Joi.string()
       .uri()
@@ -115,9 +163,8 @@ const completeOwnerRegistrationSchema = Joi.object({
         'number.max': 'Longitude must be between -180 and 180',
         'any.required': 'Longitude is required'
       })
-    }).required().messages({
-      'object.base': 'Mart coordinates are required',
-      'any.required': 'Mart coordinates are required'
+    }).optional().allow(null).messages({
+      'object.base': 'Mart coordinates must be a valid object'
     }),
     serviceRadiusKm: Joi.object().optional()
   }).required(),
@@ -127,8 +174,15 @@ const completeOwnerRegistrationSchema = Joi.object({
       'string.max': 'Owner name must not exceed 255 characters',
       'any.required': 'Owner name is required'
     }),
-    ownerPhone: phoneSchema.optional().allow(null, ''),
-    ownerEmail: emailSchema.optional().description('Owner email (must match verified email from session)')
+    ownerPhone: flexiblePhoneSchema.optional().allow(null, ''),
+    ownerEmail: Joi.string()
+      .email()
+      .optional()
+      .allow(null, '')
+      .messages({
+        'string.email': 'Owner email must be a valid email address'
+      })
+      .description('Owner email (optional, will use session identifier if not provided)')
   }).required()
 });
 
@@ -260,11 +314,14 @@ const resendOtpSchema = Joi.object({
 module.exports = {
   // Send OTP
   sendOtpSchema,
+  sendPortalOtpSchema,
 
   // Verify OTP
   verifyOtpSchema,
+  verifyPortalOtpSchema,
 
   // Registration completion
+  completePortalRegistrationSchema,
   completeOwnerRegistrationSchema,
   completeManagerRegistrationSchema,
   completeCustomerRegistrationSchema,

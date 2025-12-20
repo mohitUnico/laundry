@@ -329,15 +329,15 @@ export const SettingsPage: React.FC = () => {
   };
 
   return (
-    <div className="px-8 lg:px-10 py-6 bg-[#F9FAFB] space-y-8">
+    <div className="px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10 py-4 sm:py-5 md:py-6 bg-[#F9FAFB] space-y-4 sm:space-y-5 md:space-y-6 lg:space-y-8">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-[#111827]">Settings</h1>
-          <p className="text-sm text-slate-500 mt-1">Manage your account and system preferences.</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-[#111827]">Settings</h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">Manage your account and system preferences.</p>
         </div>
-        <button onClick={handleSaveSettings} disabled={saving} className={`h-9 px-5 ${saving ? 'bg-[#1E40AF]/70 cursor-not-allowed' : 'bg-[#1E40AF] hover:bg-[#1E3A8A]'} text-white text-sm font-medium rounded-full shadow-sm transition-colors flex items-center gap-1.5 md:sticky md:top-4 self-start`}>
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <button onClick={handleSaveSettings} disabled={saving} className={`h-8 sm:h-9 px-4 sm:px-5 ${saving ? 'bg-[#1E40AF]/70 cursor-not-allowed' : 'bg-[#1E40AF] hover:bg-[#1E3A8A]'} text-white text-xs sm:text-sm font-medium rounded-full shadow-sm transition-colors flex items-center gap-1.5 justify-center w-full sm:w-auto md:sticky md:top-4 self-start`}>
+          <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
           </svg>
           {saving ? 'Saving...' : 'Save Changes'}
@@ -345,7 +345,7 @@ export const SettingsPage: React.FC = () => {
       </div>
 
       {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 md:gap-6 lg:gap-8">
         {/* Left Column */}
         <div className="space-y-8 lg:col-span-8">
           {/* Business Information Card */}

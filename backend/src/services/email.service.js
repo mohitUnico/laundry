@@ -5,40 +5,137 @@
 
 const nodemailer = require('nodemailer');
 const logger = require('../utils/logger');
+const envManager = require('../config/env');
 
 class EmailService {
     constructor() {
-        // Initialize email transporter
-        this.transporter = this._createTransporter();
+        this.transporter = null;
+        this.currentConfigSignature = null;
+
+        this._initializeTransporter({ reason: 'startup' });
+
+        envManager.on('reload', () => {
+            logger.info('🔁 Environment reload detected. Refreshing email transporter.');
+            this._initializeTransporter({ reason: 'env-reload' });
+        });
     }
 
     /**
-     * Create email transporter based on SMTP configuration
-     * If SMTP credentials are provided, real emails will be sent
-     * Otherwise, OTPs will be logged to console (development mode)
+     * Resolve SMTP configuration from environment variables
+     * @returns {{ config: object, meta: object, signature: string }|null}
      * @private
      */
-    _createTransporter() {
-        // Check if SMTP credentials are configured
-        if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD) {
-            logger.info('📧 Email service initialized with SMTP (real email sending enabled)');
-            logger.info(`   SMTP Host: ${process.env.SMTP_HOST}`);
-            logger.info(`   SMTP User: ${process.env.SMTP_USER}`);
+    _resolveSmtpConfig() {
+        const emailService = process.env.EMAIL_SERVICE;
+        const smtpHost = process.env.SMTP_HOST;
+        const smtpUser = process.env.SMTP_USER;
+        const smtpPass = process.env.SMTP_PASSWORD || process.env.SMTP_PASS;
+        const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
+        const smtpSecure = smtpPort === 465;
 
-            return nodemailer.createTransport({
-                host: process.env.SMTP_HOST,
-                port: parseInt(process.env.SMTP_PORT) || 587,
-                secure: process.env.SMTP_SECURE === 'true', // true for 465, false for 587
-                auth: {
-                    user: process.env.SMTP_USER,
-                    pass: process.env.SMTP_PASSWORD
-                }
-            });
-        } else {
-            // No SMTP configured: Log emails to console
-            logger.info('📧 Email service initialized in console mode (OTPs will be logged)');
+        if (!(smtpUser && smtpPass && (emailService || smtpHost))) {
             return null;
         }
+
+        const transporterConfig = {
+            auth: {
+                user: smtpUser,
+                pass: smtpPass,
+            },
+        };
+
+        if (emailService) {
+            transporterConfig.service = emailService;
+        } else {
+            transporterConfig.host = smtpHost;
+            transporterConfig.port = smtpPort;
+            transporterConfig.secure = smtpSecure;
+        }
+
+        if (process.env.SMTP_TLS_REJECT_UNAUTHORIZED === 'false') {
+            transporterConfig.tls = { rejectUnauthorized: false };
+        }
+
+        const signature = JSON.stringify({
+            emailService: emailService || null,
+            host: smtpHost || null,
+            port: transporterConfig.port || null,
+            user: smtpUser,
+            secure: transporterConfig.secure ?? null,
+        });
+
+        return {
+            config: transporterConfig,
+            meta: {
+                mode: emailService ? emailService : 'smtp',
+                host: transporterConfig.host || emailService,
+                port: transporterConfig.port || (emailService ? 'service-default' : undefined),
+                secure: transporterConfig.secure ?? smtpSecure,
+                user: smtpUser,
+            },
+            signature,
+        };
+    }
+
+    /**
+     * Initialize or refresh the SMTP transporter
+     * @param {{ reason: string }} options
+     * @private
+     */
+    _initializeTransporter({ reason }) {
+        const resolved = this._resolveSmtpConfig();
+
+        if (!resolved) {
+            if (this.transporter) {
+                this.transporter = null;
+            }
+
+            logger.error('❌ SMTP transporter not configured. OTP emails cannot be delivered until SMTP credentials are set.');
+            return;
+        }
+
+        let shouldCreateTransporter = true;
+
+        if (resolved.signature === this.currentConfigSignature && this.transporter) {
+            if (reason === 'env-reload') {
+                logger.debug('📧 SMTP configuration unchanged; verifying existing transporter.', { reason });
+                shouldCreateTransporter = false;
+            } else {
+                logger.debug('📧 SMTP configuration unchanged; reusing existing transporter.', { reason });
+                return;
+            }
+        }
+
+        if (shouldCreateTransporter) {
+            this.currentConfigSignature = resolved.signature;
+            this.transporter = nodemailer.createTransport(resolved.config);
+        }
+
+        const transporter = this.transporter;
+
+        transporter
+            .verify()
+            .then(() => {
+                logger.info('✅ SMTP connection verified', resolved.meta);
+            })
+            .catch((error) => {
+                logger.error(`❌ SMTP connection failed: ${error.message}`, {
+                    ...resolved.meta,
+                });
+            });
+    }
+
+    /**
+     * Ensure transporter exists (attempt reinitialization if needed)
+     * @returns {import('nodemailer').Transporter|null}
+     * @private
+     */
+    _ensureTransporter() {
+        if (!this.transporter) {
+            this._initializeTransporter({ reason: 'lazy-load' });
+        }
+
+        return this.transporter;
     }
 
     /**
@@ -49,20 +146,29 @@ class EmailService {
      * @returns {Promise<Object>} Send result
      */
     async sendOtpEmail(email, otp, userType = 'user') {
-        try {
-            const subject = 'Your Laundry App Verification Code';
+        const transporter = this._ensureTransporter();
 
-            // Create user-friendly type name
-            const userTypeName = {
-                mart: 'Mart',
-                owner: 'Mart Owner',
-                manager: 'Manager',
-                customer: 'Customer',
-                delivery_staff: 'Delivery Partner'
-            }[userType] || 'User';
+        if (!transporter) {
+            const error = new Error('SMTP transporter not configured');
+            logger.error(`❌ Email sending failed: ${error.message}`, {
+                email,
+                userType,
+            });
+            throw error;
+        }
 
-            // HTML email content
-            const html = `
+        const subject = 'Your Laundry App Verification Code';
+
+        const userTypeName = {
+            mart: 'Mart',
+            owner: 'Mart Owner',
+            manager: 'Manager',
+            customer: 'Customer',
+            delivery_staff: 'Delivery Partner',
+            portal: 'Portal User',
+        }[userType] || 'User';
+
+        const html = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -142,10 +248,9 @@ class EmailService {
   </div>
 </body>
 </html>
-      `;
+        `;
 
-            // Plain text version (fallback)
-            const text = `
+        const text = `
 Your Laundry App Verification Code
 
 Hello ${userTypeName},
@@ -159,46 +264,34 @@ If you didn't request this code, please ignore this email.
 ---
 This is an automated email. Please do not reply.
 © ${new Date().getFullYear()} Laundry App. All rights reserved.
-      `.trim();
+        `.trim();
 
-            if (this.transporter) {
-                // Send via SMTP
-                const info = await this.transporter.sendMail({
-                    from: process.env.SMTP_FROM_EMAIL || '"Laundry App" <noreply@laundryapp.com>',
-                    to: email,
-                    subject,
-                    text,
-                    html
-                });
+        try {
+            const fromEmail =
+                process.env.SMTP_FROM_EMAIL || process.env.FROM_EMAIL || `"Laundry App" <${process.env.SMTP_USER}>`;
 
-                logger.info('OTP email sent successfully', {
-                    email,
-                    messageId: info.messageId,
-                    userType
-                });
-
-                return { success: true, messageId: info.messageId };
-            } else {
-                // Development mode: Log to console
-                logger.info('========================================');
-                logger.info('📧 OTP EMAIL (Development Mode)');
-                logger.info('========================================');
-                logger.info(`To: ${email}`);
-                logger.info(`Subject: ${subject}`);
-                logger.info(`User Type: ${userTypeName}`);
-                logger.info(`OTP Code: ${otp}`);
-                logger.info(`Expires: 5 minutes`);
-                logger.info('========================================');
-
-                return { success: true, messageId: 'dev-mode' };
-            }
-        } catch (error) {
-            logger.error('Failed to send OTP email', {
-                error: error.message,
-                email,
-                userType
+            const info = await transporter.sendMail({
+                from: fromEmail,
+                to: email,
+                subject,
+                text,
+                html,
             });
-            throw new Error('Failed to send OTP email');
+
+            logger.info(`✅ Email sent successfully to ${email}`, {
+                messageId: info.messageId,
+                userType,
+                response: info.response,
+            });
+
+            return { success: true, messageId: info.messageId };
+        } catch (error) {
+            logger.error(`❌ Email sending failed: ${error.message}`, {
+                email,
+                userType,
+                stack: error.stack,
+            });
+            throw new Error(`Failed to send OTP email: ${error.message}`);
         }
     }
 
@@ -313,25 +406,34 @@ Get started today and experience the convenience of professional laundry care!
 © ${new Date().getFullYear()} Laundry App. All rights reserved.
       `.trim();
 
-            if (this.transporter) {
-                const info = await this.transporter.sendMail({
-                    from: process.env.SMTP_FROM_EMAIL || '"Laundry App" <noreply@laundryapp.com>',
-                    to: email,
-                    subject,
-                    text,
-                    html
-                });
+            const transporter = this._ensureTransporter();
 
-                logger.info('Welcome email sent successfully', {
+            if (!transporter) {
+                logger.warn('📭 Skipping welcome email send because SMTP transporter is not configured', {
                     email,
-                    messageId: info.messageId
+                    userType,
                 });
-
-                return { success: true, messageId: info.messageId };
-            } else {
-                logger.info('📧 Welcome email would be sent to:', email);
-                return { success: true, messageId: 'dev-mode' };
+                return { success: false, error: 'SMTP transporter not configured' };
             }
+
+            const fromEmail =
+                process.env.SMTP_FROM_EMAIL || process.env.FROM_EMAIL || `"Laundry App" <${process.env.SMTP_USER}>`;
+
+            const info = await transporter.sendMail({
+                from: fromEmail,
+                to: email,
+                subject,
+                text,
+                html,
+            });
+
+            logger.info(`✅ Email sent successfully to ${email}`, {
+                messageId: info.messageId,
+                userType,
+                context: 'welcome-email',
+            });
+
+            return { success: true, messageId: info.messageId };
         } catch (error) {
             logger.error('Failed to send welcome email', {
                 error: error.message,
@@ -347,19 +449,19 @@ Get started today and experience the convenience of professional laundry care!
      * @returns {Promise<boolean>} Configuration status
      */
     async verifyConfiguration() {
-        if (!this.transporter) {
-            logger.warn('Email transporter not configured - running in development mode');
+        const transporter = this._ensureTransporter();
+
+        if (!transporter) {
+            logger.error('❌ SMTP transporter not configured. Verification failed.');
             return false;
         }
 
         try {
-            await this.transporter.verify();
-            logger.info('Email service configuration verified successfully');
+            await transporter.verify();
+            logger.info('✅ SMTP connection verified');
             return true;
         } catch (error) {
-            logger.error('Email service configuration verification failed', {
-                error: error.message
-            });
+            logger.error(`❌ SMTP connection failed: ${error.message}`);
             return false;
         }
     }

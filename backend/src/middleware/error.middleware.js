@@ -24,7 +24,21 @@ exports.errorHandler = (err, req, res, next) => {
 
     // Prisma unique constraint error
     if (err.code === 'P2002') {
-        const message = 'Duplicate field value entered';
+        // Extract field name from Prisma error meta
+        const field = err.meta?.target?.[0] || 'field';
+        let message = 'Duplicate field value entered';
+        
+        // Provide more specific error messages based on the field
+        if (field === 'email') {
+            message = 'This email is already registered. Please use a different email.';
+        } else if (field === 'phone') {
+            message = 'This phone number is already registered. Please use a different phone number.';
+        } else if (field === 'contact_email') {
+            message = 'This mart email is already registered. Please use a different email.';
+        } else {
+            message = `This ${field} is already in use. Please use a different value.`;
+        }
+        
         error = new AppError(message, 409, 'DUPLICATE_ERROR');
     }
 

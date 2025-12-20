@@ -1,19 +1,72 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import { ROUTES } from '@/routes';
+import {
+  authApi,
+  IdentifierType,
+  VerifyPortalOtpData,
+  VerifyPortalOtpPendingData,
+  VerifyPortalOtpRegisteredData,
+} from '@/services';
+import { useAuth } from '@/hooks';
+import {
+  PORTAL_REGISTRATION_SESSION_KEY,
+  PortalRegistrationSessionPayload,
+} from './portalRegistrationSession';
+import {
+  clearPortalSignupSession,
+  updatePortalSignupSession,
+} from './portalSignupSession';
 import styles from './LoginPage.module.scss';
+
+const maskIdentifier = (value: string, type: IdentifierType) => {
+  if (type === 'email') {
+    const emailParts = value.split('@');
+    if (emailParts.length !== 2) {
+      return value;
+    }
+    const localPart = emailParts[0] ?? '';
+    const domain = emailParts[1] ?? '';
+
+    if (!localPart || !domain) {
+      return value;
+    }
+
+    if (localPart.length <= 2) {
+      return `${localPart.slice(0, 1)}***@${domain}`;
+    }
+    return `${localPart.slice(0, 2)}***@${domain}`;
+  }
+
+  if (value.length <= 4) {
+    return value;
+  }
+
+  return `••••${value.slice(-4)}`;
+};
+
+const isPendingRegistration = (
+  data: VerifyPortalOtpData
+): data is VerifyPortalOtpPendingData => data.isRegistered === false;
 
 export const LoginPage: React.FC = () => {
   const [identifier, setIdentifier] = useState('');
   const [otp, setOtp] = useState<string[]>(Array(6).fill(''));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendMessage, setResendMessage] = useState('');
 
   const inputsRef = useRef<Array<HTMLInputElement | null>>([]);
   const [imgFailed, setImgFailed] = useState(false);
   const navigate = useNavigate();
+  const { completeLogin } = useAuth();
 
-  const isOtpComplete = useMemo(() => otp.every((d) => d && d.length === 1), [otp]);
+  const isOtpComplete = useMemo(() => otp.every((digit) => digit && digit.length === 1), [otp]);
 
   const handleOtpChange = (index: number, value: string) => {
     const val = value.replace(/\D/g, '').slice(0, 1);
@@ -32,42 +85,227 @@ export const LoginPage: React.FC = () => {
     }
   };
 
+  /**
+   * Sends a fresh OTP to the identifier entered by the user.
+   * This should only run before an OTP has been requested.
+   * TEMPORARY: Bypasses OTP validation and redirects directly to dashboard for UI development.
+   */
   const handleGetOtp = async (e: React.FormEvent) => {
     e.preventDefault();
+    const trimmedIdentifier = identifier.trim();
+
+    if (!trimmedIdentifier) {
+      setError('Please enter an email or phone number');
+      return;
+    }
+
+    // TEMPORARY: Skip OTP validation and redirect directly to dashboard
+    // This is for UI development only - no backend, no email, no OTP logic
+    const inferredType: IdentifierType = trimmedIdentifier.includes('@') ? 'email' : 'phone';
+    const mockUser = {
+      id: 'temp-user-id',
+      name: 'Test User',
+      email: inferredType === 'email' ? trimmedIdentifier : null,
+      phone: inferredType === 'phone' ? trimmedIdentifier : null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      role: 'Admin',
+    };
+    const mockToken = 'temp-token-for-ui-development';
+
+    completeLogin(mockUser, mockToken);
+    navigate(ROUTES.DASHBOARD, { replace: true });
+  };
+
+  /**
+   * Verifies the OTP once all digits are entered.
+   * Called either by the Verify button or by pressing Enter after OTP entry.
+   */
+  const handleVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!otpSent) {
+      setError('Please request an OTP first');
+      return;
+    }
+    if (!isOtpComplete) {
+      setError('Please enter the complete 6-digit OTP');
+      return;
+    }
     setLoading(true);
     setError('');
+    setInfo('');
     try {
-      // Integrate API call to request OTP here
-      // await authApi.requestOtp(identifier)
+      const code = otp.join('');
+      const trimmedIdentifier = identifier.trim();
+      // Debug log to confirm the verification API is called instead of resend
+      console.log('[Login] Triggering verify-otp for identifier:', trimmedIdentifier, 'OTP length:', code.length);
+      const response = await authApi.verifyOtp({ identifier: trimmedIdentifier, otp: code });
+
+      if (!response?.success) {
+        setError(response?.message || 'Invalid OTP');
+        return;
+      }
+
+      const data = response.data;
+
+      if (!data) {
+        setError('Unexpected response from server');
+        return;
+      }
+
+      // Check if user is registered (existing user) - should login
+      if (data.isRegistered === true) {
+        const registeredData = data as VerifyPortalOtpRegisteredData;
+        const { token, user } = registeredData;
+
+        if (!token || !user) {
+          setError('Unexpected response from server');
+          return;
+        }
+
+        sessionStorage.removeItem(PORTAL_REGISTRATION_SESSION_KEY);
+        clearPortalSignupSession();
+        completeLogin(user, token);
+        setInfo('OTP verified successfully');
+        navigate(ROUTES.DASHBOARD, { replace: true });
+        return;
+      }
+
+      // User is not registered - redirect to signup
+      if (isPendingRegistration(data)) {
+        const expiresAt = data.sessionExpiresIn
+          ? Date.now() + data.sessionExpiresIn * 1000
+          : undefined;
+
+        const sessionPayload: PortalRegistrationSessionPayload = {
+          sessionToken: data.sessionToken,
+          identifier: data.identifier,
+          identifierType: data.identifierType,
+          expiresAt,
+        };
+
+        sessionStorage.setItem(
+          PORTAL_REGISTRATION_SESSION_KEY,
+          JSON.stringify(sessionPayload)
+        );
+
+        updatePortalSignupSession(() => ({
+          stage: 'profile',
+          martName: '',
+          laundryEmail: data.identifierType === 'email' ? data.identifier : null,
+          laundryContact: data.identifierType === 'phone' ? data.identifier : null,
+          identifier: data.identifier,
+          identifierType: data.identifierType,
+          otpExpiresAt: expiresAt,
+          registration: {
+            sessionToken: data.sessionToken,
+            sessionExpiresAt: expiresAt,
+          },
+        }));
+
+        setInfo("OTP verified. Let's finish setting up your profile.");
+        setOtp(Array(6).fill(''));
+        setOtpSent(false);
+        navigate(ROUTES.SIGNUP_PROFILE, { replace: true });
+        return;
+      }
+
+      // Fallback: if we reach here, something unexpected happened
+      setError('Unexpected response format from server');
     } catch (err: any) {
-      setError(err?.message || 'Failed to send OTP');
+      if (axios.isAxiosError(err)) {
+        setError(err.response?.data?.message || 'Invalid OTP');
+      } else {
+        setError(err?.message || 'Invalid OTP');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleVerify = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!isOtpComplete) {
-      // For demo navigation without backend, still allow moving forward
-      navigate(ROUTES.SIGNUP);
+  /**
+   * Routes form submission to the appropriate handler based on the current stage.
+   * - Before OTP is requested: trigger handleGetOtp.
+   * - After OTP is requested: trigger handleVerify.
+   */
+  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    if (otpSent) {
+      void handleVerify(e);
       return;
     }
-    setLoading(true);
-    setError('');
-    try {
-      const code = otp.join('');
-      // Integrate API call to verify OTP here
-      // await authApi.verifyOtp({ identifier, code })
-      // temporary no-op to satisfy linter
-      await Promise.resolve(code);
-      navigate(ROUTES.SIGNUP);
-    } catch (err: any) {
-      setError(err?.message || 'Invalid OTP');
-    } finally {
-      setLoading(false);
+    void handleGetOtp(e);
+  };
+
+  /**
+   * Ensures pressing Enter follows the same flow as clicking the visible CTA.
+   * Once an OTP is sent, Enter should only attempt verification.
+   */
+  const handleFormKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
+    if (e.key === 'Enter' && otpSent) {
+      e.preventDefault();
+      void handleVerify(e as unknown as React.FormEvent<HTMLFormElement>);
     }
   };
+
+  /**
+   * Handles resending OTP with cooldown timer
+   */
+  const handleResendOtp = async () => {
+    if (resendCooldown > 0 || resendLoading) {
+      return;
+    }
+
+    const trimmedIdentifier = identifier.trim();
+    if (!trimmedIdentifier) {
+      setResendMessage('Please enter an email or phone number first.');
+      return;
+    }
+
+    setResendLoading(true);
+    setResendMessage('');
+    setError('');
+
+    try {
+      const response = await authApi.sendOtp(trimmedIdentifier);
+      const otpMeta = response?.data as { identifier?: string; identifierType?: IdentifierType } | undefined;
+
+      const inferredType: IdentifierType = trimmedIdentifier.includes('@') ? 'email' : 'phone';
+      const masked = maskIdentifier(otpMeta?.identifier || trimmedIdentifier, otpMeta?.identifierType || inferredType);
+      setOtp(Array(6).fill(''));
+      setResendMessage(`OTP resent to ${masked}.`);
+      setResendCooldown(30);
+      
+      // Clear resend message after 3 seconds
+      setTimeout(() => {
+        setResendMessage('');
+      }, 3000);
+    } catch (err: any) {
+      if (axios.isAxiosError(err)) {
+        setResendMessage(err.response?.data?.message || 'Failed to resend OTP. Please try again.');
+      } else {
+        setResendMessage(err?.message || 'Failed to resend OTP. Please try again.');
+      }
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
+  // Cooldown timer effect
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setTimeout(() => {
+        setResendCooldown(resendCooldown - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [resendCooldown]);
+
+  useEffect(() => {
+    if (otpSent) {
+      inputsRef.current[0]?.focus();
+    }
+  }, [otpSent]);
 
   return (
     <div className={styles.loginContainer}>
@@ -106,54 +344,87 @@ export const LoginPage: React.FC = () => {
         </div>
       </div>
       <div className={styles.rightPane}>
-        <form className={styles.formCard} onSubmit={handleGetOtp}>
-          <h2 className={styles.formTitle}>Welcome Back!</h2>
-          <p className={styles.formSubtitle}>Please Login to your Account</p>
+        <div className={styles.rightPaneContent}>
+          <form
+            className={styles.formCard}
+            onSubmit={handleFormSubmit}
+            onKeyDown={handleFormKeyDown}
+          >
+            <h2 className={styles.formTitle}>Welcome Back!</h2>
+            <p className={styles.formSubtitle}>Please Login to your Account</p>
 
-          <div className={styles.fieldGroup}>
-            <label className={styles.label} htmlFor="identifier">Email/Phone Number</label>
-            <input
-              id="identifier"
-              className={styles.textInput}
-              type="text"
-              placeholder="Enter email or phone"
-              value={identifier}
-              onChange={(e) => setIdentifier(e.target.value)}
-              required
-            />
-          </div>
-
-          {error && <div className={styles.errorMessage}>{error}</div>}
-
-          <button type="submit" className={styles.primaryBtn} disabled={loading}>
-            {loading ? 'Sending…' : 'Get OTP'}
-          </button>
-
-          <div className={styles.otpSection}>
-            <span className={styles.otpLabel}>OTP</span>
-            <div className={styles.otpBoxes}>
-              {otp.map((val, index) => (
-                <input
-                  key={index}
-                  ref={(el) => (inputsRef.current[index] = el)}
-                  className={styles.otpInput}
-                  inputMode="numeric"
-                  maxLength={1}
-                  value={val}
-                  onChange={(e) => handleOtpChange(index, e.target.value)}
-                  onKeyDown={(e) => handleOtpKeyDown(index, e)}
-                />
-              ))}
+            <div className={styles.fieldGroup}>
+              <label className={styles.label} htmlFor="identifier">Email/Phone Number</label>
+              <input
+                id="identifier"
+                className={styles.textInput}
+                type="text"
+                placeholder="Enter email or phone"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                required
+              />
             </div>
+
+            {error && !otpSent && <div className={styles.errorMessage}>{error}</div>}
+            {info && !error && <div className={styles.infoMessage}>{info}</div>}
+
             <button
-              className={styles.verifyBtn}
-              onClick={handleVerify}
-              disabled={!isOtpComplete || loading}
+              type="submit"
+              className={styles.primaryBtn}
+              disabled={loading || !identifier.trim() || otpSent}
             >
-              Verify & Continue
+              {otpSent ? 'OTP Sent' : loading ? 'Sending…' : 'Get OTP'}
             </button>
-          </div>
-        </form>
+
+            {otpSent && (
+              <div className={styles.otpSection}>
+                <span className={styles.otpLabel}>OTP</span>
+                <div className={styles.otpBoxes}>
+                  {otp.map((val, index) => (
+                    <input
+                      key={index}
+                      ref={(el) => (inputsRef.current[index] = el)}
+                      className={styles.otpInput}
+                      inputMode="numeric"
+                      maxLength={1}
+                      value={val}
+                      onChange={(e) => handleOtpChange(index, e.target.value)}
+                      onKeyDown={(e) => handleOtpKeyDown(index, e)}
+                    />
+                  ))}
+                </div>
+                <button
+                  type="submit"
+                  className={styles.verifyBtn}
+                  disabled={!isOtpComplete || loading}
+                >
+                  {loading ? 'Verifying…' : 'Verify & Continue'}
+                </button>
+                {error && <div className={styles.errorMessage}>{error}</div>}
+                {resendMessage && (
+                  <div className={resendMessage.includes('Failed') ? styles.errorMessage : styles.infoMessage}>
+                    {resendMessage}
+                  </div>
+                )}
+                <div className={styles.resendSection}>
+                  <button
+                    type="button"
+                    className={styles.resendBtn}
+                    onClick={handleResendOtp}
+                    disabled={resendCooldown > 0 || resendLoading || loading}
+                  >
+                    {resendLoading
+                      ? 'Sending…'
+                      : resendCooldown > 0
+                      ? `Resend OTP (${resendCooldown}s)`
+                      : 'Resend OTP'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </form>
+        </div>
       </div>
     </div>
   );

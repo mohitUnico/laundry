@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../screens/auth/login_screen.dart';
-import '../screens/home/home_screen.dart';
+import '../screens/home/role_home_screen.dart';
 import '../screens/delivery/active_delivery_screen.dart';
 import '../screens/earnings/earnings_screen.dart';
 import '../screens/profile/profile_screen.dart';
@@ -15,7 +15,7 @@ class AppRoutes {
   static Map<String, WidgetBuilder> get routes {
     return {
       login: (context) => const LoginScreen(),
-      home: (context) => const HomeScreen(),
+      home: (context) => const RoleHomeScreen(),
       activeDelivery: (context) => const ActiveDeliveryScreen(),
       earnings: (context) => const EarningsScreen(),
       profile: (context) => const ProfileScreen(),

@@ -17,7 +17,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => DeliveryProvider()),
         // Add more providers as needed
       ],
-      child: const LaundryDeliveryApp(),
+      child: const LaundryStaffApp(),
     ),
   );
 }

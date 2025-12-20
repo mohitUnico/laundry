@@ -7,7 +7,7 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Available Tasks'),
+        title: const Text('Delivery Partner'),
         actions: [
           IconButton(
             icon: const Icon(Icons.account_balance_wallet),
@@ -24,7 +24,7 @@ class HomeScreen extends StatelessWidget {
         ],
       ),
       body: const Center(
-        child: Text('Available Delivery Tasks - To be implemented'),
+        child: Text('Delivery partner tasks - To be implemented'),
       ),
     );
   }

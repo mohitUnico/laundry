@@ -14,7 +14,7 @@ This document defines the terminology and vocabulary used throughout the Laundry
 - **`backend/`**: Node.js/Express REST API backend
 - **`mart-admin/`**: React-based web application for mart administration
 - **`customer-app/`**: Flutter mobile application for customers
-- **`delivery-app/`**: Flutter mobile application for delivery partners
+- **`staff-app/`**: Flutter mobile application for staff roles (collection manager, service man, distribution manager, delivery partner)
 - **`shared/`**: Shared utilities, types, and configurations across applications
 - **`docs/`**: Project documentation, API specs, and architecture diagrams
 - **`.tmp/`**: Temporary files and experimental code (excluded from version control)
@@ -106,7 +106,7 @@ Flutter application with the following structure:
 - **`android/`**: Android-specific configuration
 - **`ios/`**: iOS-specific configuration
 
-#### Delivery Partner App (`delivery-app/`)
+#### Staff App (`staff-app/`)
 
 Flutter application with similar structure:
 

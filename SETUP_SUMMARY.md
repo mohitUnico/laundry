@@ -158,11 +158,11 @@ customer-app/
 
 ---
 
-## 🚚 3. Delivery App (Flutter)
+## 🧑‍🔧 3. Staff App (Multi-role) (Flutter)
 
 ### Directory Structure
 ```
-delivery-app/
+staff-app/
 ├── lib/
 │   ├── main.dart              # App entry point
 │   ├── app.dart               # Root widget
@@ -204,7 +204,7 @@ delivery-app/
 ├── ios/                       # iOS configuration
 ├── .gitignore
 ├── pubspec.yaml               # Dependencies
-└── README.md                  # Delivery app documentation
+└── README.md                  # Staff app documentation
 ```
 
 ### Configuration Files Created
@@ -213,7 +213,7 @@ delivery-app/
 
 ### Features Implemented
 - ✅ Basic navigation with named routes
-- ✅ Green-themed UI for delivery partners
+- ✅ Role-based access shell (collection manager, service man, distribution manager, delivery partner)
 - ✅ API service with Dio interceptors
 - ✅ Provider pattern for state management
 - ✅ Sample screens (Login, Home, Active Delivery, Earnings, Profile)
@@ -269,9 +269,9 @@ flutter pub get
 flutter run
 ```
 
-### Delivery App
+### Staff App
 ```bash
-cd delivery-app
+cd staff-app
 flutter pub get
 flutter run
 ```
@@ -287,9 +287,9 @@ flutter run
 - [x] Customer App folder structure
 - [x] Customer App configuration files
 - [x] Customer App basic screens
-- [x] Delivery App folder structure
-- [x] Delivery App configuration files
-- [x] Delivery App basic screens
+- [x] Staff App folder structure
+- [x] Staff App configuration files
+- [x] Staff App basic screens
 - [x] AI assistant configuration
 - [x] Documentation and READMEs
 
@@ -350,7 +350,7 @@ flutter run
 - **Design**: Material Design
 - **Icons**: Material Icons
 
-### Delivery App
+### Staff App
 - **Primary Color**: Green (#4CAF50)
 - **Secondary Color**: Orange (#FF9800)
 - **Design**: Material Design

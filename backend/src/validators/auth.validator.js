@@ -121,18 +121,11 @@ const completePortalRegistrationSchema = Joi.object({
 const completeOwnerRegistrationSchema = Joi.object({
   sessionToken: sessionTokenSchema,
   martData: Joi.object({
-    martName: Joi.string().min(2).max(255).required().messages({
-      'string.min': 'Mart name must be at least 2 characters',
-      'string.max': 'Mart name must not exceed 255 characters',
-      'any.required': 'Mart name is required'
-    }),
-    martEmail: Joi.string()
-      .email()
-      .optional()
-      .messages({
-        'string.email': 'Mart email must be a valid email address'
-      })
-      .description('Mart email (must match verified email from session)'),
+    // Backward compatible naming (martName/martEmail == businessName/businessEmail)
+    martName: Joi.string().min(2).max(255).optional(),
+    martEmail: Joi.string().email().optional(),
+    businessName: Joi.string().min(2).max(255).optional(),
+    businessEmail: Joi.string().email().optional(),
     martContact: Joi.string()
       .pattern(/^\+?[0-9]{10,15}$/)
       .optional()
@@ -167,7 +160,13 @@ const completeOwnerRegistrationSchema = Joi.object({
       'object.base': 'Mart coordinates must be a valid object'
     }),
     serviceRadiusKm: Joi.object().optional()
-  }).required(),
+  })
+    .or('martName', 'businessName')
+    .or('martEmail', 'businessEmail')
+    .required()
+    .messages({
+      'object.missing': 'Business name and email are required',
+    }),
   ownerData: Joi.object({
     ownerName: Joi.string().min(2).max(255).required().messages({
       'string.min': 'Owner name must be at least 2 characters',

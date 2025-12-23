@@ -159,9 +159,9 @@ POST   /api/v1/distribution/orders/:orderId/dispatch
 
 **Admin:**
 ```
-POST   /api/v1/admin/collection-manager
-POST   /api/v1/admin/service-man
-POST   /api/v1/admin/distribution-manager
+POST   /api/v1/auth/collection-manager/complete-registration   (Owner/Admin only)
+POST   /api/v1/auth/service-man/complete-registration          (Owner/Admin only; requires serviceId/serviceType)
+POST   /api/v1/auth/distribution-manager/complete-registration (Owner/Admin only)
 GET    /api/v1/admin/delivery-partners/pending-verification
 POST   /api/v1/admin/delivery-partners/:staffId/verify
 POST   /api/v1/admin/delivery-partners/:staffId/reject
@@ -193,9 +193,12 @@ POST   /api/v1/delivery/:deliveryId/confirm-payment
 #### Updated Authentication Flow
 
 **Collection Manager, Service Man, Distribution Manager:**
-1. Created by admin (not self-registration)
-2. Login with email + OTP verification
-3. Role-specific access control
+1. Account starts with email OTP verification (`send-otp` → `verify-otp`)
+2. If new (`isNewUser: true`), profile creation is completed by Owner/Admin via:
+   - `POST /api/v1/auth/collection-manager/complete-registration`
+   - `POST /api/v1/auth/service-man/complete-registration` (requires serviceId/serviceType; 1 service man per service)
+   - `POST /api/v1/auth/distribution-manager/complete-registration`
+3. After profile exists, login is OTP-only (no owner/admin token required)
 
 **Delivery Partner:**
 1. Self-registration with email

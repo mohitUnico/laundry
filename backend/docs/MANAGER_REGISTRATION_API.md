@@ -399,6 +399,12 @@ curl -X POST http://localhost:3000/api/v1/auth/manager/complete-registration \
 - `POST /api/v1/auth/manager/verify-otp` - Verify OTP and get session token
 - `POST /api/v1/auth/resend-otp` - Resend OTP if needed
 
+## Related Staff Registration Docs (Architecture v2 Roles)
+
+These roles follow the same pattern (OTP login, and first-time profile creation completed by Owner/Admin):
+
+- **Collection Manager / Distribution Manager / Service Man** → [STAFF_REGISTRATION_API.md](STAFF_REGISTRATION_API.md)
+
 ---
 
 **Last Updated**: November 4, 2025

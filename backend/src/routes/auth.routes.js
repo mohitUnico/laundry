@@ -20,6 +20,9 @@ const {
   completeOwnerRegistrationSchema,
   completePortalRegistrationSchema,
   completeManagerRegistrationSchema,
+  completeCollectionManagerRegistrationSchema,
+  completeDistributionManagerRegistrationSchema,
+  completeServiceManRegistrationSchema,
   completeCustomerRegistrationSchema,
   completeDeliveryRegistrationSchema,
   resendOtpSchema
@@ -262,6 +265,78 @@ router.post(
   '/customer/complete-registration',
   validate(completeCustomerRegistrationSchema),
   authController.completeCustomerRegistration
+);
+
+// ============================================================================
+// COLLECTION MANAGER AUTH ROUTES
+// ============================================================================
+
+router.post(
+  '/collection-manager/send-otp',
+  validate(sendOtpSchema),
+  authController.sendCollectionManagerOtp
+);
+
+router.post(
+  '/collection-manager/verify-otp',
+  validate(verifyOtpSchema),
+  authController.verifyCollectionManagerOtp
+);
+
+router.post(
+  '/collection-manager/complete-registration',
+  authenticateJWT,
+  authorize('owner', 'admin'),
+  validate(completeCollectionManagerRegistrationSchema),
+  authController.completeCollectionManagerRegistration
+);
+
+// ============================================================================
+// DISTRIBUTION MANAGER AUTH ROUTES
+// ============================================================================
+
+router.post(
+  '/distribution-manager/send-otp',
+  validate(sendOtpSchema),
+  authController.sendDistributionManagerOtp
+);
+
+router.post(
+  '/distribution-manager/verify-otp',
+  validate(verifyOtpSchema),
+  authController.verifyDistributionManagerOtp
+);
+
+router.post(
+  '/distribution-manager/complete-registration',
+  authenticateJWT,
+  authorize('owner', 'admin'),
+  validate(completeDistributionManagerRegistrationSchema),
+  authController.completeDistributionManagerRegistration
+);
+
+// ============================================================================
+// SERVICE MAN AUTH ROUTES
+// ============================================================================
+
+router.post(
+  '/service-man/send-otp',
+  validate(sendOtpSchema),
+  authController.sendServiceManOtp
+);
+
+router.post(
+  '/service-man/verify-otp',
+  validate(verifyOtpSchema),
+  authController.verifyServiceManOtp
+);
+
+router.post(
+  '/service-man/complete-registration',
+  authenticateJWT,
+  authorize('owner', 'admin'),
+  validate(completeServiceManRegistrationSchema),
+  authController.completeServiceManRegistration
 );
 
 // ============================================================================

@@ -60,12 +60,30 @@ const sessionTokenSchema = Joi.string()
   });
 
 const userTypeSchema = Joi.string()
-  .valid('owner', 'manager', 'customer', 'delivery_staff')
+  .valid(
+    'owner',
+    'manager',
+    'collection_manager',
+    'distribution_manager',
+    'service_man',
+    'customer',
+    'delivery_staff'
+  )
   .required()
   .messages({
-    'any.only': 'User type must be owner, manager, customer, or delivery_staff',
+    'any.only':
+      'User type must be owner, manager, collection_manager, distribution_manager, service_man, customer, or delivery_staff',
     'any.required': 'User type is required'
   });
+
+const serviceIdSchema = Joi.string().uuid().optional().messages({
+  'string.guid': 'Service ID must be a valid UUID'
+});
+
+const serviceTypeSchema = Joi.string().min(2).max(255).optional().messages({
+  'string.min': 'Service type must be at least 2 characters',
+  'string.max': 'Service type must not exceed 255 characters'
+});
 
 // ============================================================================
 // SEND OTP VALIDATORS
@@ -206,6 +224,51 @@ const completeManagerRegistrationSchema = Joi.object({
 });
 
 // ============================================================================
+// STAFF REGISTRATION VALIDATORS (OWNER/ADMIN-CREATED)
+// ============================================================================
+
+const completeCollectionManagerRegistrationSchema = Joi.object({
+  sessionToken: sessionTokenSchema,
+  collectionManagerData: Joi.object({
+    fullName: Joi.string().min(2).max(255).required().messages({
+      'string.min': 'Collection manager name must be at least 2 characters',
+      'string.max': 'Collection manager name must not exceed 255 characters',
+      'any.required': 'Collection manager name is required'
+    }),
+    phone: phoneSchema
+  }).required()
+});
+
+const completeDistributionManagerRegistrationSchema = Joi.object({
+  sessionToken: sessionTokenSchema,
+  distributionManagerData: Joi.object({
+    fullName: Joi.string().min(2).max(255).required().messages({
+      'string.min': 'Distribution manager name must be at least 2 characters',
+      'string.max': 'Distribution manager name must not exceed 255 characters',
+      'any.required': 'Distribution manager name is required'
+    }),
+    phone: phoneSchema
+  }).required()
+});
+
+const completeServiceManRegistrationSchema = Joi.object({
+  sessionToken: sessionTokenSchema,
+  serviceManData: Joi.object({
+    fullName: Joi.string().min(2).max(255).required().messages({
+      'string.min': 'Service man name must be at least 2 characters',
+      'string.max': 'Service man name must not exceed 255 characters',
+      'any.required': 'Service man name is required'
+    }),
+    phone: phoneSchema,
+    serviceId: Joi.string().uuid().required().messages({
+      'string.guid': 'Service ID must be a valid UUID',
+      'any.required': 'Service ID is required'
+    })
+  })
+    .required()
+});
+
+// ============================================================================
 // CUSTOMER REGISTRATION VALIDATORS
 // ============================================================================
 
@@ -319,6 +382,9 @@ module.exports = {
   completePortalRegistrationSchema,
   completeOwnerRegistrationSchema,
   completeManagerRegistrationSchema,
+  completeCollectionManagerRegistrationSchema,
+  completeDistributionManagerRegistrationSchema,
+  completeServiceManRegistrationSchema,
   completeCustomerRegistrationSchema,
   completeDeliveryRegistrationSchema,
 

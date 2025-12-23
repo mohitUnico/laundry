@@ -31,6 +31,9 @@ const USER_TYPES = {
     MART: 'mart',
     OWNER: 'owner',
     MANAGER: 'manager',
+    COLLECTION_MANAGER: 'collection_manager',
+    DISTRIBUTION_MANAGER: 'distribution_manager',
+    SERVICE_MAN: 'service_man',
     CUSTOMER: 'customer',
     DELIVERY_STAFF: 'delivery_staff'
 };
@@ -66,6 +69,36 @@ const _getExpiryTime = (minutes) => {
 const _generateSessionToken = () => {
     return crypto.randomBytes(32).toString('hex');
 };
+
+/**
+ * Resolve service_id for service man flows from either serviceId or serviceType (service_name)
+ * @param {Object} data
+ * @param {string} [data.serviceId]
+ * @param {string} [data.serviceType]
+ * @returns {Promise<string>} service_id
+ */
+async function _resolveServiceIdForServiceMan({ serviceId, serviceType }) {
+    if (serviceId) return serviceId;
+
+    const normalizedType = String(serviceType || '').trim();
+    if (!normalizedType) {
+        throw new ValidationError('Service type is required');
+    }
+
+    const service = await prisma.service.findFirst({
+        where: {
+            service_name: { equals: normalizedType, mode: 'insensitive' },
+            is_active: true
+        },
+        select: { service_id: true, service_name: true }
+    });
+
+    if (!service) {
+        throw new NotFoundError('Service');
+    }
+
+    return service.service_id;
+}
 
 /**
  * Check rate limiting for OTP requests
@@ -125,6 +158,27 @@ const sendOtp = async (email, userType) => {
         // Normalize email
         email = email.toLowerCase().trim();
 
+        // Staff role guard:
+        // If an email is already registered under a DIFFERENT staff role,
+        // block OTP sending and return a clear message.
+        const staffUserTypes = [
+            USER_TYPES.COLLECTION_MANAGER,
+            USER_TYPES.DISTRIBUTION_MANAGER,
+            USER_TYPES.SERVICE_MAN
+        ];
+
+        if (staffUserTypes.includes(userType)) {
+            const existingStaff = await prisma.staff.findUnique({
+                where: { email },
+                select: { role: true }
+            });
+
+            if (existingStaff?.role && existingStaff.role !== userType) {
+                const prettyRole = String(existingStaff.role).replace(/_/g, ' ');
+                throw new ValidationError(`This email is already registered as ${prettyRole}`);
+            }
+        }
+
         // Check rate limiting
         await _checkRateLimit(email, userType);
 
@@ -171,9 +225,10 @@ const sendOtp = async (email, userType) => {
  * @param {string} email - User's email address
  * @param {string} otp - 6-digit OTP code
  * @param {string} userType - User type
+ * @param {Object} [options] - Optional contextual data for some user types
  * @returns {Promise<Object>} Verification result
  */
-const verifyOtp = async (email, otp, userType) => {
+const verifyOtp = async (email, otp, userType, options = {}) => {
     try {
         // Normalize email
         email = email.toLowerCase().trim();
@@ -233,6 +288,32 @@ const verifyOtp = async (email, otp, userType) => {
                 });
                 break;
 
+            case USER_TYPES.COLLECTION_MANAGER:
+                existingUser = await prisma.staff.findFirst({
+                    where: { email, role: 'collection_manager' }
+                });
+                break;
+
+            case USER_TYPES.DISTRIBUTION_MANAGER:
+                existingUser = await prisma.staff.findFirst({
+                    where: { email, role: 'distribution_manager' }
+                });
+                break;
+
+            case USER_TYPES.SERVICE_MAN:
+                existingUser = await prisma.staff.findFirst({
+                    where: { email, role: 'service_man' },
+                    include: {
+                        service: {
+                            select: {
+                                service_id: true,
+                                service_name: true
+                            }
+                        }
+                    }
+                });
+                break;
+
             case USER_TYPES.CUSTOMER:
                 existingUser = await prisma.customer.findUnique({
                     where: { email }
@@ -258,7 +339,11 @@ const verifyOtp = async (email, otp, userType) => {
 
             // Generate JWT token
             const token = generateToken({
-                userId: existingUser.user_id || existingUser.customer_id || existingUser.staff_id,
+                userId:
+                    existingUser.user_id ||
+                    existingUser.customer_id ||
+                    existingUser.staff_id ||
+                    existingUser.manager_id,
                 email: existingUser.email,
                 role: existingUser.role || userType,
                 fullName: existingUser.full_name,
@@ -268,12 +353,22 @@ const verifyOtp = async (email, otp, userType) => {
                 isNewUser: false,
                 token,
                 user: {
-                    userId: existingUser.user_id || existingUser.customer_id || existingUser.staff_id,
+                    userId:
+                        existingUser.user_id ||
+                        existingUser.customer_id ||
+                        existingUser.staff_id ||
+                        existingUser.manager_id,
                     email: existingUser.email,
                     fullName: existingUser.full_name,
                     role: existingUser.role || userType,
                     martId: null,
-                    mart: null
+                    mart: null,
+                    ...(userType === USER_TYPES.SERVICE_MAN
+                        ? {
+                              serviceId: existingUser.service_id || null,
+                              serviceName: existingUser.service?.service_name || null
+                          }
+                        : {})
                 }
             };
         } else {
@@ -865,6 +960,241 @@ const completeManagerRegistration = async (sessionToken, managerData, owner) => 
 };
 
 /**
+ * Complete collection manager registration (created by owner/admin)
+ * @param {string} sessionToken - Session token from verify OTP
+ * @param {{fullName:string, phone?:string|null}} collectionManagerData
+ * @param {Object} owner - Owner/admin token payload
+ * @returns {Promise<Object>}
+ */
+const completeCollectionManagerRegistration = async (sessionToken, collectionManagerData, owner) => {
+    try {
+        const session = await prisma.otpSession.findUnique({
+            where: { session_token: sessionToken }
+        });
+
+        if (!session) throw new AuthenticationError('Invalid or expired session token');
+        if (session.user_type !== USER_TYPES.COLLECTION_MANAGER) {
+            throw new ValidationError('Session token is not for collection manager registration');
+        }
+        if (!session.is_new_user) throw new ValidationError('Session is not for new user registration');
+        if (new Date() > session.expires_at) throw new AuthenticationError('Session has expired. Please start over.');
+        if (session.is_completed) throw new ValidationError('Registration already completed');
+
+        if (!owner?.role || !['owner', 'admin'].includes(owner.role)) {
+            throw new AuthorizationError('Only owner/admin can create a collection manager');
+        }
+
+        const manager = await prisma.$transaction(async (tx) => {
+            const newManager = await tx.staff.create({
+                data: {
+                    role: 'collection_manager',
+                    full_name: collectionManagerData.fullName,
+                    email: session.email,
+                    phone: collectionManagerData.phone || null,
+                    is_active: true
+                }
+            });
+
+            await tx.otpSession.update({
+                where: { session_token: sessionToken },
+                data: {
+                    is_completed: true,
+                    user_id: newManager.staff_id
+                }
+            });
+
+            return newManager;
+        });
+
+        const token = generateToken({
+            userId: manager.staff_id,
+            email: manager.email,
+            role: USER_TYPES.COLLECTION_MANAGER,
+            fullName: manager.full_name
+        });
+
+        emailService
+            .sendWelcomeEmail(session.email, collectionManagerData.fullName, USER_TYPES.COLLECTION_MANAGER)
+            .catch((err) => logger.error('Failed to send welcome email', { error: err.message }));
+
+        return {
+            token,
+            collectionManager: {
+                managerId: manager.staff_id,
+                fullName: manager.full_name,
+                email: manager.email,
+                phone: manager.phone
+            }
+        };
+    } catch (error) {
+        logger.error('Collection manager registration failed', { error: error.message });
+        throw error;
+    }
+};
+
+/**
+ * Complete distribution manager registration (created by owner/admin)
+ * @param {string} sessionToken - Session token from verify OTP
+ * @param {{fullName:string, phone?:string|null}} distributionManagerData
+ * @param {Object} owner - Owner/admin token payload
+ * @returns {Promise<Object>}
+ */
+const completeDistributionManagerRegistration = async (sessionToken, distributionManagerData, owner) => {
+    try {
+        const session = await prisma.otpSession.findUnique({
+            where: { session_token: sessionToken }
+        });
+
+        if (!session) throw new AuthenticationError('Invalid or expired session token');
+        if (session.user_type !== USER_TYPES.DISTRIBUTION_MANAGER) {
+            throw new ValidationError('Session token is not for distribution manager registration');
+        }
+        if (!session.is_new_user) throw new ValidationError('Session is not for new user registration');
+        if (new Date() > session.expires_at) throw new AuthenticationError('Session has expired. Please start over.');
+        if (session.is_completed) throw new ValidationError('Registration already completed');
+
+        if (!owner?.role || !['owner', 'admin'].includes(owner.role)) {
+            throw new AuthorizationError('Only owner/admin can create a distribution manager');
+        }
+
+        const manager = await prisma.$transaction(async (tx) => {
+            const newManager = await tx.staff.create({
+                data: {
+                    role: 'distribution_manager',
+                    full_name: distributionManagerData.fullName,
+                    email: session.email,
+                    phone: distributionManagerData.phone || null,
+                    is_active: true
+                }
+            });
+
+            await tx.otpSession.update({
+                where: { session_token: sessionToken },
+                data: {
+                    is_completed: true,
+                    user_id: newManager.staff_id
+                }
+            });
+
+            return newManager;
+        });
+
+        const token = generateToken({
+            userId: manager.staff_id,
+            email: manager.email,
+            role: USER_TYPES.DISTRIBUTION_MANAGER,
+            fullName: manager.full_name
+        });
+
+        emailService
+            .sendWelcomeEmail(session.email, distributionManagerData.fullName, USER_TYPES.DISTRIBUTION_MANAGER)
+            .catch((err) => logger.error('Failed to send welcome email', { error: err.message }));
+
+        return {
+            token,
+            distributionManager: {
+                managerId: manager.staff_id,
+                fullName: manager.full_name,
+                email: manager.email,
+                phone: manager.phone
+            }
+        };
+    } catch (error) {
+        logger.error('Distribution manager registration failed', { error: error.message });
+        throw error;
+    }
+};
+
+/**
+ * Complete service man registration (created by owner/admin)
+ * @param {string} sessionToken - Session token from verify OTP
+ * @param {{fullName:string, phone?:string|null, serviceId?:string, serviceType?:string}} serviceManData
+ * @param {Object} owner - Owner/admin token payload
+ * @returns {Promise<Object>}
+ */
+const completeServiceManRegistration = async (sessionToken, serviceManData, owner) => {
+    try {
+        const session = await prisma.otpSession.findUnique({
+            where: { session_token: sessionToken }
+        });
+
+        if (!session) throw new AuthenticationError('Invalid or expired session token');
+        if (session.user_type !== USER_TYPES.SERVICE_MAN) {
+            throw new ValidationError('Session token is not for service man registration');
+        }
+        if (!session.is_new_user) throw new ValidationError('Session is not for new user registration');
+        if (new Date() > session.expires_at) throw new AuthenticationError('Session has expired. Please start over.');
+        if (session.is_completed) throw new ValidationError('Registration already completed');
+
+        if (!owner?.role || !['owner', 'admin'].includes(owner.role)) {
+            throw new AuthorizationError('Only owner/admin can create a service man');
+        }
+
+        const resolvedServiceId = serviceManData.serviceId;
+        if (!resolvedServiceId) {
+            throw new ValidationError('Service ID is required');
+        }
+
+        const existingForService = await prisma.staff.findFirst({
+            where: { service_id: resolvedServiceId, role: 'service_man' },
+            select: { staff_id: true, email: true }
+        });
+
+        if (existingForService) {
+            throw new ValidationError('This service already has a service man assigned');
+        }
+
+        const serviceMan = await prisma.$transaction(async (tx) => {
+            const newServiceMan = await tx.staff.create({
+                data: {
+                    role: 'service_man',
+                    service_id: resolvedServiceId,
+                    full_name: serviceManData.fullName,
+                    email: session.email,
+                    phone: serviceManData.phone || null,
+                    is_active: true
+                }
+            });
+
+            await tx.otpSession.update({
+                where: { session_token: sessionToken },
+                data: {
+                    is_completed: true,
+                    user_id: newServiceMan.staff_id
+                }
+            });
+
+            return newServiceMan;
+        });
+
+        const token = generateToken({
+            userId: serviceMan.staff_id,
+            email: serviceMan.email,
+            role: USER_TYPES.SERVICE_MAN,
+            fullName: serviceMan.full_name
+        });
+
+        emailService
+            .sendWelcomeEmail(session.email, serviceManData.fullName, USER_TYPES.SERVICE_MAN)
+            .catch((err) => logger.error('Failed to send welcome email', { error: err.message }));
+
+        return {
+            token,
+            serviceMan: {
+                serviceManId: serviceMan.staff_id,
+                fullName: serviceMan.full_name,
+                email: serviceMan.email,
+                phone: serviceMan.phone,
+                serviceId: serviceMan.service_id
+            }
+        };
+    } catch (error) {
+        logger.error('Service man registration failed', { error: error.message });
+        throw error;
+    }
+};
+
+/**
  * Complete customer registration
  * @param {string} sessionToken - Session token from verify OTP
  * @param {Object} customerData - Customer registration data
@@ -1162,6 +1492,9 @@ module.exports = {
     // Registration completion
     completeOwnerRegistration,
     completeManagerRegistration,
+    completeCollectionManagerRegistration,
+    completeDistributionManagerRegistration,
+    completeServiceManRegistration,
     completeCustomerRegistration,
     completeDeliveryRegistration,
 

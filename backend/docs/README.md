@@ -19,6 +19,7 @@ Welcome to the Laundry App backend documentation! This folder contains all the g
 | **[EMAIL_FIRST_AUTH_GUIDE.md](EMAIL_FIRST_AUTH_GUIDE.md)** | Complete email-first authentication guide | Understanding the system, API reference, frontend integration |
 | **[MART_REGISTRATION_FLOW.md](MART_REGISTRATION_FLOW.md)** | Mart owner two-step email verification flow | Implementing owner registration, understanding mart setup |
 | **[MANAGER_REGISTRATION_API.md](MANAGER_REGISTRATION_API.md)** | Manager registration API documentation | Adding managers to a mart, request/response formats |
+| **[STAFF_REGISTRATION_API.md](STAFF_REGISTRATION_API.md)** | Staff registration API documentation (Collection Manager, Distribution Manager, Service Man) | Owner/admin onboarding staff accounts (service man requires serviceId/serviceType; 1 per service) |
 | **[EMAIL_FIRST_AUTH_SUMMARY.md](EMAIL_FIRST_AUTH_SUMMARY.md)** | Implementation summary and migration guide | Quick overview, migration from phone-first |
 
 ### 📧 Email Configuration

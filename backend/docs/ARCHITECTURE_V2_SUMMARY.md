@@ -192,9 +192,10 @@
 - `POST /api/v1/distribution/orders/:orderId/dispatch`
 
 #### Admin (6)
-- `POST /api/v1/admin/collection-manager`
-- `POST /api/v1/admin/service-man`
-- `POST /api/v1/admin/distribution-manager`
+- Staff onboarding (Owner/Admin-created profiles via OTP sessions):
+  - `POST /api/v1/auth/collection-manager/complete-registration`
+  - `POST /api/v1/auth/service-man/complete-registration`
+  - `POST /api/v1/auth/distribution-manager/complete-registration`
 - `GET /api/v1/admin/delivery-partners/pending-verification`
 - `POST /api/v1/admin/delivery-partners/:staffId/verify`
 - `POST /api/v1/admin/delivery-partners/:staffId/reject`

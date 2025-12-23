@@ -19,6 +19,7 @@ This document provides a comprehensive index of all backend documentation, organ
 - **Understand email-first OTP system** → [EMAIL_FIRST_AUTH_GUIDE.md](EMAIL_FIRST_AUTH_GUIDE.md)
 - **Implement mart owner registration** → [MART_REGISTRATION_FLOW.md](MART_REGISTRATION_FLOW.md)
 - **Add a manager to a mart** → [MANAGER_REGISTRATION_API.md](MANAGER_REGISTRATION_API.md)
+- **Add collection manager / distribution manager / service man** → [STAFF_REGISTRATION_API.md](STAFF_REGISTRATION_API.md)
 - **Migrate from phone-first** → [EMAIL_FIRST_AUTH_SUMMARY.md](EMAIL_FIRST_AUTH_SUMMARY.md)
 
 #### 📧 Email Configuration
@@ -119,6 +120,13 @@ This document provides a comprehensive index of all backend documentation, organ
 - Security notes
 
 **Best for**: Adding managers to a mart, API integration
+
+---
+
+#### [STAFF_REGISTRATION_API.md](STAFF_REGISTRATION_API.md)
+**Staff registration API documentation** (Collection Manager, Distribution Manager, Service Man)
+
+**Best for**: Owner/admin onboarding staff accounts (service man requires `serviceId` or `serviceType`; 1 service man per service)
 
 ---
 
@@ -272,6 +280,7 @@ These documents are archived for historical reference only. They document the ol
 1. Read [EMAIL_FIRST_AUTH_GUIDE.md](EMAIL_FIRST_AUTH_GUIDE.md) for overview
 2. For owner registration: Read [MART_REGISTRATION_FLOW.md](MART_REGISTRATION_FLOW.md)
 3. For manager registration: Read [MANAGER_REGISTRATION_API.md](MANAGER_REGISTRATION_API.md)
+4. For collection/distribution/service man registration: Read the role docs listed above
 4. For frontend: See frontend integration section in [EMAIL_FIRST_AUTH_GUIDE.md](EMAIL_FIRST_AUTH_GUIDE.md#frontend-integration)
 
 ### Setting Up Email (SMTP)

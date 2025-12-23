@@ -123,55 +123,39 @@ enum VerificationStatus {
   rejected
 }
 
-// Collection Manager
-model CollectionManager {
-  manager_id String   @id @default(uuid())
-  full_name  String   @db.VarChar(255)
-  email      String   @unique @db.VarChar(255)
-  phone      String?  @db.VarChar(20)
-  is_active  Boolean  @default(true)
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+// Unified Staff table for Collection Manager, Distribution Manager, and Service Man
+model Staff {
+  staff_id   String    @id @default(uuid())
+  role       StaffRole
+  full_name  String    @db.VarChar(255)
+  email      String    @unique @db.VarChar(255) // Unique across ALL staff roles
+  phone      String?   @db.VarChar(20)
+  is_active  Boolean   @default(true)
+  // Only service men have service_id; unique allows at most 1 service man per service (NULL allowed for other roles)
+  service_id String?   @unique
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
 
-  // Orders received by this manager
-  orders_received Order[] @relation("ReceivedByCollectionManager")
+  service Service? @relation(fields: [service_id], references: [service_id])
 
-  @@map("collection_managers")
-}
+  // Orders received by staff (collection manager role)
+  orders_received Order[] @relation("ReceivedByStaff")
 
-// Service Man (one per service)
-model ServiceMan {
-  service_man_id String   @id @default(uuid())
-  service_id     String   @unique // One service man per service
-  full_name      String   @db.VarChar(255)
-  email          String   @unique @db.VarChar(255)
-  phone          String?  @db.VarChar(20)
-  is_active      Boolean  @default(true)
-  created_at     DateTime @default(now())
-  updated_at     DateTime @updatedAt
-  service        Service  @relation(fields: [service_id], references: [service_id])
+  // Orders dispatched by staff (distribution manager role)
+  orders_dispatched Order[] @relation("DispatchedByStaff")
 
-  // Service queue items assigned to this service man
-  service_queue_items ServiceQueueItem[]
+  // Service queue items assigned to staff (service man role)
+  service_queue_items ServiceQueueItem[] @relation("ServiceQueueAssignedStaff")
 
+  @@index([role])
   @@index([service_id])
-  @@map("service_men")
+  @@map("staff")
 }
 
-// Distribution Manager
-model DistributionManager {
-  manager_id String   @id @default(uuid())
-  full_name  String   @db.VarChar(255)
-  email      String   @unique @db.VarChar(255)
-  phone      String?  @db.VarChar(20)
-  is_active  Boolean  @default(true)
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-
-  // Orders dispatched by this manager
-  orders_dispatched Order[] @relation("DispatchedByDistributionManager")
-
-  @@map("distribution_managers")
+enum StaffRole {
+  collection_manager
+  distribution_manager
+  service_man
 }
 
 // ==================== SERVICE CATALOG ====================
@@ -205,7 +189,7 @@ model Service {
   updated_at      DateTime        @updatedAt
   category        ServiceCategory @relation(fields: [category_id], references: [category_id])
   clothes_items   ClothesItem[]
-  service_man     ServiceMan? // One service man per service
+  service_man     Staff? // One service man per service (Staff.role = service_man)
 
   // Cart items for this service
   cart_items CartItem[]
@@ -321,11 +305,11 @@ model Order {
   delivery_address                    CustomerAddress      @relation("DeliveryAddress", fields: [delivery_address_id], references: [address_id])
   pickup_address                      CustomerAddress      @relation("PickupAddress", fields: [pickup_address_id], references: [address_id])
 
-  // Collection manager who received the order
-  received_by_manager CollectionManager? @relation("ReceivedByCollectionManager", fields: [received_by_collection_manager_id], references: [manager_id])
+  // Staff who received the order (collection manager role)
+  received_by_manager Staff? @relation("ReceivedByStaff", fields: [received_by_collection_manager_id], references: [staff_id])
 
-  // Distribution manager who dispatched the order
-  dispatched_by_manager DistributionManager? @relation("DispatchedByDistributionManager", fields: [dispatched_by_distribution_manager_id], references: [manager_id])
+  // Staff who dispatched the order (distribution manager role)
+  dispatched_by_manager Staff? @relation("DispatchedByStaff", fields: [dispatched_by_distribution_manager_id], references: [staff_id])
 
   // Service queue items for this order
   service_queue_items ServiceQueueItem[]
@@ -411,7 +395,7 @@ model ServiceQueueItem {
   queue_id       String      @id @default(uuid())
   order_id       String
   service_id     String
-  service_man_id String
+  service_man_id String // References Staff.staff_id where Staff.role = service_man
   item_id        String // Reference to OrderItem
   item_name      String      @db.VarChar(255)
   quantity       Int
@@ -426,7 +410,7 @@ model ServiceQueueItem {
 
   order       Order      @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
   service     Service    @relation(fields: [service_id], references: [service_id])
-  service_man ServiceMan @relation(fields: [service_man_id], references: [service_man_id])
+  service_man Staff @relation("ServiceQueueAssignedStaff", fields: [service_man_id], references: [staff_id])
 
   @@index([service_id, queue_status, priority]) // For FIFO retrieval
   @@index([order_id])

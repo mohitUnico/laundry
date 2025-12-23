@@ -379,6 +379,27 @@ Similar flow as Customer, with additional fields:
 - **Manager**: Requires `martId` during registration
 - **Delivery Staff**: Requires `martId`, `vehicleType`, `vehicleNumber`, `licenseNumber`
 
+Additional staff roles (Owner/Admin-created on first registration):
+
+- **Collection Manager**: First-time profile creation must be completed by Owner/Admin (requires owner/admin JWT on `complete-registration`)
+- **Distribution Manager**: First-time profile creation must be completed by Owner/Admin (requires owner/admin JWT on `complete-registration`)
+- **Service Man**: First-time profile creation must be completed by Owner/Admin and must be linked to a service (1 service man per 1 service). `serviceId` or `serviceType` is required on send/verify/complete.
+
+Collection Manager endpoints:
+- `POST /api/v1/auth/collection-manager/send-otp`
+- `POST /api/v1/auth/collection-manager/verify-otp`
+- `POST /api/v1/auth/collection-manager/complete-registration` (requires `Authorization: Bearer <owner_or_admin_token>`)
+
+Distribution Manager endpoints:
+- `POST /api/v1/auth/distribution-manager/send-otp`
+- `POST /api/v1/auth/distribution-manager/verify-otp`
+- `POST /api/v1/auth/distribution-manager/complete-registration` (requires `Authorization: Bearer <owner_or_admin_token>`)
+
+Service Man endpoints:
+- `POST /api/v1/auth/service-man/send-otp` (requires `serviceId` or `serviceType`)
+- `POST /api/v1/auth/service-man/verify-otp` (requires `serviceId` or `serviceType`)
+- `POST /api/v1/auth/service-man/complete-registration` (requires `Authorization: Bearer <owner_or_admin_token>`; `serviceId` or `serviceType` required)
+
 ### Common Endpoints
 
 #### Resend OTP

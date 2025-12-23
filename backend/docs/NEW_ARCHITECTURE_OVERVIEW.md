@@ -654,9 +654,9 @@ enum DeliveryType {
 ### Admin Endpoints
 
 ```
-POST   /api/v1/admin/collection-manager
-POST   /api/v1/admin/service-man
-POST   /api/v1/admin/distribution-manager
+POST   /api/v1/auth/collection-manager/complete-registration   (Owner/Admin only)
+POST   /api/v1/auth/service-man/complete-registration          (Owner/Admin only; requires serviceId/serviceType)
+POST   /api/v1/auth/distribution-manager/complete-registration (Owner/Admin only)
 GET    /api/v1/admin/delivery-partners/pending-verification
 POST   /api/v1/admin/delivery-partners/:staffId/verify
 POST   /api/v1/admin/delivery-partners/:staffId/reject

@@ -674,6 +674,291 @@ const completeDeliveryRegistration = async (req, res, next) => {
 };
 
 // ============================================================================
+// COLLECTION MANAGER AUTHENTICATION
+// ============================================================================
+
+/**
+ * Send OTP to collection manager email
+ * POST /api/v1/auth/collection-manager/send-otp
+ */
+const sendCollectionManagerOtp = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    const result = await otpService.sendOtp(email, otpService.USER_TYPES.COLLECTION_MANAGER);
+
+    res.status(200).json({
+      success: true,
+      message: 'OTP sent successfully to your email',
+      data: {
+        email,
+        expiresIn: result.expiresIn
+      }
+    });
+  } catch (error) {
+    logger.error('Send collection manager OTP failed', { error: error.message });
+    next(error);
+  }
+};
+
+/**
+ * Verify collection manager OTP
+ * POST /api/v1/auth/collection-manager/verify-otp
+ */
+const verifyCollectionManagerOtp = async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+
+    const result = await otpService.verifyOtp(email, otp, otpService.USER_TYPES.COLLECTION_MANAGER);
+
+    if (result.isNewUser) {
+      res.status(200).json({
+        success: true,
+        message: 'Email verified. Awaiting owner approval to complete your profile.',
+        data: {
+          isNewUser: true,
+          sessionToken: result.sessionToken,
+          expiresIn: result.expiresIn
+        }
+      });
+    } else {
+      res.status(200).json({
+        success: true,
+        message: 'Login successful',
+        data: {
+          isNewUser: false,
+          token: result.token,
+          user: result.user
+        }
+      });
+    }
+  } catch (error) {
+    logger.error('Verify collection manager OTP failed', { error: error.message });
+    next(error);
+  }
+};
+
+/**
+ * Complete collection manager registration
+ * POST /api/v1/auth/collection-manager/complete-registration
+ *
+ * Requires owner/admin token in Authorization header.
+ */
+const completeCollectionManagerRegistration = async (req, res, next) => {
+  try {
+    const { sessionToken, collectionManagerData } = req.body;
+
+    const result = await otpService.completeCollectionManagerRegistration(
+      sessionToken,
+      collectionManagerData,
+      req.user
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Collection manager registration completed successfully',
+      data: {
+        token: result.token,
+        collectionManager: result.collectionManager
+      }
+    });
+  } catch (error) {
+    logger.error('Complete collection manager registration failed', { error: error.message });
+    next(error);
+  }
+};
+
+// ============================================================================
+// DISTRIBUTION MANAGER AUTHENTICATION
+// ============================================================================
+
+/**
+ * Send OTP to distribution manager email
+ * POST /api/v1/auth/distribution-manager/send-otp
+ */
+const sendDistributionManagerOtp = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    const result = await otpService.sendOtp(email, otpService.USER_TYPES.DISTRIBUTION_MANAGER);
+
+    res.status(200).json({
+      success: true,
+      message: 'OTP sent successfully to your email',
+      data: {
+        email,
+        expiresIn: result.expiresIn
+      }
+    });
+  } catch (error) {
+    logger.error('Send distribution manager OTP failed', { error: error.message });
+    next(error);
+  }
+};
+
+/**
+ * Verify distribution manager OTP
+ * POST /api/v1/auth/distribution-manager/verify-otp
+ */
+const verifyDistributionManagerOtp = async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+
+    const result = await otpService.verifyOtp(email, otp, otpService.USER_TYPES.DISTRIBUTION_MANAGER);
+
+    if (result.isNewUser) {
+      res.status(200).json({
+        success: true,
+        message: 'Email verified. Awaiting owner approval to complete your profile.',
+        data: {
+          isNewUser: true,
+          sessionToken: result.sessionToken,
+          expiresIn: result.expiresIn
+        }
+      });
+    } else {
+      res.status(200).json({
+        success: true,
+        message: 'Login successful',
+        data: {
+          isNewUser: false,
+          token: result.token,
+          user: result.user
+        }
+      });
+    }
+  } catch (error) {
+    logger.error('Verify distribution manager OTP failed', { error: error.message });
+    next(error);
+  }
+};
+
+/**
+ * Complete distribution manager registration
+ * POST /api/v1/auth/distribution-manager/complete-registration
+ *
+ * Requires owner/admin token in Authorization header.
+ */
+const completeDistributionManagerRegistration = async (req, res, next) => {
+  try {
+    const { sessionToken, distributionManagerData } = req.body;
+
+    const result = await otpService.completeDistributionManagerRegistration(
+      sessionToken,
+      distributionManagerData,
+      req.user
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Distribution manager registration completed successfully',
+      data: {
+        token: result.token,
+        distributionManager: result.distributionManager
+      }
+    });
+  } catch (error) {
+    logger.error('Complete distribution manager registration failed', { error: error.message });
+    next(error);
+  }
+};
+
+// ============================================================================
+// SERVICE MAN AUTHENTICATION
+// ============================================================================
+
+/**
+ * Send OTP to service man email
+ * POST /api/v1/auth/service-man/send-otp
+ *
+ * NOTE: requires serviceType/serviceId in request (validated at route layer)
+ */
+const sendServiceManOtp = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    const result = await otpService.sendOtp(email, otpService.USER_TYPES.SERVICE_MAN);
+
+    res.status(200).json({
+      success: true,
+      message: 'OTP sent successfully to your email',
+      data: {
+        email,
+        expiresIn: result.expiresIn
+      }
+    });
+  } catch (error) {
+    logger.error('Send service man OTP failed', { error: error.message });
+    next(error);
+  }
+};
+
+/**
+ * Verify service man OTP
+ * POST /api/v1/auth/service-man/verify-otp
+ *
+ * Requires serviceType/serviceId in request so we can enforce that the login is for the correct service.
+ */
+const verifyServiceManOtp = async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+
+    const result = await otpService.verifyOtp(email, otp, otpService.USER_TYPES.SERVICE_MAN);
+
+    if (result.isNewUser) {
+      res.status(200).json({
+        success: true,
+        message: 'Email verified. Awaiting owner approval to complete your profile.',
+        data: {
+          isNewUser: true,
+          sessionToken: result.sessionToken,
+          expiresIn: result.expiresIn
+        }
+      });
+    } else {
+      res.status(200).json({
+        success: true,
+        message: 'Login successful',
+        data: {
+          isNewUser: false,
+          token: result.token,
+          user: result.user
+        }
+      });
+    }
+  } catch (error) {
+    logger.error('Verify service man OTP failed', { error: error.message });
+    next(error);
+  }
+};
+
+/**
+ * Complete service man registration
+ * POST /api/v1/auth/service-man/complete-registration
+ *
+ * Requires owner/admin token in Authorization header.
+ */
+const completeServiceManRegistration = async (req, res, next) => {
+  try {
+    const { sessionToken, serviceManData } = req.body;
+
+    const result = await otpService.completeServiceManRegistration(sessionToken, serviceManData, req.user);
+
+    res.status(201).json({
+      success: true,
+      message: 'Service man registration completed successfully',
+      data: {
+        token: result.token,
+        serviceMan: result.serviceMan
+      }
+    });
+  } catch (error) {
+    logger.error('Complete service man registration failed', { error: error.message });
+    next(error);
+  }
+};
+
+// ============================================================================
 // COMMON ENDPOINTS
 // ============================================================================
 
@@ -759,6 +1044,21 @@ module.exports = {
   sendDeliveryOtp,
   verifyDeliveryOtp,
   completeDeliveryRegistration,
+
+  // Collection manager
+  sendCollectionManagerOtp,
+  verifyCollectionManagerOtp,
+  completeCollectionManagerRegistration,
+
+  // Distribution manager
+  sendDistributionManagerOtp,
+  verifyDistributionManagerOtp,
+  completeDistributionManagerRegistration,
+
+  // Service man
+  sendServiceManOtp,
+  verifyServiceManOtp,
+  completeServiceManRegistration,
 
   // Common
   resendOtp,

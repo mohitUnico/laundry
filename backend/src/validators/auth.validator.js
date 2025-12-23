@@ -268,10 +268,6 @@ const completeCustomerRegistrationSchema = Joi.object({
 const completeDeliveryRegistrationSchema = Joi.object({
   sessionToken: sessionTokenSchema,
   deliveryData: Joi.object({
-    martId: Joi.string().uuid().required().messages({
-      'string.guid': 'Mart ID must be a valid UUID',
-      'any.required': 'Mart ID is required'
-    }),
     fullName: Joi.string().min(2).max(255).required().messages({
       'string.min': 'Delivery staff name must be at least 2 characters',
       'string.max': 'Delivery staff name must not exceed 255 characters',

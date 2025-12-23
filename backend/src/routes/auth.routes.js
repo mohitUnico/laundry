@@ -26,6 +26,24 @@ const {
 } = require('../validators/auth.validator');
 
 // ============================================================================
+// HELPERS (BACKWARD COMPATIBILITY)
+// ============================================================================
+
+/**
+ * Some older Postman collections send delivery OTP requests with a nested payload:
+ * { deliveryData: { email: "..." }, ... }
+ *
+ * The canonical API expects: { email: "..." }
+ * This middleware normalizes the request so validation passes.
+ */
+const normalizeDeliveryEmailBody = (req, res, next) => {
+  if (!req.body?.email && req.body?.deliveryData?.email) {
+    req.body.email = req.body.deliveryData.email;
+  }
+  next();
+};
+
+// ============================================================================
 // OWNER AUTHENTICATION ROUTES
 // ============================================================================
 
@@ -263,6 +281,20 @@ router.post(
 );
 
 /**
+ * Backward-compatible alias (older Postman collections / docs)
+ * @route   POST /api/v1/auth/delivery/login/send-otp
+ * @desc    Send OTP to delivery staff email for login or signup
+ * @access  Public
+ * @deprecated Use /api/v1/auth/delivery/send-otp
+ */
+router.post(
+  '/delivery/login/send-otp',
+  normalizeDeliveryEmailBody,
+  validate(sendOtpSchema),
+  authController.sendDeliveryOtp
+);
+
+/**
  * @route   POST /api/v1/auth/delivery/verify-otp
  * @desc    Verify OTP and check if delivery staff exists
  * @access  Public
@@ -275,12 +307,26 @@ router.post(
 );
 
 /**
+ * Backward-compatible alias (older Postman collections / docs)
+ * @route   POST /api/v1/auth/delivery/login/verify-otp
+ * @desc    Verify OTP and check if delivery staff exists
+ * @access  Public
+ * @deprecated Use /api/v1/auth/delivery/verify-otp
+ */
+router.post(
+  '/delivery/login/verify-otp',
+  normalizeDeliveryEmailBody,
+  validate(verifyOtpSchema),
+  authController.verifyDeliveryOtp
+);
+
+/**
  * @route   POST /api/v1/auth/delivery/complete-registration
  * @desc    Complete delivery staff registration after OTP verification
  * @access  Public (requires sessionToken)
  * @body    {
  *            sessionToken: "abc123...",
- *            deliveryData: { martId, fullName, phone, vehicleType, vehicleNumber, licenseNumber }
+ *            deliveryData: { fullName, phone, vehicleType, vehicleNumber, licenseNumber }
  *          }
  */
 router.post(

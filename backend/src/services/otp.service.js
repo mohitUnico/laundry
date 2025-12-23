@@ -249,16 +249,10 @@ const verifyOtp = async (email, otp, userType) => {
                 break;
 
             case USER_TYPES.DELIVERY_STAFF:
+                // NOTE: DeliveryStaff model in current Prisma schema does not define a `mart` relation,
+                // so we must not use `include: { mart: ... }` here (it causes PrismaClientValidationError).
                 existingUser = await prisma.deliveryStaff.findUnique({
-                    where: { email },
-                    include: {
-                        mart: {
-                            select: {
-                                mart_id: true,
-                                mart_name: true
-                            }
-                        }
-                    }
+                    where: { email }
                 });
                 break;
         }
@@ -289,7 +283,7 @@ const verifyOtp = async (email, otp, userType) => {
                     fullName: existingUser.full_name,
                     role: existingUser.role || userType,
                     martId: existingUser.mart_id,
-                    mart: existingUser.mart
+                    mart: existingUser.mart || null
                 }
             };
         } else {
@@ -1030,20 +1024,10 @@ const completeDeliveryRegistration = async (sessionToken, deliveryData) => {
             throw new ValidationError('Registration already completed');
         }
 
-        // Verify mart exists
-        const mart = await prisma.laundryMart.findUnique({
-            where: { mart_id: deliveryData.martId }
-        });
-
-        if (!mart) {
-            throw new NotFoundError('Mart');
-        }
-
         // Create delivery staff
         const deliveryStaff = await prisma.$transaction(async (tx) => {
             const newStaff = await tx.deliveryStaff.create({
                 data: {
-                    mart_id: deliveryData.martId,
                     full_name: deliveryData.fullName,
                     email: session.email,
                     phone: deliveryData.phone,
@@ -1072,14 +1056,12 @@ const completeDeliveryRegistration = async (sessionToken, deliveryData) => {
             userId: deliveryStaff.staff_id,
             email: deliveryStaff.email,
             role: 'delivery_staff',
-            fullName: deliveryStaff.full_name,
-            martId: deliveryStaff.mart_id
+            fullName: deliveryStaff.full_name
         });
 
         logger.info('Delivery staff registration completed', {
             email: session.email,
-            staffId: deliveryStaff.staff_id,
-            martId: deliveryStaff.mart_id
+            staffId: deliveryStaff.staff_id
         });
 
         // Send welcome email (non-blocking)
@@ -1093,7 +1075,6 @@ const completeDeliveryRegistration = async (sessionToken, deliveryData) => {
                 fullName: deliveryStaff.full_name,
                 email: deliveryStaff.email,
                 phone: deliveryStaff.phone,
-                martId: deliveryStaff.mart_id,
                 verificationStatus: deliveryStaff.verification_status
             }
         };

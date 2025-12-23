@@ -56,23 +56,20 @@ flutter run
 
 ---
 
-### 3. 🚚 **Delivery Partner App** (Flutter)
-**Location**: `delivery-app/`
+### 3. 🧑‍🔧 **Staff App (Multi-role)** (Flutter)
+**Location**: `staff-app/`
 
 **Files Created**: 17 Flutter/Dart files
 
 **Key Features**:
 - Flutter 3.x with Dart
 - Provider state management
-- Green-themed UI (distinct from customer)
-- Location tracking ready
-- Photo capture integration
-- Real-time updates structure
-- Earnings tracking
+- Role-based access (collection manager, service man, distribution manager, delivery partner)
+- Delivery partner: location tracking, proof capture, earnings
 
 **Start Command**:
 ```bash
-cd delivery-app
+cd staff-app
 flutter pub get
 flutter run
 ```
@@ -147,7 +144,7 @@ docker-compose up -d
 |------------|------------|-------|--------------|
 | Admin Panel | 23 | 19 | 6 |
 | Customer App | 15 | 17 | 2 |
-| Delivery App | 15 | 17 | 2 |
+| Staff App | 15 | 17 | 2 |
 | Backend | 15 | 26+ | 8 |
 | AI Config | 20+ | 45+ | - |
 | **Total** | **85+** | **130+** | **18** |
@@ -217,11 +214,11 @@ flutter pub get
 flutter run
 ```
 
-### Step 4: Delivery App Setup
+### Step 4: Staff App Setup
 
 ```bash
-# 1. Navigate to delivery app
-cd delivery-app
+# 1. Navigate to staff app
+cd staff-app
 
 # 2. Get Flutter dependencies
 flutter pub get
@@ -269,7 +266,7 @@ flutter run
 laundry/
 ├── admin-panel/          ⚛️ React Admin Web App
 ├── customer-app/         📱 Flutter Customer Mobile App
-├── delivery-app/         🚚 Flutter Delivery Mobile App
+├── staff-app/            🧑‍🔧 Flutter Staff (Multi-role) Mobile App
 ├── backend/              🟢 Node.js/Express REST API
 ├── .cursor/              🤖 AI Assistant Configuration
 ├── README.md             📄 Main project documentation
@@ -312,14 +309,14 @@ laundry/
 - Sample screens
 - Constants
 
-### Delivery App ✅
+### Staff App ✅
 - Complete Flutter project structure
 - Provider state management
 - Screen navigation
 - API service (Dio)
-- Green theme (distinct)
+- Role-based app shell (multi-role)
 - Sample screens
-- Location tracking ready
+- Delivery partner flows + placeholders for other staff roles
 
 ### AI Configuration ✅
 - Complete .cursor folder
@@ -341,7 +338,7 @@ laundry/
 └──────────────┘   │
                    │ REST API
 ┌──────────────┐   │  (JWT Auth)
-│ Delivery App │ ──┤
+│ Staff App    │ ──┤
 │  (Flutter)   │   │
 └──────────────┘   │
                    ▼
@@ -370,7 +367,7 @@ All documentation is complete and ready:
 - **Backend README**: `backend/README.md`
 - **Admin Panel README**: `admin-panel/README.md`
 - **Customer App README**: `customer-app/README.md`
-- **Delivery App README**: `delivery-app/README.md`
+- **Staff App README**: `staff-app/README.md`
 
 ### Architecture Documentation
 - Backend: `.cursor/ctx-store/architecture/technical/backend-architecture.md`
@@ -426,7 +423,7 @@ npm run test:coverage     # With coverage
 
 ### Mobile Apps Tests
 ```bash
-cd customer-app  # or delivery-app
+cd customer-app  # or staff-app
 flutter test              # Run Flutter tests
 flutter test --coverage   # With coverage
 ```
@@ -489,7 +486,7 @@ See `.cursor/README.md` for complete AI assistant guide.
 | Backend API | ✅ Complete | Development |
 | Admin Panel | ✅ Complete | Development |
 | Customer App | ✅ Complete | Development |
-| Delivery App | ✅ Complete | Development |
+| Staff App | ✅ Complete | Development |
 | Database Schema | ✅ Complete | Migrations |
 | Docker Setup | ✅ Complete | Deployment |
 | Documentation | ✅ Complete | Reference |

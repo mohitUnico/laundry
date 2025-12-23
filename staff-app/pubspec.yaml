@@ -1,5 +1,5 @@
-name: laundry_delivery_app
-description: Laundry App Delivery Partner Mobile Application
+name: laundry_staff_app
+description: Laundry App Staff (Multi-role) Mobile Application
 publish_to: 'none'
 version: 1.0.0+1
 

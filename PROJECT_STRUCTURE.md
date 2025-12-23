@@ -187,7 +187,7 @@ laundry/
 │   ├── 📂 android/                     # Android config
 │   └── 📂 ios/                         # iOS config
 │
-├── 📂 delivery-app/                     # 🚚 Flutter Delivery App
+├── 📂 staff-app/                        # 🧑‍🔧 Flutter Staff (Multi-role) App
 │   ├── 📄 README.md
 │   ├── 📄 pubspec.yaml
 │   ├── 📄 .gitignore
@@ -289,14 +289,14 @@ laundry/
 ### Total Directories Created
 - **Admin Panel**: 23 directories
 - **Customer App**: 15 directories
-- **Delivery App**: 15 directories
+- **Staff App**: 15 directories
 - **AI Configuration**: 20+ directories
 - **Total**: 70+ directories
 
 ### Total Files Created
 - **Admin Panel**: 19 files
 - **Customer App**: 17 files
-- **Delivery App**: 17 files
+- **Staff App**: 17 files
 - **AI Configuration**: 40+ files
 - **Documentation**: 6 files
 - **Total**: 95+ files
@@ -323,9 +323,9 @@ laundry/
 - **Secondary**: Purple (#9C27B0) - Brand consistency
 - **Theme**: Material Design
 
-### Delivery Partner App
-- **Primary**: Green (#4CAF50) - Action, go, eco-friendly
-- **Secondary**: Orange (#FF9800) - Energy, earnings
+### Staff App (Multi-role)
+- **Primary**: Green (#4CAF50) - Action, go
+- **Secondary**: Orange (#FF9800) - Energy
 - **Theme**: Material Design
 
 ---
@@ -363,7 +363,7 @@ laundry/
                                      │
                                      ▼
                             ┌─────────────────┐
-                            │  Delivery App   │
+                            │   Staff App     │
                             │    (Flutter)    │
                             └─────────────────┘
                                      │

@@ -230,15 +230,6 @@ const verifyOtp = async (email, otp, userType) => {
             case USER_TYPES.MANAGER:
                 existingUser = await prisma.user.findUnique({
                     where: { email },
-                    include: {
-                        mart: {
-                            select: {
-                                mart_id: true,
-                                mart_name: true,
-                                contact_email: true
-                            }
-                        }
-                    }
                 });
                 break;
 
@@ -271,7 +262,6 @@ const verifyOtp = async (email, otp, userType) => {
                 email: existingUser.email,
                 role: existingUser.role || userType,
                 fullName: existingUser.full_name,
-                martId: existingUser.mart_id
             });
 
             return {
@@ -282,8 +272,8 @@ const verifyOtp = async (email, otp, userType) => {
                     email: existingUser.email,
                     fullName: existingUser.full_name,
                     role: existingUser.role || userType,
-                    martId: existingUser.mart_id,
-                    mart: existingUser.mart || null
+                    martId: null,
+                    mart: null
                 }
             };
         } else {
@@ -365,16 +355,16 @@ const sendMartEmailOtp = async (sessionToken, martEmail) => {
         }
 
         // Check if mart email already exists
-        const existingMart = await prisma.laundryMart.findUnique({
+        const existingConfig = await prisma.laundryConfig.findUnique({
             where: { contact_email: normalizedEmail }
         });
 
-        if (existingMart) {
-            throw new ValidationError('This mart email is already registered');
+        if (existingConfig) {
+            throw new ValidationError('This business email is already registered');
         }
 
-        // Check rate limiting
-        await _checkRateLimit(normalizedEmail, PURPOSE.MART_EMAIL_VERIFICATION);
+        // Check rate limiting (owner + purpose)
+        await _checkRateLimit(normalizedEmail, USER_TYPES.OWNER);
 
         // Generate OTP
         const otpCode = _generateOtp();
@@ -506,8 +496,8 @@ const verifyMartEmailOtp = async (sessionToken, martEmail, otp) => {
         await prisma.otpSession.update({
             where: { session_token: sessionToken },
             data: {
-                mart_email: normalizedEmail,
-                mart_email_verified: true
+                business_email: normalizedEmail,
+                business_email_verified: true
             }
         });
 
@@ -565,28 +555,40 @@ const completeOwnerRegistration = async (sessionToken, martData, ownerData) => {
             throw new ValidationError('Registration already completed');
         }
 
-        // IMPORTANT: Check if mart email is verified
-        if (!session.mart_email_verified || !session.mart_email) {
-            throw new ValidationError('Mart email must be verified before completing registration');
+        // IMPORTANT: Check if business email is verified
+        if (!session.business_email_verified || !session.business_email) {
+            throw new ValidationError('Business email must be verified before completing registration');
         }
 
-        // Validate mart email matches the data
-        if (martData.martEmail && martData.martEmail.toLowerCase() !== session.mart_email) {
-            throw new ValidationError('Mart email does not match verified email');
+        const businessEmail = martData?.businessEmail || martData?.martEmail;
+        const businessName = martData?.businessName || martData?.martName;
+
+        if (!businessEmail || !businessName) {
+            throw new ValidationError('Business name and email are required');
         }
 
-        // Create mart and owner in transaction
+        // Validate business email matches the data
+        if (businessEmail && businessEmail.toLowerCase() !== session.business_email) {
+            throw new ValidationError('Business email does not match verified email');
+        }
+
+        // Single business: only one LaundryConfig can exist
+        const existingBusiness = await prisma.laundryConfig.findFirst();
+        if (existingBusiness) {
+            throw new ValidationError('Business is already configured. Please login.');
+        }
+
+        // Create business config and owner in transaction
         const result = await prisma.$transaction(async (tx) => {
-            // Create mart with verified email
-            const mart = await tx.laundryMart.create({
+            // Create LaundryConfig with verified email
+            const config = await tx.laundryConfig.create({
                 data: {
-                    mart_name: martData.martName,
-                    contact_email: session.mart_email, // Use verified mart email from session
+                    business_name: businessName,
+                    contact_email: session.business_email, // Use verified business email from session
                     contact_phone: martData.martContact || '',
                     address: martData.address || '',
                     latitude: martData.martCoordinates?.latitude || 0,
                     longitude: martData.martCoordinates?.longitude || 0,
-                    profile_image_url: martData.profileImageUrl || null, // Optional profile image URL
                     service_radius_km: martData.serviceRadiusKm || {
                         tiers: [
                             { minKm: 0, maxKm: 5, pricePerKm: 20 },
@@ -594,14 +596,14 @@ const completeOwnerRegistration = async (sessionToken, martData, ownerData) => {
                         ],
                         maxRadius: 10
                     },
-                    is_active: true
+                    is_active: true,
+                    logo_url: martData.profileImageUrl || null
                 }
             });
 
             // Create owner user (NO PASSWORD - OTP-based auth)
             const owner = await tx.user.create({
                 data: {
-                    mart_id: mart.mart_id,
                     full_name: ownerData.ownerName, // Updated field name
                     email: session.email, // Use verified owner email from session
                     phone: ownerData.ownerPhone || null, // Updated field name
@@ -619,7 +621,7 @@ const completeOwnerRegistration = async (sessionToken, martData, ownerData) => {
                 }
             });
 
-            return { mart, owner };
+            return { config, owner };
         });
 
         // Generate JWT token
@@ -633,30 +635,11 @@ const completeOwnerRegistration = async (sessionToken, martData, ownerData) => {
 
         logger.info('Owner registration completed', {
             email: session.email,
-            martId: result.mart.mart_id,
+            configId: result.config.config_id,
             userId: result.owner.user_id
         });
 
-        // Create default services and clothes for the new mart (non-blocking)
-        (async () => {
-            try {
-                const svcRes = await serviceService.createDefaultServices(result.mart.mart_id);
-                logger.info('Default services created for new mart', {
-                    martId: result.mart.mart_id,
-                    servicesCreated: svcRes.count
-                });
-                const clothRes = await serviceService.createDefaultClothesForMart(result.mart.mart_id);
-                logger.info('Default clothes created for new mart', {
-                    martId: result.mart.mart_id,
-                    itemsCreated: clothRes.count
-                });
-            } catch (err) {
-                logger.error('Failed creating defaults for new mart', {
-                    error: err.message,
-                    martId: result.mart.mart_id
-                });
-            }
-        })();
+        // NOTE: Single business model has no mart_id; default service creation should be updated separately.
 
         // Send welcome email (non-blocking)
         emailService.sendWelcomeEmail(session.email, ownerData.ownerName, USER_TYPES.OWNER)
@@ -664,13 +647,21 @@ const completeOwnerRegistration = async (sessionToken, martData, ownerData) => {
 
         return {
             token,
-            mart: result.mart,
+            // Backward compatible shape ("mart" = LaundryConfig)
+            mart: {
+                martId: result.config.config_id,
+                martName: result.config.business_name,
+                contactEmail: result.config.contact_email,
+                contactPhone: result.config.contact_phone,
+                address: result.config.address,
+                profileImageUrl: result.config.logo_url
+            },
             owner: {
                 userId: result.owner.user_id,
                 fullName: result.owner.full_name,
                 email: result.owner.email,
                 role: result.owner.role,
-                martId: result.owner.mart_id
+                martId: null
             }
         };
     } catch (error) {

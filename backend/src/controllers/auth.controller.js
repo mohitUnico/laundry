@@ -134,11 +134,12 @@ const verifyOwnerOtp = async (req, res, next) => {
  */
 const sendMartEmailOtp = async (req, res, next) => {
   try {
-    const { sessionToken, martEmail } = req.body;
+    const { sessionToken, martEmail, businessEmail } = req.body;
+    const emailToVerify = martEmail || businessEmail;
 
     // Try portal auth service first (for portal registration flow)
     try {
-      const result = await portalAuthService.sendMartEmailOtp(sessionToken, martEmail);
+      const result = await portalAuthService.sendMartEmailOtp(sessionToken, emailToVerify);
       return res.status(200).json({
         success: true,
         message: result.message || 'OTP sent successfully to mart email',
@@ -151,7 +152,7 @@ const sendMartEmailOtp = async (req, res, next) => {
       // If portal auth fails, try otp service (for owner auth flow)
       // Only fallback if it's an authentication error (session not found)
       if (portalError.code === 'AUTHENTICATION_ERROR' || portalError.message.includes('session')) {
-        const result = await otpService.sendMartEmailOtp(sessionToken, martEmail);
+        const result = await otpService.sendMartEmailOtp(sessionToken, emailToVerify);
         return res.status(200).json({
           success: true,
           message: 'OTP sent successfully to mart email',
@@ -179,11 +180,12 @@ const sendMartEmailOtp = async (req, res, next) => {
  */
 const verifyMartEmailOtp = async (req, res, next) => {
   try {
-    const { sessionToken, martEmail, otp } = req.body;
+    const { sessionToken, martEmail, businessEmail, otp } = req.body;
+    const emailToVerify = martEmail || businessEmail;
 
     // Try portal auth service first (for portal registration flow)
     try {
-      const result = await portalAuthService.verifyMartEmailOtp(sessionToken, martEmail, otp);
+      const result = await portalAuthService.verifyMartEmailOtp(sessionToken, emailToVerify, otp);
       return res.status(200).json({
         success: true,
         message: result.message,
@@ -196,7 +198,7 @@ const verifyMartEmailOtp = async (req, res, next) => {
       // If portal auth fails, try otp service (for owner auth flow)
       // Only fallback if it's an authentication error (session not found)
       if (portalError.code === 'AUTHENTICATION_ERROR' || portalError.message.includes('session')) {
-        const result = await otpService.verifyMartEmailOtp(sessionToken, martEmail, otp);
+        const result = await otpService.verifyMartEmailOtp(sessionToken, emailToVerify, otp);
         return res.status(200).json({
           success: true,
           message: result.message,

@@ -1,19 +1,19 @@
-# Laundry App - Delivery Partner Mobile App
+# Laundry App - Staff (Multi-role) Mobile App
 
-Flutter mobile application for delivery partners to manage pickup and delivery tasks.
+Flutter mobile application for staff roles to manage operations and deliveries:
+- Collection manager
+- Service man
+- Distribution manager
+- Delivery partner
 
 ## Features
 
-- 🔐 **Authentication**: Login and profile verification
-- 📦 **Task Management**: View and accept delivery tasks
-- 📍 **GPS Tracking**: Real-time location tracking during deliveries
-- 🗺️ **Navigation**: Integrated maps for route guidance
-- 📸 **Proof of Service**: Mandatory photo capture for pickup and delivery
-- 💰 **Earnings Tracking**: Real-time earnings and payment history
-- 📊 **Performance Stats**: Delivery completion rate and ratings
-- 🔔 **Push Notifications**: Instant task assignments
-- ⏱️ **Time Tracking**: Duration tracking for deliveries
-- ⭐ **Ratings**: Customer ratings and feedback
+- 🔐 **Authentication**: Role-based login (staff + delivery partners)
+- 🧑‍🔧 **Role-based access**: UI and features vary by assigned role
+- 🚚 **Delivery partner**: Task management, navigation, photo proof, earnings
+- 🧺 **Collection manager**: Incoming/received/submitted orders (to be implemented)
+- 🧼 **Service man**: FIFO service queue processing (to be implemented)
+- 📦 **Distribution manager**: Dispatch assignment and tracking (to be implemented)
 
 ## Tech Stack
 
@@ -59,7 +59,7 @@ flutter run
 ## Project Structure
 
 ```
-delivery-app/
+staff-app/
 ├── lib/
 │   ├── main.dart                # App entry point
 │   ├── app.dart                 # Root widget
@@ -126,7 +126,7 @@ flutter test --coverage
 3. **Profile Setup**: Complete profile with vehicle details
 
 ### Main Flow
-1. **Home Screen**: Available delivery tasks
+1. **Home Screen**: Role-based home (varies by role)
 2. **Task Details**: View task information and accept/decline
 3. **Active Delivery**: Navigation and tracking
 4. **Photo Proof**: Capture pickup and delivery photos

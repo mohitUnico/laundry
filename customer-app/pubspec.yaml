@@ -31,6 +31,8 @@ dependencies:
   google_maps_flutter: ^2.5.0
   geolocator: ^10.1.0
   geocoding: ^2.1.1
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
   
   # Image Handling
   image_picker: ^1.0.5
@@ -45,12 +47,13 @@ dependencies:
   # intl is managed by Flutter SDK
   
   # Push Notifications
-  firebase_core: ^2.24.2
-  firebase_messaging: ^14.7.9
+  firebase_core: ^4.3.0
+  firebase_messaging: ^16.1.0
   
   # Utils
   url_launcher: ^6.2.2
   permission_handler: ^11.1.0
+  flutter_local_notifications: ^17.2.2
 
 dev_dependencies:
   flutter_test:
@@ -63,7 +66,19 @@ flutter:
   # Assets
   assets:
     - assets/images/
+    - assets/images/auth/
+    - assets/images/cart/
+    - assets/images/home/
+    - assets/images/home_linen/
+    - assets/images/luxury_care/
+    - assets/images/pro_clean/
+    - assets/images/regular_wash/
+    - assets/images/shoe_cleaning/
+    - assets/images/stain_treatment/
+    - assets/images/winter_wear/
     - assets/icons/
+    - assets/icons/order_track/
+    - assets/icons/bottom_navbar/
     
   # Fonts
   # fonts:

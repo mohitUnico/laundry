@@ -1,29 +1,30 @@
 import 'package:flutter/foundation.dart';
 
+import '../models/order_record.dart';
+
 class OrderProvider with ChangeNotifier {
-  List<Map<String, dynamic>> _orders = [];
-  bool _isLoading = false;
+  final List<OrderRecord> _orders = [];
 
-  List<Map<String, dynamic>> get orders => _orders;
-  bool get isLoading => _isLoading;
+  List<OrderRecord> get orders => List.unmodifiable(_orders);
 
-  Future<void> fetchOrders() async {
-    _isLoading = true;
+  void addOrder(OrderRecord order) {
+    _orders.insert(0, order);
     notifyListeners();
+  }
 
-    try {
-      // TODO: Fetch orders from API
-      await Future.delayed(const Duration(seconds: 1));
-      _orders = [];
-    } catch (e) {
-      debugPrint('Error fetching orders: $e');
-    } finally {
-      _isLoading = false;
+  void updateOrderSchedule(String orderId, String dateLabel, String timeLabel) {
+    final index = _orders.indexWhere((o) => o.id == orderId);
+    if (index >= 0) {
+      _orders[index] = _orders[index].copyWith(
+        dateLabel: dateLabel,
+        timeLabel: timeLabel,
+      );
       notifyListeners();
     }
   }
 
-  Future<void> createOrder(Map<String, dynamic> orderData) async {
-    // TODO: Implement order creation
+  void clear() {
+    _orders.clear();
+    notifyListeners();
   }
 }

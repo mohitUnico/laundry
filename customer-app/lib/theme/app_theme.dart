@@ -1,12 +1,22 @@
 import 'package:flutter/material.dart';
 import 'app_colors.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'app_text_styles.dart';
 
 class AppTheme {
   static ThemeData get lightTheme {
+    final base = ThemeData.light();
+    final poppins = GoogleFonts.poppinsTextTheme(base.textTheme);
+
     return ThemeData(
       primarySwatch: Colors.blue,
       primaryColor: AppColors.primary,
       scaffoldBackgroundColor: AppColors.background,
+      // Single source of truth for header/body typography is AppTextStyles.
+      textTheme: poppins.copyWith(
+        titleMedium: AppTextStyles.header(),
+        bodySmall: AppTextStyles.body(),
+      ),
       appBarTheme: const AppBarTheme(
         elevation: 0,
         centerTitle: true,

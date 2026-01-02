@@ -1,0 +1,68 @@
+# Build directories
+build/
+**/build/
+**/android/build/
+**/ios/build/
+**/linux/build/
+**/macos/build/
+**/windows/build/
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.cxx/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
+
+# Flutter/Dart
+*.lock
+.packages
+.pub-cache/
+.pub/
+pubspec.lock
+
+# Android
+**/android/local.properties
+**/android/.gradle/
+**/android/app/debug/
+**/android/app/profile/
+**/android/app/release/
+
+# iOS
+**/ios/Pods/
+**/ios/.symlinks/
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/app.flx
+**/ios/Flutter/app.zip
+**/ios/Flutter/flutter_assets/
+**/ios/Flutter/.last_build_id
+**/ios/ServiceDefinitions.json
+**/ios/Runner/GeneratedPluginRegistrant.*
+
+# Customer app build files
+customer-app/android/
+customer-app/linux/
+customer-app/macos/
+customer-app/windows/
+customer-app/build/
+
+# Management app build files  
+management-app/build/
+management-app/android/local.properties
+management-app/.dart_tool/
+

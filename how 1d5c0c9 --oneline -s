@@ -1,0 +1,10 @@
+[33m844cf9f[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mdev[m[33m, [m[1;31morigin/dev[m[33m)[m ghfD
+[33m1d5c0c9[m S
+[33m38624a0[m Add .gitignore to exclude build directories
+[33meb193e2[m Unify staff roles into a single table and implement authentication flows for Collection Managers, Distribution Managers, and Service Men. Updated API endpoints, validation schemas, and documentation to reflect the new structure. Enhanced OTP handling and registration processes for staff onboarding, ensuring role-specific access control and improved error handling.
+[33m8528bab[m Merge branch 'dev' of https://github.com/mohitUnico/laundry into dev
+[33m809e1aa[m Added .cursorignore file, created test scripts for database connections (Prisma and PostgreSQL), and implemented backward compatibility for delivery OTP routes in the auth module. Updated OTP service to remove mart relation and adjusted validation schema for delivery registration.
+[33m5231636[m Refactor authentication flow to support business email: Updated OTP handling and registration processes to accommodate both mart and business emails. Enhanced validation and error handling for email verification, ensuring a seamless registration experience for single-business configurations.
+[33ma96d7f9[m Refactor Delivery App to Staff App: Updated documentation, directory structure, and role-based features for the multi-role staff application. Removed delivery-specific files and added new screens and providers for collection managers, service men, and distribution managers. Enhanced authentication and navigation flows to support role-based access.
+[33mb3f1bb3[m Added directUrl configuration to the database datasource in Prisma schema.
+[33m358f958[m Implement portal authentication features, including OTP handling and registration. Update backend environment configuration for SMTP, add new database migrations for portal users, and enhance error handling. Refactor frontend routes and components for portal registration flow, ensuring a cohesive user experience.

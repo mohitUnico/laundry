@@ -2,6 +2,7 @@ const express = require('express');
 const authRoutes = require('./auth.routes');
 const martRoutes = require('./mart.routes');
 const orderRoutes = require('./order.routes');
+const cartRoutes = require('./cart.routes');
 const dashboardRoutes = require('./dashboard.routes');
 const serviceRoutes = require('./service.routes');
 const clothesRoutes = require('./clothes.routes');
@@ -21,6 +22,7 @@ router.get('/', (req, res) => {
             marts: '/api/v1/marts',
             orders: '/api/v1/orders',
             create_order: '/api/v1/create_order',
+            carts: '/api/v1/carts',
             dashboard: '/api/v1/dashboard',
             services: '/api/v1/services',
             clothes: '/api/v1/clothes',
@@ -64,6 +66,7 @@ router.get('/', (req, res) => {
 router.use('/auth', authRoutes);
 router.use('/marts', martRoutes);
 router.use('/', orderRoutes);
+router.use('/carts', cartRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/services', serviceRoutes);
 router.use('/clothes', clothesRoutes);

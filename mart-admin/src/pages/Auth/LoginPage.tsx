@@ -88,7 +88,6 @@ export const LoginPage: React.FC = () => {
   /**
    * Sends a fresh OTP to the identifier entered by the user.
    * This should only run before an OTP has been requested.
-   * TEMPORARY: Bypasses OTP validation and redirects directly to dashboard for UI development.
    */
   const handleGetOtp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,22 +98,53 @@ export const LoginPage: React.FC = () => {
       return;
     }
 
-    // TEMPORARY: Skip OTP validation and redirect directly to dashboard
-    // This is for UI development only - no backend, no email, no OTP logic
-    const inferredType: IdentifierType = trimmedIdentifier.includes('@') ? 'email' : 'phone';
-    const mockUser = {
-      id: 'temp-user-id',
-      name: 'Test User',
-      email: inferredType === 'email' ? trimmedIdentifier : null,
-      phone: inferredType === 'phone' ? trimmedIdentifier : null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      role: 'Admin',
-    };
-    const mockToken = 'temp-token-for-ui-development';
+    setLoading(true);
+    setError('');
+    setInfo('');
 
-    completeLogin(mockUser, mockToken);
-    navigate(ROUTES.DASHBOARD, { replace: true });
+    try {
+      const response = await authApi.sendOtp(trimmedIdentifier);
+
+      if (!response?.success) {
+        setError(response?.message || 'Failed to send OTP');
+        return;
+      }
+
+      const otpMeta = response?.data as
+        | { identifier?: string; identifierType?: IdentifierType; expiresIn?: number }
+        | undefined;
+
+      const inferredType: IdentifierType = trimmedIdentifier.includes('@') ? 'email' : 'phone';
+      const masked = maskIdentifier(
+        otpMeta?.identifier || trimmedIdentifier,
+        otpMeta?.identifierType || inferredType
+      );
+
+      setOtp(Array(6).fill(''));
+      setOtpSent(true);
+      setResendCooldown(otpMeta?.expiresIn ? Math.min(30, otpMeta.expiresIn) : 30);
+      setInfo(`OTP sent to ${masked}.`);
+    } catch (err: any) {
+      if (axios.isAxiosError(err)) {
+        const status = err.response?.status;
+        const serverMessage =
+          (err.response?.data as any)?.message || (err.response?.data as any)?.error || undefined;
+        const fallback = err.message || 'Failed to send OTP';
+        setError(serverMessage || (status ? `Failed to send OTP (HTTP ${status})` : fallback));
+        // Helpful debug in devtools
+        console.error('[Login] sendOtp failed', {
+          url: err.config?.url,
+          baseURL: err.config?.baseURL,
+          status,
+          data: err.response?.data,
+        });
+      } else {
+        setError(err?.message || 'Failed to send OTP');
+        console.error('[Login] sendOtp failed (non-axios)', err);
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   /**

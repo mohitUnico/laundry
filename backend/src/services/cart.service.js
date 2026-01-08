@@ -203,6 +203,102 @@ exports.getCustomerCarts = async (customerId) => {
     return carts;
 };
 
+exports.updateSelectionQuantity = async (customerId, cartItemId, selectionId, delta) => {
+    if (!cartItemId || !selectionId) {
+        throw new ValidationError('cartItemId and selectionId are required');
+    }
+
+    if (![1, -1].includes(delta)) {
+        throw new ValidationError('delta must be +1 or -1');
+    }
+
+    return prisma.$transaction(async (tx) => {
+        // Ensure selection belongs to the given cartItem AND to the authenticated customer
+        const selection = await tx.cartItemSelection.findFirst({
+            where: {
+                selection_id: selectionId,
+                cart_item_id: cartItemId,
+                cart_item: {
+                    cart: {
+                        customer_id: customerId,
+                    },
+                },
+            },
+            select: {
+                selection_id: true,
+                quantity: true,
+                cart_item_id: true,
+                cart_item: { select: { cart_id: true } },
+            },
+        });
+
+        if (!selection) {
+            throw new NotFoundError('Cart item selection');
+        }
+
+        const nextQuantity = selection.quantity + delta;
+
+        if (nextQuantity < 1) {
+            await tx.cartItemSelection.delete({
+                where: { selection_id: selection.selection_id },
+            });
+        } else {
+            await tx.cartItemSelection.update({
+                where: { selection_id: selection.selection_id },
+                data: { quantity: nextQuantity },
+            });
+        }
+
+        await tx.cart.update({
+            where: { cart_id: selection.cart_item.cart_id },
+            data: { updated_at: new Date() },
+            select: { cart_id: true },
+        });
+
+        return {
+            cart_item_id: selection.cart_item_id,
+            selection_id: selection.selection_id,
+            quantity: Math.max(nextQuantity, 0),
+            deleted: nextQuantity < 1,
+        };
+    });
+};
+
+exports.removeCartItem = async (customerId, cartItemId) => {
+    if (!cartItemId) {
+        throw new ValidationError('cartItemId is required');
+    }
+
+    return prisma.$transaction(async (tx) => {
+        const cartItem = await tx.cartItem.findFirst({
+            where: {
+                cart_item_id: cartItemId,
+                cart: { customer_id: customerId },
+            },
+            select: { cart_item_id: true, cart_id: true },
+        });
+
+        if (!cartItem) {
+            throw new NotFoundError('Cart item');
+        }
+
+        await tx.cartItem.delete({
+            where: { cart_item_id: cartItem.cart_item_id },
+        });
+
+        await tx.cart.update({
+            where: { cart_id: cartItem.cart_id },
+            data: { updated_at: new Date() },
+            select: { cart_id: true },
+        });
+
+        return {
+            cart_item_id: cartItem.cart_item_id,
+            deleted: true,
+        };
+    });
+};
+
 module.exports = exports;
 
 

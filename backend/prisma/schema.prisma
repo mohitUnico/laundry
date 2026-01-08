@@ -19,12 +19,12 @@ model LaundryConfig {
   address           String
   latitude          Decimal  @db.Decimal(10, 8)
   longitude         Decimal  @db.Decimal(11, 8)
-  service_radius_km Json     // Distance-based delivery fee configuration
+  service_radius_km Json // Distance-based delivery fee configuration
   is_active         Boolean  @default(true)
   created_at        DateTime @default(now())
   updated_at        DateTime @updatedAt
   logo_url          String?
-  
+
   @@map("laundry_config")
 }
 
@@ -53,19 +53,19 @@ enum UserRole {
 
 // Customer
 model Customer {
-  customer_id String            @id @default(uuid())
-  full_name   String            @db.VarChar(255)
-  email       String            @unique @db.VarChar(255)
-  phone       String?           @db.VarChar(20)
-  password    String?           @db.VarChar(255)
-  is_active   Boolean           @default(true)
-  total_orders Int              @default(0)
-  total_spent  Decimal          @default(0) @db.Decimal(10, 2)
-  created_at  DateTime          @default(now())
-  updated_at  DateTime          @updatedAt
-  addresses   CustomerAddress[]
-  orders      Order[]
-  carts       Cart[]
+  customer_id  String            @id @default(uuid())
+  full_name    String            @db.VarChar(255)
+  email        String            @unique @db.VarChar(255)
+  phone        String?           @db.VarChar(20)
+  password     String?           @db.VarChar(255)
+  is_active    Boolean           @default(true)
+  total_orders Int               @default(0)
+  total_spent  Decimal           @default(0) @db.Decimal(10, 2)
+  created_at   DateTime          @default(now())
+  updated_at   DateTime          @updatedAt
+  addresses    CustomerAddress[]
+  orders       Order[]
+  carts        Cart[]
 
   @@map("customers")
 }
@@ -194,6 +194,9 @@ model Service {
   // Cart items for this service
   cart_items CartItem[]
 
+  // Order items for this service
+  order_items OrderItem[]
+
   // Service queue items
   service_queue_items ServiceQueueItem[]
 
@@ -217,6 +220,9 @@ model ClothesItem {
   // Cart item selections
   cart_item_selections CartItemSelection[]
 
+  // Order item selections
+  order_item_selections OrderItemSelection[]
+
   @@unique([service_id, item_name])
   @@index([service_id])
   @@map("clothes_items")
@@ -238,14 +244,14 @@ model Cart {
 }
 
 model CartItem {
-  cart_item_id String              @id @default(uuid())
+  cart_item_id String       @id @default(uuid())
   cart_id      String
   service_id   String
-  pricing_type PricingModel        // per_unit or per_kg
-  created_at   DateTime            @default(now())
-  updated_at   DateTime            @updatedAt
-  cart         Cart                @relation(fields: [cart_id], references: [cart_id], onDelete: Cascade)
-  service      Service             @relation(fields: [service_id], references: [service_id])
+  pricing_type PricingModel // per_unit or per_kg
+  created_at   DateTime     @default(now())
+  updated_at   DateTime     @updatedAt
+  cart         Cart         @relation(fields: [cart_id], references: [cart_id], onDelete: Cascade)
+  service      Service      @relation(fields: [service_id], references: [service_id])
 
   // Individual cloth item selections (for per_unit pricing)
   item_selections CartItemSelection[]
@@ -275,35 +281,35 @@ model CartItemSelection {
 // ==================== ORDER MANAGEMENT ====================
 
 model Order {
-  order_id                            String               @id @default(uuid())
-  customer_id                         String
-  order_status                        OrderStatus
-  pricing_model                       PricingModel
-  order_type                          OrderType            @default(both)
-  total_amount                        Decimal              @db.Decimal(10, 2)
-  pickup_address_id                   String
-  delivery_address_id                 String
-  pickup_date                         DateTime
-  delivery_date                       DateTime
-  special_instructions                String?
-  customer_rating                     Decimal?             @db.Decimal(3, 2)
-  customer_review                     String?
+  order_id                              String          @id @default(uuid())
+  customer_id                           String
+  order_status                          OrderStatus
+  pricing_model                         PricingModel
+  order_type                            OrderType       @default(both)
+  total_amount                          Decimal         @db.Decimal(10, 2)
+  pickup_address_id                     String
+  delivery_address_id                   String
+  pickup_date                           DateTime
+  delivery_date                         DateTime
+  special_instructions                  String?
+  customer_rating                       Decimal?        @db.Decimal(3, 2)
+  customer_review                       String?
+  billing_status                        BillingStatus   @default(pending)
   // New workflow tracking fields
-  received_by_collection_manager_id   String?
-  received_at                         DateTime?
-  submitted_to_services_at            DateTime?
+  received_by_collection_manager_id     String?
+  received_at                           DateTime?
+  submitted_to_services_at              DateTime?
   dispatched_by_distribution_manager_id String?
-  dispatched_at                       DateTime?
-  payment_confirmed_at                DateTime?
-  created_at                          DateTime             @default(now())
-  updated_at                          DateTime             @updatedAt
-  bill                                Bill?
-  delivery                            Delivery?
-  order_items                         OrderItem[]
-  order_items_kg                      OrderItemKg[]
-  customer                            Customer             @relation(fields: [customer_id], references: [customer_id])
-  delivery_address                    CustomerAddress      @relation("DeliveryAddress", fields: [delivery_address_id], references: [address_id])
-  pickup_address                      CustomerAddress      @relation("PickupAddress", fields: [pickup_address_id], references: [address_id])
+  dispatched_at                         DateTime?
+  payment_confirmed_at                  DateTime?
+  created_at                            DateTime        @default(now())
+  updated_at                            DateTime        @updatedAt
+  bill                                  Bill?
+  delivery                              Delivery?
+  order_items                           OrderItem[]
+  customer                              Customer        @relation(fields: [customer_id], references: [customer_id])
+  delivery_address                      CustomerAddress @relation("DeliveryAddress", fields: [delivery_address_id], references: [address_id])
+  pickup_address                        CustomerAddress @relation("PickupAddress", fields: [pickup_address_id], references: [address_id])
 
   // Staff who received the order (collection manager role)
   received_by_manager Staff? @relation("ReceivedByStaff", fields: [received_by_collection_manager_id], references: [staff_id])
@@ -316,6 +322,7 @@ model Order {
 
   @@index([customer_id])
   @@index([order_status])
+  @@index([billing_status])
   @@index([created_at])
   @@index([received_by_collection_manager_id])
   @@index([dispatched_by_distribution_manager_id])
@@ -323,19 +330,19 @@ model Order {
 }
 
 enum OrderStatus {
-  placed                 // Customer placed order
-  pickup_assigned        // Delivery partner assigned for pickup
-  picked_up              // Order picked up from customer
+  placed // Customer placed order
+  pickup_assigned // Delivery partner assigned for pickup
+  picked_up // Order picked up from customer
   received_by_collection // Collection manager received order
-  submitted_to_services  // Submitted to service men
-  services_in_progress   // Service men working on items
-  services_completed     // All services completed
-  dispatch_assigned      // Delivery partner assigned for delivery
-  out_for_delivery       // Out for delivery to customer
-  payment_pending        // Delivered, waiting for payment
-  delivered              // Delivered and payment confirmed
-  closed                 // Order closed
-  cancelled              // Order cancelled
+  submitted_to_services // Submitted to service men
+  services_in_progress // Service men working on items
+  services_completed // All services completed
+  dispatch_assigned // Delivery partner assigned for delivery
+  out_for_delivery // Out for delivery to customer
+  payment_pending // Delivered, waiting for payment
+  delivered // Delivered and payment confirmed
+  closed // Order closed
+  cancelled // Order cancelled
 }
 
 enum PricingModel {
@@ -350,23 +357,38 @@ enum OrderType {
   express_delivery
 }
 
+enum BillingStatus {
+  pending
+  generated
+}
+
 model OrderItem {
-  item_id      String          @id @default(uuid())
-  order_id     String
-  clothes_id   String
-  quantity     Int
-  unit_price   Decimal         @db.Decimal(10, 2)
-  subtotal     Decimal         @db.Decimal(10, 2)
-  item_status  OrderItemStatus @default(pending)
-  assigned_at  DateTime?
-  completed_at DateTime?
-  created_at   DateTime        @default(now())
-  updated_at   DateTime        @updatedAt
-  clothes      ClothesItem     @relation(fields: [clothes_id], references: [cloth_id])
-  order        Order           @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
+  item_id         String               @id @default(uuid())
+  order_id        String
+  service_id      String
+  pricing_type    PricingModel // per_unit or per_kg
+  // For per_unit pricing: clothes_id is required, quantity is sum of selections
+  // For per_kg pricing: clothes_id is null, weight_kg is used
+  clothes_id      String?
+  quantity        Int? // Total quantity for per_unit items (sum of selections)
+  weight_kg       Decimal?             @db.Decimal(10, 2) // For per_kg pricing
+  unit_price      Decimal              @db.Decimal(10, 2) // Price per unit or per kg
+  subtotal        Decimal              @db.Decimal(10, 2)
+  item_status     OrderItemStatus      @default(pending)
+  assigned_at     DateTime?
+  completed_at    DateTime?
+  created_at      DateTime             @default(now())
+  updated_at      DateTime             @updatedAt
+  clothes         ClothesItem?         @relation(fields: [clothes_id], references: [cloth_id])
+  service         Service              @relation(fields: [service_id], references: [service_id])
+  order           Order                @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
+  // Individual cloth item selections (for per_unit pricing)
+  item_selections OrderItemSelection[]
 
   @@index([order_id])
+  @@index([service_id])
   @@index([item_status])
+  @@index([pricing_type])
   @@map("order_items")
 }
 
@@ -376,17 +398,20 @@ enum OrderItemStatus {
   completed
 }
 
-model OrderItemKg {
-  item_kg_id   String  @id @default(uuid())
-  order_id     String
-  item_name    String  @db.VarChar(255)
-  weight_kg    Decimal @db.Decimal(10, 2)
-  price_per_kg Decimal @db.Decimal(10, 2)
-  subtotal     Decimal @db.Decimal(10, 2)
-  order        Order   @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
+// Individual cloth item selections within an order item (for per_unit pricing)
+// This mirrors CartItemSelection structure for order items
+model OrderItemSelection {
+  selection_id  String      @id @default(uuid())
+  order_item_id String
+  cloth_id      String
+  quantity      Int
+  created_at    DateTime    @default(now())
+  order_item    OrderItem   @relation(fields: [order_item_id], references: [item_id], onDelete: Cascade)
+  cloth_item    ClothesItem @relation(fields: [cloth_id], references: [cloth_id])
 
-  @@index([order_id])
-  @@map("order_items_kg")
+  @@index([order_item_id])
+  @@index([cloth_id])
+  @@map("order_item_selections")
 }
 
 // ==================== SERVICE QUEUE (FIFO) ====================
@@ -408,9 +433,9 @@ model ServiceQueueItem {
   created_at     DateTime    @default(now())
   updated_at     DateTime    @updatedAt
 
-  order       Order      @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
-  service     Service    @relation(fields: [service_id], references: [service_id])
-  service_man Staff @relation("ServiceQueueAssignedStaff", fields: [service_man_id], references: [staff_id])
+  order       Order   @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
+  service     Service @relation(fields: [service_id], references: [service_id])
+  service_man Staff   @relation("ServiceQueueAssignedStaff", fields: [service_man_id], references: [staff_id])
 
   @@index([service_id, queue_status, priority]) // For FIFO retrieval
   @@index([order_id])
@@ -566,15 +591,15 @@ model OtpVerification {
 }
 
 model OtpSession {
-  session_id          String   @id @default(uuid())
-  user_type           String   @db.VarChar(30)
-  is_new_user         Boolean
-  user_id             String?
-  session_token       String   @unique @db.VarChar(500)
-  is_completed        Boolean  @default(false)
-  expires_at          DateTime
-  created_at          DateTime @default(now())
-  email               String   @db.VarChar(255)
+  session_id              String   @id @default(uuid())
+  user_type               String   @db.VarChar(30)
+  is_new_user             Boolean
+  user_id                 String?
+  session_token           String   @unique @db.VarChar(500)
+  is_completed            Boolean  @default(false)
+  expires_at              DateTime
+  created_at              DateTime @default(now())
+  email                   String   @db.VarChar(255)
   business_email          String?  @db.VarChar(255)
   business_email_verified Boolean  @default(false)
 

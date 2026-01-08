@@ -8,6 +8,7 @@ const serviceRoutes = require('./service.routes');
 const clothesRoutes = require('./clothes.routes');
 const customerInfoRoutes = require('./customer-info.routes');
 const adminOrderManagementRoutes = require('./admin-order-management.routes');
+const adminCustomerManagementRoutes = require('./admin-customer-management.routes');
 
 const router = express.Router();
 
@@ -74,6 +75,7 @@ router.use('/services', serviceRoutes);
 router.use('/clothes', clothesRoutes);
 router.use('/customer-info', customerInfoRoutes);
 router.use('/admin/orders', adminOrderManagementRoutes);
+router.use('/admin/customers', adminCustomerManagementRoutes);
 
 module.exports = router;
 

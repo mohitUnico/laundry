@@ -1,15 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Modal } from '@/components/common';
-import { Search, Download, ChevronLeft, ChevronRight } from 'lucide-react';
-
-interface Order {
-  orderId: string;
-  customer: string;
-  amount: string;
-  status: string;
-  time: string;
-  assignedStaff: string;
-}
+import { Search, Download, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { dashboardApi, AdminDashboardRecentOrder } from '@/services/api/modules/dashboardApi';
+import { formatCurrency } from '@/utils/formatters';
+import { formatTimeFromSeconds } from '@/utils/formatters/dateFormatter';
 
 interface AllRecentOrdersModalProps {
   isOpen: boolean;
@@ -17,67 +11,96 @@ interface AllRecentOrdersModalProps {
 }
 
 export const AllRecentOrdersModal: React.FC<AllRecentOrdersModalProps> = ({ isOpen, onClose }) => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [orders, setOrders] = useState<AdminDashboardRecentOrder[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
-  // Dummy data for all recent orders
-  const allOrders: Order[] = useMemo(() => {
-    const orders: Order[] = [
-      { orderId: 'ORD-2025-001', customer: 'John Williams', amount: '$45.99', status: 'In progress', time: '38 mins ago', assignedStaff: 'Mike Johnson' },
-      { orderId: 'ORD-2025-021', customer: 'Emma Davis', amount: '$89.50', status: 'In progress', time: '50 mins ago', assignedStaff: 'Sarah Connor' },
-      { orderId: 'ORD-2025-002', customer: 'Michael Brown', amount: '$32.00', status: 'Delivered', time: '1 hr ago', assignedStaff: 'Tom Hanks' },
-      { orderId: 'ORD-2025-054', customer: 'Oliver Johnson', amount: '$65.00', status: 'Delivered', time: '1:15 hr ago', assignedStaff: 'Ryan Gosling' },
-      { orderId: 'ORD-2025-003', customer: 'Sophia Martinez', amount: '$120.00', status: 'Out for delivery', time: '2 hrs ago', assignedStaff: 'Mike Johnson' },
-      { orderId: 'ORD-2025-004', customer: 'William Taylor', amount: '$55.50', status: 'Pending', time: '2:30 hrs ago', assignedStaff: '-' },
-      { orderId: 'ORD-2025-005', customer: 'Isabella Anderson', amount: '$78.25', status: 'In progress', time: '3 hrs ago', assignedStaff: 'Sarah Connor' },
-      { orderId: 'ORD-2025-006', customer: 'James Wilson', amount: '$95.00', status: 'Delivered', time: '4 hrs ago', assignedStaff: 'Tom Hanks' },
-      { orderId: 'ORD-2025-007', customer: 'Charlotte Lee', amount: '$42.75', status: 'Out for delivery', time: '5 hrs ago', assignedStaff: 'Ryan Gosling' },
-      { orderId: 'ORD-2025-008', customer: 'Benjamin White', amount: '$110.00', status: 'In progress', time: '6 hrs ago', assignedStaff: 'Mike Johnson' },
-      { orderId: 'ORD-2025-009', customer: 'Amelia Harris', amount: '$67.00', status: 'Delivered', time: '7 hrs ago', assignedStaff: 'Sarah Connor' },
-      { orderId: 'ORD-2025-010', customer: 'Lucas Clark', amount: '$88.50', status: 'Pending', time: '8 hrs ago', assignedStaff: '-' },
-      { orderId: 'ORD-2025-011', customer: 'Mia Lewis', amount: '$52.00', status: 'Out for delivery', time: '9 hrs ago', assignedStaff: 'Tom Hanks' },
-      { orderId: 'ORD-2025-012', customer: 'Henry Walker', amount: '$125.00', status: 'Delivered', time: '10 hrs ago', assignedStaff: 'Ryan Gosling' },
-      { orderId: 'ORD-2025-013', customer: 'Harper Hall', amount: '$48.25', status: 'In progress', time: '11 hrs ago', assignedStaff: 'Mike Johnson' },
-      { orderId: 'ORD-2025-014', customer: 'Alexander Young', amount: '$73.50', status: 'Out for delivery', time: '12 hrs ago', assignedStaff: 'Sarah Connor' },
-      { orderId: 'ORD-2025-015', customer: 'Evelyn King', amount: '$92.00', status: 'Delivered', time: '13 hrs ago', assignedStaff: 'Tom Hanks' },
-      { orderId: 'ORD-2025-016', customer: 'Daniel Wright', amount: '$58.75', status: 'Pending', time: '14 hrs ago', assignedStaff: '-' },
-      { orderId: 'ORD-2025-017', customer: 'Avery Green', amount: '$105.00', status: 'In progress', time: '15 hrs ago', assignedStaff: 'Ryan Gosling' },
-      { orderId: 'ORD-2025-018', customer: 'Sofia Baker', amount: '$41.50', status: 'Out for delivery', time: '16 hrs ago', assignedStaff: 'Mike Johnson' },
-      { orderId: 'ORD-2025-019', customer: 'Matthew Adams', amount: '$79.25', status: 'Delivered', time: '17 hrs ago', assignedStaff: 'Sarah Connor' },
-      { orderId: 'ORD-2025-020', customer: 'Aria Nelson', amount: '$68.00', status: 'In progress', time: '18 hrs ago', assignedStaff: 'Tom Hanks' },
-    ];
+  // Debounce search input (300ms delay)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 300);
 
-    return orders;
-  }, []);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
-  const filteredOrders = useMemo(() => {
-    return allOrders.filter(order =>
-      order.orderId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.customer.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [allOrders, searchTerm]);
+  // Fetch recent orders
+  const fetchOrders = useCallback(async () => {
+    if (!isOpen) return;
+    
+    setLoading(true);
+    setError(null);
 
-  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
-  const paginatedOrders = useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage;
-    const end = start + itemsPerPage;
-    return filteredOrders.slice(start, end);
-  }, [filteredOrders, currentPage]);
+    try {
+      const response = await dashboardApi.getAdminRecentOrders({ limit: 100 });
 
-  const getStatusColor = (status: string) => {
+      if (response.success && response.data) {
+        let filteredOrders = response.data;
+        
+        // Client-side search filtering
+        if (debouncedSearch) {
+          filteredOrders = filteredOrders.filter(order =>
+            order.orderNumber.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+            (order.customerName && order.customerName.toLowerCase().includes(debouncedSearch.toLowerCase()))
+          );
+        }
+        
+        setOrders(filteredOrders);
+      } else {
+        setError('Failed to fetch recent orders');
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch recent orders:', err);
+      const errorMessage = err?.response?.data?.message || 'Failed to load recent orders. Please try again.';
+      setError(errorMessage);
+      setOrders([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [isOpen, debouncedSearch]);
+
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
+
+  const getStatusColor = (status: string | null): string => {
+    if (!status) return 'bg-gray-100 text-gray-800';
+    
     switch (status.toLowerCase()) {
       case 'pending':
+      case 'placed':
         return 'bg-yellow-100 text-yellow-800';
       case 'in progress':
+      case 'services_in_progress':
+      case 'submitted_to_services':
         return 'bg-blue-100 text-blue-800';
       case 'out for delivery':
+      case 'out_for_delivery':
         return 'bg-cyan-100 text-cyan-800';
       case 'delivered':
+      case 'closed':
         return 'bg-green-100 text-green-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
+  };
+
+  const formatAmount = (amount: string | null | undefined): string => {
+    if (!amount) return '₹0';
+    const numAmount = parseFloat(amount);
+    return formatCurrency(numAmount);
+  };
+
+  const formatTimeElapsed = (order: AdminDashboardRecentOrder): string => {
+    if (order.timeElapsedSeconds !== null && order.timeElapsedSeconds !== undefined) {
+      return formatTimeFromSeconds(order.timeElapsedSeconds);
+    }
+    if (order.createdAt) {
+      return formatTimeFromSeconds(Math.floor((Date.now() - new Date(order.createdAt).getTime()) / 1000));
+    }
+    return 'N/A';
   };
 
   const handleExport = () => {
@@ -109,99 +132,107 @@ export const AllRecentOrdersModal: React.FC<AllRecentOrdersModalProps> = ({ isOp
           </button>
         </div>
 
-        {/* Orders Table */}
-        <div className="border border-slate-200 rounded-xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                    Order ID
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                    Customer
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                    Amount
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                    Assigned Staff
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                    Time
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {paginatedOrders.map((order) => (
-                  <tr key={order.orderId} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3 text-sm font-medium text-slate-900">
-                      {order.orderId}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-slate-700">
-                      {order.customer}
-                    </td>
-                    <td className="px-4 py-3 text-sm font-semibold text-slate-900">
-                      {order.amount}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-slate-700">
-                      {order.assignedStaff}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
-                        {order.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-slate-600">
-                      {order.time}
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      <button className="text-blue-600 hover:text-blue-700 font-medium">
-                        View
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {filteredOrders.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-slate-500">No orders found</p>
+        {/* Error Message */}
+        {error && (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-center">
+            <div className="text-red-600 text-sm font-medium">{error}</div>
+            <button
+              onClick={() => fetchOrders()}
+              className="mt-2 text-xs text-red-600 underline hover:text-red-700"
+            >
+              Try again
+            </button>
           </div>
         )}
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200">
-            <div className="text-sm text-slate-700">
-              Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredOrders.length)} of {filteredOrders.length} orders
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                disabled={currentPage === 1}
-                className="p-2 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <ChevronLeft size={18} />
-              </button>
-              <button
-                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                disabled={currentPage === totalPages}
-                className="p-2 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <ChevronRight size={18} />
-              </button>
-            </div>
+        {/* Loading State */}
+        {loading && orders.length === 0 && (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="animate-spin h-8 w-8 text-blue-600" />
           </div>
+        )}
+
+        {/* Orders Table */}
+        {!loading && !error && (
+          <>
+            <div className="border border-slate-200 rounded-xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                        Order ID
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                        Customer
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                        Amount
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                        Assigned Staff
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                        Time
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {orders.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-12 text-center">
+                          <p className="text-slate-500">No orders found</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      orders.map((order) => (
+                        <tr key={order.orderNumber} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-4 py-3 text-sm font-medium text-slate-900">
+                            {order.orderNumber}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-700">
+                            {order.customerName || 'Unknown Customer'}
+                          </td>
+                          <td className="px-4 py-3 text-sm font-semibold text-slate-900">
+                            {formatAmount(order.amount)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-700">
+                            {order.deliveryStaffName || '—'}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
+                              {order.status || 'Unknown'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-600">
+                            {formatTimeElapsed(order)}
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            <button className="text-blue-600 hover:text-blue-700 font-medium">
+                              View
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Results Count */}
+            {orders.length > 0 && (
+              <div className="text-sm text-slate-600 text-center">
+                Showing {orders.length} recent order{orders.length !== 1 ? 's' : ''}
+              </div>
+            )}
+          </>
         )}
       </div>
     </Modal>

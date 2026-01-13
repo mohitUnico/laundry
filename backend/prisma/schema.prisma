@@ -112,6 +112,7 @@ model DeliveryStaff {
   created_at           DateTime           @default(now())
   updated_at           DateTime           @updatedAt
   deliveries           Delivery[]
+  pickups              Pickup[]
 
   @@index([verification_status])
   @@index([is_verified_by_admin])
@@ -314,6 +315,7 @@ model Order {
   updated_at                            DateTime        @updatedAt
   bill                                  Bill?
   delivery                              Delivery?
+  pickup                                Pickup?
   order_items                           OrderItem[]
   customer                              Customer        @relation(fields: [customer_id], references: [customer_id])
   delivery_address                      CustomerAddress @relation("DeliveryAddress", fields: [delivery_address_id], references: [address_id])
@@ -494,26 +496,25 @@ enum PaymentStatus {
 // ==================== DELIVERY MANAGEMENT ====================
 
 model Delivery {
-  delivery_id          String             @id @default(uuid())
-  order_id             String             @unique
+  delivery_id          String           @id @default(uuid())
+  order_id             String           @unique
   staff_id             String
   delivery_type        DeliveryType // pickup or drop
-  delivery_status      String             @db.VarChar(50)
-  assigned_at          DateTime           @default(now())
+  delivery_status      String           @db.VarChar(50)
+  assigned_at          DateTime         @default(now())
   completed_at         DateTime?
-  delivery_rating      Decimal?           @db.Decimal(3, 2)
+  delivery_rating      Decimal?         @db.Decimal(3, 2)
   delivery_review      String?
-  delivery_fee         Decimal            @db.Decimal(10, 2)
-  distance_km          Decimal?           @db.Decimal(10, 2)
+  delivery_fee         Decimal          @db.Decimal(10, 2)
+  distance_km          Decimal?         @db.Decimal(10, 2)
   estimated_duration   Int?
   actual_duration      Int?
-  needs_weight_machine Boolean            @default(false) // If order has per_kg items
-  created_at           DateTime           @default(now())
-  updated_at           DateTime           @updatedAt
-  order                Order              @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
-  staff                DeliveryStaff      @relation(fields: [staff_id], references: [staff_id])
+  needs_weight_machine Boolean          @default(false) // If order has per_kg items
+  created_at           DateTime         @default(now())
+  updated_at           DateTime         @updatedAt
+  order                Order            @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
+  staff                DeliveryStaff    @relation(fields: [staff_id], references: [staff_id])
   drop                 DropForDelivery?
-  pickup               PickupForDelivery?
 
   @@index([staff_id])
   @@index([delivery_status])
@@ -526,21 +527,29 @@ enum DeliveryType {
   drop
 }
 
-model PickupForDelivery {
-  pickup_id      String    @id @default(uuid())
-  delivery_id    String    @unique
-  pickup_address String
-  pickup_lat     Decimal   @db.Decimal(10, 8)
-  pickup_lng     Decimal   @db.Decimal(11, 8)
-  pickup_status  String    @db.VarChar(50)
-  pickup_time    DateTime?
-  pickup_proof   String?   @db.VarChar(500) // Photo proof URL
-  created_at     DateTime  @default(now())
-  updated_at     DateTime  @updatedAt
-  delivery       Delivery  @relation(fields: [delivery_id], references: [delivery_id], onDelete: Cascade)
+model Pickup {
+  pickup_id            String         @id @default(uuid())
+  order_id             String         @unique
+  staff_id             String? // Temporarily nullable for migration, set to NOT NULL after ensuring all records have staff_id
+  pickup_status        String         @db.VarChar(50)
+  assigned_at          DateTime       @default(now())
+  completed_at         DateTime?
+  pickup_rating        Decimal?       @db.Decimal(3, 2)
+  pickup_review        String?
+  pickup_fee           Decimal        @db.Decimal(10, 2)
+  distance_km          Decimal?       @db.Decimal(10, 2)
+  estimated_duration   Int?
+  actual_duration      Int?
+  needs_weight_machine Boolean        @default(false) // If order has per_kg items
+  pickup_proof         String?        @db.VarChar(500) // Photo proof URL
+  created_at           DateTime       @default(now())
+  updated_at           DateTime       @updatedAt
+  order                Order          @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
+  staff                DeliveryStaff? @relation(fields: [staff_id], references: [staff_id])
 
+  @@index([staff_id])
   @@index([pickup_status])
-  @@map("pickup_for_delivery")
+  @@map("pickup")
 }
 
 model DropForDelivery {

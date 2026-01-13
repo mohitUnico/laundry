@@ -28,6 +28,9 @@ import { useToast } from '@/hooks/common';
 import { Download } from 'lucide-react';
 import { useDashboard } from '@/hooks/api';
 import { formatCompactCurrency } from '@/utils/formatters';
+import { dashboardApi } from '@/services/api/modules/dashboardApi';
+import { useEffect, useCallback } from 'react';
+import { Loader2 } from 'lucide-react';
 
 export const DashboardPage: React.FC = () => {
   const { toast, showToast, hideToast } = useToast();
@@ -44,8 +47,75 @@ export const DashboardPage: React.FC = () => {
   const [showFilteredOrdersModal, setShowFilteredOrdersModal] = useState(false);
   const [showAllRecentOrdersModal, setShowAllRecentOrdersModal] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<string>('');
+  const [revenueLoading, setRevenueLoading] = useState(false);
+  const [revenueError, setRevenueError] = useState<string | null>(null);
+  const [revenueData, setRevenueData] = useState<{
+    daily: number;
+    weekly: number;
+    monthly: number;
+  } | null>(null);
 
   const { data, loading, error, range, setRange, refresh } = useDashboard();
+
+  // Fetch revenue data for different periods
+  const fetchRevenueData = useCallback(async () => {
+    if (!showRevenueModal) return;
+    
+    setRevenueLoading(true);
+    setRevenueError(null);
+
+    try {
+      const now = new Date();
+      
+      // Daily: Today
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+      
+      // Weekly: Last 7 days
+      const weekStart = new Date(now);
+      weekStart.setDate(weekStart.getDate() - 7);
+      
+      // Monthly: Current month
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+      const [dailyRes, weeklyRes, monthlyRes] = await Promise.all([
+        dashboardApi.getAdminSummary({
+          from: todayStart.toISOString(),
+          to: todayEnd.toISOString(),
+        }),
+        dashboardApi.getAdminSummary({
+          from: weekStart.toISOString(),
+          to: now.toISOString(),
+        }),
+        dashboardApi.getAdminSummary({
+          from: monthStart.toISOString(),
+          to: monthEnd.toISOString(),
+        }),
+      ]);
+
+      if (dailyRes.success && weeklyRes.success && monthlyRes.success) {
+        setRevenueData({
+          daily: dailyRes.data?.totalRevenue || 0,
+          weekly: weeklyRes.data?.totalRevenue || 0,
+          monthly: monthlyRes.data?.totalRevenue || 0,
+        });
+      } else {
+        setRevenueError('Failed to fetch revenue data');
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch revenue data:', err);
+      const errorMessage = err?.response?.data?.message || 'Failed to load revenue data. Please try again.';
+      setRevenueError(errorMessage);
+      setRevenueData(null);
+    } finally {
+      setRevenueLoading(false);
+    }
+  }, [showRevenueModal]);
+
+  useEffect(() => {
+    fetchRevenueData();
+  }, [fetchRevenueData]);
 
   const handleExportReport = () => {
     showToast('Report exported successfully!', 'success');
@@ -283,20 +353,61 @@ export const DashboardPage: React.FC = () => {
         size="lg"
       >
         <div className="space-y-4 sm:space-y-5 md:space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-            <div className="text-center p-3 sm:p-4 bg-blue-50 rounded-lg sm:rounded-xl">
-              <p className="text-xs sm:text-sm text-slate-600 mb-1">Daily</p>
-              <p className="text-xl sm:text-2xl font-bold text-blue-600">$3,210</p>
+          {/* Error Message */}
+          {revenueError && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-center">
+              <div className="text-red-600 text-sm font-medium">{revenueError}</div>
+              <button
+                onClick={() => fetchRevenueData()}
+                className="mt-2 text-xs text-red-600 underline hover:text-red-700"
+              >
+                Try again
+              </button>
             </div>
-            <div className="text-center p-3 sm:p-4 bg-blue-50 rounded-lg sm:rounded-xl">
-              <p className="text-xs sm:text-sm text-slate-600 mb-1">Weekly</p>
-              <p className="text-xl sm:text-2xl font-bold text-blue-600">$8,940</p>
+          )}
+
+          {/* Loading State */}
+          {revenueLoading && !revenueData && (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="animate-spin h-8 w-8 text-blue-600" />
             </div>
-            <div className="text-center p-3 sm:p-4 bg-blue-50 rounded-lg sm:rounded-xl">
-              <p className="text-xs sm:text-sm text-slate-600 mb-1">Monthly</p>
-              <p className="text-xl sm:text-2xl font-bold text-blue-600">$12,845</p>
+          )}
+
+          {/* Revenue Cards */}
+          {!revenueLoading && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+              <div className="text-center p-3 sm:p-4 bg-blue-50 rounded-lg sm:rounded-xl">
+                <p className="text-xs sm:text-sm text-slate-600 mb-1">Daily</p>
+                {revenueLoading ? (
+                  <Loader2 className="animate-spin h-6 w-6 mx-auto text-blue-600" />
+                ) : (
+                  <p className="text-xl sm:text-2xl font-bold text-blue-600">
+                    {formatCompactCurrency(revenueData?.daily || 0)}
+                  </p>
+                )}
+              </div>
+              <div className="text-center p-3 sm:p-4 bg-blue-50 rounded-lg sm:rounded-xl">
+                <p className="text-xs sm:text-sm text-slate-600 mb-1">Weekly</p>
+                {revenueLoading ? (
+                  <Loader2 className="animate-spin h-6 w-6 mx-auto text-blue-600" />
+                ) : (
+                  <p className="text-xl sm:text-2xl font-bold text-blue-600">
+                    {formatCompactCurrency(revenueData?.weekly || 0)}
+                  </p>
+                )}
+              </div>
+              <div className="text-center p-3 sm:p-4 bg-blue-50 rounded-lg sm:rounded-xl">
+                <p className="text-xs sm:text-sm text-slate-600 mb-1">Monthly</p>
+                {revenueLoading ? (
+                  <Loader2 className="animate-spin h-6 w-6 mx-auto text-blue-600" />
+                ) : (
+                  <p className="text-xl sm:text-2xl font-bold text-blue-600">
+                    {formatCompactCurrency(revenueData?.monthly || 0)}
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
+          )}
           <div className="h-48 sm:h-56 md:h-64 bg-slate-50 rounded-lg sm:rounded-xl flex items-center justify-center">
             <p className="text-sm sm:text-base text-slate-500">Revenue Trend Chart</p>
           </div>

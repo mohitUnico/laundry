@@ -3,463 +3,15 @@ generator client {
   binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
 }
 
-// Note: Using Prisma 6 syntax. The `url` property is required in Prisma 6.
-// Linter warnings about Prisma 7+ syntax can be ignored.
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
-// ==================== LAUNDRY CONFIGURATION ====================
-// Single laundry business configuration
-model LaundryConfig {
-  config_id         String   @id @default(uuid())
-  business_name     String   @db.VarChar(255)
-  contact_email     String   @unique @db.VarChar(255)
-  contact_phone     String   @db.VarChar(20)
-  address           String
-  latitude          Decimal  @db.Decimal(10, 8)
-  longitude         Decimal  @db.Decimal(11, 8)
-  service_radius_km Json // Distance-based delivery fee configuration
-  is_active         Boolean  @default(true)
-  created_at        DateTime @default(now())
-  updated_at        DateTime @updatedAt
-  logo_url          String?
-
-  @@map("laundry_config")
-}
-
-// ==================== USER MANAGEMENT ====================
-
-// Admin/Owner - Single admin for the laundry business
-model User {
-  user_id    String   @id @default(uuid())
-  full_name  String   @db.VarChar(255)
-  email      String   @unique @db.VarChar(255)
-  phone      String?  @db.VarChar(20)
-  password   String?  @db.VarChar(255)
-  role       UserRole @default(admin)
-  is_active  Boolean  @default(true)
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-
-  @@index([role])
-  @@map("users")
-}
-
-enum UserRole {
-  admin
-  owner
-}
-
-// Customer
-model Customer {
-  customer_id       String            @id @default(uuid())
-  full_name         String            @db.VarChar(255)
-  email             String            @unique @db.VarChar(255)
-  phone             String?           @db.VarChar(20)
-  password          String?           @db.VarChar(255)
-  profile_image_url String?           @db.VarChar(500)
-  is_active         Boolean           @default(true)
-  total_orders      Int               @default(0)
-  total_spent       Decimal           @default(0) @db.Decimal(10, 2)
-  created_at        DateTime          @default(now())
-  updated_at        DateTime          @updatedAt
-  addresses         CustomerAddress[]
-  orders            Order[]
-  carts             Cart[]
-  customer_reviews  CustomerReview[]
-
-  @@map("customers")
-}
-
-model CustomerAddress {
-  address_id      String   @id @default(uuid())
-  customer_id     String
-  address_label   String   @db.VarChar(50)
-  full_address    String
-  latitude        Decimal  @db.Decimal(10, 8)
-  longitude       Decimal  @db.Decimal(11, 8)
-  is_default      Boolean  @default(false)
-  delivery_note   String?
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
-  customer        Customer @relation(fields: [customer_id], references: [customer_id], onDelete: Cascade)
-  delivery_orders Order[]  @relation("DeliveryAddress")
-  pickup_orders   Order[]  @relation("PickupAddress")
-
-  @@index([customer_id])
-  @@map("customer_addresses")
-}
-
-// Delivery Partner/Staff
-model DeliveryStaff {
-  staff_id             String             @id @default(uuid())
-  full_name            String             @db.VarChar(255)
-  phone                String?            @db.VarChar(20)
-  email                String             @unique @db.VarChar(255)
-  password             String?            @db.VarChar(255)
-  vehicle_type         String             @db.VarChar(50)
-  vehicle_number       String             @db.VarChar(50)
-  license_number       String             @db.VarChar(50)
-  id_proof_type        String?            @db.VarChar(50) // Aadhaar, etc.
-  id_proof_url         String?            @db.VarChar(500)
-  document_url         String?            @db.VarChar(500)
-  bank_account_details Json?
-  verification_status  VerificationStatus @default(pending)
-  is_verified_by_admin Boolean            @default(false)
-  is_active            Boolean            @default(true)
-  average_rating       Decimal?           @db.Decimal(3, 2)
-  total_deliveries     Int                @default(0)
-  created_at           DateTime           @default(now())
-  updated_at           DateTime           @updatedAt
-  deliveries           Delivery[]
-  pickups              Pickup[]
-
-  @@index([verification_status])
-  @@index([is_verified_by_admin])
-  @@map("delivery_staffs")
-}
-
-enum VerificationStatus {
-  pending
-  verified
-  rejected
-}
-
-// Unified Staff table for Collection Manager, Distribution Manager, and Service Man
-model Staff {
-  staff_id   String    @id @default(uuid())
-  role       StaffRole
-  full_name  String    @db.VarChar(255)
-  email      String    @unique @db.VarChar(255) // Unique across ALL staff roles
-  phone      String?   @db.VarChar(20)
-  is_active  Boolean   @default(true)
-  // Only service men have service_id; unique allows at most 1 service man per service (NULL allowed for other roles)
-  service_id String?   @unique
-  created_at DateTime  @default(now())
-  updated_at DateTime  @updatedAt
-
-  service Service? @relation(fields: [service_id], references: [service_id])
-
-  // Service queue items assigned to staff (service man role)
-  service_queue_items ServiceQueueItem[] @relation("ServiceQueueAssignedStaff")
-
-  @@index([role])
-  @@index([service_id])
-  @@map("staff")
-}
-
-enum StaffRole {
-  collection_manager
-  distribution_manager
-  service_man
-}
-
-// ==================== SERVICE CATALOG ====================
-
-model ServiceCategory {
-  category_id   String    @id @default(uuid())
-  category_name String    @db.VarChar(100)
-  description   String?
-  icon_url      String?   @db.VarChar(500)
-  display_order Int       @default(0)
-  is_active     Boolean   @default(true)
-  created_at    DateTime  @default(now())
-  updated_at    DateTime  @updatedAt
-  services      Service[]
-
-  @@map("service_categories")
-}
-
-model Service {
-  service_id      String          @id @default(uuid())
-  category_id     String
-  service_name    String          @db.VarChar(255)
-  description     String?
-  base_price      Decimal         @db.Decimal(10, 2)
-  per_kg_price    Decimal?        @db.Decimal(10, 2)
-  estimated_hours Int
-  icon_url        String?         @db.VarChar(500)
-  is_active       Boolean         @default(true)
-  display_order   Int             @default(0)
-  created_at      DateTime        @default(now())
-  updated_at      DateTime        @updatedAt
-  category        ServiceCategory @relation(fields: [category_id], references: [category_id])
-  clothes_items   ClothesItem[]
-  service_man     Staff? // One service man per service (Staff.role = service_man)
-
-  // Cart items for this service
-  cart_items CartItem[]
-
-  // Order items for this service
-  order_items OrderItem[]
-
-  // Service queue items
-  service_queue_items ServiceQueueItem[]
-
-  @@index([category_id])
-  @@map("services")
-}
-
-model ClothesItem {
-  cloth_id       String   @id @default(uuid())
-  service_id     String
-  item_name      String   @db.VarChar(100)
-  per_unit_price Decimal  @db.Decimal(10, 2)
-  icon_url       String?  @db.VarChar(500)
-  is_active      Boolean  @default(true)
-  display_order  Int      @default(0)
-  created_at     DateTime @default(now())
-  updated_at     DateTime @updatedAt
-  service        Service  @relation(fields: [service_id], references: [service_id])
-
-  // Cart item selections
-  cart_item_selections CartItemSelection[]
-
-  // Order item selections
-  order_item_selections OrderItemSelection[]
-
-  @@unique([service_id, item_name])
-  @@index([service_id])
-  @@map("clothes_items")
-}
-
-// ==================== CART MANAGEMENT ====================
-
-model Cart {
-  cart_id     String     @id @default(uuid())
-  customer_id String
-  is_active   Boolean    @default(true)
-  created_at  DateTime   @default(now())
-  updated_at  DateTime   @updatedAt
-  customer    Customer   @relation(fields: [customer_id], references: [customer_id], onDelete: Cascade)
-  cart_items  CartItem[]
-
-  @@index([customer_id])
-  @@map("carts")
-}
-
-model CartItem {
-  cart_item_id String       @id @default(uuid())
-  cart_id      String
-  service_id   String
-  pricing_type PricingModel // per_unit or per_kg
-  created_at   DateTime     @default(now())
-  updated_at   DateTime     @updatedAt
-  cart         Cart         @relation(fields: [cart_id], references: [cart_id], onDelete: Cascade)
-  service      Service      @relation(fields: [service_id], references: [service_id])
-
-  // Individual cloth item selections (for per_unit pricing)
-  item_selections CartItemSelection[]
-
-  // Weight-based items (for per_kg pricing)
-  weight_kg Decimal? @db.Decimal(10, 2)
-
-  @@index([cart_id])
-  @@index([service_id])
-  @@map("cart_items")
-}
-
-model CartItemSelection {
-  selection_id String      @id @default(uuid())
-  cart_item_id String
-  cloth_id     String
-  quantity     Int
-  created_at   DateTime    @default(now())
-  cart_item    CartItem    @relation(fields: [cart_item_id], references: [cart_item_id], onDelete: Cascade)
-  cloth_item   ClothesItem @relation(fields: [cloth_id], references: [cloth_id])
-
-  @@index([cart_item_id])
-  @@index([cloth_id])
-  @@map("cart_item_selections")
-}
-
-// ==================== ORDER MANAGEMENT ====================
-
-model Order {
-  order_id                     String          @id @default(uuid())
-  customer_id                  String
-  // Cart used to create this order (kept until confirmation; deleted on confirm_order)
-  source_cart_id               String?
-  order_status                 OrderStatus
-  pricing_model                PricingModel
-  order_type                   OrderType       @default(both)
-  // For orders containing any per_kg items, total_amount is unknown at creation time and will be calculated later.
-  total_amount                 Decimal?        @db.Decimal(10, 2)
-  pickup_address_id            String
-  delivery_address_id          String
-  preferred_pickup_slot_from   DateTime? // Preferred pickup slot start date and time
-  preferred_pickup_slot_to     DateTime? // Preferred pickup slot end date and time
-  preferred_delivery_slot_from DateTime? // Preferred delivery slot start date and time
-  preferred_delivery_slot_to   DateTime? // Preferred delivery slot end date and time
-  special_instructions         String?
-  billing_status               BillingStatus   @default(pending)
-  submitted_to_services_at     DateTime?
-  created_at                   DateTime        @default(now())
-  updated_at                   DateTime        @updatedAt
-  bill                         Bill?
-  delivery                     Delivery?
-  order_items                  OrderItem[]
-  customer_review_entry        CustomerReview?
-  customer                     Customer        @relation(fields: [customer_id], references: [customer_id])
-  delivery_address             CustomerAddress @relation("DeliveryAddress", fields: [delivery_address_id], references: [address_id])
-  pickup_address               CustomerAddress @relation("PickupAddress", fields: [pickup_address_id], references: [address_id])
-
-  // Service queue items for this order
-  service_queue_items ServiceQueueItem[]
-  pickup              Pickup?
-
-  @@index([customer_id])
-  @@index([source_cart_id])
-  @@index([order_status])
-  @@index([billing_status])
-  @@index([created_at])
-  @@map("orders")
-}
-
-enum OrderStatus {
-  draft // Order created but not confirmed yet
-  placed // Customer placed order
-  pickup_assigned // Delivery partner assigned for pickup
-  picked_up // Order picked up from customer
-  received_by_collection // Collection manager received order
-  submitted_to_services // Submitted to service men
-  services_in_progress // Service men working on items
-  services_completed // All services completed
-  dispatch_assigned // Delivery partner assigned for delivery
-  out_for_delivery // Out for delivery to customer
-  payment_pending // Delivered, waiting for payment
-  delivered // Delivered and payment confirmed
-  closed // Order closed
-  cancelled // Order cancelled
-}
-
-enum PricingModel {
-  per_unit
-  per_kg
-}
-
-enum OrderType {
-  pickup_only
-  drop_only
-  both
-  express_delivery
-}
-
-enum BillingStatus {
-  pending
-  generated
-}
-
-model OrderItem {
-  item_id           String               @id @default(uuid())
-  order_id          String
-  service_id        String
-  pricing_type      PricingModel // per_unit or per_kg
-  // For per_unit pricing: quantity is sum of selections
-  // For per_kg pricing: weight_kg is used
-  quantity          Int? // Total quantity for per_unit items (sum of selections)
-  weight_kg         Decimal?             @db.Decimal(10, 2) // For per_kg pricing
-  // Subtotal is:
-  // - per_unit: SUM(order_item_selections.subtotal)
-  // - per_kg: services.per_kg_price * weight_kg
-  subtotal          Decimal?             @db.Decimal(10, 2)
-  order_item_status OrderItemStatus      @default(assigned)
-  created_at        DateTime             @default(now())
-  updated_at        DateTime             @updatedAt
-  service           Service              @relation(fields: [service_id], references: [service_id])
-  order             Order                @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
-  // Individual cloth item selections (for per_unit pricing)
-  item_selections   OrderItemSelection[]
-
-  @@index([order_id])
-  @@index([service_id])
-  @@index([order_item_status])
-  @@index([pricing_type])
-  @@map("order_items")
-}
-
-enum OrderItemStatus {
-  assigned
-  on_process
-  completed
-}
-
-// Individual cloth item selections within an order item (for per_unit pricing)
-// This mirrors CartItemSelection structure for order items
-model OrderItemSelection {
-  selection_id  String      @id @default(uuid())
-  order_item_id String
-  cloth_id      String
-  quantity      Int
-  unit_price    Decimal     @db.Decimal(10, 2)
-  subtotal      Decimal     @db.Decimal(10, 2)
-  created_at    DateTime    @default(now())
-  order_item    OrderItem   @relation(fields: [order_item_id], references: [item_id], onDelete: Cascade)
-  cloth_item    ClothesItem @relation(fields: [cloth_id], references: [cloth_id])
-
-  @@index([order_item_id])
-  @@index([cloth_id])
-  @@map("order_item_selections")
-}
-
-model CustomerReview {
-  review_id   String   @id @default(uuid())
-  order_id    String   @unique
-  customer_id String
-  rating      Decimal  @db.Decimal(3, 2)
-  review      String?
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
-
-  order    Order    @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
-  customer Customer @relation(fields: [customer_id], references: [customer_id], onDelete: Cascade)
-
-  @@index([customer_id])
-  @@map("customer_reviews")
-}
-
-// ==================== SERVICE QUEUE (FIFO) ====================
-
-model ServiceQueueItem {
-  queue_id       String      @id @default(uuid())
-  order_id       String
-  service_id     String
-  service_man_id String // References Staff.staff_id where Staff.role = service_man
-  item_id        String // Reference to OrderItem
-  item_name      String      @db.VarChar(255)
-  quantity       Int
-  queue_status   QueueStatus @default(pending)
-  priority       Int         @default(0) // For FIFO ordering
-  assigned_at    DateTime    @default(now())
-  started_at     DateTime?
-  completed_at   DateTime?
-  comments       String?
-  created_at     DateTime    @default(now())
-  updated_at     DateTime    @updatedAt
-
-  order       Order   @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
-  service     Service @relation(fields: [service_id], references: [service_id])
-  service_man Staff   @relation("ServiceQueueAssignedStaff", fields: [service_man_id], references: [staff_id])
-
-  @@index([service_id, queue_status, priority]) // For FIFO retrieval
-  @@index([order_id])
-  @@index([service_man_id])
-  @@map("service_queue")
-}
-
-enum QueueStatus {
-  pending
-  in_progress
-  completed
-}
-
-// ==================== BILLING ====================
-
-model Bill {
-  bill_id        String        @id @default(uuid())
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model bills {
+  bill_id        String        @id
   order_id       String        @unique
   subtotal       Decimal       @db.Decimal(10, 2)
   delivery_fee   Decimal       @db.Decimal(10, 2)
@@ -467,106 +19,136 @@ model Bill {
   discount       Decimal       @default(0) @db.Decimal(10, 2)
   final_amount   Decimal       @db.Decimal(10, 2)
   payment_method String        @db.VarChar(50)
-  payment_status PaymentStatus @default(pending)
   transaction_id String?       @db.VarChar(255)
   paid_at        DateTime?
   created_at     DateTime      @default(now())
-  updated_at     DateTime      @updatedAt
-  order          Order         @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
+  updated_at     DateTime
+  payment_status PaymentStatus @default(pending)
+  orders         orders        @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
 
-  @@index([payment_status])
   @@index([created_at])
-  @@map("bills")
+  @@index([payment_status])
 }
 
-enum PaymentStatus {
-  pending
-  completed
-  failed
-  refunded
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model cart_item_selections {
+  selection_id  String        @id
+  cart_item_id  String
+  cloth_id      String
+  quantity      Int
+  created_at    DateTime      @default(now())
+  cart_items    cart_items    @relation(fields: [cart_item_id], references: [cart_item_id], onDelete: Cascade)
+  clothes_items clothes_items @relation(fields: [cloth_id], references: [cloth_id])
+
+  @@index([cart_item_id])
+  @@index([cloth_id])
 }
 
-// ==================== DELIVERY MANAGEMENT ====================
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model cart_items {
+  cart_item_id         String                 @id
+  cart_id              String
+  service_id           String
+  pricing_type         PricingModel
+  created_at           DateTime               @default(now())
+  updated_at           DateTime
+  weight_kg            Decimal?               @db.Decimal(10, 2)
+  cart_item_selections cart_item_selections[]
+  carts                carts                  @relation(fields: [cart_id], references: [cart_id], onDelete: Cascade)
+  services             services               @relation(fields: [service_id], references: [service_id])
 
-model Delivery {
-  delivery_id          String           @id @default(uuid())
-  order_id             String           @unique
-  staff_id             String
-  delivery_type        DeliveryType // pickup or drop
-  delivery_status      String           @db.VarChar(50)
-  assigned_at          DateTime         @default(now())
-  completed_at         DateTime?
-  delivery_rating      Decimal?         @db.Decimal(3, 2)
-  delivery_review      String?
-  delivery_fee         Decimal          @db.Decimal(10, 2)
-  distance_km          Decimal?         @db.Decimal(10, 2)
-  estimated_duration   Int?
-  actual_duration      Int?
-  needs_weight_machine Boolean          @default(false) // If order has per_kg items
-  created_at           DateTime         @default(now())
-  updated_at           DateTime         @updatedAt
-  order                Order            @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
-  staff                DeliveryStaff    @relation(fields: [staff_id], references: [staff_id])
-  drop                 DropForDelivery?
-
-  @@index([staff_id])
-  @@index([delivery_status])
-  @@index([delivery_type])
-  @@map("delivery")
+  @@index([cart_id])
+  @@index([service_id])
 }
 
-enum DeliveryType {
-  pickup
-  drop
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model carts {
+  cart_id     String       @id
+  customer_id String
+  is_active   Boolean      @default(true)
+  created_at  DateTime     @default(now())
+  updated_at  DateTime
+  cart_items  cart_items[]
+  customers   customers    @relation(fields: [customer_id], references: [customer_id], onDelete: Cascade)
+
+  @@index([customer_id])
 }
 
-model Pickup {
-  pickup_id            String         @id @default(uuid())
-  order_id             String         @unique
-  staff_id             String? // Temporarily nullable for migration, set to NOT NULL after ensuring all records have staff_id
-  pickup_status        String         @db.VarChar(50)
-  assigned_at          DateTime       @default(now())
-  completed_at         DateTime?
-  pickup_rating        Decimal?       @db.Decimal(3, 2)
-  pickup_review        String?
-  pickup_fee           Decimal        @db.Decimal(10, 2)
-  distance_km          Decimal?       @db.Decimal(10, 2)
-  estimated_duration   Int?
-  actual_duration      Int?
-  needs_weight_machine Boolean        @default(false) // If order has per_kg items
-  pickup_proof         String?        @db.VarChar(500) // Photo proof URL
-  created_at           DateTime       @default(now())
-  updated_at           DateTime       @updatedAt
-  order                Order          @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
-  staff                DeliveryStaff? @relation(fields: [staff_id], references: [staff_id])
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model clothes_items {
+  item_name             String                  @db.VarChar(100)
+  per_unit_price        Decimal                 @db.Decimal(10, 2)
+  icon_url              String?                 @db.VarChar(500)
+  is_active             Boolean                 @default(true)
+  display_order         Int                     @default(0)
+  created_at            DateTime                @default(now())
+  updated_at            DateTime
+  cloth_id              String                  @id
+  service_id            String
+  cart_item_selections  cart_item_selections[]
+  services              services                @relation(fields: [service_id], references: [service_id])
+  order_item_selections order_item_selections[]
 
-  @@index([staff_id])
-  @@index([pickup_status])
-  @@map("pickup")
+  @@unique([service_id, item_name])
+  @@index([service_id])
 }
 
-model DropForDelivery {
-  drop_id      String    @id @default(uuid())
-  delivery_id  String    @unique
-  drop_address String
-  drop_lat     Decimal   @db.Decimal(10, 8)
-  drop_lng     Decimal   @db.Decimal(11, 8)
-  drop_status  String    @db.VarChar(50)
-  drop_time    DateTime?
-  drop_proof   String?   @db.VarChar(500) // Photo proof URL
-  created_at   DateTime  @default(now())
-  updated_at   DateTime  @updatedAt
-  delivery     Delivery  @relation(fields: [delivery_id], references: [delivery_id], onDelete: Cascade)
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model customer_addresses {
+  address_id                                            String    @id
+  customer_id                                           String
+  address_label                                         String    @db.VarChar(50)
+  full_address                                          String
+  latitude                                              Decimal   @db.Decimal(10, 8)
+  longitude                                             Decimal   @db.Decimal(11, 8)
+  is_default                                            Boolean   @default(false)
+  delivery_note                                         String?
+  created_at                                            DateTime  @default(now())
+  updated_at                                            DateTime
+  customers                                             customers @relation(fields: [customer_id], references: [customer_id], onDelete: Cascade)
+  orders_orders_delivery_address_idTocustomer_addresses orders[]  @relation("orders_delivery_address_idTocustomer_addresses")
+  orders_orders_pickup_address_idTocustomer_addresses   orders[]  @relation("orders_pickup_address_idTocustomer_addresses")
 
-  @@index([drop_status])
-  @@map("drop_for_delivery")
+  @@index([customer_id])
 }
 
-// ==================== ANALYTICS ====================
+model customer_reviews {
+  review_id   String    @id
+  order_id    String    @unique
+  customer_id String
+  rating      Decimal   @db.Decimal(3, 2)
+  review      String?
+  created_at  DateTime  @default(now())
+  updated_at  DateTime
+  customers   customers @relation(fields: [customer_id], references: [customer_id], onDelete: Cascade)
+  orders      orders    @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
 
-model DailyMetrics {
-  metric_id             String   @id @default(uuid())
-  metric_date           DateTime @db.Date
+  @@index([customer_id])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model customers {
+  customer_id        String               @id
+  full_name          String               @db.VarChar(255)
+  email              String               @unique @db.VarChar(255)
+  phone              String?              @db.VarChar(20)
+  password           String?              @db.VarChar(255)
+  is_active          Boolean              @default(true)
+  created_at         DateTime             @default(now())
+  updated_at         DateTime
+  total_orders       Int                  @default(0)
+  total_spent        Decimal              @default(0) @db.Decimal(10, 2)
+  profile_image_url  String?
+  carts              carts[]
+  customer_addresses customer_addresses[]
+  customer_reviews   customer_reviews[]
+  orders             orders[]
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model daily_metrics {
+  metric_id             String   @id
+  metric_date           DateTime @unique @db.Date
   total_orders          Int      @default(0)
   completed_orders      Int      @default(0)
   cancelled_orders      Int      @default(0)
@@ -576,18 +158,195 @@ model DailyMetrics {
   avg_order_value       Decimal  @default(0) @db.Decimal(10, 2)
   completion_rate       Decimal  @default(0) @db.Decimal(5, 2)
   created_at            DateTime @default(now())
-  updated_at            DateTime @updatedAt
+  updated_at            DateTime
   avg_delivery_duration Int?
 
-  @@unique([metric_date])
   @@index([metric_date])
-  @@map("daily_metrics")
 }
 
-// ==================== OTP VERIFICATION ====================
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model delivery {
+  delivery_id          String               @id
+  order_id             String               @unique
+  staff_id             String
+  delivery_status      String               @db.VarChar(50)
+  assigned_at          DateTime             @default(now())
+  completed_at         DateTime?
+  delivery_rating      Decimal?             @db.Decimal(3, 2)
+  delivery_review      String?
+  delivery_fee         Decimal              @db.Decimal(10, 2)
+  distance_km          Decimal?             @db.Decimal(10, 2)
+  estimated_duration   Int?
+  actual_duration      Int?
+  created_at           DateTime             @default(now())
+  updated_at           DateTime
+  delivery_type        DeliveryType
+  needs_weight_machine Boolean              @default(false)
+  orders               orders               @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
+  delivery_staffs      delivery_staffs      @relation(fields: [staff_id], references: [staff_id])
+  drop_for_delivery    drop_for_delivery?
+  pickup_for_delivery  pickup_for_delivery?
 
-model OtpVerification {
-  otp_id       String   @id @default(uuid())
+  @@index([delivery_status])
+  @@index([delivery_type])
+  @@index([staff_id])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model delivery_staffs {
+  staff_id             String             @id
+  full_name            String             @db.VarChar(255)
+  phone                String?            @db.VarChar(20)
+  email                String             @unique @db.VarChar(255)
+  password             String?            @db.VarChar(255)
+  vehicle_type         String             @db.VarChar(50)
+  vehicle_number       String             @db.VarChar(50)
+  license_number       String             @db.VarChar(50)
+  document_url         String?            @db.VarChar(500)
+  bank_account_details Json?
+  is_active            Boolean            @default(true)
+  average_rating       Decimal?           @db.Decimal(3, 2)
+  total_deliveries     Int                @default(0)
+  created_at           DateTime           @default(now())
+  updated_at           DateTime
+  id_proof_type        String?            @db.VarChar(50)
+  id_proof_url         String?            @db.VarChar(500)
+  is_verified_by_admin Boolean            @default(false)
+  verification_status  VerificationStatus @default(pending)
+  delivery             delivery[]
+
+  @@index([is_verified_by_admin])
+  @@index([verification_status])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model drop_for_delivery {
+  drop_id      String    @id
+  delivery_id  String    @unique
+  drop_address String
+  drop_lat     Decimal   @db.Decimal(10, 8)
+  drop_lng     Decimal   @db.Decimal(11, 8)
+  drop_status  String    @db.VarChar(50)
+  drop_time    DateTime?
+  drop_proof   String?   @db.VarChar(500)
+  created_at   DateTime  @default(now())
+  updated_at   DateTime
+  delivery     delivery  @relation(fields: [delivery_id], references: [delivery_id], onDelete: Cascade)
+
+  @@index([drop_status])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model laundry_config {
+  config_id         String   @id
+  business_name     String   @db.VarChar(255)
+  contact_email     String   @unique @db.VarChar(255)
+  contact_phone     String   @db.VarChar(20)
+  address           String
+  latitude          Decimal  @db.Decimal(10, 8)
+  longitude         Decimal  @db.Decimal(11, 8)
+  service_radius_km Json
+  is_active         Boolean  @default(true)
+  created_at        DateTime @default(now())
+  updated_at        DateTime
+  logo_url          String?
+}
+
+model order_item_selections {
+  selection_id  String        @id
+  order_item_id String
+  cloth_id      String
+  quantity      Int
+  created_at    DateTime      @default(now())
+  subtotal      Decimal       @db.Decimal(10, 2)
+  unit_price    Decimal       @db.Decimal(10, 2)
+  clothes_items clothes_items @relation(fields: [cloth_id], references: [cloth_id])
+  order_items   order_items   @relation(fields: [order_item_id], references: [item_id], onDelete: Cascade)
+
+  @@index([cloth_id])
+  @@index([order_item_id])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model order_items {
+  item_id               String                  @id
+  order_id              String
+  quantity              Int?
+  subtotal              Decimal?                @db.Decimal(10, 2)
+  created_at            DateTime                @default(now())
+  order_item_status     OrderItemStatus         @default(assigned)
+  updated_at            DateTime
+  pricing_type          PricingModel
+  service_id            String
+  weight_kg             Decimal?                @db.Decimal(10, 2)
+  order_item_selections order_item_selections[]
+  orders                orders                  @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
+  services              services                @relation(fields: [service_id], references: [service_id])
+
+  @@index([order_id])
+  @@index([order_item_status])
+  @@index([pricing_type])
+  @@index([service_id])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model orders {
+  order_id                                                          String             @id
+  customer_id                                                       String
+  total_amount                                                      Decimal?           @db.Decimal(10, 2)
+  pickup_address_id                                                 String
+  delivery_address_id                                               String
+  special_instructions                                              String?
+  created_at                                                        DateTime           @default(now())
+  updated_at                                                        DateTime
+  order_status                                                      OrderStatus
+  order_type                                                        OrderType          @default(both)
+  submitted_to_services_at                                          DateTime?
+  pricing_model                                                     PricingModel
+  billing_status                                                    BillingStatus      @default(pending)
+  preferred_delivery_slot_from                                      DateTime?
+  preferred_delivery_slot_to                                        DateTime?
+  preferred_pickup_slot_from                                        DateTime?
+  preferred_pickup_slot_to                                          DateTime?
+  source_cart_id                                                    String?
+  bills                                                             bills?
+  customer_reviews                                                  customer_reviews?
+  delivery                                                          delivery?
+  order_items                                                       order_items[]
+  customers                                                         customers          @relation(fields: [customer_id], references: [customer_id])
+  customer_addresses_orders_delivery_address_idTocustomer_addresses customer_addresses @relation("orders_delivery_address_idTocustomer_addresses", fields: [delivery_address_id], references: [address_id])
+  customer_addresses_orders_pickup_address_idTocustomer_addresses   customer_addresses @relation("orders_pickup_address_idTocustomer_addresses", fields: [pickup_address_id], references: [address_id])
+  service_queue                                                     service_queue[]
+
+  @@index([billing_status])
+  @@index([created_at])
+  @@index([customer_id])
+  @@index([order_status])
+  @@index([source_cart_id])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model otp_sessions {
+  session_id              String   @id
+  user_type               String   @db.VarChar(30)
+  is_new_user             Boolean
+  user_id                 String?
+  session_token           String   @unique @db.VarChar(500)
+  is_completed            Boolean  @default(false)
+  expires_at              DateTime
+  created_at              DateTime @default(now())
+  email                   String   @db.VarChar(255)
+  business_email          String?  @db.VarChar(255)
+  business_email_verified Boolean  @default(false)
+
+  @@index([email])
+  @@index([expires_at])
+  @@index([session_token])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model otp_verifications {
+  otp_id       String   @id
   otp_code     String   @db.VarChar(6)
   user_type    String   @db.VarChar(30)
   is_verified  Boolean  @default(false)
@@ -601,24 +360,194 @@ model OtpVerification {
   @@index([email, purpose])
   @@index([expires_at])
   @@index([is_verified])
-  @@map("otp_verifications")
 }
 
-model OtpSession {
-  session_id              String   @id @default(uuid())
-  user_type               String   @db.VarChar(30)
-  is_new_user             Boolean
-  user_id                 String?
-  session_token           String   @unique @db.VarChar(500)
-  is_completed            Boolean  @default(false)
-  expires_at              DateTime
-  created_at              DateTime @default(now())
-  email                   String   @db.VarChar(255)
-  business_email          String?  @db.VarChar(255)
-  business_email_verified Boolean  @default(false)
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model pickup_for_delivery {
+  pickup_id      String    @id
+  delivery_id    String    @unique
+  pickup_address String
+  pickup_lat     Decimal   @db.Decimal(10, 8)
+  pickup_lng     Decimal   @db.Decimal(11, 8)
+  pickup_status  String    @db.VarChar(50)
+  pickup_time    DateTime?
+  pickup_proof   String?   @db.VarChar(500)
+  created_at     DateTime  @default(now())
+  updated_at     DateTime
+  delivery       delivery  @relation(fields: [delivery_id], references: [delivery_id], onDelete: Cascade)
 
-  @@index([email])
-  @@index([session_token])
-  @@index([expires_at])
-  @@map("otp_sessions")
+  @@index([pickup_status])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model service_categories {
+  category_id      String     @id
+  category_name    String     @db.VarChar(100)
+  description      String?
+  icon_url         String?    @db.VarChar(500)
+  display_order    Int        @default(0)
+  is_active        Boolean    @default(true)
+  created_at       DateTime   @default(now())
+  updated_at       DateTime
+  background_color String?    @db.VarChar(7)
+  foreground_color String?    @db.VarChar(7)
+  services         services[]
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model service_queue {
+  queue_id       String      @id
+  order_id       String
+  service_id     String
+  service_man_id String
+  item_id        String
+  item_name      String      @db.VarChar(255)
+  quantity       Int
+  queue_status   QueueStatus @default(pending)
+  priority       Int         @default(0)
+  assigned_at    DateTime    @default(now())
+  started_at     DateTime?
+  completed_at   DateTime?
+  comments       String?
+  created_at     DateTime    @default(now())
+  updated_at     DateTime
+  orders         orders      @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
+  services       services    @relation(fields: [service_id], references: [service_id])
+  staff          staff       @relation(fields: [service_man_id], references: [staff_id])
+
+  @@index([order_id])
+  @@index([service_id, queue_status, priority])
+  @@index([service_man_id])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model services {
+  service_id         String             @id
+  category_id        String
+  service_name       String             @db.VarChar(255)
+  description        String?
+  base_price         Decimal            @db.Decimal(10, 2)
+  per_kg_price       Decimal?           @db.Decimal(10, 2)
+  estimated_hours    Int
+  icon_url           String?            @db.VarChar(500)
+  is_active          Boolean            @default(true)
+  display_order      Int                @default(0)
+  created_at         DateTime           @default(now())
+  updated_at         DateTime
+  cart_items         cart_items[]
+  clothes_items      clothes_items[]
+  order_items        order_items[]
+  service_queue      service_queue[]
+  service_categories service_categories @relation(fields: [category_id], references: [category_id])
+  staff              staff?
+
+  @@index([category_id])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model staff {
+  staff_id      String          @id
+  role          StaffRole
+  full_name     String          @db.VarChar(255)
+  email         String          @unique @db.VarChar(255)
+  phone         String?         @db.VarChar(20)
+  is_active     Boolean         @default(true)
+  service_id    String?         @unique
+  created_at    DateTime        @default(now())
+  updated_at    DateTime
+  service_queue service_queue[]
+  services      services?       @relation(fields: [service_id], references: [service_id])
+
+  @@index([role])
+  @@index([service_id])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model users {
+  user_id    String   @id
+  full_name  String   @db.VarChar(255)
+  email      String   @unique @db.VarChar(255)
+  phone      String?  @db.VarChar(20)
+  password   String?  @db.VarChar(255)
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime
+  role       UserRole @default(admin)
+
+  @@index([role])
+}
+
+enum BillingStatus {
+  pending
+  generated
+}
+
+enum DeliveryType {
+  pickup
+  drop
+}
+
+enum OrderItemStatus {
+  assigned
+  on_process
+  completed
+}
+
+enum OrderStatus {
+  placed
+  pickup_assigned
+  picked_up
+  received_by_collection
+  submitted_to_services
+  services_in_progress
+  services_completed
+  dispatch_assigned
+  out_for_delivery
+  payment_pending
+  delivered
+  closed
+  cancelled
+  draft
+}
+
+enum OrderType {
+  pickup_only
+  drop_only
+  both
+  express_delivery
+}
+
+enum PaymentStatus {
+  pending
+  completed
+  failed
+  refunded
+}
+
+enum PricingModel {
+  per_unit
+  per_kg
+}
+
+enum QueueStatus {
+  pending
+  in_progress
+  completed
+}
+
+enum StaffRole {
+  collection_manager
+  distribution_manager
+  service_man
+}
+
+enum UserRole {
+  admin
+  owner
+}
+
+enum VerificationStatus {
+  pending
+  verified
+  rejected
 }

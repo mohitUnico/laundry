@@ -99,6 +99,25 @@ exports.deleteAddress = async (req, res, next) => {
     }
 };
 
+exports.updateProfilePicture = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'customer') {
+            throw new AuthorizationError('Only customers can manage profile picture');
+        }
+
+        const customerId = req.user.user_id;
+        const updated = await customerInfoService.updateCustomerProfilePicture(customerId, req.body);
+
+        res.status(200).json({
+            success: true,
+            data: updated,
+            message: 'Profile picture updated successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = exports;
 
 

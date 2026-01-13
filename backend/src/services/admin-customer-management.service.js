@@ -141,20 +141,21 @@ exports.getAdminCustomers = async (query = {}) => {
     const [addresses, ratingAgg] = await Promise.all([
         customerIds.length
             ? prisma.customerAddress.findMany({
-                  where: { customer_id: { in: customerIds } },
-                  orderBy: [{ is_default: 'desc' }, { updated_at: 'desc' }],
-                  select: {
-                      customer_id: true,
-                      address_id: true,
-                      address_label: true,
-                      full_address: true,
-                      latitude: true,
-                      longitude: true,
-                      is_default: true,
-                      updated_at: true,
-                  },
-              })
+                where: { customer_id: { in: customerIds } },
+                orderBy: [{ is_default: 'desc' }, { updated_at: 'desc' }],
+                select: {
+                    customer_id: true,
+                    address_id: true,
+                    address_label: true,
+                    full_address: true,
+                    latitude: true,
+                    longitude: true,
+                    is_default: true,
+                    updated_at: true,
+                },
+            })
             : [],
+<<<<<<< HEAD
         customerIds.length && hasCustomerRating
             ? prisma.order.groupBy({
                   by: ['customer_id'],
@@ -164,6 +165,16 @@ exports.getAdminCustomers = async (query = {}) => {
                   },
                   _avg: { customer_rating: true },
               })
+=======
+        customerIds.length
+            ? prisma.customerReview.groupBy({
+                by: ['customer_id'],
+                where: {
+                    customer_id: { in: customerIds },
+                },
+                _avg: { rating: true },
+            })
+>>>>>>> e3ff97c (Refactor order creation flow and enhance customer profile management)
             : [],
     ]);
 
@@ -176,7 +187,7 @@ exports.getAdminCustomers = async (query = {}) => {
 
     const ratingByCustomerId = new Map();
     for (const row of ratingAgg) {
-        const avg = row?._avg?.customer_rating;
+        const avg = row?._avg?.rating;
         if (avg === null || avg === undefined) continue;
         // Prisma decimals may arrive as string/Decimal depending on runtime; normalize to number.
         const ratingNumber = typeof avg === 'number' ? avg : Number(avg);
@@ -196,13 +207,13 @@ exports.getAdminCustomers = async (query = {}) => {
             },
             primaryAddress: addr
                 ? {
-                      addressId: addr.address_id,
-                      label: addr.address_label,
-                      fullAddress: addr.full_address,
-                      latitude: addr.latitude,
-                      longitude: addr.longitude,
-                      isDefault: addr.is_default,
-                  }
+                    addressId: addr.address_id,
+                    label: addr.address_label,
+                    fullAddress: addr.full_address,
+                    latitude: addr.latitude,
+                    longitude: addr.longitude,
+                    isDefault: addr.is_default,
+                }
                 : null,
             totalOrdersCount: c.total_orders ?? 0,
             rating,

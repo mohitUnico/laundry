@@ -150,6 +150,7 @@ const getAdminOrdersRaw = async ({ statusList, from, to, updatedAtRange, search,
             o.order_status,
             o.total_amount,
             o.created_at,
+<<<<<<< HEAD
             o.updated_at,
             COALESCE(
                 dfd.drop_time,
@@ -186,8 +187,7 @@ const getAdminOrdersRaw = async ({ statusList, from, to, updatedAtRange, search,
         LEFT JOIN pickup p ON p.order_id = o.order_id
         LEFT JOIN delivery_staffs ds ON ds.staff_id = d.staff_id
         LEFT JOIN order_items oi ON oi.order_id = o.order_id
-        LEFT JOIN clothes_items ci ON ci.cloth_id = oi.clothes_id
-        LEFT JOIN services s ON s.service_id = ci.service_id
+        LEFT JOIN services s ON s.service_id = oi.service_id
         ${whereSql}
         GROUP BY
             o.order_id,
@@ -227,12 +227,12 @@ const getAdminOrdersRaw = async ({ statusList, from, to, updatedAtRange, search,
             name: r.customer_name || null,
             address: r.address_id
                 ? {
-                      address_id: r.address_id,
-                      label: r.address_label,
-                      full_address: r.full_address,
-                      latitude: r.latitude,
-                      longitude: r.longitude,
-                  }
+                    address_id: r.address_id,
+                    label: r.address_label,
+                    full_address: r.full_address,
+                    latitude: r.latitude,
+                    longitude: r.longitude,
+                }
                 : null,
         },
         services: Array.isArray(r.services) ? r.services.filter(Boolean) : [],
@@ -240,13 +240,15 @@ const getAdminOrdersRaw = async ({ statusList, from, to, updatedAtRange, search,
         status: r.order_status || null,
         delivery_boy: r.delivery_staff_id
             ? {
-                  staff_id: r.delivery_staff_id,
-                  name: r.delivery_staff_name,
-                  phone: r.delivery_staff_phone || null,
-              }
+                staff_id: r.delivery_staff_id,
+                name: r.delivery_staff_name,
+                phone: r.delivery_staff_phone || null,
+            }
             : null,
         estimated_delivery_time: {
-            delivery_date: r.delivery_date ? new Date(r.delivery_date).toISOString() : null,
+            delivery_date: r.preferred_delivery_slot_from
+                ? new Date(r.preferred_delivery_slot_from).toISOString()
+                : null,
             estimated_duration_minutes: r.estimated_duration ?? null,
         },
         actions: {
@@ -271,6 +273,7 @@ const fetchOrdersWithFallback = async ({ where, skip, take }) => {
                 order_status: true,
                 total_amount: true,
                 created_at: true,
+<<<<<<< HEAD
                 updated_at: true,
                 customer: {
                     select: {
@@ -287,28 +290,14 @@ const fetchOrdersWithFallback = async ({ where, skip, take }) => {
                         longitude: true,
                     },
                 },
-                // For per_unit orders, services can be derived via clothes -> service.
                 order_items: {
-                    // Defensive: some DBs have null clothes_id even though Prisma expects string.
-                    // Using `not: ''` avoids selecting NULL rows without using null literals in filters.
-                    where: { clothes_id: { not: '' } },
                     select: {
-                        clothes: {
+                        service: {
                             select: {
-                                service: {
-                                    select: {
-                                        service_id: true,
-                                        service_name: true,
-                                    },
-                                },
+                                service_id: true,
+                                service_name: true,
                             },
                         },
-                    },
-                },
-                // Optional tables in some deployments; may not exist yet.
-                order_items_kg: {
-                    select: {
-                        item_name: true,
                     },
                 },
                 service_queue_items: {
@@ -391,18 +380,12 @@ const fetchOrdersWithFallback = async ({ where, skip, take }) => {
                                 longitude: true,
                             },
                         },
-                        // Keep per_unit service derivation, but filter out NULL clothes_id rows defensively
                         order_items: {
-                            where: { clothes_id: { not: '' } },
                             select: {
-                                clothes: {
+                                service: {
                                     select: {
-                                        service: {
-                                            select: {
-                                                service_id: true,
-                                                service_name: true,
-                                            },
-                                        },
+                                        service_id: true,
+                                        service_name: true,
                                     },
                                 },
                             },
@@ -652,8 +635,7 @@ exports.getAdminOrders = async (query = {}) => {
 
     const mappedOrders = orders.map((o) => {
         const serviceNames = [
-            ...(o.order_items || []).map((i) => i?.clothes?.service?.service_name).filter(Boolean),
-            ...((o.order_items_kg || []).map((i) => i?.item_name).filter(Boolean) || []),
+            ...(o.order_items || []).map((i) => i?.service?.service_name).filter(Boolean),
             ...((o.service_queue_items || []).map((i) => i?.service?.service_name).filter(Boolean) || []),
         ];
         const services = Array.from(new Set(serviceNames));
@@ -667,12 +649,12 @@ exports.getAdminOrders = async (query = {}) => {
                 name: o.customer?.full_name || null,
                 address: o.delivery_address
                     ? {
-                          address_id: o.delivery_address.address_id,
-                          label: o.delivery_address.address_label,
-                          full_address: o.delivery_address.full_address,
-                          latitude: o.delivery_address.latitude,
-                          longitude: o.delivery_address.longitude,
-                      }
+                        address_id: o.delivery_address.address_id,
+                        label: o.delivery_address.address_label,
+                        full_address: o.delivery_address.full_address,
+                        latitude: o.delivery_address.latitude,
+                        longitude: o.delivery_address.longitude,
+                    }
                     : null,
             },
             services,
@@ -680,10 +662,10 @@ exports.getAdminOrders = async (query = {}) => {
             status: o.order_status,
             delivery_boy: o.delivery?.staff
                 ? {
-                      staff_id: o.delivery.staff.staff_id,
-                      name: o.delivery.staff.full_name,
-                      phone: o.delivery.staff.phone || null,
-                  }
+                    staff_id: o.delivery.staff.staff_id,
+                    name: o.delivery.staff.full_name,
+                    phone: o.delivery.staff.phone || null,
+                }
                 : null,
             estimated_delivery_time: {
                 delivery_date: (() => {

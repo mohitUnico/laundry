@@ -151,7 +151,13 @@ const getAdminOrdersRaw = async ({ statusList, from, to, updatedAtRange, search,
             o.total_amount,
             o.created_at,
             o.updated_at,
-            o.delivery_date,
+            COALESCE(
+                dfd.drop_time,
+                d.completed_at,
+                d.assigned_at,
+                p.completed_at,
+                p.assigned_at
+            ) AS delivery_date,
             c.customer_id,
             c.full_name AS customer_name,
             a.address_id,
@@ -176,6 +182,8 @@ const getAdminOrdersRaw = async ({ statusList, from, to, updatedAtRange, search,
         LEFT JOIN customer_addresses a ON a.address_id = o.delivery_address_id
         LEFT JOIN bills b ON b.order_id = o.order_id
         LEFT JOIN delivery d ON d.order_id = o.order_id
+        LEFT JOIN drop_for_delivery dfd ON dfd.delivery_id = d.delivery_id
+        LEFT JOIN pickup p ON p.order_id = o.order_id
         LEFT JOIN delivery_staffs ds ON ds.staff_id = d.staff_id
         LEFT JOIN order_items oi ON oi.order_id = o.order_id
         LEFT JOIN clothes_items ci ON ci.cloth_id = oi.clothes_id
@@ -186,7 +194,11 @@ const getAdminOrdersRaw = async ({ statusList, from, to, updatedAtRange, search,
             o.order_status,
             o.total_amount,
             o.created_at,
-            o.delivery_date,
+            dfd.drop_time,
+            d.completed_at,
+            d.assigned_at,
+            p.completed_at,
+            p.assigned_at,
             c.customer_id,
             c.full_name,
             a.address_id,
@@ -260,7 +272,6 @@ const fetchOrdersWithFallback = async ({ where, skip, take }) => {
                 total_amount: true,
                 created_at: true,
                 updated_at: true,
-                delivery_date: true,
                 customer: {
                     select: {
                         customer_id: true,
@@ -321,6 +332,13 @@ const fetchOrdersWithFallback = async ({ where, skip, take }) => {
                         delivery_id: true,
                         delivery_status: true,
                         estimated_duration: true,
+                        completed_at: true,
+                        assigned_at: true,
+                        drop: {
+                            select: {
+                                drop_time: true,
+                            },
+                        },
                         staff: {
                             select: {
                                 staff_id: true,
@@ -328,6 +346,14 @@ const fetchOrdersWithFallback = async ({ where, skip, take }) => {
                                 phone: true,
                             },
                         },
+                    },
+                },
+                pickup: {
+                    select: {
+                        pickup_id: true,
+                        pickup_status: true,
+                        completed_at: true,
+                        assigned_at: true,
                     },
                 },
             },
@@ -350,7 +376,6 @@ const fetchOrdersWithFallback = async ({ where, skip, take }) => {
                         order_status: true,
                         total_amount: true,
                         created_at: true,
-                        delivery_date: true,
                         customer: {
                             select: {
                                 customer_id: true,
@@ -393,6 +418,13 @@ const fetchOrdersWithFallback = async ({ where, skip, take }) => {
                                 delivery_id: true,
                                 delivery_status: true,
                                 estimated_duration: true,
+                                completed_at: true,
+                                assigned_at: true,
+                                drop: {
+                                    select: {
+                                        drop_time: true,
+                                    },
+                                },
                                 staff: {
                                     select: {
                                         staff_id: true,
@@ -400,6 +432,14 @@ const fetchOrdersWithFallback = async ({ where, skip, take }) => {
                                         phone: true,
                                     },
                                 },
+                            },
+                        },
+                        pickup: {
+                            select: {
+                                pickup_id: true,
+                                pickup_status: true,
+                                completed_at: true,
+                                assigned_at: true,
                             },
                         },
                     },
@@ -426,7 +466,6 @@ const fetchOrdersWithFallback = async ({ where, skip, take }) => {
                     order_status: true,
                     total_amount: true,
                     created_at: true,
-                    delivery_date: true,
                     customer: {
                         select: {
                             customer_id: true,
@@ -453,6 +492,13 @@ const fetchOrdersWithFallback = async ({ where, skip, take }) => {
                             delivery_id: true,
                             delivery_status: true,
                             estimated_duration: true,
+                            completed_at: true,
+                            assigned_at: true,
+                            drop: {
+                                select: {
+                                    drop_time: true,
+                                },
+                            },
                             staff: {
                                 select: {
                                     staff_id: true,
@@ -460,6 +506,14 @@ const fetchOrdersWithFallback = async ({ where, skip, take }) => {
                                     phone: true,
                                 },
                             },
+                        },
+                    },
+                    pickup: {
+                        select: {
+                            pickup_id: true,
+                            pickup_status: true,
+                            completed_at: true,
+                            assigned_at: true,
                         },
                     },
                 },
@@ -632,7 +686,26 @@ exports.getAdminOrders = async (query = {}) => {
                   }
                 : null,
             estimated_delivery_time: {
-                delivery_date: o.delivery_date ? o.delivery_date.toISOString() : null,
+                delivery_date: (() => {
+                    // Extract delivery date from delivery/pickup tables
+                    // Priority: drop.drop_time > delivery.completed_at > delivery.assigned_at > pickup.completed_at > pickup.assigned_at
+                    if (o.delivery?.drop?.drop_time) {
+                        return o.delivery.drop.drop_time.toISOString();
+                    }
+                    if (o.delivery?.completed_at) {
+                        return o.delivery.completed_at.toISOString();
+                    }
+                    if (o.delivery?.assigned_at) {
+                        return o.delivery.assigned_at.toISOString();
+                    }
+                    if (o.pickup?.completed_at) {
+                        return o.pickup.completed_at.toISOString();
+                    }
+                    if (o.pickup?.assigned_at) {
+                        return o.pickup.assigned_at.toISOString();
+                    }
+                    return null;
+                })(),
                 estimated_duration_minutes: o.delivery?.estimated_duration ?? null,
             },
             actions: {

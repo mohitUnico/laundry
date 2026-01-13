@@ -12,7 +12,7 @@ const { ValidationError } = require('../utils/errors');
  * - preferred_pickup_slot_to: Preferred pickup slot end date and time (ISO 8601 format)
  * - preferred_delivery_slot_from: Preferred delivery slot start date and time (ISO 8601 format)
  * - preferred_delivery_slot_to: Preferred delivery slot end date and time (ISO 8601 format)
- * - Optional: pickup_date, delivery_date, special_instructions
+ * - Optional: special_instructions
  */
 const createOrderSchema = Joi.object({
     cart_id: Joi.string().uuid().required().messages({
@@ -90,12 +90,6 @@ const createOrderSchema = Joi.object({
             'date.greater': 'preferred_delivery_slot_to must be after preferred_delivery_slot_from',
             'any.required': 'preferred_delivery_slot_to is required when order_type includes delivery',
         }),
-    pickup_date: Joi.date().iso().optional().messages({
-        'date.format': 'pickup_date must be a valid ISO date string',
-    }),
-    delivery_date: Joi.date().iso().optional().messages({
-        'date.format': 'delivery_date must be a valid ISO date string',
-    }),
     special_instructions: Joi.string().allow('', null).optional().messages({
         'string.base': 'special_instructions must be a string',
     }),

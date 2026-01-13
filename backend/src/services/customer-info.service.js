@@ -159,6 +159,41 @@ exports.deleteCustomerAddress = async (customerId, addressId) => {
     });
 };
 
+exports.updateCustomerProfilePicture = async (customerId, payload) => {
+    assertUuid(customerId, 'customerId');
+
+    const { profileImageUrl } = payload;
+
+    if (!(typeof profileImageUrl === 'string' || profileImageUrl === null)) {
+        throw new ValidationError('profileImageUrl must be a valid URL or null');
+    }
+
+    return prisma.$transaction(async (tx) => {
+        await ensureCustomerExists(tx, customerId);
+
+        const updated = await tx.customer.update({
+            where: { customer_id: customerId },
+            data: {
+                profile_image_url: profileImageUrl,
+            },
+            select: {
+                customer_id: true,
+                full_name: true,
+                email: true,
+                phone: true,
+                profile_image_url: true,
+            },
+        });
+
+        logger.info('Customer profile picture updated', {
+            customerId,
+            hasProfileImage: Boolean(updated.profile_image_url),
+        });
+
+        return updated;
+    });
+};
+
 module.exports = exports;
 
 

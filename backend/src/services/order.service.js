@@ -21,8 +21,6 @@ const { NotFoundError, ValidationError } = require('../utils/errors');
  * @param {string} payload.preferred_pickup_slot_to - Preferred pickup slot end date and time (ISO 8601 format)
  * @param {string} payload.preferred_delivery_slot_from - Preferred delivery slot start date and time (ISO 8601 format)
  * @param {string} payload.preferred_delivery_slot_to - Preferred delivery slot end date and time (ISO 8601 format)
- * @param {string} [payload.pickup_date] - Optional pickup date (ISO string)
- * @param {string} [payload.delivery_date] - Optional delivery date (ISO string)
  * @param {string} [payload.special_instructions] - Optional special instructions
  * @returns {Promise<object>} Created order details
  */
@@ -36,8 +34,6 @@ exports.createOrder = async (customerId, payload) => {
         preferred_pickup_slot_to,
         preferred_delivery_slot_from,
         preferred_delivery_slot_to,
-        pickup_date,
-        delivery_date,
         special_instructions,
     } = payload;
 
@@ -124,11 +120,9 @@ exports.createOrder = async (customerId, payload) => {
         const pricingModel = hasPerKgCartItem ? 'per_kg' : 'per_unit';
 
         const Decimal = Prisma.Decimal;
-        // Only calculate totals up-front when ALL items are per_unit.
-        // If the order contains any per_kg item, amounts are unknown at this stage.
-        let totalAmount = hasPerKgCartItem ? null : new Decimal(0);
+        let totalAmount = new Decimal(0);
         const orderItemsToCreate = [];
-        const orderItemSelectionsToCreate = [];
+        const orderItemSelectionsByCartItemId = new Map();
 
         // Process each cart item and convert to order item
         for (const cartItem of cart.cart_items) {
@@ -150,49 +144,41 @@ exports.createOrder = async (customerId, payload) => {
                     throw new ValidationError('One or more cloth items in cart are inactive');
                 }
 
-                // Calculate total quantity (and subtotal only when all items are per_unit)
+                // Calculate total quantity and subtotal from selections
                 let cartItemQuantity = 0;
-                let cartItemSubtotal = hasPerKgCartItem ? null : new Decimal(0);
+                let cartItemSubtotal = new Decimal(0);
+                const selectionRows = [];
 
                 for (const selection of item_selections) {
                     const quantity = selection.quantity;
-                    const unitPrice = hasPerKgCartItem
-                        ? null
-                        : new Decimal(selection.cloth_item.per_unit_price);
-                    const selectionSubtotal = unitPrice ? unitPrice.mul(quantity) : null;
+                    const unitPrice = new Decimal(selection.cloth_item.per_unit_price);
+                    const selectionSubtotal = unitPrice.mul(quantity);
 
                     cartItemQuantity += quantity;
-                    if (cartItemSubtotal && selectionSubtotal) {
-                        cartItemSubtotal = cartItemSubtotal.plus(selectionSubtotal);
-                    }
+                    cartItemSubtotal = cartItemSubtotal.plus(selectionSubtotal);
 
-                    // Store selection for later creation
-                    orderItemSelectionsToCreate.push({
+                    selectionRows.push({
                         cloth_id: selection.cloth_id,
-                        quantity: quantity,
+                        quantity,
+                        unit_price: unitPrice,
+                        subtotal: selectionSubtotal,
                     });
+
                 }
 
-                // Use the first cloth item's price as unit_price (or calculate average)
-                // For per_unit, we'll use the weighted average or first item's price
-                const firstClothPrice = hasPerKgCartItem
-                    ? null
-                    : new Decimal(item_selections[0].cloth_item.per_unit_price);
+                orderItemSelectionsByCartItemId.set(cartItem.cart_item_id, selectionRows);
 
                 // Create order item for this cart item
                 orderItemsToCreate.push({
                     service_id: service.service_id,
                     pricing_type: 'per_unit',
-                    clothes_id: item_selections[0].cloth_id, // Reference to first cloth item
                     quantity: cartItemQuantity,
                     weight_kg: null,
-                    unit_price: firstClothPrice, // Nullable when order contains any per_kg item
-                    subtotal: cartItemSubtotal, // Nullable when order contains any per_kg item
+                    subtotal: cartItemSubtotal,
+                    order_item_status: 'assigned',
                 });
 
-                if (totalAmount && cartItemSubtotal) {
-                    totalAmount = totalAmount.plus(cartItemSubtotal);
-                }
+                totalAmount = totalAmount.plus(cartItemSubtotal);
             } else if (pricing_type === 'per_kg') {
                 // Validate service has per_kg_price
                 if (!service.per_kg_price) {
@@ -201,32 +187,24 @@ exports.createOrder = async (customerId, payload) => {
                     );
                 }
 
-                // For per_kg items at order creation time:
-                // - Weight is not known yet (confirmed at pickup)
-                // - Do NOT store any monetary amounts
-                // - Keep weight_kg as null (even if cart provided a tentative value)
-                const weightDecimal = null;
-                const pricePerKg = null;
+                // For per_kg at creation time: customer doesn't know weight.
+                // We'll keep weight_kg null; subtotal will be computed later once weight is updated.
+                // (If you later add a weighing endpoint, that endpoint should set weight_kg and subtotal.)
                 const cartItemSubtotal = null;
 
                 // Create order item for this cart item
                 orderItemsToCreate.push({
                     service_id: service.service_id,
                     pricing_type: 'per_kg',
-                    clothes_id: null, // No specific cloth item for per_kg
                     quantity: null, // No quantity count for per_kg
-                    weight_kg: weightDecimal,
-                    unit_price: pricePerKg,
+                    weight_kg: null,
                     subtotal: cartItemSubtotal,
+                    order_item_status: 'assigned',
                 });
             } else {
                 throw new ValidationError(`Invalid pricing_type: ${pricing_type}`);
             }
         }
-
-        // Set dates
-        const pickupDate = pickup_date ? new Date(pickup_date) : new Date();
-        const deliveryDateValue = delivery_date ? new Date(delivery_date) : pickupDate;
 
         // Parse preferred slot ranges as DateTime
         const preferredPickupSlotFrom = preferred_pickup_slot_from
@@ -281,14 +259,12 @@ exports.createOrder = async (customerId, payload) => {
                 order_type: order_type,
                 pickup_address_id,
                 delivery_address_id,
-                pickup_date: pickupDate,
-                delivery_date: deliveryDateValue,
                 preferred_pickup_slot_from: preferredPickupSlotFrom,
                 preferred_pickup_slot_to: preferredPickupSlotTo,
                 preferred_delivery_slot_from: preferredDeliverySlotFrom,
                 preferred_delivery_slot_to: preferredDeliverySlotTo,
                 special_instructions: special_instructions || null,
-                total_amount: totalAmount,
+                total_amount: hasPerKgItems ? null : totalAmount,
                 billing_status: billingStatus,
             },
             select: {
@@ -333,12 +309,15 @@ exports.createOrder = async (customerId, payload) => {
             if (orderItem.pricing_type === 'per_unit') {
                 // Find the corresponding selections for this cart item
                 const cartItem = cart.cart_items[i];
-                if (cartItem.item_selections && cartItem.item_selections.length > 0) {
+                const selectionRows = orderItemSelectionsByCartItemId.get(cartItem.cart_item_id) || [];
+                if (selectionRows.length > 0) {
                     await tx.orderItemSelection.createMany({
-                        data: cartItem.item_selections.map((selection) => ({
+                        data: selectionRows.map((selection) => ({
                             order_item_id: orderItem.item_id,
                             cloth_id: selection.cloth_id,
                             quantity: selection.quantity,
+                            unit_price: selection.unit_price,
+                            subtotal: selection.subtotal,
                         })),
                     });
                 }
@@ -518,13 +497,6 @@ exports.getOrderById = async (customerId, orderId) => {
                             base_price: true,
                         },
                     },
-                    clothes: {
-                        select: {
-                            cloth_id: true,
-                            item_name: true,
-                            per_unit_price: true,
-                        },
-                    },
                     item_selections: {
                         include: {
                             cloth_item: {
@@ -538,6 +510,7 @@ exports.getOrderById = async (customerId, orderId) => {
                     },
                 },
             },
+            customer_review_entry: true,
         },
     });
 
@@ -550,9 +523,13 @@ exports.getOrderById = async (customerId, orderId) => {
         total_amount: order.total_amount ? order.total_amount.toString() : null,
         order_items: order.order_items.map((item) => ({
             ...item,
-            unit_price: item.unit_price ? item.unit_price.toString() : null,
             subtotal: item.subtotal ? item.subtotal.toString() : null,
             weight_kg: item.weight_kg ? item.weight_kg.toString() : null,
+            item_selections: item.item_selections.map((s) => ({
+                ...s,
+                unit_price: s.unit_price.toString(),
+                subtotal: s.subtotal.toString(),
+            })),
         })),
         bill: order.bill
             ? {

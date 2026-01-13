@@ -4,6 +4,7 @@ const addressLabel = Joi.string().trim().max(50);
 const fullAddress = Joi.string().trim().min(3);
 const latitude = Joi.number().min(-90).max(90);
 const longitude = Joi.number().min(-180).max(180);
+const profileImageUrl = Joi.string().trim().uri().max(500);
 
 exports.createCustomerAddressSchema = Joi.object({
     address_label: addressLabel.required(),
@@ -25,6 +26,13 @@ exports.updateCustomerAddressSchema = Joi.object({
         .try(Joi.string().trim().allow('').max(500), Joi.valid(null))
         .optional(),
 }).min(1);
+
+// PATCH /api/v1/customer-info/profile-picture
+// Update (or clear) profile picture for authenticated customer.
+exports.updateCustomerProfilePictureSchema = Joi.object({
+    // allow null to explicitly clear the profile picture
+    profileImageUrl: Joi.alternatives().try(profileImageUrl, Joi.valid(null)).required(),
+});
 
 module.exports = exports;
 

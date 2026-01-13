@@ -316,10 +316,7 @@ const completeCustomerRegistrationSchema = Joi.object({
           'number.max': 'Longitude must be between -180 and 180',
           'any.required': 'Longitude is required'
         })
-    }).required().messages({
-      'object.base': 'Address is required',
-      'any.required': 'Address is required'
-    })
+    }).optional()
   }).required()
 });
 

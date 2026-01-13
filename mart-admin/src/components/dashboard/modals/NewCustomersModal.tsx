@@ -41,7 +41,9 @@ export const NewCustomersModal: React.FC<NewCustomersModalProps> = ({ isOpen, on
               <TrendingUp size={20} className="text-purple-600" />
               <p className="text-2xl font-bold text-purple-600">+8.3%</p>
             </div>
+
           </div>
+
         </div>
 
         {/* Search and Export */}
@@ -131,4 +133,6 @@ export const NewCustomersModal: React.FC<NewCustomersModalProps> = ({ isOpen, on
     </Modal>
   );
 };
+
+
 

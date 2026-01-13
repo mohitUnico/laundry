@@ -1,10 +1,11 @@
 const express = require('express');
 const adminCustomerManagementController = require('../controllers/admin-customer-management.controller');
 const { authenticateJWT, authorize } = require('../middleware/auth.middleware');
-const { validateQuery } = require('../middleware/validation.middleware');
+const { validateQuery, validate } = require('../middleware/validation.middleware');
 const {
     adminCustomersSummaryQuerySchema,
     adminCustomersListQuerySchema,
+    adminCreateCustomerBodySchema,
 } = require('../validators/admin-customer-management.validator');
 
 const router = express.Router();
@@ -15,6 +16,7 @@ const router = express.Router();
  * Endpoints:
  * - GET /api/v1/admin/customers/summary
  * - GET /api/v1/admin/customers
+ * - POST /api/v1/admin/customers
  */
 
 router.get(
@@ -31,6 +33,14 @@ router.get(
     authorize('super_admin', 'owner', 'admin', 'manager'),
     validateQuery(adminCustomersListQuerySchema),
     adminCustomerManagementController.listCustomers
+);
+
+router.post(
+    '/',
+    authenticateJWT,
+    authorize('super_admin', 'owner', 'admin', 'manager'),
+    validate(adminCreateCustomerBodySchema),
+    adminCustomerManagementController.createCustomer
 );
 
 module.exports = router;

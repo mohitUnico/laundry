@@ -22,6 +22,14 @@ exports.adminDashboardTopPerformersQuerySchema = Joi.object({
     limit: Joi.number().integer().min(1).max(50).default(5),
 });
 
+exports.adminDashboardDeliveryAnalyticsQuerySchema = Joi.object({
+    limit: Joi.number().integer().min(1).max(50).default(10),
+});
+
+exports.adminDashboardLateDeliveriesQuerySchema = Joi.object({
+    limit: Joi.number().integer().min(1).max(50).default(1),
+});
+
 module.exports = exports;
 
 

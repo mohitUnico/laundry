@@ -77,6 +77,28 @@ exports.getCustomerSatisfaction = async (req, res, next) => {
     }
 };
 
+exports.getDeliveryAnalytics = async (req, res, next) => {
+    try {
+        const userId = req.user?.user_id;
+        logger.info('Admin dashboard delivery analytics request', { userId, query: req.query });
+        const data = await adminDashboardService.getDeliveryAnalytics(req.query);
+        res.status(200).json({ success: true, data, message: 'Delivery analytics fetched successfully' });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.getLateDeliveries = async (req, res, next) => {
+    try {
+        const userId = req.user?.user_id;
+        logger.info('Admin dashboard late deliveries request', { userId, query: req.query });
+        const data = await adminDashboardService.getLateDeliveries(req.query);
+        res.status(200).json({ success: true, data, message: 'Late deliveries fetched successfully' });
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = exports;
 
 

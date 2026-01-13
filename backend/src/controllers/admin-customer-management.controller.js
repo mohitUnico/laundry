@@ -5,6 +5,7 @@ const logger = require('../utils/logger');
  * Admin Customer Management Controller
  * - GET /api/v1/admin/customers/summary
  * - GET /api/v1/admin/customers
+ * - POST /api/v1/admin/customers
  */
 
 exports.getCustomerSummary = async (req, res, next) => {
@@ -35,6 +36,23 @@ exports.listCustomers = async (req, res, next) => {
             success: true,
             data,
             message: 'Customers fetched successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.createCustomer = async (req, res, next) => {
+    try {
+        const userId = req.user?.user_id;
+        logger.info('Admin creating customer', { userId, body: req.body });
+
+        const data = await adminCustomerManagementService.createAdminCustomer(req.body);
+
+        res.status(201).json({
+            success: true,
+            data,
+            message: 'Customer created successfully',
         });
     } catch (error) {
         next(error);

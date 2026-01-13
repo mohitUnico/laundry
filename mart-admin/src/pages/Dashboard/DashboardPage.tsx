@@ -26,6 +26,8 @@ import {
 import { Toast, Modal } from '@/components/common';
 import { useToast } from '@/hooks/common';
 import { Download } from 'lucide-react';
+import { useDashboard } from '@/hooks/api';
+import { formatCompactCurrency } from '@/utils/formatters';
 
 export const DashboardPage: React.FC = () => {
   const { toast, showToast, hideToast } = useToast();
@@ -42,6 +44,8 @@ export const DashboardPage: React.FC = () => {
   const [showFilteredOrdersModal, setShowFilteredOrdersModal] = useState(false);
   const [showAllRecentOrdersModal, setShowAllRecentOrdersModal] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<string>('');
+
+  const { data, loading, error, range, setRange, refresh } = useDashboard();
 
   const handleExportReport = () => {
     showToast('Report exported successfully!', 'success');
@@ -72,8 +76,96 @@ export const DashboardPage: React.FC = () => {
     setShowFilteredOrdersModal(true);
   };
 
+  const summary = data.summary;
+  const orderStatus = data.orderStatus;
+  const trend = data.revenueTrend || [];
+  const satisfaction = data.customerSatisfaction;
+
+  const summaryTotalRevenue = summary ? formatCompactCurrency(summary.totalRevenue || 0) : '—';
+  const summaryActiveOrders = orderStatus
+    ? orderStatus.pending + orderStatus.inProgress + orderStatus.outForDelivery
+    : null;
+  const summaryNewCustomers = summary ? summary.newCustomers : null;
+  const summaryAvgDelivery = summary ? `${summary.averageDeliveryTime} min` : '—';
+
+  // Admin dashboard doesn't provide growth deltas; keep UI consistent with "—"
+  const summaryRevenueGrowth = '—';
+  const summaryOrdersGrowth = '—';
+  const summaryCustomersGrowth = '—';
+  const summaryDeliveryGrowth = '—';
+
+  const statusItems = orderStatus
+    ? [
+        { label: 'Pending', count: orderStatus.pending, color: '#facc15' },
+        { label: 'In progress', count: orderStatus.inProgress, color: '#60a5fa' },
+        { label: 'Out for delivery', count: orderStatus.outForDelivery, color: '#22d3ee' },
+        { label: 'Completed today', count: orderStatus.completedToday, color: '#34d399' },
+      ]
+    : undefined;
+
+  const recentOrdersItems =
+    (data.recentOrders || []).map((o) => ({
+      id: o.orderNumber,
+      customer: o.customerName || 'Unknown Customer',
+      amount: Number.parseFloat(o.amount) || 0,
+      status: o.status || 'unknown',
+      timeIso: o.createdAt || new Date().toISOString(),
+    })) || [];
+
+  const topPerformersItems =
+    (data.topPerformers || []).map((p) => ({
+      name: p.deliveryStaffName,
+      deliveries: p.totalDeliveries,
+      rating: p.rating,
+      avatarUrl: null,
+    })) || [];
+
+  const chartPoints = trend
+    .filter((p) => p.date)
+    .map((p) => ({
+      label: p.date as string,
+      totalRevenue: p.totalRevenue,
+      totalOrders: p.totalOrders,
+    }));
+
+  const trendTotals = trend.reduce(
+    (acc, p) => {
+      acc.totalRevenue += p.totalRevenue || 0;
+      acc.totalOrders += p.totalOrders || 0;
+      return acc;
+    },
+    { totalRevenue: 0, totalOrders: 0 }
+  );
+
+  const handleRangeChange = (nextRange: '7d' | '30d') => {
+    setRange(nextRange);
+  };
+
+  const handleRefresh = async () => {
+    await refresh();
+    showToast('Dashboard refreshed', 'success');
+  };
+
+  const handleRetry = async () => {
+    await refresh();
+  };
+
   return (
     <div className="space-y-3 sm:space-y-4 md:space-y-5 lg:space-y-6">
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-3 sm:p-4 flex items-center justify-between gap-3">
+          <div className="text-sm">
+            <span className="font-semibold">Dashboard error:</span> {error}
+          </div>
+          <button
+            onClick={handleRetry}
+            className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
         <div
@@ -82,8 +174,8 @@ export const DashboardPage: React.FC = () => {
         >
           <SummaryCard
             title="Total Revenue"
-            value="$12,845"
-            growth="+18.2%"
+            value={summaryTotalRevenue}
+            growth={summaryRevenueGrowth}
             isPrimary
           />
         </div>
@@ -91,26 +183,26 @@ export const DashboardPage: React.FC = () => {
           onClick={() => setShowActiveOrdersModal(true)}
           className="cursor-pointer transform transition-all hover:scale-[1.02] active:scale-[0.98] hover:shadow-lg"
         >
-          <SummaryCard title="Active Orders" value={47} growth="+12.5%" />
+          <SummaryCard title="Active Orders" value={summaryActiveOrders ?? '—'} growth={summaryOrdersGrowth} />
         </div>
         <div
           onClick={() => setShowNewCustomersModal(true)}
           className="cursor-pointer transform transition-all hover:scale-[1.02] active:scale-[0.98] hover:shadow-lg"
         >
-          <SummaryCard title="New Customers" value={58} growth="+8.3%" />
+          <SummaryCard title="New Customers" value={summaryNewCustomers ?? '—'} growth={summaryCustomersGrowth} />
         </div>
         <div
           onClick={() => setShowDeliveryAnalyticsModal(true)}
           className="cursor-pointer transform transition-all hover:scale-[1.02] active:scale-[0.98] hover:shadow-lg"
         >
-          <SummaryCard title="Avg. Delivery Time" value="28 min" growth="+12.5%" />
+          <SummaryCard title="Avg. Delivery Time" value={summaryAvgDelivery} growth={summaryDeliveryGrowth} />
         </div>
       </div>
 
       {/* Order Status + Alert */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
         <div className="lg:col-span-2 order-1 lg:order-1">
-          <OrderStatusWidget onStatusClick={handleStatusClick} />
+          <OrderStatusWidget items={statusItems} onStatusClick={handleStatusClick} />
         </div>
         <div className="order-2 lg:order-2">
           <AlertCard onCta={() => setShowLateDeliveryModal(true)} />
@@ -120,21 +212,32 @@ export const DashboardPage: React.FC = () => {
       {/* Revenue Chart + Top Performers */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
         <div className="xl:col-span-2 order-1">
-          <RevenueChart />
+          <RevenueChart
+            range={range}
+            onRangeChange={handleRangeChange}
+            points={chartPoints}
+            totalRevenue={trendTotals.totalRevenue}
+            totalOrders={trendTotals.totalOrders}
+          />
         </div>
         <div className="order-2">
-          <TopPerformers />
+          <TopPerformers items={topPerformersItems} />
         </div>
       </div>
 
       {/* Recent Orders + Customer Satisfaction + Quick Actions */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
         <div className="xl:col-span-2 order-1">
-          <RecentOrders onViewAll={() => setShowAllRecentOrdersModal(true)} />
+          <RecentOrders items={recentOrdersItems} onViewAll={() => setShowAllRecentOrdersModal(true)} />
         </div>
         <div className="xl:col-span-1 order-2">
           <div className="space-y-3 sm:space-y-4 md:space-y-5 lg:space-y-6">
-            <CustomerSatisfaction />
+            <CustomerSatisfaction
+              value={satisfaction?.overallPercentage ?? 0}
+              fiveStars={satisfaction?.distribution?.fiveStar ?? 0}
+              fourStars={satisfaction?.distribution?.fourStar ?? 0}
+              lessThanThree={satisfaction?.distribution?.lessThanThree ?? 0}
+            />
             <QuickActions
               onCreateOrder={() => setShowCreateOrderModal(true)}
               onAddCustomer={() => setShowAddCustomerModal(true)}

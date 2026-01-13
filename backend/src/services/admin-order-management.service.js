@@ -41,6 +41,19 @@ const normalizeStatusFilter = (status) => {
     return parts;
 };
 
+const normalizeSearch = (search) => {
+    if (!search) return null;
+    if (typeof search !== 'string') {
+        throw new ValidationError('search must be a string');
+    }
+    const trimmed = search.trim();
+    if (!trimmed) return null;
+    if (trimmed.length > 200) {
+        throw new ValidationError('search is too long');
+    }
+    return trimmed;
+};
+
 const getUtcDayRange = (dateInput) => {
     const date = dateInput ? new Date(dateInput) : new Date();
     if (Number.isNaN(date.getTime())) {
@@ -71,12 +84,18 @@ const buildCreatedAtWhere = (from, to) => {
     return created_at;
 };
 
+const buildUpdatedAtWhereForDay = (completedDate) => {
+    if (!completedDate) return null;
+    const { start, end } = getUtcDayRange(completedDate);
+    return { gte: start, lt: end };
+};
+
 const isOrderStatusEnumMismatchError = (error) => {
     const msg = String(error?.message || '');
     return msg.includes("not found in enum 'OrderStatus'") || msg.includes('not found in enum "OrderStatus"');
 };
 
-const buildRawWhereClause = ({ statusList, from, to }) => {
+const buildRawWhereClause = ({ statusList, from, to, updatedAtRange, search }) => {
     const clauses = [];
 
     if (Array.isArray(statusList) && statusList.length > 0) {
@@ -91,6 +110,21 @@ const buildRawWhereClause = ({ statusList, from, to }) => {
         clauses.push(Prisma.sql`o.created_at <= ${new Date(to)}`);
     }
 
+    if (updatedAtRange?.gte) {
+        clauses.push(Prisma.sql`o.updated_at >= ${updatedAtRange.gte}`);
+    }
+
+    if (updatedAtRange?.lt) {
+        clauses.push(Prisma.sql`o.updated_at < ${updatedAtRange.lt}`);
+    }
+
+    if (search) {
+        const like = `%${search}%`;
+        clauses.push(
+            Prisma.sql`(o.order_id ILIKE ${like} OR c.full_name ILIKE ${like})`
+        );
+    }
+
     if (clauses.length === 0) {
         return Prisma.sql``;
     }
@@ -98,12 +132,13 @@ const buildRawWhereClause = ({ statusList, from, to }) => {
     return Prisma.sql`WHERE ${Prisma.join(clauses, Prisma.sql` AND `)}`;
 };
 
-const getAdminOrdersRaw = async ({ statusList, from, to, skip, take }) => {
-    const whereSql = buildRawWhereClause({ statusList, from, to });
+const getAdminOrdersRaw = async ({ statusList, from, to, updatedAtRange, search, skip, take }) => {
+    const whereSql = buildRawWhereClause({ statusList, from, to, updatedAtRange, search });
 
     const countRows = await prisma.$queryRaw`
         SELECT COUNT(*)::int AS total
         FROM orders o
+        JOIN customers c ON c.customer_id = o.customer_id
         ${whereSql}
     `;
 
@@ -115,6 +150,7 @@ const getAdminOrdersRaw = async ({ statusList, from, to, skip, take }) => {
             o.order_status,
             o.total_amount,
             o.created_at,
+            o.updated_at,
             o.delivery_date,
             c.customer_id,
             c.full_name AS customer_name,
@@ -172,6 +208,8 @@ const getAdminOrdersRaw = async ({ statusList, from, to, skip, take }) => {
 
     const orders = (rows || []).map((r) => ({
         order_number: r.order_id,
+        created_at: r.created_at ? new Date(r.created_at).toISOString() : null,
+        updated_at: r.updated_at ? new Date(r.updated_at).toISOString() : null,
         customer: {
             customer_id: r.customer_id || null,
             name: r.customer_name || null,
@@ -221,6 +259,7 @@ const fetchOrdersWithFallback = async ({ where, skip, take }) => {
                 order_status: true,
                 total_amount: true,
                 created_at: true,
+                updated_at: true,
                 delivery_date: true,
                 customer: {
                     select: {
@@ -466,13 +505,19 @@ exports.getAdminOrderSummary = async ({ from, to, completedDate } = {}) => {
 exports.getAdminOrders = async (query = {}) => {
     const {
         status,
+        search,
         from,
         to,
+        completedDate,
         page = 1,
         limit = 20,
     } = query;
 
-    const statusList = normalizeStatusFilter(status);
+    const normalizedSearch = normalizeSearch(search);
+
+    // completedDate lists delivered/closed orders updated on that UTC day
+    const updatedAtRange = buildUpdatedAtWhereForDay(completedDate);
+    const effectiveStatusList = completedDate ? ['delivered', 'closed'] : normalizeStatusFilter(status);
     const createdAtWhere = buildCreatedAtWhere(from, to);
 
     const safePage = Number.isInteger(page) ? page : parseInt(page);
@@ -486,14 +531,25 @@ exports.getAdminOrders = async (query = {}) => {
     const skip = (safePage - 1) * safeLimit;
 
     const where = {
-        ...(statusList ? { order_status: { in: statusList } } : {}),
+        ...(effectiveStatusList ? { order_status: { in: effectiveStatusList } } : {}),
         ...(createdAtWhere ? { created_at: createdAtWhere } : {}),
+        ...(updatedAtRange ? { updated_at: updatedAtRange } : {}),
+        ...(normalizedSearch
+            ? {
+                  OR: [
+                      { order_id: { contains: normalizedSearch, mode: 'insensitive' } },
+                      { customer: { full_name: { contains: normalizedSearch, mode: 'insensitive' } } },
+                  ],
+              }
+            : {}),
     };
 
     logger.info('Admin orders list query', {
-        status: statusList ? statusList.join(',') : null,
+        status: effectiveStatusList ? effectiveStatusList.join(',') : null,
         from: from || null,
         to: to || null,
+        completedDate: completedDate || null,
+        search: normalizedSearch || null,
         page: safePage,
         limit: safeLimit,
     });
@@ -512,9 +568,11 @@ exports.getAdminOrders = async (query = {}) => {
         if (isOrderStatusEnumMismatchError(error)) {
             logger.warn('Admin orders raw fallback due to enum mismatch', { message: error.message });
             const rawResult = await getAdminOrdersRaw({
-                statusList,
+                statusList: effectiveStatusList,
                 from,
                 to,
+                updatedAtRange,
+                search: normalizedSearch,
                 skip,
                 take: safeLimit,
             });
@@ -548,6 +606,8 @@ exports.getAdminOrders = async (query = {}) => {
 
         return {
             order_number: o.order_id,
+            created_at: o.created_at ? o.created_at.toISOString() : null,
+            updated_at: o.updated_at ? o.updated_at.toISOString() : null,
             customer: {
                 customer_id: o.customer?.customer_id || null,
                 name: o.customer?.full_name || null,

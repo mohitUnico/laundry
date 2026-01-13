@@ -26,7 +26,28 @@ export const API_ENDPOINTS = {
     GET: (id: string) => `/services/${id}`,
   },
   DASHBOARD: {
-    METRICS: '/dashboard/metrics',
+    // Mart dashboard (mart scoped)
+    MONTHLY_OVERVIEW: '/dashboard/monthly-overview',
+    DAY_OVERVIEW: '/dashboard/day-overview',
+    REVENUE_TREND: '/dashboard/revenue-trend',
+    RECENT_ORDERS: '/dashboard/recent-orders',
+    CUSTOMER_SATISFACTION: '/dashboard/customer-satisfaction',
+    TOP_PERFORMERS: '/dashboard/top-performers',
+
+    // Admin dashboard (global)
+    ADMIN: {
+      SUMMARY: '/admin/dashboard/summary',
+      ORDER_STATUS: '/admin/dashboard/order-status',
+      REVENUE_TREND: '/admin/dashboard/revenue-trend',
+      RECENT_ORDERS: '/admin/dashboard/recent-orders',
+      TOP_PERFORMERS: '/admin/dashboard/top-performers',
+      CUSTOMER_SATISFACTION: '/admin/dashboard/customer-satisfaction',
+    },
+  },
+  ADMIN_CUSTOMERS: {
+    LIST: '/admin/customers',
+    SUMMARY: '/admin/customers/summary',
+    CREATE: '/admin/customers',
   },
   NOTIFICATIONS: {
     SEND: '/notifications/send',

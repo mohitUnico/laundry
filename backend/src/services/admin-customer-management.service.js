@@ -74,20 +74,32 @@ exports.getAdminCustomerSummary = async ({ from, to, isActive } = {}) => {
 };
 
 exports.getAdminCustomers = async (query = {}) => {
-    const { from, to, isActive } = query;
+    const { from, to, isActive, search } = query;
     const { safePage, safeLimit, skip } = normalizePagination(query);
 
     const createdAtWhere = buildCreatedAtWhere(from, to);
 
+    const normalizedSearch = typeof search === 'string' ? search.trim() : null;
+
     const where = {
         ...(createdAtWhere ? { created_at: createdAtWhere } : {}),
         ...(typeof isActive === 'boolean' ? { is_active: isActive } : {}),
+        ...(normalizedSearch
+            ? {
+                  OR: [
+                      { full_name: { contains: normalizedSearch, mode: 'insensitive' } },
+                      { email: { contains: normalizedSearch, mode: 'insensitive' } },
+                      { phone: { contains: normalizedSearch, mode: 'insensitive' } },
+                  ],
+              }
+            : {}),
     };
 
     logger.info('Admin customers list query', {
         from: from || null,
         to: to || null,
         isActive: typeof isActive === 'boolean' ? isActive : null,
+        search: normalizedSearch || null,
         page: safePage,
         limit: safeLimit,
     });
@@ -113,6 +125,18 @@ exports.getAdminCustomers = async (query = {}) => {
 
     const customerIds = customers.map((c) => c.customer_id);
 
+    // Check if customer_rating column exists (some environments may have schema drift)
+    const colCheck = await prisma.$queryRaw`
+        SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'orders'
+              AND column_name = 'customer_rating'
+        ) AS exists
+    `;
+    const hasCustomerRating = Boolean(colCheck?.[0]?.exists);
+
     // Avoid N+1: fetch addresses + ratings for this page in bulk
     const [addresses, ratingAgg] = await Promise.all([
         customerIds.length
@@ -131,7 +155,7 @@ exports.getAdminCustomers = async (query = {}) => {
                   },
               })
             : [],
-        customerIds.length
+        customerIds.length && hasCustomerRating
             ? prisma.order.groupBy({
                   by: ['customer_id'],
                   where: {
@@ -201,6 +225,77 @@ exports.getAdminCustomers = async (query = {}) => {
             has_next: safePage < totalPages,
             has_prev: safePage > 1,
         },
+    };
+};
+
+exports.createAdminCustomer = async (customerData) => {
+    const { fullName, email, phone, address, addressLabel = 'home' } = customerData;
+
+    if (!fullName || !email) {
+        throw new ValidationError('Full name and email are required');
+    }
+
+    // Check if customer with email already exists
+    const existingCustomer = await prisma.customer.findUnique({
+        where: { email },
+    });
+
+    if (existingCustomer) {
+        throw new ValidationError('Customer with this email already exists');
+    }
+
+    logger.info('Admin creating customer', { email, fullName });
+
+    // Create customer and address in a transaction
+    const result = await prisma.$transaction(async (tx) => {
+        // Create customer
+        const customer = await tx.customer.create({
+            data: {
+                full_name: fullName,
+                email,
+                phone: phone || null,
+                is_active: true,
+            },
+        });
+
+        // Create address if provided
+        let customerAddress = null;
+        if (address) {
+            // For now, set default coordinates if not provided
+            // In production, you'd want to geocode the address
+            const latitude = customerData.latitude || 0;
+            const longitude = customerData.longitude || 0;
+
+            customerAddress = await tx.customerAddress.create({
+                data: {
+                    customer_id: customer.customer_id,
+                    address_label: addressLabel,
+                    full_address: address,
+                    latitude,
+                    longitude,
+                    is_default: true, // First address is default
+                },
+            });
+        }
+
+        return { customer, address: customerAddress };
+    });
+
+    return {
+        customerId: result.customer.customer_id,
+        name: result.customer.full_name,
+        email: result.customer.email,
+        phone: result.customer.phone,
+        address: result.address
+            ? {
+                  addressId: result.address.address_id,
+                  label: result.address.address_label,
+                  fullAddress: result.address.full_address,
+                  latitude: result.address.latitude,
+                  longitude: result.address.longitude,
+                  isDefault: result.address.is_default,
+              }
+            : null,
     };
 };
 

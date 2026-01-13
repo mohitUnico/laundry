@@ -8,6 +8,8 @@ const {
     adminDashboardRevenueTrendQuerySchema,
     adminDashboardRecentOrdersQuerySchema,
     adminDashboardTopPerformersQuerySchema,
+    adminDashboardDeliveryAnalyticsQuerySchema,
+    adminDashboardLateDeliveriesQuerySchema,
 } = require('../validators/admin-dashboard.validator');
 
 const router = express.Router();
@@ -69,6 +71,22 @@ router.get(
     authenticateJWT,
     authorize('super_admin', 'owner', 'admin', 'manager'),
     adminDashboardController.getCustomerSatisfaction
+);
+
+router.get(
+    '/delivery-analytics',
+    authenticateJWT,
+    authorize('super_admin', 'owner', 'admin', 'manager'),
+    validateQuery(adminDashboardDeliveryAnalyticsQuerySchema),
+    adminDashboardController.getDeliveryAnalytics
+);
+
+router.get(
+    '/late-deliveries',
+    authenticateJWT,
+    authorize('super_admin', 'owner', 'admin', 'manager'),
+    validateQuery(adminDashboardLateDeliveriesQuerySchema),
+    adminDashboardController.getLateDeliveries
 );
 
 module.exports = router;

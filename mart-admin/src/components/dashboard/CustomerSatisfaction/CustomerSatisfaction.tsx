@@ -2,10 +2,16 @@ import React from 'react';
 
 interface CustomerSatisfactionProps {
   value?: number;
+  fiveStars?: number;
+  fourStars?: number;
+  lessThanThree?: number;
 }
 
 export const CustomerSatisfaction: React.FC<CustomerSatisfactionProps> = ({
   value = 92,
+  fiveStars = 82,
+  fourStars = 12,
+  lessThanThree = 4,
 }) => {
   const circumference = 2 * Math.PI * 54;
   const offset = circumference - (value / 100) * circumference;
@@ -52,15 +58,15 @@ export const CustomerSatisfaction: React.FC<CustomerSatisfactionProps> = ({
         <div className="flex items-center gap-2 sm:gap-4 flex-wrap justify-center">
           <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-slate-600">
             <span className="h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full bg-green-500" />
-            <span>5 star 82%</span>
+            <span>5 star {fiveStars}%</span>
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-slate-600">
             <span className="h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full bg-blue-500" />
-            <span>4 star 12%</span>
+            <span>4 star {fourStars}%</span>
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-slate-600">
             <span className="h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full bg-amber-500" />
-            <span>3 star 4%</span>
+            <span>&le;3 star {lessThanThree}%</span>
           </div>
         </div>
       </div>

@@ -9,16 +9,19 @@ interface StatusItem {
 
 interface OrderStatusWidgetProps {
   onStatusClick?: (status: string) => void;
+  items?: StatusItem[];
 }
 
-const statuses: StatusItem[] = [
+const DEFAULT_STATUSES: StatusItem[] = [
   { label: 'Pending', count: 8, color: '#facc15' },
   { label: 'In progress', count: 15, color: '#60a5fa' },
   { label: 'Out for delivery', count: 12, color: '#22d3ee' },
   { label: 'Completed today', count: 34, color: '#34d399' },
 ];
 
-export const OrderStatusWidget: React.FC<OrderStatusWidgetProps> = ({ onStatusClick }) => {
+export const OrderStatusWidget: React.FC<OrderStatusWidgetProps> = ({ onStatusClick, items }) => {
+  const statuses = items && items.length > 0 ? items : DEFAULT_STATUSES;
+
   const handleClick = (label: string) => {
     if (onStatusClick) {
       onStatusClick(label);

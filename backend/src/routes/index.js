@@ -2,9 +2,14 @@ const express = require('express');
 const authRoutes = require('./auth.routes');
 const martRoutes = require('./mart.routes');
 const orderRoutes = require('./order.routes');
+const cartRoutes = require('./cart.routes');
 const dashboardRoutes = require('./dashboard.routes');
 const serviceRoutes = require('./service.routes');
 const clothesRoutes = require('./clothes.routes');
+const customerInfoRoutes = require('./customer-info.routes');
+const adminOrderManagementRoutes = require('./admin-order-management.routes');
+const adminCustomerManagementRoutes = require('./admin-customer-management.routes');
+const adminDashboardRoutes = require('./admin-dashboard.routes');
 
 const router = express.Router();
 
@@ -20,7 +25,7 @@ router.get('/', (req, res) => {
             auth: '/api/v1/auth',
             marts: '/api/v1/marts',
             orders: '/api/v1/orders',
-            create_order: '/api/v1/create_order',
+            carts: '/api/v1/carts',
             dashboard: '/api/v1/dashboard',
             services: '/api/v1/services',
             clothes: '/api/v1/clothes',
@@ -63,10 +68,15 @@ router.get('/', (req, res) => {
 // Mount route modules
 router.use('/auth', authRoutes);
 router.use('/marts', martRoutes);
-router.use('/', orderRoutes);
+router.use('/orders', orderRoutes);
+router.use('/carts', cartRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/services', serviceRoutes);
 router.use('/clothes', clothesRoutes);
+router.use('/customer-info', customerInfoRoutes);
+router.use('/admin/orders', adminOrderManagementRoutes);
+router.use('/admin/customers', adminCustomerManagementRoutes);
+router.use('/admin/dashboard', adminDashboardRoutes);
 
 module.exports = router;
 

@@ -14,7 +14,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     try {
+      const storedToken = localStorage.getItem(AUTH_TOKEN_KEY);
       const storedUser = localStorage.getItem(AUTH_USER_KEY);
+
+      if (!storedToken) {
+        localStorage.removeItem(AUTH_USER_KEY);
+        setUser(null);
+        return;
+      }
+
       if (storedUser) {
         const parsedUser: IUser = JSON.parse(storedUser);
         setUser({ ...parsedUser, role: parsedUser.role ?? 'Admin' });
@@ -22,6 +30,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Failed to parse stored auth user', error);
       localStorage.removeItem(AUTH_USER_KEY);
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+      setUser(null);
     } finally {
       setLoading(false);
     }

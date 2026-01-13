@@ -34,6 +34,10 @@ This document provides a comprehensive index of all backend documentation, organ
 - **Manage service catalog** → [SERVICE_MANAGEMENT_API.md](SERVICE_MANAGEMENT_API.md)
 - **Add custom services** → [SERVICE_MANAGEMENT_API.md](SERVICE_MANAGEMENT_API.md#add-service)
 
+#### 🛒 Order Management
+- **Create orders from cart** → [new_order_creation_flow.md](new_order_creation_flow.md)
+- **Understand order workflow** → [NEW_ARCHITECTURE_OVERVIEW.md](NEW_ARCHITECTURE_OVERVIEW.md#order-workflow)
+
 ---
 
 ## 📖 Document Catalog
@@ -243,6 +247,25 @@ This document provides a comprehensive index of all backend documentation, organ
 - Estimated timeline
 
 **Best for**: Quick reference, project planning, team coordination, tracking progress
+
+---
+
+#### [new_order_creation_flow.md](new_order_creation_flow.md)
+**New Order Creation Flow Documentation** (NEW)
+
+**Contents:**
+- Overview of cart-based order creation
+- Key changes from v1.0 to v2.0
+- Complete order creation flow (step-by-step)
+- Database schema changes (OrderItem, OrderItemSelection)
+- API endpoint documentation
+- Request/response formats with examples
+- Error handling scenarios
+- Code examples (per-unit, per-kg, mixed orders)
+- Best practices for frontend and backend
+- Migration notes and breaking changes
+
+**Best for**: Implementing order creation, understanding cart-to-order conversion, API integration, troubleshooting order issues
 
 ---
 

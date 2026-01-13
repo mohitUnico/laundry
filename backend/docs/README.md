@@ -36,6 +36,7 @@ Welcome to the Laundry App backend documentation! This folder contains all the g
 | **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)** | Migration guide from Architecture v1.0 to v2.0 | Performing migration, understanding changes, troubleshooting |
 | **[WORKFLOW_DIAGRAMS.md](WORKFLOW_DIAGRAMS.md)** | Visual workflow diagrams for all processes | Understanding flows visually, training staff |
 | **[ARCHITECTURE_V2_SUMMARY.md](ARCHITECTURE_V2_SUMMARY.md)** | Quick reference and change summary | Quick reference, planning, progress tracking |
+| **[new_order_creation_flow.md](new_order_creation_flow.md)** | Cart-based order creation flow and API documentation | Implementing order creation, API integration, understanding cart-to-order conversion |
 
 ### 📂 Archived Documentation
 

@@ -1,5 +1,7 @@
-import React, { useMemo, useRef, useState } from 'react';
-import { Download, Search, UserRound, CalendarDays, Star, Eye, Mail, X } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Download, Search, UserRound, CalendarDays, Star, Eye, Mail, X, Loader2 } from 'lucide-react';
+import { customersApi, AdminCustomer } from '../../services/api/modules/customersApi';
+import { AddCustomerModal } from '@/components/dashboard/modals';
 
 type CustomerRow = {
   name: string;
@@ -8,130 +10,213 @@ type CustomerRow = {
   phone: string;
   address: string;
   orders: number;
-  rating: number;
+  rating: number | null;
   joined: string;
-  joinedDate: string; // ISO date string for filtering
   isActive: boolean;
 };
-
-// Sample customers with various dates
-const allCustomers: CustomerRow[] = [
-  { name: 'Tony Stark', email: 'tonystark@gmail.com', phone: '+91 86549 54695', address: '742 Stark Tower Ave, Manhattan, NY 10001', orders: 49, rating: 4.9, joined: 'Joined Mar, 2024', joinedDate: '2024-03-15', isActive: true },
-  { name: 'Thor Odinson', email: 'thorodinson@gmail.com', phone: '+91 86549 45689', address: '7 Bilrost Lane, New Asgard, OK 73044', orders: 43, rating: 4.8, joined: 'Joined Apr, 2024', joinedDate: '2024-04-20', isActive: true },
-  { name: 'Natasha', email: 'natasha@gmail.com', phone: '+91 86549 87945', address: '22 Shadow Street, Arlington, VA 22201', orders: 39, rating: 4.9, joined: 'Joined June, 2024', joinedDate: '2024-06-10', isActive: true },
-  { name: 'Clint Barton', email: 'clintbarton@gmail.com', phone: '+91 86549 23456', address: '315 Archers Way, Waverly, IA 50677', orders: 37, rating: 4.2, joined: 'Joined July, 2024', joinedDate: '2024-07-05', isActive: true },
-  { name: 'Bruce Banner', email: 'brucebanner@gmail.com', phone: '+91 86549 45654', address: '888 Gamma Drive, Berkeley, CA 94704', orders: 32, rating: 4.5, joined: 'Joined Aug, 2024', joinedDate: '2024-08-12', isActive: true },
-  { name: 'Peter Parker', email: 'peterparker@gmail.com', phone: '+91 86549 12654', address: '20 Queens Plaza, Queens, NY 11101', orders: 30, rating: 4.8, joined: 'Joined Aug, 2024', joinedDate: '2024-08-25', isActive: true },
-  // October 24, 2025 customers for testing
-  { name: 'Steve Rogers', email: 'steverogers@gmail.com', phone: '+91 86549 78901', address: '123 Shield Avenue, Brooklyn, NY 11201', orders: 52, rating: 5.0, joined: 'Joined Oct, 2025', joinedDate: '2025-10-24', isActive: true },
-  { name: 'Wanda Maximoff', email: 'wandamaximoff@gmail.com', phone: '+91 86549 23478', address: '456 Vision Street, Sokovia, SO 12345', orders: 28, rating: 4.7, joined: 'Joined Oct, 2025', joinedDate: '2025-10-24', isActive: true },
-  { name: 'Sam Wilson', email: 'samwilson@gmail.com', phone: '+91 86549 56789', address: '789 Falcon Way, Washington, DC 20001', orders: 45, rating: 4.6, joined: 'Joined Oct, 2025', joinedDate: '2025-10-24', isActive: false },
-  { name: 'Bucky Barnes', email: 'buckybarnes@gmail.com', phone: '+91 86549 34567', address: '321 Winter Soldier Lane, Brooklyn, NY 11202', orders: 38, rating: 4.4, joined: 'Joined Oct, 2025', joinedDate: '2025-10-24', isActive: true },
-  // November 3, 2025 customers for testing
-  { name: 'Carol Danvers', email: 'caroldanvers@gmail.com', phone: '+91 86549 11111', address: '999 Cosmic Drive, Los Angeles, CA 90001', orders: 60, rating: 4.9, joined: 'Joined Nov, 2025', joinedDate: '2025-11-03', isActive: true },
-  { name: 'Scott Lang', email: 'scottlang@gmail.com', phone: '+91 86549 22222', address: '777 Ant-Man Street, San Francisco, CA 94102', orders: 41, rating: 4.6, joined: 'Joined Nov, 2025', joinedDate: '2025-11-03', isActive: true },
-  { name: 'Hope van Dyne', email: 'hopevandyne@gmail.com', phone: '+91 86549 33333', address: '555 Wasp Avenue, San Francisco, CA 94103', orders: 44, rating: 4.8, joined: 'Joined Nov, 2025', joinedDate: '2025-11-03', isActive: true },
-  { name: 'T\'Challa', email: 'tchalla@gmail.com', phone: '+91 86549 44444', address: '333 Wakanda Boulevard, Wakanda, WA 98001', orders: 56, rating: 5.0, joined: 'Joined Nov, 2025', joinedDate: '2025-11-03', isActive: true },
-  { name: 'Stephen Strange', email: 'stephenstrange@gmail.com', phone: '+91 86549 55555', address: '177A Bleecker Street, New York, NY 10012', orders: 48, rating: 4.7, joined: 'Joined Nov, 2025', joinedDate: '2025-11-03', isActive: false },
-];
 
 // NOTE: Header and Sidebar are provided by the app's MainLayout.
 
 export const CustomersPage: React.FC = () => {
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [dateFilter, setDateFilter] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [page, setPage] = useState(1);
+  const [limit] = useState(20);
+  
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [customers, setCustomers] = useState<AdminCustomer[]>([]);
+  const [kpis, setKpis] = useState({
+    totalCustomers: 0,
+    activeCustomers: 0,
+    avgOrders: 0,
+    thisMonthGrowth: 0, // Mock value for now
+  });
+  const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+  // Pagination state (currently not displayed in UI, but available for future use)
+  const [, setPagination] = useState({
+    page: 1,
+    limit: 20,
+    total: 0,
+    total_pages: 0,
+    has_next: false,
+    has_prev: false,
+  });
+
   const dateInputRef = useRef<HTMLInputElement>(null);
 
-  // Calculate KPIs dynamically
-  const kpis = useMemo(() => {
-    const totalCustomers = allCustomers.length;
-    const activeCustomers = allCustomers.filter(c => c.isActive).length;
-    const totalOrders = allCustomers.reduce((sum, c) => sum + c.orders, 0);
-    const avgOrders = totalCustomers > 0 ? Math.round(totalOrders / totalCustomers) : 0;
-    
-    // Calculate growth percentage (mock calculation - you can make this dynamic based on previous month)
-    const thisMonthGrowth = 12.5;
+  // Debounce search input (300ms delay)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1); // Reset to first page on search change
+    }, 300);
 
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // Convert date filter to ISO date range for backend
+  const getDateRange = useCallback((dateStr: string | null) => {
+    if (!dateStr) return { from: undefined, to: undefined };
+    
+    // Parse YYYY-MM-DD format
+    const dateParts = dateStr.split('-');
+    if (dateParts.length !== 3) return { from: undefined, to: undefined };
+    
+    const year = Number(dateParts[0]);
+    const month = Number(dateParts[1]);
+    
+    if (isNaN(year) || isNaN(month)) return { from: undefined, to: undefined };
+    
+    // Create date range for the selected month
+    const fromDate = new Date(year, month - 1, 1);
+    const toDate = new Date(year, month, 0, 23, 59, 59, 999); // Last day of month
+    
     return {
-      totalCustomers,
-      activeCustomers,
-      avgOrders,
-      thisMonthGrowth,
+      from: fromDate.toISOString(),
+      to: toDate.toISOString(),
     };
   }, []);
 
-  // Filter customers
+  // Fetch customer summary (KPIs)
+  const fetchSummary = useCallback(async () => {
+    try {
+      const dateRange = getDateRange(dateFilter);
+      const isActive = statusFilter === 'all' ? undefined : statusFilter === 'active';
+      
+      const response = await customersApi.getCustomerSummary({
+        from: dateRange.from,
+        to: dateRange.to,
+        isActive,
+      });
+
+      if (response.success && response.data) {
+        setKpis({
+          totalCustomers: response.data.totalCustomers,
+          activeCustomers: response.data.activeCustomers,
+          avgOrders: Math.round(response.data.averageOrdersPerCustomer),
+          thisMonthGrowth: 12.5, // Mock value - can be calculated from backend if needed
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch customer summary:', err);
+      // Don't set error state for summary, just log it
+    }
+  }, [dateFilter, statusFilter, getDateRange]);
+
+  // Fetch customers list
+  const fetchCustomers = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const dateRange = getDateRange(dateFilter);
+      const isActive = statusFilter === 'all' ? undefined : statusFilter === 'active';
+      
+      const response = await customersApi.getCustomers({
+        page,
+        limit,
+        search: debouncedSearch || undefined,
+        from: dateRange.from,
+        to: dateRange.to,
+        isActive,
+      });
+
+      if (response.success && response.data) {
+        setCustomers(response.data.customers);
+        setPagination(response.data.pagination);
+      } else {
+        setError('Failed to fetch customers');
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch customers:', err);
+      
+      // Provide more helpful error messages
+      let errorMessage = 'Failed to load customers. Please try again.';
+      
+      if (err?.code === 'ECONNREFUSED' || err?.message?.includes('ECONNREFUSED')) {
+        errorMessage = 'Cannot connect to backend server. Please ensure the backend is running on port 5000.';
+      } else if (err?.response?.status === 500) {
+        errorMessage = 'Server error. Please try again later.';
+      } else if (err?.response?.status === 401) {
+        errorMessage = 'Authentication required. Please log in again.';
+      } else if (err?.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err?.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
+      setCustomers([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [page, limit, debouncedSearch, dateFilter, statusFilter, getDateRange]);
+
+  // Fetch data on mount and when filters change
+  useEffect(() => {
+    fetchCustomers();
+  }, [fetchCustomers]);
+
+  useEffect(() => {
+    fetchSummary();
+  }, [fetchSummary]);
+
+  // Format customer joined date
+  const formatJoinedDate = useCallback((createdAt: string | null | undefined): string => {
+    if (!createdAt) return 'N/A';
+    
+    try {
+      const date = new Date(createdAt);
+      const month = date.toLocaleString('default', { month: 'short' });
+      const year = date.getFullYear();
+      return `Joined ${month}, ${year}`;
+    } catch {
+      return 'N/A';
+    }
+  }, []);
+
+  // Map API response to UI format
   const filteredRows = useMemo(() => {
-    const term = search.toLowerCase();
-    return allCustomers.filter((customer) => {
-      // Search filter - matches customer name, email, phone, or address
-      const matchesTerm = !term || 
-        customer.name.toLowerCase().includes(term) ||
-        customer.email.toLowerCase().includes(term) ||
-        customer.phone.includes(term) ||
-        customer.address.toLowerCase().includes(term);
-      
-      // Date filter - matches customers who joined in the selected month/year
-      let matchesDate = true;
-      if (dateFilter) {
-        // Parse the filter date (YYYY-MM-DD format from date input)
-        const dateParts = dateFilter.split('-');
-        if (dateParts.length === 3) {
-          const filterYear = Number(dateParts[0]);
-          const filterMonth = Number(dateParts[1]);
-          
-          if (!isNaN(filterYear) && !isNaN(filterMonth)) {
-            // Parse customer joined date
-            const customerDateStr = customer.joinedDate; // Format: 'YYYY-MM-DD'
-            const customerDateParts = customerDateStr.split('-');
-            
-            if (customerDateParts.length === 3) {
-              const customerYear = Number(customerDateParts[0]);
-              const customerMonth = Number(customerDateParts[1]);
-              
-              if (!isNaN(customerYear) && !isNaN(customerMonth)) {
-                // Compare by month and year only (not specific day)
-                matchesDate = 
-                  customerYear === filterYear &&
-                  customerMonth === filterMonth;
-              } else {
-                matchesDate = false;
-              }
-            } else {
-              matchesDate = false;
-            }
-          }
-        }
-      }
-      
-      // Status filter
-      let matchesStatus = true;
-      if (statusFilter === 'active') {
-        matchesStatus = customer.isActive;
-      } else if (statusFilter === 'inactive') {
-        matchesStatus = !customer.isActive;
-      }
-      
-      return matchesTerm && matchesDate && matchesStatus;
+    return customers.map((customer): CustomerRow => {
+      return {
+        name: customer.name,
+        email: customer.contact.email,
+        phone: customer.contact.phone || 'N/A',
+        address: customer.primaryAddress?.fullAddress || 'No address',
+        orders: customer.totalOrdersCount,
+        rating: customer.rating,
+        joined: formatJoinedDate(customer.createdAt),
+        isActive: true, // Backend doesn't return isActive in current response, defaulting to true
+      };
     });
-  }, [search, dateFilter, statusFilter]);
+  }, [customers, formatJoinedDate]);
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     if (value) {
       setDateFilter(value);
+      setPage(1); // Reset to first page on date filter change
     } else {
       setDateFilter(null);
+      setPage(1);
     }
   };
 
   const clearDateFilter = (e: React.MouseEvent) => {
     e.stopPropagation();
     setDateFilter(null);
+    setPage(1);
     if (dateInputRef.current) {
       dateInputRef.current.value = '';
     }
+  };
+
+  const handleStatusFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setStatusFilter(e.target.value);
+    setPage(1); // Reset to first page on status filter change
   };
 
   const formatDisplayDate = (date: Date): string => {
@@ -154,7 +239,10 @@ export const CustomersPage: React.FC = () => {
               <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Customer Management</h1>
               <p className="mt-1 text-xs sm:text-sm text-slate-500">Manage and view all customer information</p>
             </div>
-            <button className="inline-flex items-center justify-center gap-2 rounded-lg sm:rounded-xl bg-indigo-600 px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-white shadow-md hover:bg-indigo-700 transition-colors w-full sm:w-auto">
+            <button 
+              onClick={() => setShowAddCustomerModal(true)}
+              className="inline-flex items-center justify-center gap-2 rounded-lg sm:rounded-xl bg-indigo-600 px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-white shadow-md hover:bg-indigo-700 transition-colors w-full sm:w-auto"
+            >
               <UserRound size={16} /> <span>Add Customer</span>
             </button>
           </div>
@@ -165,7 +253,9 @@ export const CustomersPage: React.FC = () => {
               <div className="rounded-xl sm:rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 md:p-6 shadow-md">
                 <div className="flex items-center justify-between text-xs sm:text-sm text-slate-700">Total Customers <span className="text-slate-400"/></div>
                 <div className="mt-2 flex items-end justify-between">
-                  <div className="text-2xl sm:text-3xl font-bold text-slate-900">{kpis.totalCustomers}</div>
+                  <div className="text-2xl sm:text-3xl font-bold text-slate-900">
+                    {loading ? <Loader2 className="animate-spin h-6 w-6" /> : kpis.totalCustomers}
+                  </div>
                   <div className="text-xs text-indigo-600 font-medium">+{kpis.thisMonthGrowth}% this month</div>
                 </div>
               </div>
@@ -173,13 +263,17 @@ export const CustomersPage: React.FC = () => {
             <div>
               <div className="rounded-xl sm:rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 md:p-6 shadow-md">
                 <div className="flex items-center justify-between text-xs sm:text-sm text-slate-700">Active Customers <span className="h-2 w-2 rounded-full bg-emerald-500"/></div>
-                <div className="mt-2 text-2xl sm:text-3xl font-bold text-slate-900">{kpis.activeCustomers}</div>
+                <div className="mt-2 text-2xl sm:text-3xl font-bold text-slate-900">
+                  {loading ? <Loader2 className="animate-spin h-6 w-6" /> : kpis.activeCustomers}
+                </div>
               </div>
             </div>
             <div>
               <div className="rounded-xl sm:rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 md:p-6 shadow-md">
                 <div className="flex items-center justify-between text-xs sm:text-sm text-slate-700">Avg. Orders <span className="text-slate-400"/></div>
-                <div className="mt-2 text-2xl sm:text-3xl font-bold text-slate-900">{kpis.avgOrders}</div>
+                <div className="mt-2 text-2xl sm:text-3xl font-bold text-slate-900">
+                  {loading ? <Loader2 className="animate-spin h-6 w-6" /> : kpis.avgOrders}
+                </div>
               </div>
             </div>
           </div>
@@ -284,7 +378,7 @@ export const CustomersPage: React.FC = () => {
                 </div>
                 <select 
                   value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
+                  onChange={handleStatusFilterChange}
                   className="rounded-lg sm:rounded-xl border border-slate-200 bg-white px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="all">All Customers</option>
@@ -298,16 +392,34 @@ export const CustomersPage: React.FC = () => {
             </div>
           </div>
 
+          {/* Error Message */}
+          {error && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-center">
+              <div className="text-red-600 text-sm font-medium">{error}</div>
+              <button
+                onClick={() => fetchCustomers()}
+                className="mt-2 text-xs text-red-600 underline hover:text-red-700"
+              >
+                Try again
+              </button>
+            </div>
+          )}
+
           {/* Mobile Card View */}
           <div className="block sm:hidden space-y-3">
-            {filteredRows.length === 0 ? (
+            {loading && filteredRows.length === 0 ? (
+              <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-8 text-center">
+                <Loader2 className="animate-spin h-8 w-8 mx-auto text-indigo-600" />
+                <div className="text-slate-500 text-sm mt-2">Loading customers...</div>
+              </div>
+            ) : filteredRows.length === 0 ? (
               <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-8 text-center">
                 <div className="text-slate-400 text-sm">No customers found</div>
                 <div className="text-xs text-slate-500 mt-1">Try adjusting your search or filters</div>
               </div>
             ) : (
-              filteredRows.map((r) => (
-                <div key={r.email} className="rounded-xl border border-slate-200 bg-white shadow-sm p-3 space-y-2 hover:bg-slate-50/50 transition-colors">
+              filteredRows.map((r, index) => (
+                <div key={`${r.email}-${index}`} className="rounded-xl border border-slate-200 bg-white shadow-sm p-3 space-y-2 hover:bg-slate-50/50 transition-colors">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-2.5 flex-1 min-w-0">
                     <div className="h-10 w-10 rounded-full bg-slate-300 flex-shrink-0" />
@@ -349,7 +461,7 @@ export const CustomersPage: React.FC = () => {
                     </div>
                     <div className="inline-flex items-center gap-1 text-xs">
                       <Star size={12} className="text-amber-400 fill-amber-400"/>
-                      <span className="text-slate-700 font-medium">{r.rating}</span>
+                      <span className="text-slate-700 font-medium">{r.rating ?? 'N/A'}</span>
                     </div>
                   </div>
                   {r.isActive ? (
@@ -383,7 +495,14 @@ export const CustomersPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRows.length === 0 ? (
+                  {loading && filteredRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-12 text-center">
+                        <Loader2 className="animate-spin h-8 w-8 mx-auto text-indigo-600" />
+                        <div className="text-slate-500 text-sm mt-2">Loading customers...</div>
+                      </td>
+                    </tr>
+                  ) : filteredRows.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-6 py-12 text-center">
                         <div className="text-slate-400 text-sm">No customers found</div>
@@ -391,8 +510,8 @@ export const CustomersPage: React.FC = () => {
                       </td>
                     </tr>
                   ) : (
-                    filteredRows.map((r) => (
-                      <tr key={r.email} className="border-t border-slate-200 hover:bg-slate-50/60 transition-colors">
+                    filteredRows.map((r, index) => (
+                      <tr key={`${r.email}-${index}`} className="border-t border-slate-200 hover:bg-slate-50/60 transition-colors">
                       <td className="px-3 sm:px-4 md:px-6 py-3 sm:py-4">
                         <div className="flex items-center gap-2 sm:gap-3">
                           <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-full bg-slate-300 flex-shrink-0" />
@@ -412,7 +531,7 @@ export const CustomersPage: React.FC = () => {
                       <td className="px-3 sm:px-4 md:px-6 py-3 sm:py-4 text-xs sm:text-sm text-slate-700">{r.orders}</td>
                       <td className="px-3 sm:px-4 md:px-6 py-3 sm:py-4">
                         <div className="inline-flex items-center gap-1 text-slate-700 text-xs sm:text-sm">
-                          <Star size={12} className="sm:w-3.5 sm:h-3.5 text-amber-400 fill-amber-400"/> {r.rating}
+                          <Star size={12} className="sm:w-3.5 sm:h-3.5 text-amber-400 fill-amber-400"/> {r.rating ?? 'N/A'}
                         </div>
                       </td>
                       <td className="px-3 sm:px-4 md:px-6 py-3 sm:py-4">
@@ -434,6 +553,16 @@ export const CustomersPage: React.FC = () => {
           </div>
         </main>
       </div>
+
+      <AddCustomerModal
+        isOpen={showAddCustomerModal}
+        onClose={() => setShowAddCustomerModal(false)}
+        onSuccess={() => {
+          // Refresh customer list and summary after successful creation
+          fetchCustomers();
+          fetchSummary();
+        }}
+      />
     </div>
   );
 };

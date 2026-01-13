@@ -22,6 +22,7 @@ axiosInstance.interceptors.response.use(
 
       if (!isAuthFlow) {
         localStorage.removeItem('authToken');
+        localStorage.removeItem('authUser');
         window.location.href = '/login';
       }
     }

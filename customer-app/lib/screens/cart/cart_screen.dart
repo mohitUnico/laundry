@@ -187,7 +187,8 @@ class _CartScreenState extends State<CartScreen> {
               ),
               Consumer<CartProvider>(
                 builder: (context, cart, _) {
-                  if (cart.items.isEmpty || !cart.hasPricedItems) {
+                  // Show for both per-piece and kg-wise carts.
+                  if (cart.items.isEmpty) {
                     return const SizedBox.shrink();
                   }
                   return Padding(

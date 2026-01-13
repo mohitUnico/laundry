@@ -21,6 +21,7 @@ import '../screens/cart/delivery_options_screen.dart';
 import '../screens/cart/schedule_date_time_screen.dart';
 import '../screens/payment/payment_screen.dart';
 import '../screens/payment/payment_successful_screen.dart';
+import '../screens/orders/order_successful_screen.dart';
 import '../screens/home/widgets/regular_wash_bottom_sheet.dart';
 import '../screens/notifications/notifications_screen.dart';
 
@@ -54,6 +55,7 @@ class AppRoutes {
   static const String scheduleDateTime = '/cart/schedule-date-time';
   static const String payment = '/payment';
   static const String paymentSuccessful = '/payment-successful';
+  static const String orderSuccessful = '/order-successful';
   static const String notifications = '/notifications';
 
   static Map<String, WidgetBuilder> get routes {
@@ -121,6 +123,7 @@ class AppRoutes {
       scheduleDateTime: (context) => const ScheduleDateTimeScreen(),
       payment: (context) => const PaymentScreen(),
       paymentSuccessful: (context) => const PaymentSuccessfulScreen(),
+      orderSuccessful: (context) => const OrderSuccessfulScreen(),
       notifications: (context) => const NotificationsScreen(),
     };
   }

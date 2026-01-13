@@ -185,7 +185,7 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                           return;
                         }
 
-                        // Otherwise, navigate to payment screen if there are per-piece items
+                        // Otherwise, create order directly (no payment screen for any cart type)
                         final cart = context.read<CartProvider>();
                         final items = cart.items;
                         if (items.isEmpty) {
@@ -195,55 +195,46 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                           return;
                         }
 
-                        final hasPerPieceItems = cart.hasPricedItems;
-                        if (hasPerPieceItems) {
-                          // Navigate to payment screen for per-piece items with schedule info and delivery option
-                          Navigator.of(context).pushNamed(
-                            AppRoutes.payment,
-                            arguments: {
-                              'dateLabel': dateLabel,
-                              'timeLabel': timeLabel,
-                              'deliveryOption': option.name, // Pass delivery option
-                            },
-                          );
-                        } else {
-                          // Only kg-wise items - create order directly without payment
-                          final totalItems = items.fold<int>(0, (a, x) => a + x.totalQuantity);
-                          final orderIdNum =
-                              (DateTime.now().millisecondsSinceEpoch % 90000) + 10000;
-                          final orderId = '#LD$orderIdNum';
-                          final title = items.length == 1 ? items.first.category : 'Mixed';
-                          final placedAt = DateTime.now();
-                          final placedDateLabel = '${_monthShort(placedAt.month)} ${placedAt.day}, ${placedAt.year}';
-                          final placedTimeLabel = _formatTime12h(
-                            placedAt.hour > 12 ? placedAt.hour - 12 : (placedAt.hour == 0 ? 12 : placedAt.hour),
-                            placedAt.minute,
-                            placedAt.hour >= 12 ? 1 : 0,
-                          );
+                        final totalItems = items.fold<int>(0, (a, x) => a + x.totalQuantity);
+                        final totalInr = cart.totalInr; // per-piece total (kg-wise is 0 by design)
 
-                          context.read<OrderProvider>().addOrder(
-                                OrderRecord(
-                                  id: orderId,
-                                  title: title,
-                                  items: items,
-                                  totalItems: totalItems,
-                                  totalInr: 0, // No price for kg-wise only
-                                  dateLabel: dateLabel,
-                                  timeLabel: timeLabel,
-                                  placedAt: placedAt,
-                                  placedDateLabel: placedDateLabel,
-                                  placedTimeLabel: placedTimeLabel,
-                                  status: OrderStatus.inProgress,
-                                ),
-                              );
+                        final orderIdNum =
+                            (DateTime.now().millisecondsSinceEpoch % 90000) + 10000;
+                        final orderId = '#LD$orderIdNum';
+                        final title = items.length == 1 ? items.first.category : 'Mixed';
+                        final placedAt = DateTime.now();
+                        final placedDateLabel =
+                            '${_monthShort(placedAt.month)} ${placedAt.day}, ${placedAt.year}';
+                        final placedTimeLabel = _formatTime12h(
+                          placedAt.hour > 12
+                              ? placedAt.hour - 12
+                              : (placedAt.hour == 0 ? 12 : placedAt.hour),
+                          placedAt.minute,
+                          placedAt.hour >= 12 ? 1 : 0,
+                        );
 
-                          cart.clear();
+                        context.read<OrderProvider>().addOrder(
+                              OrderRecord(
+                                id: orderId,
+                                title: title,
+                                items: items,
+                                totalItems: totalItems,
+                                totalInr: totalInr,
+                                dateLabel: dateLabel,
+                                timeLabel: timeLabel,
+                                placedAt: placedAt,
+                                placedDateLabel: placedDateLabel,
+                                placedTimeLabel: placedTimeLabel,
+                                status: OrderStatus.inProgress,
+                              ),
+                            );
 
-                          Navigator.of(context).pushNamedAndRemoveUntil(
-                            AppRoutes.orders,
-                            (r) => false,
-                          );
-                        }
+                        cart.clear();
+
+                        Navigator.of(context).pushNamedAndRemoveUntil(
+                          AppRoutes.orderSuccessful,
+                          (r) => false,
+                        );
                       },
                       borderRadius: BorderRadius.circular(18),
                       child: Ink(

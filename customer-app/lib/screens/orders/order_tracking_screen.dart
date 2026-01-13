@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../theme/app_text_styles.dart';
 import '../home/widgets/home_colors.dart';
+import '../../routes/app_routes.dart';
 
 class OrderTrackingScreen extends StatefulWidget {
   const OrderTrackingScreen({super.key});
@@ -27,7 +28,16 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
             child: Padding(
               padding: const EdgeInsets.only(left: 12, top: 8),
               child: InkWell(
-                onTap: () => Navigator.of(context).maybePop(),
+                onTap: () {
+                  if (Navigator.of(context).canPop()) {
+                    Navigator.of(context).pop();
+                    return;
+                  }
+                  Navigator.of(context).pushNamedAndRemoveUntil(
+                    AppRoutes.home,
+                    (r) => false,
+                  );
+                },
                 borderRadius: BorderRadius.circular(999),
                 child: Container(
                   width: 38,

@@ -25,7 +25,6 @@ router.get('/', (req, res) => {
             auth: '/api/v1/auth',
             marts: '/api/v1/marts',
             orders: '/api/v1/orders',
-            create_order: '/api/v1/create_order',
             carts: '/api/v1/carts',
             dashboard: '/api/v1/dashboard',
             services: '/api/v1/services',
@@ -69,7 +68,7 @@ router.get('/', (req, res) => {
 // Mount route modules
 router.use('/auth', authRoutes);
 router.use('/marts', martRoutes);
-router.use('/', orderRoutes);
+router.use('/orders', orderRoutes);
 router.use('/carts', cartRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/services', serviceRoutes);

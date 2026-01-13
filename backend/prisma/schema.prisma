@@ -3,10 +3,11 @@ generator client {
   binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
 }
 
+// Note: Using Prisma 6 syntax. The `url` property is required in Prisma 6.
+// Linter warnings about Prisma 7+ syntax can be ignored.
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // ==================== LAUNDRY CONFIGURATION ====================
@@ -283,14 +284,21 @@ model CartItemSelection {
 model Order {
   order_id                              String          @id @default(uuid())
   customer_id                           String
+  // Cart used to create this order (kept until confirmation; deleted on confirm_order)
+  source_cart_id                        String?
   order_status                          OrderStatus
   pricing_model                         PricingModel
   order_type                            OrderType       @default(both)
-  total_amount                          Decimal         @db.Decimal(10, 2)
+  // For orders containing any per_kg items, total_amount is unknown at creation time and will be calculated later.
+  total_amount                          Decimal?        @db.Decimal(10, 2)
   pickup_address_id                     String
   delivery_address_id                   String
   pickup_date                           DateTime
   delivery_date                         DateTime
+  preferred_pickup_slot_from            DateTime? // Preferred pickup slot start date and time
+  preferred_pickup_slot_to              DateTime? // Preferred pickup slot end date and time
+  preferred_delivery_slot_from          DateTime? // Preferred delivery slot start date and time
+  preferred_delivery_slot_to            DateTime? // Preferred delivery slot end date and time
   special_instructions                  String?
   customer_rating                       Decimal?        @db.Decimal(3, 2)
   customer_review                       String?
@@ -321,6 +329,7 @@ model Order {
   service_queue_items ServiceQueueItem[]
 
   @@index([customer_id])
+  @@index([source_cart_id])
   @@index([order_status])
   @@index([billing_status])
   @@index([created_at])
@@ -330,6 +339,7 @@ model Order {
 }
 
 enum OrderStatus {
+  draft // Order created but not confirmed yet
   placed // Customer placed order
   pickup_assigned // Delivery partner assigned for pickup
   picked_up // Order picked up from customer
@@ -372,8 +382,10 @@ model OrderItem {
   clothes_id      String?
   quantity        Int? // Total quantity for per_unit items (sum of selections)
   weight_kg       Decimal?             @db.Decimal(10, 2) // For per_kg pricing
-  unit_price      Decimal              @db.Decimal(10, 2) // Price per unit or per kg
-  subtotal        Decimal              @db.Decimal(10, 2)
+  // For orders containing any per_kg items, monetary amounts are not stored at creation time.
+  // They will be calculated later when weight is confirmed and billing is generated.
+  unit_price      Decimal?             @db.Decimal(10, 2) // Price per unit or per kg (nullable until billing)
+  subtotal        Decimal?             @db.Decimal(10, 2) // Subtotal (nullable until billing)
   item_status     OrderItemStatus      @default(pending)
   assigned_at     DateTime?
   completed_at    DateTime?

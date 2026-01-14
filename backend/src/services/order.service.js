@@ -3,13 +3,9 @@ const prisma = require('../config/database');
 const { NotFoundError, ValidationError } = require('../utils/errors');
 
 /**
- * Create a draft order from a customer's active cart.
+ * Create an order from a customer's active cart.
  * Converts cart items to order items, handling both per_unit and per_kg pricing.
- * Sets billing_status based on pricing types:
- * - If any item is per_kg: billing_status = pending
- * - If all items are per_unit: generates bill and sets billing_status = generated
  * After order creation, marks the cart as inactive and deletes cart items.
- * Order status is set to 'draft' until confirmed via confirmOrder endpoint.
  *
  * @param {string} customerId - Customer ID creating the order
  * @param {object} payload - Order creation payload
@@ -17,10 +13,8 @@ const { NotFoundError, ValidationError } = require('../utils/errors');
  * @param {string} payload.pickup_address_id - UUID of pickup address
  * @param {string} payload.delivery_address_id - UUID of delivery address
  * @param {string} payload.order_type - Order type (pickup_only, drop_only, both, express_delivery)
- * @param {string} payload.preferred_pickup_slot_from - Preferred pickup slot start date and time (ISO 8601 format)
- * @param {string} payload.preferred_pickup_slot_to - Preferred pickup slot end date and time (ISO 8601 format)
- * @param {string} payload.preferred_delivery_slot_from - Preferred delivery slot start date and time (ISO 8601 format)
- * @param {string} payload.preferred_delivery_slot_to - Preferred delivery slot end date and time (ISO 8601 format)
+ * @param {string} [payload.pickup_date] - Optional pickup date (ISO string)
+ * @param {string} [payload.delivery_date] - Optional delivery date (ISO string)
  * @param {string} [payload.special_instructions] - Optional special instructions
  * @returns {Promise<object>} Created order details
  */
@@ -30,10 +24,8 @@ exports.createOrder = async (customerId, payload) => {
         pickup_address_id,
         delivery_address_id,
         order_type,
-        preferred_pickup_slot_from,
-        preferred_pickup_slot_to,
-        preferred_delivery_slot_from,
-        preferred_delivery_slot_to,
+        pickup_date,
+        delivery_date,
         special_instructions,
     } = payload;
 
@@ -114,15 +106,23 @@ exports.createOrder = async (customerId, payload) => {
         }
 
         // Determine pricing model from cart items
-        // Rule: if ANY item is per_kg => pricing_model = per_kg
-        // Otherwise (all per_unit) => pricing_model = per_unit
-        const hasPerKgCartItem = cart.cart_items.some((item) => item.pricing_type === 'per_kg');
-        const pricingModel = hasPerKgCartItem ? 'per_kg' : 'per_unit';
+        // If all items are per_unit, pricing_model is per_unit
+        // If all items are per_kg, pricing_model is per_kg
+        // If mixed, we'll use per_unit as default (or throw error - depends on business logic)
+        const pricingTypes = new Set(cart.cart_items.map((item) => item.pricing_type));
+        let pricingModel;
+        if (pricingTypes.size === 1) {
+            pricingModel = Array.from(pricingTypes)[0];
+        } else {
+            // Mixed pricing - for now, we'll allow it and set to per_unit
+            // You can change this to throw an error if mixed pricing is not allowed
+            pricingModel = 'per_unit';
+        }
 
         const Decimal = Prisma.Decimal;
         let totalAmount = new Decimal(0);
         const orderItemsToCreate = [];
-        const orderItemSelectionsByCartItemId = new Map();
+        const orderItemSelectionsToCreate = [];
 
         // Process each cart item and convert to order item
         for (const cartItem of cart.cart_items) {
@@ -144,10 +144,9 @@ exports.createOrder = async (customerId, payload) => {
                     throw new ValidationError('One or more cloth items in cart are inactive');
                 }
 
-                // Calculate total quantity and subtotal from selections
+                // Calculate total quantity and subtotal for this cart item
                 let cartItemQuantity = 0;
                 let cartItemSubtotal = new Decimal(0);
-                const selectionRows = [];
 
                 for (const selection of item_selections) {
                     const quantity = selection.quantity;
@@ -157,29 +156,37 @@ exports.createOrder = async (customerId, payload) => {
                     cartItemQuantity += quantity;
                     cartItemSubtotal = cartItemSubtotal.plus(selectionSubtotal);
 
-                    selectionRows.push({
+                    // Store selection for later creation
+                    orderItemSelectionsToCreate.push({
                         cloth_id: selection.cloth_id,
-                        quantity,
-                        unit_price: unitPrice,
-                        subtotal: selectionSubtotal,
+                        quantity: quantity,
                     });
-
                 }
 
-                orderItemSelectionsByCartItemId.set(cartItem.cart_item_id, selectionRows);
+                // Use the first cloth item's price as unit_price (or calculate average)
+                // For per_unit, we'll use the weighted average or first item's price
+                const firstClothPrice = new Decimal(item_selections[0].cloth_item.per_unit_price);
 
                 // Create order item for this cart item
                 orderItemsToCreate.push({
                     service_id: service.service_id,
                     pricing_type: 'per_unit',
+                    clothes_id: item_selections[0].cloth_id, // Reference to first cloth item
                     quantity: cartItemQuantity,
                     weight_kg: null,
+                    unit_price: firstClothPrice, // Average or representative price
                     subtotal: cartItemSubtotal,
-                    order_item_status: 'assigned',
                 });
 
                 totalAmount = totalAmount.plus(cartItemSubtotal);
             } else if (pricing_type === 'per_kg') {
+                // Per-kg pricing: validate weight exists
+                if (!weight_kg || weight_kg <= 0) {
+                    throw new ValidationError(
+                        `Cart item ${cartItem.cart_item_id} has per_kg pricing but no valid weight`
+                    );
+                }
+
                 // Validate service has per_kg_price
                 if (!service.per_kg_price) {
                     throw new ValidationError(
@@ -187,85 +194,44 @@ exports.createOrder = async (customerId, payload) => {
                     );
                 }
 
-                // For per_kg at creation time: customer doesn't know weight.
-                // We'll keep weight_kg null; subtotal will be computed later once weight is updated.
-                // (If you later add a weighing endpoint, that endpoint should set weight_kg and subtotal.)
-                const cartItemSubtotal = null;
+                const weightDecimal = new Decimal(weight_kg);
+                const pricePerKg = new Decimal(service.per_kg_price);
+                const cartItemSubtotal = weightDecimal.mul(pricePerKg);
 
                 // Create order item for this cart item
                 orderItemsToCreate.push({
                     service_id: service.service_id,
                     pricing_type: 'per_kg',
+                    clothes_id: null, // No specific cloth item for per_kg
                     quantity: null, // No quantity count for per_kg
-                    weight_kg: null,
+                    weight_kg: weightDecimal,
+                    unit_price: pricePerKg,
                     subtotal: cartItemSubtotal,
-                    order_item_status: 'assigned',
                 });
+
+                totalAmount = totalAmount.plus(cartItemSubtotal);
             } else {
                 throw new ValidationError(`Invalid pricing_type: ${pricing_type}`);
             }
         }
 
-        // Parse preferred slot ranges as DateTime
-        const preferredPickupSlotFrom = preferred_pickup_slot_from
-            ? new Date(preferred_pickup_slot_from)
-            : null;
-        const preferredPickupSlotTo = preferred_pickup_slot_to
-            ? new Date(preferred_pickup_slot_to)
-            : null;
-        const preferredDeliverySlotFrom = preferred_delivery_slot_from
-            ? new Date(preferred_delivery_slot_from)
-            : null;
-        const preferredDeliverySlotTo = preferred_delivery_slot_to
-            ? new Date(preferred_delivery_slot_to)
-            : null;
+        // Set dates
+        const pickupDate = pickup_date ? new Date(pickup_date) : new Date();
+        const deliveryDateValue = delivery_date ? new Date(delivery_date) : pickupDate;
 
-        // Determine billing status based on pricing types
-        // If any item is per_kg, billing_status = pending (bill generated after weighing)
-        // If all items are per_unit, generate bill and set billing_status = generated
-        const hasPerKgItems = orderItemsToCreate.some((item) => item.pricing_type === 'per_kg');
-        let billingStatus = 'pending';
-        let billData = null;
-
-        if (!hasPerKgItems) {
-            // All items are per_unit - generate bill immediately
-            billingStatus = 'generated';
-
-            // Calculate bill components (subtotal already calculated, add delivery fee, tax, etc.)
-            const subtotal = totalAmount;
-            const deliveryFee = new Decimal(0); // TODO: Calculate based on distance
-            const taxAmount = new Decimal(0); // TODO: Calculate tax (e.g., 5% of subtotal)
-            const discount = new Decimal(0); // TODO: Apply any discounts
-            const finalAmount = subtotal.plus(deliveryFee).plus(taxAmount).minus(discount);
-
-            billData = {
-                subtotal: subtotal,
-                delivery_fee: deliveryFee,
-                tax_amount: taxAmount,
-                discount: discount,
-                final_amount: finalAmount,
-                payment_method: 'pending', // Will be set during payment
-                payment_status: 'pending',
-            };
-        }
-
-        // Create order with draft status
+        // Create order
         const order = await tx.order.create({
             data: {
                 customer_id: customerId,
-                source_cart_id: cart.cart_id,
-                order_status: 'draft', // Draft status until confirmed
+                order_status: 'placed',
                 pricing_model: pricingModel,
                 order_type: order_type,
                 pickup_address_id,
                 delivery_address_id,
-                preferred_pickup_slot_from: preferredPickupSlotFrom,
-                preferred_pickup_slot_to: preferredPickupSlotTo,
-                preferred_delivery_slot_from: preferredDeliverySlotFrom,
-                preferred_delivery_slot_to: preferredDeliverySlotTo,
+                pickup_date: pickupDate,
+                delivery_date: deliveryDateValue,
                 special_instructions: special_instructions || null,
-                total_amount: hasPerKgItems ? null : totalAmount,
-                billing_status: billingStatus,
+                total_amount: totalAmount,
             },
             select: {
                 order_id: true,
@@ -274,20 +240,8 @@ exports.createOrder = async (customerId, payload) => {
                 pricing_model: true,
                 order_type: true,
                 total_amount: true,
-                billing_status: true,
-                order_status: true,
             },
         });
-
-        // Create bill if all items are per_unit
-        if (billData) {
-            await tx.bill.create({
-                data: {
-                    order_id: order.order_id,
-                    ...billData,
-                },
-            });
-        }
 
         // Create order items and collect their IDs for selections
         const createdOrderItems = [];
@@ -309,26 +263,27 @@ exports.createOrder = async (customerId, payload) => {
             if (orderItem.pricing_type === 'per_unit') {
                 // Find the corresponding selections for this cart item
                 const cartItem = cart.cart_items[i];
-                const selectionRows = orderItemSelectionsByCartItemId.get(cartItem.cart_item_id) || [];
-                if (selectionRows.length > 0) {
+                if (cartItem.item_selections && cartItem.item_selections.length > 0) {
                     await tx.orderItemSelection.createMany({
-                        data: selectionRows.map((selection) => ({
+                        data: cartItem.item_selections.map((selection) => ({
                             order_item_id: orderItem.item_id,
                             cloth_id: selection.cloth_id,
                             quantity: selection.quantity,
-                            unit_price: selection.unit_price,
-                            subtotal: selection.subtotal,
                         })),
                     });
                 }
             }
         }
 
-        // Mark cart as inactive so it can't be reused/modified for checkout again.
-        // Cart + cart_items will be deleted ONLY when the order is confirmed.
+        // Mark cart as inactive and delete cart items (cascade will delete selections)
         await tx.cart.update({
             where: { cart_id: cart.cart_id },
             data: { is_active: false },
+        });
+
+        // Delete cart items (selections will be cascade deleted)
+        await tx.cartItem.deleteMany({
+            where: { cart_id: cart.cart_id },
         });
 
         return {
@@ -337,211 +292,10 @@ exports.createOrder = async (customerId, payload) => {
             delivery_address_id: order.delivery_address_id,
             pricing_model: order.pricing_model,
             order_type: order.order_type,
-            total_amount: order.total_amount ? order.total_amount.toString() : null,
-            billing_status: order.billing_status,
-            order_status: order.order_status,
+            total_amount: order.total_amount.toString(),
             items_count: createdOrderItems.length,
         };
     });
-};
-
-/**
- * Confirm a draft order, setting its status to 'placed'.
- * This endpoint finalizes the order and makes it ready for processing.
- *
- * @param {string} customerId - Customer ID confirming the order
- * @param {string} orderId - Order ID to confirm
- * @returns {Promise<object>} Confirmed order details
- */
-exports.confirmOrder = async (customerId, orderId) => {
-    return prisma.$transaction(async (tx) => {
-        // Verify order exists and belongs to customer
-        const order = await tx.order.findFirst({
-            where: {
-                order_id: orderId,
-                customer_id: customerId,
-            },
-            select: {
-                order_id: true,
-                source_cart_id: true,
-                order_status: true,
-                billing_status: true,
-            },
-        });
-
-        if (!order) {
-            throw new NotFoundError('Order');
-        }
-
-        // Validate order is in draft status
-        if (order.order_status !== 'draft') {
-            throw new ValidationError(
-                `Order cannot be confirmed. Current status: ${order.order_status}. Only draft orders can be confirmed.`
-            );
-        }
-
-        // Update order status to 'placed'
-        const confirmedOrder = await tx.order.update({
-            where: { order_id: orderId },
-            data: { order_status: 'placed' },
-            select: {
-                order_id: true,
-                order_status: true,
-                billing_status: true,
-                total_amount: true,
-                order_type: true,
-            },
-        });
-
-        // After confirmation, delete the cart + cart_items + selections used for this order.
-        // We use deleteMany to avoid throwing if the cart was already removed for some reason.
-        if (order.source_cart_id) {
-            await tx.cart.deleteMany({
-                where: {
-                    cart_id: order.source_cart_id,
-                    customer_id: customerId,
-                },
-            });
-        }
-
-        return {
-            order_id: confirmedOrder.order_id,
-            order_status: confirmedOrder.order_status,
-            billing_status: confirmedOrder.billing_status,
-            total_amount: confirmedOrder.total_amount ? confirmedOrder.total_amount.toString() : null,
-            order_type: confirmedOrder.order_type,
-            message: 'Order confirmed successfully',
-        };
-    });
-};
-
-/**
- * List orders for a customer with optional status filter and pagination.
- *
- * @param {string} customerId
- * @param {object} options
- * @param {number} [options.page=1]
- * @param {number} [options.limit=10]
- * @param {string} [options.status] - OrderStatus filter
- * @returns {Promise<{orders: Array, pagination: object}>}
- */
-exports.listOrders = async (customerId, options = {}) => {
-    const page = Number.isFinite(Number(options.page)) ? Math.max(1, Number(options.page)) : 1;
-    const limit = Number.isFinite(Number(options.limit)) ? Math.min(50, Math.max(1, Number(options.limit))) : 10;
-    const skip = (page - 1) * limit;
-    const status = options.status ? String(options.status) : null;
-
-    const where = {
-        customer_id: customerId,
-        ...(status ? { order_status: status } : {}),
-    };
-
-    const [orders, total] = await Promise.all([
-        prisma.order.findMany({
-            where,
-            orderBy: { created_at: 'desc' },
-            skip,
-            take: limit,
-            select: {
-                order_id: true,
-                order_status: true,
-                billing_status: true,
-                pricing_model: true,
-                order_type: true,
-                total_amount: true,
-                created_at: true,
-                updated_at: true,
-            },
-        }),
-        prisma.order.count({ where }),
-    ]);
-
-    return {
-        orders: orders.map((o) => ({
-            ...o,
-            total_amount: o.total_amount ? o.total_amount.toString() : null,
-        })),
-        pagination: {
-            page,
-            limit,
-            total,
-            totalPages: Math.ceil(total / limit),
-            hasNext: page * limit < total,
-            hasPrev: page > 1,
-        },
-    };
-};
-
-/**
- * Get a single order by ID for a customer (includes items + selections).
- *
- * @param {string} customerId
- * @param {string} orderId
- * @returns {Promise<object>}
- */
-exports.getOrderById = async (customerId, orderId) => {
-    const order = await prisma.order.findFirst({
-        where: {
-            order_id: orderId,
-            customer_id: customerId,
-        },
-        include: {
-            bill: true,
-            order_items: {
-                include: {
-                    service: {
-                        select: {
-                            service_id: true,
-                            service_name: true,
-                            per_kg_price: true,
-                            base_price: true,
-                        },
-                    },
-                    item_selections: {
-                        include: {
-                            cloth_item: {
-                                select: {
-                                    cloth_id: true,
-                                    item_name: true,
-                                    per_unit_price: true,
-                                },
-                            },
-                        },
-                    },
-                },
-            },
-            customer_review_entry: true,
-        },
-    });
-
-    if (!order) {
-        throw new NotFoundError('Order');
-    }
-
-    return {
-        ...order,
-        total_amount: order.total_amount ? order.total_amount.toString() : null,
-        order_items: order.order_items.map((item) => ({
-            ...item,
-            subtotal: item.subtotal ? item.subtotal.toString() : null,
-            weight_kg: item.weight_kg ? item.weight_kg.toString() : null,
-            item_selections: item.item_selections.map((s) => ({
-                ...s,
-                unit_price: s.unit_price.toString(),
-                subtotal: s.subtotal.toString(),
-            })),
-        })),
-        bill: order.bill
-            ? {
-                ...order.bill,
-                subtotal: order.bill.subtotal?.toString?.() ?? null,
-                delivery_fee: order.bill.delivery_fee?.toString?.() ?? null,
-                tax_amount: order.bill.tax_amount?.toString?.() ?? null,
-                discount: order.bill.discount?.toString?.() ?? null,
-                final_amount: order.bill.final_amount?.toString?.() ?? null,
-            }
-            : null,
-    };
 };
 
 module.exports = exports;

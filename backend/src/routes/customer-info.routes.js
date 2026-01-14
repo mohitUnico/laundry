@@ -5,7 +5,6 @@ const { validate } = require('../middleware/validation.middleware');
 const {
     createCustomerAddressSchema,
     updateCustomerAddressSchema,
-    updateCustomerProfilePictureSchema,
 } = require('../validators/customer-info.validator');
 
 const router = express.Router();
@@ -50,16 +49,6 @@ router.delete(
     authenticateJWT,
     authorize('customer'),
     customerInfoController.deleteAddress
-);
-
-// PATCH /api/v1/customer-info/profile-picture
-// Update (or clear) profile picture URL for the authenticated customer
-router.patch(
-    '/profile-picture',
-    authenticateJWT,
-    authorize('customer'),
-    validate(updateCustomerProfilePictureSchema),
-    customerInfoController.updateProfilePicture
 );
 
 module.exports = router;

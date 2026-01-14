@@ -30,7 +30,7 @@ The order creation system has been redesigned to use a **cart-based approach** w
 - **Preserved item details**: Individual cloth item selections are stored in `OrderItemSelection`
 - **Unified pricing model**: Single `OrderItem` table handles both `per_unit` and `per_kg` pricing
 - **Simplified API**: Frontend only needs to send `cart_id` instead of complex item arrays
-- **Safe cart cleanup**: Cart is marked inactive on draft creation and deleted only after order confirmation
+- **Automatic cart cleanup**: Cart is marked inactive and items are deleted after order creation
 
 ### Before vs After
 
@@ -57,17 +57,19 @@ The order creation system has been redesigned to use a **cart-based approach** w
 
 #### Enhanced Models
 
-**`OrderItem`** - Now handles both pricing types (reduced redundancy):
+**`OrderItem`** - Now handles both pricing types:
 ```prisma
 model OrderItem {
   item_id      String          @id @default(uuid())
   order_id     String
   service_id   String          // NEW: Links to service
   pricing_type PricingModel    // NEW: 'per_unit' or 'per_kg'
+  clothes_id   String?         // Optional: null for per_kg items
   quantity     Int?            // Optional: null for per_kg items
   weight_kg    Decimal?        // NEW: For per_kg pricing
-  subtotal     Decimal?        // per_unit: sum of selections; per_kg: per_kg_price * weight_kg
-  order_item_status OrderItemStatus @default(assigned)
+  unit_price   Decimal         // Price per unit or per kg
+  subtotal     Decimal
+  item_status  OrderItemStatus @default(pending)
   // ... timestamps
   item_selections OrderItemSelection[] // NEW: Individual cloth items
 }
@@ -80,24 +82,9 @@ model OrderItemSelection {
   order_item_id String
   cloth_id     String
   quantity     Int
-  unit_price   Decimal     // Snapshotted from ClothesItem.per_unit_price
-  subtotal     Decimal     // unit_price * quantity
   created_at   DateTime    @default(now())
   order_item   OrderItem   @relation(...)
   cloth_item   ClothesItem @relation(...)
-}
-```
-
-**`CustomerReview`** - NEW model (moved out of `orders`):
-```prisma
-model CustomerReview {
-  review_id   String   @id @default(uuid())
-  order_id    String   @unique
-  customer_id String
-  rating      Decimal  @db.Decimal(3, 2)
-  review      String?
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
 }
 ```
 
@@ -124,11 +111,10 @@ The order service now:
 2. Fetches cart with all items and selections
 3. Validates all services and cloth items are active
 4. Converts cart items to order items (handles both pricing types)
-5. Creates `OrderItemSelection` records for per-unit items, including selection-level `unit_price` and `subtotal`
-6. Calculates `OrderItem.subtotal` from selections (per_unit) or from service per_kg_price * weight_kg (per_kg when weight is known)
-7. Calculates `Order.total_amount` only when all items are per_unit (otherwise remains null)
-8. Creates bill only when all items are per_unit
-9. Marks cart inactive on draft creation; cart is deleted only after confirming the order
+5. Creates `OrderItemSelection` records for per-unit items
+6. Calculates total amount
+7. Creates order
+8. Marks cart inactive and deletes cart items
 
 ---
 
@@ -208,10 +194,8 @@ POST /api/v1/orders/create_order
   "pickup_address_id": "address-uuid-1",
   "delivery_address_id": "address-uuid-2",
   "order_type": "both",
-  "preferred_pickup_slot_from": "2025-01-15T10:00:00Z",
-  "preferred_pickup_slot_to": "2025-01-15T12:00:00Z",
-  "preferred_delivery_slot_from": "2025-01-16T14:00:00Z",
-  "preferred_delivery_slot_to": "2025-01-16T16:00:00Z",
+  "pickup_date": "2025-01-15T10:00:00Z",
+  "delivery_date": "2025-01-16T14:00:00Z",
   "special_instructions": "Handle with care"
 }
 ```
@@ -415,10 +399,8 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
   "pickup_address_id": "660e8400-e29b-41d4-a716-446655440001",
   "delivery_address_id": "770e8400-e29b-41d4-a716-446655440002",
   "order_type": "both",
-  "preferred_pickup_slot_from": "2025-01-15T10:00:00Z",
-  "preferred_pickup_slot_to": "2025-01-15T12:00:00Z",
-  "preferred_delivery_slot_from": "2025-01-16T14:00:00Z",
-  "preferred_delivery_slot_to": "2025-01-16T16:00:00Z",
+  "pickup_date": "2025-01-15T10:00:00Z",
+  "delivery_date": "2025-01-16T14:00:00Z",
   "special_instructions": "Handle with care, fragile items"
 }
 ```
@@ -431,10 +413,8 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 | `pickup_address_id` | `string (UUID)` | ✅ Yes | Customer address ID for pickup |
 | `delivery_address_id` | `string (UUID)` | ✅ Yes | Customer address ID for delivery |
 | `order_type` | `string` | ✅ Yes | One of: `pickup_only`, `drop_only`, `both`, `express_delivery` |
-| `preferred_pickup_slot_from` | `string (ISO 8601)` | ✅ Yes (if pickup in order_type) | Preferred pickup slot start |
-| `preferred_pickup_slot_to` | `string (ISO 8601)` | ✅ Yes (if pickup in order_type) | Preferred pickup slot end |
-| `preferred_delivery_slot_from` | `string (ISO 8601)` | ✅ Yes (if delivery in order_type) | Preferred delivery slot start |
-| `preferred_delivery_slot_to` | `string (ISO 8601)` | ✅ Yes (if delivery in order_type) | Preferred delivery slot end |
+| `pickup_date` | `string (ISO 8601)` | ❌ No | Scheduled pickup date/time (defaults to current date) |
+| `delivery_date` | `string (ISO 8601)` | ❌ No | Scheduled delivery date/time (defaults to pickup_date) |
 | `special_instructions` | `string` | ❌ No | Special handling instructions for the order |
 
 ### Success Response
@@ -767,10 +747,8 @@ Content-Type: application/json
   "pickup_address_id": "addr-uuid-1",
   "delivery_address_id": "addr-uuid-2",
   "order_type": "both",
-  "preferred_pickup_slot_from": "2025-01-15T10:00:00Z",
-  "preferred_pickup_slot_to": "2025-01-15T12:00:00Z",
-  "preferred_delivery_slot_from": "2025-01-16T14:00:00Z",
-  "preferred_delivery_slot_to": "2025-01-16T16:00:00Z"
+  "pickup_date": "2025-01-15T10:00:00Z",
+  "delivery_date": "2025-01-16T14:00:00Z"
 }
 
 # Response:

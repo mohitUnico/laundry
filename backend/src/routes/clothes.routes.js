@@ -121,8 +121,9 @@ const listClothesItemsQuerySchema = Joi.object({
  * Mounted at /api/v1/clothes
  */
 router.post('/service-categories', authenticateJWT, authorize('admin', 'manager'), validate(createServiceCategorySchema), clothesController.createServiceCategory);
-router.get('/service-categories', authenticateJWT, authorize('admin', 'manager'), validateQuery(listCategoriesQuerySchema), clothesController.listServiceCategories);
-router.get('/service-categories/:categoryId', authenticateJWT, authorize('admin', 'manager'), validateUuidParam('categoryId'), clothesController.getServiceCategory);
+// List/get should be available to all authenticated users (customers, delivery staff, etc.)
+router.get('/service-categories', authenticateJWT, validateQuery(listCategoriesQuerySchema), clothesController.listServiceCategories);
+router.get('/service-categories/:categoryId', authenticateJWT, validateUuidParam('categoryId'), clothesController.getServiceCategory);
 router.put('/service-categories/:categoryId', authenticateJWT, authorize('admin', 'manager'), validateUuidParam('categoryId'), validate(updateServiceCategorySchema), clothesController.updateServiceCategory);
 router.delete('/service-categories/:categoryId', authenticateJWT, authorize('admin', 'manager'), validateUuidParam('categoryId'), clothesController.deleteServiceCategory);
 
@@ -130,8 +131,9 @@ router.delete('/service-categories/:categoryId', authenticateJWT, authorize('adm
  * Services CRUD
  */
 router.post('/services', authenticateJWT, authorize('admin', 'manager'), validate(createServiceSchema), clothesController.createService);
-router.get('/services', authenticateJWT, authorize('admin', 'manager'), validateQuery(listServicesQuerySchema), clothesController.listServices);
-router.get('/services/:serviceId', authenticateJWT, authorize('admin', 'manager'), validateUuidParam('serviceId'), clothesController.getService);
+// List/get should be available to all authenticated users (customers, delivery staff, etc.)
+router.get('/services', authenticateJWT, validateQuery(listServicesQuerySchema), clothesController.listServices);
+router.get('/services/:serviceId', authenticateJWT, validateUuidParam('serviceId'), clothesController.getService);
 router.put('/services/:serviceId', authenticateJWT, authorize('admin', 'manager'), validateUuidParam('serviceId'), validate(updateServiceSchema), clothesController.updateService);
 router.delete('/services/:serviceId', authenticateJWT, authorize('admin', 'manager'), validateUuidParam('serviceId'), clothesController.deleteService);
 
@@ -139,8 +141,9 @@ router.delete('/services/:serviceId', authenticateJWT, authorize('admin', 'manag
  * Clothes Items CRUD
  */
 router.post('/clothes-items', authenticateJWT, authorize('admin', 'manager'), validate(createClothesItemSchema), clothesController.createClothesItem);
-router.get('/clothes-items', authenticateJWT, authorize('admin', 'manager'), validateQuery(listClothesItemsQuerySchema), clothesController.listClothesItems);
-router.get('/clothes-items/:clothId', authenticateJWT, authorize('admin', 'manager'), validateUuidParam('clothId'), clothesController.getClothesItem);
+// List/get should be available to all authenticated users (customers, delivery staff, etc.)
+router.get('/clothes-items', authenticateJWT, validateQuery(listClothesItemsQuerySchema), clothesController.listClothesItems);
+router.get('/clothes-items/:clothId', authenticateJWT, validateUuidParam('clothId'), clothesController.getClothesItem);
 router.put('/clothes-items/:clothId', authenticateJWT, authorize('admin', 'manager'), validateUuidParam('clothId'), validate(updateClothesItemSchema), clothesController.updateClothesItem);
 router.delete('/clothes-items/:clothId', authenticateJWT, authorize('admin', 'manager'), validateUuidParam('clothId'), clothesController.deleteClothesItem);
 

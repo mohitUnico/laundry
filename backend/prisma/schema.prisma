@@ -53,19 +53,20 @@ enum UserRole {
 
 // Customer
 model Customer {
-  customer_id  String            @id @default(uuid())
-  full_name    String            @db.VarChar(255)
-  email        String            @unique @db.VarChar(255)
-  phone        String?           @db.VarChar(20)
-  password     String?           @db.VarChar(255)
-  is_active    Boolean           @default(true)
-  total_orders Int               @default(0)
-  total_spent  Decimal           @default(0) @db.Decimal(10, 2)
-  created_at   DateTime          @default(now())
-  updated_at   DateTime          @updatedAt
-  addresses    CustomerAddress[]
-  orders       Order[]
-  carts        Cart[]
+  customer_id       String            @id @default(uuid())
+  full_name         String            @db.VarChar(255)
+  email             String            @unique @db.VarChar(255)
+  phone             String?           @db.VarChar(20)
+  password          String?           @db.VarChar(255)
+  profile_image_url String?           @db.VarChar(500)
+  is_active         Boolean           @default(true)
+  total_orders      Int               @default(0)
+  total_spent       Decimal           @default(0) @db.Decimal(10, 2)
+  created_at        DateTime          @default(now())
+  updated_at        DateTime          @updatedAt
+  addresses         CustomerAddress[]
+  orders            Order[]
+  carts             Cart[]
 
   @@map("customers")
 }
@@ -161,15 +162,17 @@ enum StaffRole {
 // ==================== SERVICE CATALOG ====================
 
 model ServiceCategory {
-  category_id   String    @id @default(uuid())
-  category_name String    @db.VarChar(100)
-  description   String?
-  icon_url      String?   @db.VarChar(500)
-  display_order Int       @default(0)
-  is_active     Boolean   @default(true)
-  created_at    DateTime  @default(now())
-  updated_at    DateTime  @updatedAt
-  services      Service[]
+  category_id      String    @id @default(uuid())
+  category_name    String    @db.VarChar(100)
+  description      String?
+  icon_url         String?   @db.VarChar(500)
+  foreground_color String    @default("2841CF") @db.VarChar(6)
+  background_color String    @default("FFFFFF") @db.VarChar(6)
+  display_order    Int       @default(0)
+  is_active        Boolean   @default(true)
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+  services         Service[]
 
   @@map("service_categories")
 }
@@ -289,8 +292,8 @@ model Order {
   total_amount                          Decimal         @db.Decimal(10, 2)
   pickup_address_id                     String
   delivery_address_id                   String
-  pickup_date                           DateTime
-  delivery_date                         DateTime
+  pickup_date                           DateTime?
+  delivery_date                         DateTime?
   special_instructions                  String?
   customer_rating                       Decimal?        @db.Decimal(3, 2)
   customer_review                       String?
@@ -330,6 +333,7 @@ model Order {
 }
 
 enum OrderStatus {
+  draft // Order draft created from cart (not yet confirmed)
   placed // Customer placed order
   pickup_assigned // Delivery partner assigned for pickup
   picked_up // Order picked up from customer

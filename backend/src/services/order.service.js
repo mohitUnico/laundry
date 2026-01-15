@@ -1,4 +1,4 @@
-const { Prisma } = require('@prisma/client');
+const { Prisma, OrderStatus } = require('@prisma/client');
 const prisma = require('../config/database');
 const { NotFoundError, ValidationError } = require('../utils/errors');
 
@@ -6,6 +6,11 @@ const { NotFoundError, ValidationError } = require('../utils/errors');
  * Create an order from a customer's active cart.
  * Converts cart items to order items, handling both per_unit and per_kg pricing.
  * After order creation, marks the cart as inactive and deletes cart items.
+ *
+ * Pricing rules:
+ * - If ANY cart item is per_kg, the whole order pricing_model is per_kg.
+ * - For per_kg orders, weight can be uploaded later (pickup-time), so weight_kg is optional at creation.
+ * - For per_unit orders, bill is generated immediately at order creation.
  *
  * @param {string} customerId - Customer ID creating the order
  * @param {object} payload - Order creation payload
@@ -106,23 +111,14 @@ exports.createOrder = async (customerId, payload) => {
         }
 
         // Determine pricing model from cart items
-        // If all items are per_unit, pricing_model is per_unit
-        // If all items are per_kg, pricing_model is per_kg
-        // If mixed, we'll use per_unit as default (or throw error - depends on business logic)
-        const pricingTypes = new Set(cart.cart_items.map((item) => item.pricing_type));
-        let pricingModel;
-        if (pricingTypes.size === 1) {
-            pricingModel = Array.from(pricingTypes)[0];
-        } else {
-            // Mixed pricing - for now, we'll allow it and set to per_unit
-            // You can change this to throw an error if mixed pricing is not allowed
-            pricingModel = 'per_unit';
-        }
+        // If ANY item is per_kg, the overall order pricing_model is per_kg.
+        // Otherwise it's per_unit.
+        const hasPerKgItem = cart.cart_items.some((item) => item.pricing_type === 'per_kg');
+        const pricingModel = hasPerKgItem ? 'per_kg' : 'per_unit';
 
         const Decimal = Prisma.Decimal;
         let totalAmount = new Decimal(0);
         const orderItemsToCreate = [];
-        const orderItemSelectionsToCreate = [];
 
         // Process each cart item and convert to order item
         for (const cartItem of cart.cart_items) {
@@ -155,12 +151,6 @@ exports.createOrder = async (customerId, payload) => {
 
                     cartItemQuantity += quantity;
                     cartItemSubtotal = cartItemSubtotal.plus(selectionSubtotal);
-
-                    // Store selection for later creation
-                    orderItemSelectionsToCreate.push({
-                        cloth_id: selection.cloth_id,
-                        quantity: quantity,
-                    });
                 }
 
                 // Use the first cloth item's price as unit_price (or calculate average)
@@ -168,6 +158,11 @@ exports.createOrder = async (customerId, payload) => {
                 const firstClothPrice = new Decimal(item_selections[0].cloth_item.per_unit_price);
 
                 // Create order item for this cart item
+                // If order pricing_model is per_kg, we intentionally keep monetary totals at 0
+                // until bill generation (after pickup weight upload).
+                const effectiveSubtotal =
+                    pricingModel === 'per_kg' ? new Decimal(0) : cartItemSubtotal;
+
                 orderItemsToCreate.push({
                     service_id: service.service_id,
                     pricing_type: 'per_unit',
@@ -175,28 +170,26 @@ exports.createOrder = async (customerId, payload) => {
                     quantity: cartItemQuantity,
                     weight_kg: null,
                     unit_price: firstClothPrice, // Average or representative price
-                    subtotal: cartItemSubtotal,
+                    subtotal: effectiveSubtotal,
                 });
 
-                totalAmount = totalAmount.plus(cartItemSubtotal);
+                totalAmount = totalAmount.plus(effectiveSubtotal);
             } else if (pricing_type === 'per_kg') {
-                // Per-kg pricing: validate weight exists
-                if (!weight_kg || weight_kg <= 0) {
-                    throw new ValidationError(
-                        `Cart item ${cartItem.cart_item_id} has per_kg pricing but no valid weight`
-                    );
-                }
-
-                // Validate service has per_kg_price
+                // Per-kg pricing:
+                // - weight is OPTIONAL at creation (will be filled by pickup staff later)
+                // - service must support per_kg pricing
                 if (!service.per_kg_price) {
                     throw new ValidationError(
                         `Service ${service.service_id} does not support per_kg pricing`
                     );
                 }
 
-                const weightDecimal = new Decimal(weight_kg);
                 const pricePerKg = new Decimal(service.per_kg_price);
-                const cartItemSubtotal = weightDecimal.mul(pricePerKg);
+                const weightDecimal =
+                    weight_kg && Number(weight_kg) > 0 ? new Decimal(weight_kg) : null;
+                const computedSubtotal = weightDecimal ? weightDecimal.mul(pricePerKg) : new Decimal(0);
+                const effectiveSubtotal =
+                    pricingModel === 'per_kg' ? new Decimal(0) : computedSubtotal;
 
                 // Create order item for this cart item
                 orderItemsToCreate.push({
@@ -206,24 +199,24 @@ exports.createOrder = async (customerId, payload) => {
                     quantity: null, // No quantity count for per_kg
                     weight_kg: weightDecimal,
                     unit_price: pricePerKg,
-                    subtotal: cartItemSubtotal,
+                    subtotal: effectiveSubtotal,
                 });
 
-                totalAmount = totalAmount.plus(cartItemSubtotal);
+                totalAmount = totalAmount.plus(effectiveSubtotal);
             } else {
                 throw new ValidationError(`Invalid pricing_type: ${pricing_type}`);
             }
         }
 
-        // Set dates
-        const pickupDate = pickup_date ? new Date(pickup_date) : new Date();
-        const deliveryDateValue = delivery_date ? new Date(delivery_date) : pickupDate;
+        // Set dates (optional; can be updated later)
+        const pickupDate = pickup_date ? new Date(pickup_date) : null;
+        const deliveryDateValue = delivery_date ? new Date(delivery_date) : null;
 
-        // Create order
+        // Create order draft
         const order = await tx.order.create({
             data: {
                 customer_id: customerId,
-                order_status: 'placed',
+                order_status: OrderStatus.draft,
                 pricing_model: pricingModel,
                 order_type: order_type,
                 pickup_address_id,
@@ -231,7 +224,9 @@ exports.createOrder = async (customerId, payload) => {
                 pickup_date: pickupDate,
                 delivery_date: deliveryDateValue,
                 special_instructions: special_instructions || null,
-                total_amount: totalAmount,
+                // For per_kg orders, total_amount must be filled only after bill creation.
+                total_amount: pricingModel === 'per_kg' ? new Decimal(0) : totalAmount,
+                billing_status: pricingModel === 'per_unit' ? 'generated' : 'pending',
             },
             select: {
                 order_id: true,
@@ -240,6 +235,7 @@ exports.createOrder = async (customerId, payload) => {
                 pricing_model: true,
                 order_type: true,
                 total_amount: true,
+                billing_status: true,
             },
         });
 
@@ -275,16 +271,24 @@ exports.createOrder = async (customerId, payload) => {
             }
         }
 
-        // Mark cart as inactive and delete cart items (cascade will delete selections)
-        await tx.cart.update({
-            where: { cart_id: cart.cart_id },
-            data: { is_active: false },
-        });
-
-        // Delete cart items (selections will be cascade deleted)
-        await tx.cartItem.deleteMany({
-            where: { cart_id: cart.cart_id },
-        });
+        // Generate bill immediately only for per_unit orders.
+        // For per_kg orders, bill is generated later once weight is updated by pickup staff.
+        if (pricingModel === 'per_unit') {
+            await tx.bill.create({
+                data: {
+                    order_id: order.order_id,
+                    subtotal: totalAmount,
+                    delivery_fee: new Decimal(0),
+                    tax_amount: new Decimal(0),
+                    discount: new Decimal(0),
+                    final_amount: totalAmount,
+                    // No payment method is selected at this stage in current API payload.
+                    // Using a placeholder value keeps the schema satisfied; it can be updated later.
+                    payment_method: 'pending',
+                },
+                select: { bill_id: true },
+            });
+        }
 
         return {
             order_id: order.order_id,
@@ -293,7 +297,101 @@ exports.createOrder = async (customerId, payload) => {
             pricing_model: order.pricing_model,
             order_type: order.order_type,
             total_amount: order.total_amount.toString(),
+            billing_status: order.billing_status,
             items_count: createdOrderItems.length,
+        };
+    });
+};
+
+/**
+ * Confirm an order draft.
+ * After confirmation:
+ * - order_status becomes 'placed'
+ * - customer's active cart (and items) are deleted
+ *
+ * Note:
+ * - per_unit orders must already have a generated bill
+ * - per_kg orders can be confirmed without a bill
+ */
+exports.confirmOrder = async (customerId, orderId) => {
+    if (!orderId) {
+        throw new ValidationError('orderId is required');
+    }
+
+    return prisma.$transaction(async (tx) => {
+        const order = await tx.order.findFirst({
+            where: {
+                order_id: orderId,
+                customer_id: customerId,
+            },
+            select: {
+                order_id: true,
+                order_status: true,
+                pricing_model: true,
+                billing_status: true,
+                total_amount: true,
+            },
+        });
+
+        if (!order) {
+            throw new NotFoundError('Order');
+        }
+
+        if (order.order_status !== OrderStatus.draft) {
+            throw new ValidationError(`Only draft orders can be confirmed. Current status: ${order.order_status}`);
+        }
+
+        if (order.pricing_model === 'per_unit') {
+            if (order.billing_status !== 'generated') {
+                throw new ValidationError('Bill must be generated before confirming a per_unit order');
+            }
+
+            const bill = await tx.bill.findUnique({
+                where: { order_id: order.order_id },
+                select: { final_amount: true },
+            });
+
+            if (!bill) {
+                throw new ValidationError('Bill must be generated before confirming a per_unit order');
+            }
+
+            // Ensure order.total_amount reflects bill final_amount
+            await tx.order.update({
+                where: { order_id: order.order_id },
+                data: { total_amount: bill.final_amount },
+                select: { order_id: true },
+            });
+        }
+
+        const updated = await tx.order.update({
+            where: { order_id: order.order_id },
+            data: { order_status: OrderStatus.placed },
+            select: {
+                order_id: true,
+                order_status: true,
+                pricing_model: true,
+                billing_status: true,
+                total_amount: true,
+            },
+        });
+
+        // Delete the customer's active cart (latest). Cart items/selections cascade delete.
+        const activeCart = await tx.cart.findFirst({
+            where: { customer_id: customerId, is_active: true },
+            orderBy: { updated_at: 'desc' },
+            select: { cart_id: true },
+        });
+
+        if (activeCart) {
+            await tx.cart.delete({ where: { cart_id: activeCart.cart_id } });
+        }
+
+        return {
+            order_id: updated.order_id,
+            order_status: updated.order_status,
+            pricing_model: updated.pricing_model,
+            billing_status: updated.billing_status,
+            total_amount: updated.total_amount.toString(),
         };
     });
 };

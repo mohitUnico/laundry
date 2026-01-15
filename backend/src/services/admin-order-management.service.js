@@ -4,6 +4,7 @@ const { ValidationError } = require('../utils/errors');
 const { Prisma } = require('@prisma/client');
 
 const ORDER_STATUSES = [
+    'draft',
     'placed',
     'pickup_assigned',
     'picked_up',
@@ -177,12 +178,12 @@ const getAdminOrdersRaw = async ({ statusList, from, to, skip, take }) => {
             name: r.customer_name || null,
             address: r.address_id
                 ? {
-                      address_id: r.address_id,
-                      label: r.address_label,
-                      full_address: r.full_address,
-                      latitude: r.latitude,
-                      longitude: r.longitude,
-                  }
+                    address_id: r.address_id,
+                    label: r.address_label,
+                    full_address: r.full_address,
+                    latitude: r.latitude,
+                    longitude: r.longitude,
+                }
                 : null,
         },
         services: Array.isArray(r.services) ? r.services.filter(Boolean) : [],
@@ -190,10 +191,10 @@ const getAdminOrdersRaw = async ({ statusList, from, to, skip, take }) => {
         status: r.order_status || null,
         delivery_boy: r.delivery_staff_id
             ? {
-                  staff_id: r.delivery_staff_id,
-                  name: r.delivery_staff_name,
-                  phone: r.delivery_staff_phone || null,
-              }
+                staff_id: r.delivery_staff_id,
+                name: r.delivery_staff_name,
+                phone: r.delivery_staff_phone || null,
+            }
             : null,
         estimated_delivery_time: {
             delivery_date: r.delivery_date ? new Date(r.delivery_date).toISOString() : null,
@@ -553,12 +554,12 @@ exports.getAdminOrders = async (query = {}) => {
                 name: o.customer?.full_name || null,
                 address: o.delivery_address
                     ? {
-                          address_id: o.delivery_address.address_id,
-                          label: o.delivery_address.address_label,
-                          full_address: o.delivery_address.full_address,
-                          latitude: o.delivery_address.latitude,
-                          longitude: o.delivery_address.longitude,
-                      }
+                        address_id: o.delivery_address.address_id,
+                        label: o.delivery_address.address_label,
+                        full_address: o.delivery_address.full_address,
+                        latitude: o.delivery_address.latitude,
+                        longitude: o.delivery_address.longitude,
+                    }
                     : null,
             },
             services,
@@ -566,10 +567,10 @@ exports.getAdminOrders = async (query = {}) => {
             status: o.order_status,
             delivery_boy: o.delivery?.staff
                 ? {
-                      staff_id: o.delivery.staff.staff_id,
-                      name: o.delivery.staff.full_name,
-                      phone: o.delivery.staff.phone || null,
-                  }
+                    staff_id: o.delivery.staff.staff_id,
+                    name: o.delivery.staff.full_name,
+                    phone: o.delivery.staff.phone || null,
+                }
                 : null,
             estimated_delivery_time: {
                 delivery_date: o.delivery_date ? o.delivery_date.toISOString() : null,

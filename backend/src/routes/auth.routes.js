@@ -257,7 +257,7 @@ router.post(
  *            customerData: { 
  *              fullName, 
  *              phone, 
- *              address: { addressLabel, address, latitude, longitude }
+ *              address?: { addressLabel, address, latitude, longitude }
  *            }
  *          }
  */

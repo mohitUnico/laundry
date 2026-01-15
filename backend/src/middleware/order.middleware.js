@@ -60,6 +60,32 @@ exports.validateCreateOrder = (req, res, next) => {
     next();
 };
 
+const confirmOrderParamsSchema = Joi.object({
+    orderId: Joi.string().uuid().required().messages({
+        'string.guid': 'orderId must be a valid UUID',
+        'any.required': 'orderId is required',
+    }),
+});
+
+exports.validateConfirmOrder = (req, res, next) => {
+    const { error, value } = confirmOrderParamsSchema.validate(req.params, {
+        abortEarly: false,
+        stripUnknown: true,
+    });
+
+    if (error) {
+        return next(
+            new ValidationError(
+                'Invalid confirm order params',
+                error.details.map((d) => d.message)
+            )
+        );
+    }
+
+    req.params = value;
+    next();
+};
+
 module.exports = exports;
 
 

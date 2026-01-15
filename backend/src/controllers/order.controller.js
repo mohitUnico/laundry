@@ -19,3 +19,24 @@ exports.createOrder = async (req, res, next) => {
         next(error);
     }
 };
+
+exports.confirmOrder = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'customer') {
+            throw new AuthorizationError('Only customers can confirm orders');
+        }
+
+        const customerId = req.user.user_id;
+        const { orderId } = req.params;
+
+        const order = await orderService.confirmOrder(customerId, orderId);
+
+        res.status(200).json({
+            success: true,
+            data: order,
+            message: 'Order confirmed successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};

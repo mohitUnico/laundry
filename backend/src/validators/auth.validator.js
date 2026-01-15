@@ -316,10 +316,11 @@ const completeCustomerRegistrationSchema = Joi.object({
           'number.max': 'Longitude must be between -180 and 180',
           'any.required': 'Longitude is required'
         })
-    }).required().messages({
-      'object.base': 'Address is required',
-      'any.required': 'Address is required'
     })
+      // Address is optional during customer registration.
+      // If provided, all fields above are still required/validated.
+      .optional()
+      .allow(null)
   }).required()
 });
 

@@ -2,12 +2,19 @@ const express = require('express');
 const customerInfoController = require('../controllers/customer-info.controller');
 const { authenticateJWT, authorize } = require('../middleware/auth.middleware');
 const { validate } = require('../middleware/validation.middleware');
+const multer = require('multer');
 const {
     createCustomerAddressSchema,
     updateCustomerAddressSchema,
+    updateCustomerProfileImageSchema,
 } = require('../validators/customer-info.validator');
 
 const router = express.Router();
+
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+});
 
 // POST /api/v1/customer-info/addresses
 // Create a new address for the authenticated customer
@@ -49,6 +56,27 @@ router.delete(
     authenticateJWT,
     authorize('customer'),
     customerInfoController.deleteAddress
+);
+
+// PATCH /api/v1/customer-info/profile-image
+// Set or clear profile image URL (store the link in DB)
+router.patch(
+    '/profile-image',
+    authenticateJWT,
+    authorize('customer'),
+    validate(updateCustomerProfileImageSchema),
+    customerInfoController.updateProfileImageUrl
+);
+
+// POST /api/v1/customer-info/profile-image/upload
+// Upload profile image to Supabase Storage and save the public URL in DB
+// multipart/form-data with field name: file
+router.post(
+    '/profile-image/upload',
+    authenticateJWT,
+    authorize('customer'),
+    upload.single('file'),
+    customerInfoController.uploadProfileImage
 );
 
 module.exports = router;

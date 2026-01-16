@@ -269,6 +269,108 @@ exports.updateSelectionQuantity = async (customerId, cartItemId, selectionId, de
     });
 };
 
+/**
+ * Set quantity for a cart item selection identified by (cartItemId, clothId).
+ * If quantity is 0: selection is deleted. If cart item becomes empty (per_unit), cart item is deleted.
+ */
+exports.setSelectionQuantity = async (customerId, cartItemId, clothId, quantity) => {
+    if (!cartItemId || !clothId) {
+        throw new ValidationError('cartItemId and clothId are required');
+    }
+
+    if (!Number.isInteger(quantity) || quantity < 0) {
+        throw new ValidationError('quantity must be an integer >= 0');
+    }
+
+    return prisma.$transaction(async (tx) => {
+        const cartItem = await tx.cartItem.findFirst({
+            where: {
+                cart_item_id: cartItemId,
+                cart: { customer_id: customerId },
+            },
+            select: {
+                cart_item_id: true,
+                cart_id: true,
+                pricing_type: true,
+            },
+        });
+
+        if (!cartItem) {
+            throw new NotFoundError('Cart item');
+        }
+
+        if (cartItem.pricing_type !== 'per_unit') {
+            throw new ValidationError('Selection quantity updates are only supported for per_unit cart items');
+        }
+
+        const existing = await tx.cartItemSelection.findFirst({
+            where: {
+                cart_item_id: cartItem.cart_item_id,
+                cloth_id: clothId,
+            },
+            select: {
+                selection_id: true,
+                quantity: true,
+            },
+        });
+
+        let selectionDeleted = false;
+        let cartItemDeleted = false;
+        let selectionId = existing?.selection_id ?? null;
+
+        if (quantity < 1) {
+            if (existing) {
+                await tx.cartItemSelection.delete({
+                    where: { selection_id: existing.selection_id },
+                });
+                selectionDeleted = true;
+            }
+
+            const remaining = await tx.cartItemSelection.count({
+                where: { cart_item_id: cartItem.cart_item_id },
+            });
+
+            if (remaining < 1) {
+                await tx.cartItem.delete({
+                    where: { cart_item_id: cartItem.cart_item_id },
+                });
+                cartItemDeleted = true;
+            }
+        } else if (existing) {
+            await tx.cartItemSelection.update({
+                where: { selection_id: existing.selection_id },
+                data: { quantity },
+            });
+        } else {
+            const created = await tx.cartItemSelection.create({
+                data: {
+                    cart_item_id: cartItem.cart_item_id,
+                    cloth_id: clothId,
+                    quantity,
+                },
+                select: { selection_id: true },
+            });
+            selectionId = created.selection_id;
+        }
+
+        // Touch cart updated_at (and keep behavior consistent with other mutations)
+        await tx.cart.update({
+            where: { cart_id: cartItem.cart_id },
+            data: { updated_at: new Date() },
+            select: { cart_id: true },
+        });
+
+        return {
+            cart_item_id: cartItem.cart_item_id,
+            selection_id: selectionId,
+            cloth_id: clothId,
+            quantity,
+            deleted: selectionDeleted,
+            cart_item_deleted: cartItemDeleted,
+        };
+    });
+};
+
 exports.removeCartItem = async (customerId, cartItemId) => {
     if (!cartItemId) {
         throw new ValidationError('cartItemId is required');

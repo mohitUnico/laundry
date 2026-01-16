@@ -29,6 +29,13 @@ exports.addCartItemsSchema = Joi.object({
     items: Joi.array().items(cartItemSchema).min(1).required(),
 });
 
+// Used for updating per-unit selection quantity in an existing cart item
+// quantity can be 0 (meaning delete the selection; cart item may also be removed if empty)
+exports.setSelectionQuantitySchema = Joi.object({
+    cloth_id: Joi.string().uuid().required(),
+    quantity: Joi.number().integer().min(0).required(),
+});
+
 module.exports = exports;
 
 

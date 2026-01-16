@@ -366,6 +366,12 @@ const resendOtpSchema = Joi.object({
   userType: userTypeSchema
 });
 
+const refreshTokenSchema = Joi.object({
+  refreshToken: Joi.string().min(20).required().messages({
+    'any.required': 'Refresh token is required',
+  }),
+});
+
 // ============================================================================
 // EXPORTS
 // ============================================================================
@@ -390,5 +396,6 @@ module.exports = {
   completeDeliveryRegistrationSchema,
 
   // Common
-  resendOtpSchema
+  resendOtpSchema,
+  refreshTokenSchema,
 };

@@ -79,6 +79,28 @@ exports.decrementSelection = async (req, res, next) => {
     }
 };
 
+exports.setSelectionQuantity = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'customer') {
+            throw new AuthorizationError('Only customers can update carts');
+        }
+
+        const customerId = req.user.user_id;
+        const { cartItemId } = req.params;
+        const { cloth_id, quantity } = req.body;
+
+        const result = await cartService.setSelectionQuantity(customerId, cartItemId, cloth_id, quantity);
+
+        res.status(200).json({
+            success: true,
+            data: result,
+            message: 'Selection quantity updated',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 exports.deleteCartItem = async (req, res, next) => {
     try {
         if (req.user.role !== 'customer') {

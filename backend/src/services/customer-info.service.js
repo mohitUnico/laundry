@@ -210,7 +210,9 @@ exports.uploadCustomerProfileImage = async (customerId, file) => {
         throw new ValidationError('Only JPEG, PNG, or WEBP images are allowed');
     }
 
-    const bucket = process.env.SUPABASE_CUSTOMER_PROFILE_BUCKET || 'customer-profile';
+    // Default bucket for customer profile images.
+    // Can be overridden via SUPABASE_CUSTOMER_PROFILE_BUCKET env var.
+    const bucket = process.env.SUPABASE_CUSTOMER_PROFILE_BUCKET || 'customer-info';
     const ext = file.mimetype === 'image/jpeg' ? 'jpg' : file.mimetype === 'image/png' ? 'png' : 'webp';
     const objectPath = `customers/${customerId}/${uuidv4()}.${ext}`;
 
@@ -258,6 +260,60 @@ exports.uploadCustomerProfileImage = async (customerId, file) => {
             customerId,
             bucket,
             objectPath,
+        });
+
+        return updated;
+    });
+};
+
+exports.updateCustomerProfile = async (customerId, payload) => {
+    assertUuid(customerId, 'customerId');
+
+    const fullName =
+        payload?.full_name !== undefined ? payload.full_name : payload?.fullName;
+    const phone = payload?.phone;
+    const profileImageUrl =
+        payload?.profile_image_url !== undefined ? payload.profile_image_url : payload?.profileImageUrl;
+
+    if (fullName !== undefined && fullName !== null && typeof fullName !== 'string') {
+        throw new ValidationError('fullName must be a string');
+    }
+    if (phone !== undefined && phone !== null && typeof phone !== 'string') {
+        throw new ValidationError('phone must be a string or null');
+    }
+    if (profileImageUrl !== undefined && profileImageUrl !== null && typeof profileImageUrl !== 'string') {
+        throw new ValidationError('profileImageUrl must be a valid URL or null');
+    }
+
+    return prisma.$transaction(async (tx) => {
+        await ensureCustomerExists(tx, customerId);
+
+        const updated = await tx.customer.update({
+            where: { customer_id: customerId },
+            data: {
+                ...(typeof fullName === 'string' ? { full_name: fullName.trim() } : {}),
+                ...(typeof phone === 'string' ? { phone: phone.trim() } : phone === null ? { phone: null } : {}),
+                ...(typeof profileImageUrl === 'string'
+                    ? { profile_image_url: profileImageUrl }
+                    : profileImageUrl === null
+                      ? { profile_image_url: null }
+                      : {}),
+            },
+            select: {
+                customer_id: true,
+                full_name: true,
+                email: true,
+                phone: true,
+                profile_image_url: true,
+                updated_at: true,
+            },
+        });
+
+        logger.info('Customer profile updated', {
+            customerId,
+            changedName: typeof fullName === 'string',
+            changedPhone: phone !== undefined,
+            changedProfileImage: profileImageUrl !== undefined,
         });
 
         return updated;

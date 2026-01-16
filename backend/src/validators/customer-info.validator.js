@@ -39,6 +39,23 @@ exports.updateCustomerProfileImageSchema = Joi.object({
         'object.missing': 'profile_image_url or profileImageUrl is required',
     });
 
+// PATCH /api/v1/customer-info/profile
+// Update customer's basic profile fields.
+exports.updateCustomerProfileSchema = Joi.object({
+    // Prefer snake_case for this module, but allow camelCase too
+    full_name: Joi.string().trim().min(2).max(255).optional(),
+    fullName: Joi.string().trim().min(2).max(255).optional(),
+    phone: Joi.string().trim().max(20).allow('', null).optional(),
+    // Optional: allow setting/clearing profile image url directly.
+    // (Upload flow uses /profile-image/upload to generate URL in "customer-info" bucket.)
+    profile_image_url: Joi.alternatives().try(imageUrl, Joi.valid(null)).optional(),
+    profileImageUrl: Joi.alternatives().try(imageUrl, Joi.valid(null)).optional(),
+})
+    .min(1)
+    .messages({
+        'object.min': 'At least one field is required',
+    });
+
 module.exports = exports;
 
 

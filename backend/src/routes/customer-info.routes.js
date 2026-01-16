@@ -7,6 +7,7 @@ const {
     createCustomerAddressSchema,
     updateCustomerAddressSchema,
     updateCustomerProfileImageSchema,
+    updateCustomerProfileSchema,
 } = require('../validators/customer-info.validator');
 
 const router = express.Router();
@@ -77,6 +78,16 @@ router.post(
     authorize('customer'),
     upload.single('file'),
     customerInfoController.uploadProfileImage
+);
+
+// PATCH /api/v1/customer-info/profile
+// Update authenticated customer's profile fields (name/phone/profile_image_url)
+router.patch(
+    '/profile',
+    authenticateJWT,
+    authorize('customer'),
+    validate(updateCustomerProfileSchema),
+    customerInfoController.updateProfile
 );
 
 module.exports = router;

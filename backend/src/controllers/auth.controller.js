@@ -55,6 +55,31 @@ const completePortalRegistration = async (req, res, next) => {
 };
 
 // ============================================================================
+// TOKEN REFRESH
+// ============================================================================
+
+/**
+ * Refresh access token using refresh token (rotates refresh token)
+ * POST /api/v1/auth/refresh
+ * Body: { refreshToken }
+ */
+const refreshToken = async (req, res, next) => {
+  try {
+    const { refreshToken: token } = req.body;
+    const result = await otpService.refreshAccessToken(token);
+
+    res.status(200).json({
+      success: true,
+      message: 'Token refreshed',
+      data: result,
+    });
+  } catch (error) {
+    logger.error('Refresh token failed', { error: error.message });
+    next(error);
+  }
+};
+
+// ============================================================================
 // OWNER AUTHENTICATION
 // ============================================================================
 
@@ -542,6 +567,7 @@ const verifyCustomerOtp = async (req, res, next) => {
         data: {
           isNewUser: false,
           token: result.token,
+          refreshToken: result.refreshToken,
           user: result.user
         }
       });
@@ -570,6 +596,7 @@ const completeCustomerRegistration = async (req, res, next) => {
       message: 'Registration completed successfully. Welcome to Laundry App!',
       data: {
         token: result.token,
+        refreshToken: result.refreshToken,
         customer: result.customer
       }
     });
@@ -1022,6 +1049,7 @@ module.exports = {
   sendPortalOtp,
   verifyPortalOtp,
   completePortalRegistration,
+  refreshToken,
 
   // Owner
   sendOwnerOtp,

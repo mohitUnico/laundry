@@ -612,3 +612,21 @@ model OtpSession {
   @@index([expires_at])
   @@map("otp_sessions")
 }
+
+// ==================== AUTH SESSION (REFRESH TOKENS) ====================
+
+model RefreshToken {
+  token_id             String    @id @default(uuid())
+  user_id              String
+  user_type            String    @db.VarChar(30)
+  token_hash           String    @unique @db.VarChar(64) // sha256 hex
+  expires_at           DateTime
+  created_at           DateTime  @default(now())
+  revoked_at           DateTime?
+  replaced_by_token_id String?
+
+  @@index([user_id, user_type])
+  @@index([expires_at])
+  @@index([revoked_at])
+  @@map("refresh_tokens")
+}

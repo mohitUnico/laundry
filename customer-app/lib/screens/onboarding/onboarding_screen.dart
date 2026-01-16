@@ -18,6 +18,7 @@ class OnboardingScreen extends StatefulWidget {
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _controller = PageController();
   int _index = 0;
+  bool _isNavigating = false;
 
   @override
   void dispose() {
@@ -26,6 +27,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Future<void> _setSeenAndGoLogin() async {
+    if (_isNavigating) return;
+    setState(() => _isNavigating = true);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(PrefsKeys.onboardingSeen, true);
     if (!mounted) return;
@@ -33,6 +36,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Future<void> _handleNext() async {
+    if (_isNavigating) return;
     final isLast = _index >= onboardingPages.length - 1;
     if (isLast) {
       await _setSeenAndGoLogin();
@@ -59,14 +63,20 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
-                  onPressed: _setSeenAndGoLogin,
+                  onPressed: _isNavigating ? null : _setSeenAndGoLogin,
                   style: TextButton.styleFrom(
                     foregroundColor: const Color(0xFF2C3CA5),
                   ),
-                  child: const Text(
-                    'Skip',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
+                  child: _isNavigating
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text(
+                          'Skip',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
                 ),
               ),
               Expanded(
@@ -128,7 +138,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                 width: double.infinity,
                                 height: 54,
                                 child: ElevatedButton(
-                                  onPressed: _handleNext,
+                                  onPressed: _isNavigating ? null : _handleNext,
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor:
                                         const Color(0xFF2C3CA5),
@@ -137,13 +147,24 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                     ),
                                     elevation: 0,
                                   ),
-                                  child: Text(
-                                    page.primaryButtonLabel,
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
+                                  child: _isNavigating
+                                      ? const SizedBox(
+                                          width: 22,
+                                          height: 22,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            valueColor: AlwaysStoppedAnimation<Color>(
+                                              Colors.white,
+                                            ),
+                                          ),
+                                        )
+                                      : Text(
+                                          page.primaryButtonLabel,
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
                                 ),
                               ),
                             ],

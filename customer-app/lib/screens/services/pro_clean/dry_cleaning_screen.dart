@@ -3,8 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../../../routes/app_routes.dart';
 import '../../../providers/cart_provider.dart';
+import '../../../providers/service_catalog_provider.dart';
 import '../../../theme/app_text_styles.dart';
-import '../../../utils/pricing.dart';
 import '../../home/widgets/home_bottom_nav.dart';
 import '../../home/widgets/home_colors.dart';
 import 'widgets/others_field.dart';
@@ -19,28 +19,101 @@ class DryCleaningScreen extends StatefulWidget {
 
 class _DryCleaningScreenState extends State<DryCleaningScreen> {
   final _othersController = TextEditingController();
+  final TextEditingController _weightController = TextEditingController();
 
-  final Map<_ItemType, int> _qty = {
-    _ItemType.topWear: 0,
-    _ItemType.bottomWear: 0,
-    _ItemType.saree: 0,
-    _ItemType.lingerie: 0,
-    _ItemType.kurta: 0,
-  };
+  final Map<String, int> _qtyByItemName = {};
+  bool _didInit = false;
+  String? _serviceId;
 
   @override
   void dispose() {
     _othersController.dispose();
+    _weightController.dispose();
     super.dispose();
   }
 
-  int get _total => _qty.values.fold(0, (a, b) => a + b);
+  Future<double?> _askWeightKg() async {
+    _weightController.text = '';
+    return showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Enter weight (kg)'),
+        content: TextField(
+          controller: _weightController,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(hintText: 'e.g. 3.5'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final v = double.tryParse(_weightController.text.trim());
+              Navigator.of(ctx).pop(v);
+            },
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  int get _total => _qtyByItemName.values.fold(0, (a, b) => a + b);
+
+  String _priceText(double perUnitPrice) => '₹${perUnitPrice.toStringAsFixed(0)}/pc';
+
+  String _assetForItemName(String itemName) {
+    final n = itemName.toLowerCase();
+    if (n.contains('top')) return 'assets/images/regular_wash/top_wear.png';
+    if (n.contains('bottom')) return 'assets/images/regular_wash/bottom_wear.png';
+    if (n.contains('saree')) return 'assets/images/regular_wash/saree.png';
+    if (n.contains('kurta')) return 'assets/images/regular_wash/kurta.png';
+    return 'assets/images/regular_wash/top_wear.png';
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_didInit) return;
+    _didInit = true;
+
+    final selection =
+        ModalRoute.of(context)?.settings.arguments as ProCleanSelection?;
+    _serviceId = selection?.serviceId;
+
+    final sid = _serviceId;
+    if (sid == null || sid.isEmpty) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await context
+          .read<ServiceCatalogProvider>()
+          .fetchClothesItemsForService(serviceId: sid, isActive: true);
+      if (!mounted) return;
+      final items =
+          context.read<ServiceCatalogProvider>().clothesItemsForService(sid);
+      setState(() {
+        for (final it in items) {
+          _qtyByItemName.putIfAbsent(it.itemName, () => 0);
+        }
+      });
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final selection =
         ModalRoute.of(context)?.settings.arguments as ProCleanSelection?;
     final showPrices = selection?.pricingType == ProCleanPricingType.perPiece;
+    final serviceName = selection?.categoryName ?? 'Dry Cleaning';
+    final sid = selection?.serviceId;
+    final catalog = context.watch<ServiceCatalogProvider>();
+    final items =
+        (sid == null || sid.isEmpty) ? const [] : catalog.clothesItemsForService(sid);
+    final isLoading =
+        (sid == null || sid.isEmpty) ? false : catalog.isLoadingClothesItems(sid);
     return Scaffold(
       backgroundColor: HomeColors.background,
       body: SafeArea(
@@ -58,154 +131,87 @@ class _DryCleaningScreenState extends State<DryCleaningScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 child: Column(
                   children: [
-                    _ItemCard(
-                      title: 'Top Wear',
-                      imageAsset: 'assets/images/regular_wash/top_wear.png',
-                      priceText: showPrices
-                          ? Pricing.inrPerPc(
-                              Pricing.unitPriceInr(
-                                category: 'Pro Clean',
-                                serviceName: 'Dry Cleaning',
-                                itemName: 'Top Wear',
-                              ),
-                            )
-                          : null,
-                      value: _qty[_ItemType.topWear]!,
-                      onMinus: () => setState(() {
-                        _qty[_ItemType.topWear] =
-                            (_qty[_ItemType.topWear]! - 1).clamp(0, 999);
-                      }),
-                      onPlus: () => setState(() {
-                        _qty[_ItemType.topWear] =
-                            (_qty[_ItemType.topWear]! + 1).clamp(0, 999);
-                      }),
-                    ),
-                    const SizedBox(height: 10),
-                    _ItemCard(
-                      title: 'Bottom Wear',
-                      imageAsset: 'assets/images/regular_wash/bottom_wear.png',
-                      priceText: showPrices
-                          ? Pricing.inrPerPc(
-                              Pricing.unitPriceInr(
-                                category: 'Pro Clean',
-                                serviceName: 'Dry Cleaning',
-                                itemName: 'Bottom Wear',
-                              ),
-                            )
-                          : null,
-                      value: _qty[_ItemType.bottomWear]!,
-                      onMinus: () => setState(() {
-                        _qty[_ItemType.bottomWear] =
-                            (_qty[_ItemType.bottomWear]! - 1).clamp(0, 999);
-                      }),
-                      onPlus: () => setState(() {
-                        _qty[_ItemType.bottomWear] =
-                            (_qty[_ItemType.bottomWear]! + 1).clamp(0, 999);
-                      }),
-                    ),
-                    const SizedBox(height: 10),
-                    _ItemCard(
-                      title: 'Saree',
-                      imageAsset: 'assets/images/regular_wash/saree.png',
-                      priceText: showPrices
-                          ? Pricing.inrPerPc(
-                              Pricing.unitPriceInr(
-                                category: 'Pro Clean',
-                                serviceName: 'Dry Cleaning',
-                                itemName: 'Saree',
-                              ),
-                            )
-                          : null,
-                      value: _qty[_ItemType.saree]!,
-                      onMinus: () => setState(() {
-                        _qty[_ItemType.saree] =
-                            (_qty[_ItemType.saree]! - 1).clamp(0, 999);
-                      }),
-                      onPlus: () => setState(() {
-                        _qty[_ItemType.saree] =
-                            (_qty[_ItemType.saree]! + 1).clamp(0, 999);
-                      }),
-                    ),
-                    const SizedBox(height: 10),
-                    _ItemCard(
-                      title: 'Lingerie',
-                      // No dedicated icon in assets yet; reuse a regular-wash icon.
-                      imageAsset: 'assets/images/regular_wash/top_wear.png',
-                      priceText: showPrices
-                          ? Pricing.inrPerPc(
-                              Pricing.unitPriceInr(
-                                category: 'Pro Clean',
-                                serviceName: 'Dry Cleaning',
-                                itemName: 'Lingerie',
-                              ),
-                            )
-                          : null,
-                      value: _qty[_ItemType.lingerie]!,
-                      onMinus: () => setState(() {
-                        _qty[_ItemType.lingerie] =
-                            (_qty[_ItemType.lingerie]! - 1).clamp(0, 999);
-                      }),
-                      onPlus: () => setState(() {
-                        _qty[_ItemType.lingerie] =
-                            (_qty[_ItemType.lingerie]! + 1).clamp(0, 999);
-                      }),
-                    ),
-                    const SizedBox(height: 10),
-                    _ItemCard(
-                      title: 'Kurta',
-                      imageAsset: 'assets/images/regular_wash/kurta.png',
-                      priceText: showPrices
-                          ? Pricing.inrPerPc(
-                              Pricing.unitPriceInr(
-                                category: 'Pro Clean',
-                                serviceName: 'Dry Cleaning',
-                                itemName: 'Kurta',
-                              ),
-                            )
-                          : null,
-                      value: _qty[_ItemType.kurta]!,
-                      onMinus: () => setState(() {
-                        _qty[_ItemType.kurta] =
-                            (_qty[_ItemType.kurta]! - 1).clamp(0, 999);
-                      }),
-                      onPlus: () => setState(() {
-                        _qty[_ItemType.kurta] =
-                            (_qty[_ItemType.kurta]! + 1).clamp(0, 999);
-                      }),
-                    ),
+                    if (sid != null && sid.isNotEmpty && isLoading)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 24, bottom: 24),
+                        child: Center(child: CircularProgressIndicator()),
+                      ),
+                    for (final it in items) ...[
+                      _ItemCard(
+                        title: it.itemName,
+                        imageAsset: _assetForItemName(it.itemName),
+                        priceText: showPrices ? _priceText(it.perUnitPrice) : null,
+                        value: _qtyByItemName[it.itemName] ?? 0,
+                        onMinus: () => setState(() {
+                          _qtyByItemName[it.itemName] =
+                              ((_qtyByItemName[it.itemName] ?? 0) - 1).clamp(0, 999);
+                        }),
+                        onPlus: () => setState(() {
+                          _qtyByItemName[it.itemName] =
+                              ((_qtyByItemName[it.itemName] ?? 0) + 1).clamp(0, 999);
+                        }),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
                     const SizedBox(height: 12),
                     OthersField(controller: _othersController),
                     const SizedBox(height: 12),
                     _OrderSummaryCard(
-                      topWear: _qty[_ItemType.topWear]!,
-                      bottomWear: _qty[_ItemType.bottomWear]!,
-                      saree: _qty[_ItemType.saree]!,
-                      lingerie: _qty[_ItemType.lingerie]!,
-                      kurta: _qty[_ItemType.kurta]!,
+                      rows: _qtyByItemName.entries
+                          .where((e) => e.value > 0)
+                          .map((e) => MapEntry(e.key, e.value))
+                          .toList(),
                       total: _total,
                     ),
                     const SizedBox(height: 16),
                     _PrimaryGradientButton(
                       label: 'Add to Cart',
-                      onTap: () {
-                        context.read<CartProvider>().addOrMerge(
-                              category: 'Pro Clean',
-                              serviceName: 'Dry Cleaning',
-                              imageAsset: 'assets/images/regular_wash/saree.png',
-                              isPerPiece: showPrices,
-                              quantities: {
-                                'Top Wear': _qty[_ItemType.topWear] ?? 0,
-                                'Bottom Wear': _qty[_ItemType.bottomWear] ?? 0,
-                                'Saree': _qty[_ItemType.saree] ?? 0,
-                                'Lingerie': _qty[_ItemType.lingerie] ?? 0,
-                                'Kurta': _qty[_ItemType.kurta] ?? 0,
-                              },
-                              note: _othersController.text,
-                            );
+                      onTap: () async {
+                        final serviceId = sid;
+                        if (serviceId == null || serviceId.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Missing service id')),
+                          );
+                          return;
+                        }
 
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Added to cart')),
-                        );
+                        final clothIdByName = <String, String>{
+                          for (final it in items) it.itemName: it.clothId,
+                        };
+                        final unitPrices = <String, int>{
+                          for (final it in items) it.itemName: it.perUnitPrice.round(),
+                        };
+
+                        double? weightKg;
+                        if (!showPrices) {
+                          weightKg = await _askWeightKg();
+                          if (weightKg == null || weightKg <= 0) return;
+                        }
+
+                        try {
+                          await context.read<CartProvider>().addAndSave(
+                                category: 'Pro Clean',
+                                serviceName: serviceName,
+                                serviceId: serviceId,
+                                imageAsset: 'assets/images/regular_wash/saree.png',
+                                isPerPiece: showPrices,
+                                quantities: Map<String, int>.from(_qtyByItemName),
+                                clothIdByItemName: clothIdByName,
+                                unitPricesInr: unitPrices,
+                                weightKg: weightKg,
+                                note: _othersController.text,
+                              );
+
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Added to cart')),
+                          );
+                        } catch (e) {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(e.toString())),
+                          );
+                        }
                       },
                     ),
                     const SizedBox(height: 10),
@@ -231,8 +237,6 @@ class _DryCleaningScreenState extends State<DryCleaningScreen> {
     );
   }
 }
-
-enum _ItemType { topWear, bottomWear, saree, lingerie, kurta }
 
 class _TopBar extends StatelessWidget {
   final String title;
@@ -415,19 +419,11 @@ class _QtyButton extends StatelessWidget {
 }
 
 class _OrderSummaryCard extends StatelessWidget {
-  final int topWear;
-  final int bottomWear;
-  final int saree;
-  final int lingerie;
-  final int kurta;
+  final List<MapEntry<String, int>> rows;
   final int total;
 
   const _OrderSummaryCard({
-    required this.topWear,
-    required this.bottomWear,
-    required this.saree,
-    required this.lingerie,
-    required this.kurta,
+    required this.rows,
     required this.total,
   });
 
@@ -450,11 +446,7 @@ class _OrderSummaryCard extends StatelessWidget {
                 AppTextStyles.header(color: HomeColors.text).copyWith(fontSize: 12),
           ),
           const SizedBox(height: 10),
-          _SummaryRow(label: 'Top Wear', value: '$topWear'),
-          _SummaryRow(label: 'Bottom Wear', value: '$bottomWear'),
-          _SummaryRow(label: 'Saree', value: '$saree'),
-          _SummaryRow(label: 'Lingerie', value: '$lingerie'),
-          _SummaryRow(label: 'Kurta', value: '$kurta'),
+          for (final r in rows) _SummaryRow(label: r.key, value: '${r.value}'),
           const SizedBox(height: 8),
           const Divider(height: 1, thickness: 1, color: HomeColors.borderSoft),
           const SizedBox(height: 8),

@@ -1,10 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../models/cart_item.dart';
 import '../utils/pricing.dart';
+import '../repositories/cart_repository.dart';
 
 class CartProvider with ChangeNotifier {
+  final CartRepository _repo;
   final List<CartItem> _items = [];
+
+  CartProvider({CartRepository? repo}) : _repo = repo ?? CartRepository();
 
   List<CartItem> get items => List.unmodifiable(_items);
 
@@ -18,6 +24,7 @@ class CartProvider with ChangeNotifier {
     required String serviceName,
     required Map<String, int> quantities,
     bool isPerPiece = true,
+    Map<String, int>? unitPricesInr,
     String? imageAsset,
     String? note,
   }) {
@@ -34,12 +41,16 @@ class CartProvider with ChangeNotifier {
 
     final newPrices = <String, int>{};
     if (isPerPiece) {
-      for (final name in cleaned.keys) {
-        newPrices[name] = Pricing.unitPriceInr(
-          category: category,
-          serviceName: serviceName,
-          itemName: name,
-        );
+      if (unitPricesInr != null && unitPricesInr.isNotEmpty) {
+        newPrices.addAll(unitPricesInr);
+      } else {
+        for (final name in cleaned.keys) {
+          newPrices[name] = Pricing.unitPriceInr(
+            category: category,
+            serviceName: serviceName,
+            itemName: name,
+          );
+        }
       }
     }
 
@@ -86,6 +97,97 @@ class CartProvider with ChangeNotifier {
     }
 
     notifyListeners();
+  }
+
+  Future<void> addAndSave({
+    required String category,
+    required String serviceName,
+    required String serviceId,
+    required Map<String, int> quantities,
+    required Map<String, String> clothIdByItemName,
+    bool isPerPiece = true,
+    Map<String, int>? unitPricesInr,
+    double? weightKg,
+    String? imageAsset,
+    String? note,
+  }) async {
+    // First update local cart (so UI responds immediately)
+    addOrMerge(
+      category: category,
+      serviceName: serviceName,
+      quantities: isPerPiece ? quantities : const <String, int>{},
+      isPerPiece: isPerPiece,
+      unitPricesInr: unitPricesInr,
+      imageAsset: imageAsset,
+      note: note,
+    );
+
+    // Then persist to backend with exact payload keys expected by backend.
+    final cleaned = <String, int>{};
+    for (final e in quantities.entries) {
+      if (e.value > 0) cleaned[e.key] = e.value;
+    }
+
+    final List<Map<String, dynamic>> itemsPayload;
+
+    if (isPerPiece) {
+      final selections = <Map<String, dynamic>>[];
+      for (final e in cleaned.entries) {
+        final clothId = clothIdByItemName[e.key];
+        if (clothId == null || clothId.isEmpty) {
+          throw Exception('Missing cloth_id for item: ${e.key}');
+        }
+        selections.add({
+          'cloth_id': clothId,
+          'quantity': e.value,
+        });
+      }
+
+      if (selections.isEmpty) {
+        // Nothing to persist for per_unit
+        return;
+      }
+
+      itemsPayload = [
+        {
+          'service_id': serviceId,
+          'pricing_type': 'per_unit',
+          'selections': selections,
+        }
+      ];
+    } else {
+      final w = weightKg;
+      if (w == null || w <= 0) {
+        throw Exception('weight_kg is required for Kg-wise pricing');
+      }
+
+      itemsPayload = [
+        {
+          'service_id': serviceId,
+          'pricing_type': 'per_kg',
+          'weight_kg': w,
+        }
+      ];
+    }
+
+    // Store server cart_item_id so we can update quantities later using a single endpoint.
+    // Note: backend currently returns only cart item ids (not selection ids), so we update by cloth_id.
+    final addRes = await _repo.addCartItems(items: itemsPayload);
+
+    // Attach server-required metadata locally (serviceId, clothId map, prices, weight)
+    // so we can build payloads later if needed.
+    final idx = _items.lastIndexWhere((x) => x.category == category && x.serviceName == serviceName);
+    if (idx >= 0) {
+      final existing = _items[idx];
+      _items[idx] = existing.copyWith(
+        serviceId: serviceId,
+        clothIdByItemName: clothIdByItemName,
+        unitPricesInr: unitPricesInr ?? existing.unitPricesInr,
+        weightKg: weightKg ?? existing.weightKg,
+        cartItemId: addRes.addedCartItemIds.isNotEmpty ? addRes.addedCartItemIds.first : existing.cartItemId,
+      );
+      notifyListeners();
+    }
   }
 
   void remove(String id) {
@@ -150,6 +252,32 @@ class CartProvider with ChangeNotifier {
     }
 
     notifyListeners();
+
+    // Persist remotely (single endpoint) if we have enough metadata.
+    unawaited(_persistSelectionQuantity(item: item, itemName: itemName, quantity: newQty));
+  }
+
+  Future<void> _persistSelectionQuantity({
+    required CartItem item,
+    required String itemName,
+    required int quantity,
+  }) async {
+    try {
+      final cartItemId = item.cartItemId;
+      final clothId = item.clothIdByItemName?[itemName];
+
+      if (cartItemId == null || cartItemId.isEmpty) return;
+      if (clothId == null || clothId.isEmpty) return;
+
+      await _repo.setSelectionQuantity(
+        cartItemId: cartItemId,
+        clothId: clothId,
+        quantity: quantity,
+      );
+    } catch (_) {
+      // Keep UI responsive; cart will re-sync when we start reading cart from backend.
+      // Intentionally swallow for now (no global snackbar handler here).
+    }
   }
 
   void clear() {

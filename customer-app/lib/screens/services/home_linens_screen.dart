@@ -3,11 +3,12 @@ import 'package:provider/provider.dart';
 
 import '../../routes/app_routes.dart';
 import '../../providers/cart_provider.dart';
+import '../../providers/service_catalog_provider.dart';
 import '../../theme/app_text_styles.dart';
-import '../../utils/pricing.dart';
 import '../home/widgets/home_bottom_nav.dart';
 import '../home/widgets/home_colors.dart';
 import 'pro_clean/widgets/others_field.dart';
+import '../home/widgets/regular_wash_bottom_sheet.dart';
 
 class HomeLinensScreen extends StatefulWidget {
   const HomeLinensScreen({super.key});
@@ -19,13 +20,9 @@ class HomeLinensScreen extends StatefulWidget {
 class _HomeLinensScreenState extends State<HomeLinensScreen> {
   final _othersController = TextEditingController();
 
-  final Map<_HomeLinenItem, int> _qty = {
-    _HomeLinenItem.bedSheets: 0,
-    _HomeLinenItem.carpets: 0,
-    _HomeLinenItem.blanketsAndQuilts: 0,
-    _HomeLinenItem.curtains: 0,
-    _HomeLinenItem.tableclothsAndNapkins: 0,
-  };
+  final Map<String, int> _qtyByItemName = {};
+  String? _serviceId;
+  bool _didInit = false;
 
   @override
   void dispose() {
@@ -33,25 +30,70 @@ class _HomeLinensScreenState extends State<HomeLinensScreen> {
     super.dispose();
   }
 
-  int get _total => _qty.values.fold(0, (a, b) => a + b);
+  int get _total => _qtyByItemName.values.fold(0, (a, b) => a + b);
 
   List<MapEntry<String, int>> get _nonZeroSummaryRows {
-    final rows = <MapEntry<String, int>>[];
-    void addRow(String label, _HomeLinenItem type) {
-      final v = _qty[type] ?? 0;
-      if (v > 0) rows.add(MapEntry(label, v));
-    }
+    return _qtyByItemName.entries
+        .where((e) => e.value > 0)
+        .map((e) => MapEntry(e.key, e.value))
+        .toList();
+  }
 
-    addRow('Bed Sheets', _HomeLinenItem.bedSheets);
-    addRow('Carpets', _HomeLinenItem.carpets);
-    addRow('Blankets & Quilts', _HomeLinenItem.blanketsAndQuilts);
-    addRow('Curtains', _HomeLinenItem.curtains);
-    addRow('Tablecloths & Napkins', _HomeLinenItem.tableclothsAndNapkins);
-    return rows;
+  String _priceText(double perUnitPrice) => '₹${perUnitPrice.toStringAsFixed(0)}/pc';
+
+  String _assetForItemName(String itemName) {
+    final n = itemName.toLowerCase();
+    if (n.contains('bed')) return 'assets/images/home_linen/bedsheets.png';
+    if (n.contains('carpet')) return 'assets/images/home_linen/carpets.png';
+    if (n.contains('blanket') || n.contains('quilt')) {
+      return 'assets/images/home_linen/blankets.png';
+    }
+    if (n.contains('curtain')) return 'assets/images/home_linen/curtains.png';
+    if (n.contains('table')) return 'assets/images/home_linen/tablecloths.png';
+    return 'assets/images/home_linen/bedsheets.png';
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_didInit) return;
+    _didInit = true;
+
+    final selection =
+        ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
+    _serviceId = selection?.serviceId;
+
+    final sid = _serviceId;
+    if (sid == null || sid.isEmpty) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await context
+          .read<ServiceCatalogProvider>()
+          .fetchClothesItemsForService(serviceId: sid, isActive: true);
+      if (!mounted) return;
+      final items =
+          context.read<ServiceCatalogProvider>().clothesItemsForService(sid);
+      setState(() {
+        for (final it in items) {
+          _qtyByItemName.putIfAbsent(it.itemName, () => 0);
+        }
+      });
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final selection =
+        ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
+    final serviceName = selection?.serviceName ?? 'Home Linens';
+    final sid = selection?.serviceId;
+    final catalog = context.watch<ServiceCatalogProvider>();
+    final items =
+        (sid == null || sid.isEmpty) ? const [] : catalog.clothesItemsForService(sid);
+    final isLoading =
+        (sid == null || sid.isEmpty) ? false : catalog.isLoadingClothesItems(sid);
+
     return Scaffold(
       backgroundColor: HomeColors.background,
       body: SafeArea(
@@ -59,7 +101,7 @@ class _HomeLinensScreenState extends State<HomeLinensScreen> {
           children: [
             const SizedBox(height: 8),
             _TopBar(
-              title: 'Home Linens',
+              title: serviceName,
               onBack: () => Navigator.of(context).maybePop(),
             ),
             const SizedBox(height: 10),
@@ -69,114 +111,28 @@ class _HomeLinensScreenState extends State<HomeLinensScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 child: Column(
                   children: [
-                    _ItemCard(
-                      title: 'Bed Sheets',
-                      imageAsset: 'assets/images/home_linen/bedsheets.png',
-                      priceText: Pricing.inrPerPc(
-                        Pricing.unitPriceInr(
-                          category: 'Home Linens',
-                          serviceName: 'Home Linens',
-                          itemName: 'Bed Sheets',
-                        ),
+                    if (sid != null && sid.isNotEmpty && isLoading)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 24, bottom: 24),
+                        child: Center(child: CircularProgressIndicator()),
                       ),
-                      value: _qty[_HomeLinenItem.bedSheets]!,
-                      onMinus: () => setState(() {
-                        _qty[_HomeLinenItem.bedSheets] =
-                            (_qty[_HomeLinenItem.bedSheets]! - 1).clamp(0, 999);
-                      }),
-                      onPlus: () => setState(() {
-                        _qty[_HomeLinenItem.bedSheets] =
-                            (_qty[_HomeLinenItem.bedSheets]! + 1).clamp(0, 999);
-                      }),
-                    ),
-                    const SizedBox(height: 10),
-                    _ItemCard(
-                      title: 'Carpets',
-                      imageAsset: 'assets/images/home_linen/carpets.png',
-                      priceText: Pricing.inrPerPc(
-                        Pricing.unitPriceInr(
-                          category: 'Home Linens',
-                          serviceName: 'Home Linens',
-                          itemName: 'Carpets',
-                        ),
+                    for (final it in items) ...[
+                      _ItemCard(
+                        title: it.itemName,
+                        imageAsset: _assetForItemName(it.itemName),
+                        priceText: _priceText(it.perUnitPrice),
+                        value: _qtyByItemName[it.itemName] ?? 0,
+                        onMinus: () => setState(() {
+                          _qtyByItemName[it.itemName] =
+                              ((_qtyByItemName[it.itemName] ?? 0) - 1).clamp(0, 999);
+                        }),
+                        onPlus: () => setState(() {
+                          _qtyByItemName[it.itemName] =
+                              ((_qtyByItemName[it.itemName] ?? 0) + 1).clamp(0, 999);
+                        }),
                       ),
-                      value: _qty[_HomeLinenItem.carpets]!,
-                      onMinus: () => setState(() {
-                        _qty[_HomeLinenItem.carpets] =
-                            (_qty[_HomeLinenItem.carpets]! - 1).clamp(0, 999);
-                      }),
-                      onPlus: () => setState(() {
-                        _qty[_HomeLinenItem.carpets] =
-                            (_qty[_HomeLinenItem.carpets]! + 1).clamp(0, 999);
-                      }),
-                    ),
-                    const SizedBox(height: 10),
-                    _ItemCard(
-                      title: 'Blankets & Quilts',
-                      imageAsset: 'assets/images/home_linen/blankets.png',
-                      priceText: Pricing.inrPerPc(
-                        Pricing.unitPriceInr(
-                          category: 'Home Linens',
-                          serviceName: 'Home Linens',
-                          itemName: 'Blankets & Quilts',
-                        ),
-                      ),
-                      value: _qty[_HomeLinenItem.blanketsAndQuilts]!,
-                      onMinus: () => setState(() {
-                        _qty[_HomeLinenItem.blanketsAndQuilts] =
-                            (_qty[_HomeLinenItem.blanketsAndQuilts]! - 1)
-                                .clamp(0, 999);
-                      }),
-                      onPlus: () => setState(() {
-                        _qty[_HomeLinenItem.blanketsAndQuilts] =
-                            (_qty[_HomeLinenItem.blanketsAndQuilts]! + 1)
-                                .clamp(0, 999);
-                      }),
-                    ),
-                    const SizedBox(height: 10),
-                    _ItemCard(
-                      title: 'Curtains',
-                      imageAsset: 'assets/images/home_linen/curtains.png',
-                      priceText: Pricing.inrPerPc(
-                        Pricing.unitPriceInr(
-                          category: 'Home Linens',
-                          serviceName: 'Home Linens',
-                          itemName: 'Curtains',
-                        ),
-                      ),
-                      value: _qty[_HomeLinenItem.curtains]!,
-                      onMinus: () => setState(() {
-                        _qty[_HomeLinenItem.curtains] =
-                            (_qty[_HomeLinenItem.curtains]! - 1).clamp(0, 999);
-                      }),
-                      onPlus: () => setState(() {
-                        _qty[_HomeLinenItem.curtains] =
-                            (_qty[_HomeLinenItem.curtains]! + 1).clamp(0, 999);
-                      }),
-                    ),
-                    const SizedBox(height: 10),
-                    _ItemCard(
-                      title: 'Tablecloths & Napkins',
-                      imageAsset: 'assets/images/home_linen/tablecloths.png',
-                      priceText: Pricing.inrPerPc(
-                        Pricing.unitPriceInr(
-                          category: 'Home Linens',
-                          serviceName: 'Home Linens',
-                          itemName: 'Tablecloths & Napkins',
-                        ),
-                      ),
-                      value: _qty[_HomeLinenItem.tableclothsAndNapkins]!,
-                      onMinus: () => setState(() {
-                        _qty[_HomeLinenItem.tableclothsAndNapkins] =
-                            (_qty[_HomeLinenItem.tableclothsAndNapkins]! - 1)
-                                .clamp(0, 999);
-                      }),
-                      onPlus: () => setState(() {
-                        _qty[_HomeLinenItem.tableclothsAndNapkins] =
-                            (_qty[_HomeLinenItem.tableclothsAndNapkins]! + 1)
-                                .clamp(0, 999);
-                      }),
-                    ),
+                      const SizedBox(height: 10),
+                    ],
                     const SizedBox(height: 12),
                     OthersField(controller: _othersController),
                     const SizedBox(height: 12),
@@ -187,26 +143,45 @@ class _HomeLinensScreenState extends State<HomeLinensScreen> {
                     const SizedBox(height: 16),
                     _PrimaryGradientButton(
                       label: 'Add to Cart',
-                      onTap: () {
-                        context.read<CartProvider>().addOrMerge(
-                              category: 'Home Linens',
-                              serviceName: 'Home Linens',
-                              imageAsset: 'assets/images/home_linen/bedsheets.png',
-                              quantities: {
-                                'Bed Sheets': _qty[_HomeLinenItem.bedSheets] ?? 0,
-                                'Carpets': _qty[_HomeLinenItem.carpets] ?? 0,
-                                'Blankets & Quilts':
-                                    _qty[_HomeLinenItem.blanketsAndQuilts] ?? 0,
-                                'Curtains': _qty[_HomeLinenItem.curtains] ?? 0,
-                                'Tablecloths & Napkins':
-                                    _qty[_HomeLinenItem.tableclothsAndNapkins] ?? 0,
-                              },
-                              note: _othersController.text,
-                            );
+                      onTap: () async {
+                        final serviceId = sid;
+                        if (serviceId == null || serviceId.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Missing service id')),
+                          );
+                          return;
+                        }
 
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Added to cart')),
-                        );
+                        final clothIdByName = <String, String>{
+                          for (final it in items) it.itemName: it.clothId,
+                        };
+                        final unitPrices = <String, int>{
+                          for (final it in items) it.itemName: it.perUnitPrice.round(),
+                        };
+
+                        try {
+                          await context.read<CartProvider>().addAndSave(
+                                category: 'Home Linens',
+                                serviceName: serviceName,
+                                serviceId: serviceId,
+                                imageAsset: 'assets/images/home_linen/bedsheets.png',
+                                isPerPiece: true,
+                                quantities: {..._qtyByItemName},
+                                clothIdByItemName: clothIdByName,
+                                unitPricesInr: unitPrices,
+                                note: _othersController.text,
+                              );
+
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Added to cart')),
+                          );
+                        } catch (e) {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(e.toString())),
+                          );
+                        }
                       },
                     ),
                     const SizedBox(height: 10),
@@ -231,14 +206,6 @@ class _HomeLinensScreenState extends State<HomeLinensScreen> {
       ),
     );
   }
-}
-
-enum _HomeLinenItem {
-  bedSheets,
-  carpets,
-  blanketsAndQuilts,
-  curtains,
-  tableclothsAndNapkins
 }
 
 class _TopBar extends StatelessWidget {

@@ -77,6 +77,11 @@ class AppRoutes {
       washAndFold: (context) =>
           RegularWashServiceScreen(
             serviceTitle: 'Wash & Fold',
+            serviceId: (() {
+              final sel =
+                  ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
+              return sel?.serviceId;
+            })(),
             showPrices: (() {
               final sel =
                   ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
@@ -86,6 +91,11 @@ class AppRoutes {
       washAndIron: (context) =>
           RegularWashServiceScreen(
             serviceTitle: 'Wash & Iron',
+            serviceId: (() {
+              final sel =
+                  ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
+              return sel?.serviceId;
+            })(),
             showPrices: (() {
               final sel =
                   ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
@@ -95,6 +105,11 @@ class AppRoutes {
       ironOnly: (context) =>
           RegularWashServiceScreen(
             serviceTitle: 'Iron only',
+            serviceId: (() {
+              final sel =
+                  ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
+              return sel?.serviceId;
+            })(),
             showPrices: (() {
               final sel =
                   ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
@@ -104,6 +119,11 @@ class AppRoutes {
       handWash: (context) =>
           RegularWashServiceScreen(
             serviceTitle: 'Hand Wash',
+            serviceId: (() {
+              final sel =
+                  ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
+              return sel?.serviceId;
+            })(),
             showPrices: (() {
               final sel =
                   ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;

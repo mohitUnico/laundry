@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../routes/app_routes.dart';
 import '../../providers/auth_provider.dart';
+import 'edit_profile_dialog.dart';
 import '../home/widgets/home_colors.dart';
 import '../../theme/app_text_styles.dart';
 
@@ -16,6 +17,8 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+
     return Scaffold(
       backgroundColor: HomeColors.background,
       appBar: AppBar(
@@ -56,10 +59,11 @@ class ProfileScreen extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
           children: [
             _ProfileCard(
-              name: 'Zendaya Adams',
-              email: 'zendaya@gmail.com',
-              phone: '+91 88654 56884',
-              onEdit: () {},
+              name: auth.displayName,
+              email: auth.displayEmail.isEmpty ? '-' : auth.displayEmail,
+              phone: auth.displayPhone.isEmpty ? '-' : auth.displayPhone,
+              profileImageUrl: auth.profileImageUrl,
+              onEdit: () => EditProfileDialog.show(context),
             ),
             const SizedBox(height: 16),
             const _SectionTitle('Account Settings'),
@@ -137,7 +141,7 @@ class ProfileScreen extends StatelessWidget {
               onTap: () {
                 context.read<AuthProvider>().logout();
                 Navigator.of(context).pushNamedAndRemoveUntil(
-                  AppRoutes.login,
+                  AppRoutes.onboarding,
                   (route) => false,
                 );
               },
@@ -154,17 +158,20 @@ class _ProfileCard extends StatelessWidget {
   final String name;
   final String email;
   final String phone;
+  final String? profileImageUrl;
   final VoidCallback onEdit;
 
   const _ProfileCard({
     required this.name,
     required this.email,
     required this.phone,
+    required this.profileImageUrl,
     required this.onEdit,
   });
 
   @override
   Widget build(BuildContext context) {
+    final imageUrl = profileImageUrl;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -183,17 +190,28 @@ class _ProfileCard extends StatelessWidget {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(14),
-              child: Image.asset(
-                'assets/icons/profile_pic_demo.png',
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return const Icon(
-                    Icons.person_rounded,
-                    color: HomeColors.muted,
-                    size: 26,
-                  );
-                },
-              ),
+              child: (imageUrl != null && imageUrl.isNotEmpty)
+                  ? Image.network(
+                      imageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Image.asset(
+                          'assets/icons/profile_pic_demo.png',
+                          fit: BoxFit.cover,
+                        );
+                      },
+                    )
+                  : Image.asset(
+                      'assets/icons/profile_pic_demo.png',
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Icon(
+                          Icons.person_rounded,
+                          color: HomeColors.muted,
+                          size: 26,
+                        );
+                      },
+                    ),
             ),
           ),
           const SizedBox(width: 12),

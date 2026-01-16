@@ -3,8 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../../../routes/app_routes.dart';
 import '../../../providers/cart_provider.dart';
+import '../../../providers/service_catalog_provider.dart';
 import '../../../theme/app_text_styles.dart';
-import '../../../utils/pricing.dart';
 import '../../home/widgets/home_bottom_nav.dart';
 import '../../home/widgets/home_colors.dart';
 import 'widgets/others_field.dart';
@@ -19,34 +19,94 @@ class ShoeCleaningScreen extends StatefulWidget {
 
 class _ShoeCleaningScreenState extends State<ShoeCleaningScreen> {
   final _othersController = TextEditingController();
+  final TextEditingController _weightController = TextEditingController();
 
-  final Map<_ShoeType, int> _qty = {
-    _ShoeType.sportsShoes: 0,
-    _ShoeType.formalShoes: 0,
-    _ShoeType.sneakers: 0,
-    _ShoeType.loafers: 0,
-  };
+  final Map<String, int> _qtyByItemName = {};
+  bool _didInit = false;
+  String? _serviceId;
 
   @override
   void dispose() {
     _othersController.dispose();
+    _weightController.dispose();
     super.dispose();
   }
 
-  int get _total => _qty.values.fold(0, (a, b) => a + b);
+  Future<double?> _askWeightKg() async {
+    _weightController.text = '';
+    return showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Enter weight (kg)'),
+        content: TextField(
+          controller: _weightController,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(hintText: 'e.g. 3.5'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final v = double.tryParse(_weightController.text.trim());
+              Navigator.of(ctx).pop(v);
+            },
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  int get _total => _qtyByItemName.values.fold(0, (a, b) => a + b);
 
   List<MapEntry<String, int>> get _nonZeroSummaryRows {
-    final rows = <MapEntry<String, int>>[];
-    void addRow(String label, _ShoeType type) {
-      final v = _qty[type] ?? 0;
-      if (v > 0) rows.add(MapEntry(label, v));
-    }
+    return _qtyByItemName.entries
+        .where((e) => e.value > 0)
+        .map((e) => MapEntry(e.key, e.value))
+        .toList();
+  }
 
-    addRow('Sports Shoes', _ShoeType.sportsShoes);
-    addRow('Formal Shoes', _ShoeType.formalShoes);
-    addRow('Sneakers', _ShoeType.sneakers);
-    addRow('Loafers', _ShoeType.loafers);
-    return rows;
+  String _priceText(double perUnitPrice) => '₹${perUnitPrice.toStringAsFixed(0)}/pc';
+
+  String _assetForItemName(String itemName) {
+    final n = itemName.toLowerCase();
+    if (n.contains('sport')) return 'assets/images/shoe_cleaning/sports_shoes.png';
+    if (n.contains('formal')) return 'assets/images/shoe_cleaning/formal_shoes.png';
+    if (n.contains('sneaker')) return 'assets/images/shoe_cleaning/sneakers.png';
+    if (n.contains('loafer')) return 'assets/images/shoe_cleaning/loafers.png';
+    return 'assets/images/shoe_cleaning/formal_shoes.png';
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_didInit) return;
+    _didInit = true;
+
+    final selection =
+        ModalRoute.of(context)?.settings.arguments as ProCleanSelection?;
+    _serviceId = selection?.serviceId;
+
+    final sid = _serviceId;
+    if (sid == null || sid.isEmpty) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await context
+          .read<ServiceCatalogProvider>()
+          .fetchClothesItemsForService(serviceId: sid, isActive: true);
+      if (!mounted) return;
+      final items =
+          context.read<ServiceCatalogProvider>().clothesItemsForService(sid);
+      setState(() {
+        for (final it in items) {
+          _qtyByItemName.putIfAbsent(it.itemName, () => 0);
+        }
+      });
+    });
   }
 
   @override
@@ -54,6 +114,13 @@ class _ShoeCleaningScreenState extends State<ShoeCleaningScreen> {
     final selection =
         ModalRoute.of(context)?.settings.arguments as ProCleanSelection?;
     final showPrices = selection?.pricingType == ProCleanPricingType.perPiece;
+    final serviceName = selection?.categoryName ?? 'Shoe Cleaning';
+    final sid = selection?.serviceId;
+    final catalog = context.watch<ServiceCatalogProvider>();
+    final items =
+        (sid == null || sid.isEmpty) ? const [] : catalog.clothesItemsForService(sid);
+    final isLoading =
+        (sid == null || sid.isEmpty) ? false : catalog.isLoadingClothesItems(sid);
     return Scaffold(
       backgroundColor: HomeColors.background,
       body: SafeArea(
@@ -71,97 +138,28 @@ class _ShoeCleaningScreenState extends State<ShoeCleaningScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 child: Column(
                   children: [
-                    _ItemCard(
-                      title: 'Sports Shoes',
-                      imageAsset: 'assets/images/shoe_cleaning/sports_shoes.png',
-                      priceText: showPrices
-                          ? Pricing.inrPerPc(
-                              Pricing.unitPriceInr(
-                                category: 'Pro Clean',
-                                serviceName: 'Shoe Cleaning',
-                                itemName: 'Sports Shoes',
-                              ),
-                            )
-                          : null,
-                      value: _qty[_ShoeType.sportsShoes]!,
-                      onMinus: () => setState(() {
-                        _qty[_ShoeType.sportsShoes] =
-                            (_qty[_ShoeType.sportsShoes]! - 1).clamp(0, 999);
-                      }),
-                      onPlus: () => setState(() {
-                        _qty[_ShoeType.sportsShoes] =
-                            (_qty[_ShoeType.sportsShoes]! + 1).clamp(0, 999);
-                      }),
-                    ),
-                    const SizedBox(height: 10),
-                    _ItemCard(
-                      title: 'Formal Shoes',
-                      imageAsset: 'assets/images/shoe_cleaning/formal_shoes.png',
-                      priceText: showPrices
-                          ? Pricing.inrPerPc(
-                              Pricing.unitPriceInr(
-                                category: 'Pro Clean',
-                                serviceName: 'Shoe Cleaning',
-                                itemName: 'Formal Shoes',
-                              ),
-                            )
-                          : null,
-                      value: _qty[_ShoeType.formalShoes]!,
-                      onMinus: () => setState(() {
-                        _qty[_ShoeType.formalShoes] =
-                            (_qty[_ShoeType.formalShoes]! - 1).clamp(0, 999);
-                      }),
-                      onPlus: () => setState(() {
-                        _qty[_ShoeType.formalShoes] =
-                            (_qty[_ShoeType.formalShoes]! + 1).clamp(0, 999);
-                      }),
-                    ),
-                    const SizedBox(height: 10),
-                    _ItemCard(
-                      title: 'Sneakers',
-                      imageAsset: 'assets/images/shoe_cleaning/sneakers.png',
-                      priceText: showPrices
-                          ? Pricing.inrPerPc(
-                              Pricing.unitPriceInr(
-                                category: 'Pro Clean',
-                                serviceName: 'Shoe Cleaning',
-                                itemName: 'Sneakers',
-                              ),
-                            )
-                          : null,
-                      value: _qty[_ShoeType.sneakers]!,
-                      onMinus: () => setState(() {
-                        _qty[_ShoeType.sneakers] =
-                            (_qty[_ShoeType.sneakers]! - 1).clamp(0, 999);
-                      }),
-                      onPlus: () => setState(() {
-                        _qty[_ShoeType.sneakers] =
-                            (_qty[_ShoeType.sneakers]! + 1).clamp(0, 999);
-                      }),
-                    ),
-                    const SizedBox(height: 10),
-                    _ItemCard(
-                      title: 'Loafers',
-                      imageAsset: 'assets/images/shoe_cleaning/loafers.png',
-                      priceText: showPrices
-                          ? Pricing.inrPerPc(
-                              Pricing.unitPriceInr(
-                                category: 'Pro Clean',
-                                serviceName: 'Shoe Cleaning',
-                                itemName: 'Loafers',
-                              ),
-                            )
-                          : null,
-                      value: _qty[_ShoeType.loafers]!,
-                      onMinus: () => setState(() {
-                        _qty[_ShoeType.loafers] =
-                            (_qty[_ShoeType.loafers]! - 1).clamp(0, 999);
-                      }),
-                      onPlus: () => setState(() {
-                        _qty[_ShoeType.loafers] =
-                            (_qty[_ShoeType.loafers]! + 1).clamp(0, 999);
-                      }),
-                    ),
+                    if (sid != null && sid.isNotEmpty && isLoading)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 24, bottom: 24),
+                        child: Center(child: CircularProgressIndicator()),
+                      ),
+                    for (final it in items) ...[
+                      _ItemCard(
+                        title: it.itemName,
+                        imageAsset: _assetForItemName(it.itemName),
+                        priceText: showPrices ? _priceText(it.perUnitPrice) : null,
+                        value: _qtyByItemName[it.itemName] ?? 0,
+                        onMinus: () => setState(() {
+                          _qtyByItemName[it.itemName] =
+                              ((_qtyByItemName[it.itemName] ?? 0) - 1).clamp(0, 999);
+                        }),
+                        onPlus: () => setState(() {
+                          _qtyByItemName[it.itemName] =
+                              ((_qtyByItemName[it.itemName] ?? 0) + 1).clamp(0, 999);
+                        }),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
                     const SizedBox(height: 12),
                     OthersField(controller: _othersController),
                     const SizedBox(height: 12),
@@ -172,24 +170,52 @@ class _ShoeCleaningScreenState extends State<ShoeCleaningScreen> {
                     const SizedBox(height: 16),
                     _PrimaryGradientButton(
                       label: 'Add to Cart',
-                      onTap: () {
-                        context.read<CartProvider>().addOrMerge(
-                              category: 'Pro Clean',
-                              serviceName: 'Shoe Cleaning',
-                              imageAsset: 'assets/images/shoe_cleaning/formal_shoes.png',
-                              isPerPiece: showPrices,
-                              quantities: {
-                                'Sports Shoes': _qty[_ShoeType.sportsShoes] ?? 0,
-                                'Formal Shoes': _qty[_ShoeType.formalShoes] ?? 0,
-                                'Sneakers': _qty[_ShoeType.sneakers] ?? 0,
-                                'Loafers': _qty[_ShoeType.loafers] ?? 0,
-                              },
-                              note: _othersController.text,
-                            );
+                      onTap: () async {
+                        final serviceId = sid;
+                        if (serviceId == null || serviceId.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Missing service id')),
+                          );
+                          return;
+                        }
 
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Added to cart')),
-                        );
+                        final clothIdByName = <String, String>{
+                          for (final it in items) it.itemName: it.clothId,
+                        };
+                        final unitPrices = <String, int>{
+                          for (final it in items) it.itemName: it.perUnitPrice.round(),
+                        };
+
+                        double? weightKg;
+                        if (!showPrices) {
+                          weightKg = await _askWeightKg();
+                          if (weightKg == null || weightKg <= 0) return;
+                        }
+
+                        try {
+                          await context.read<CartProvider>().addAndSave(
+                                category: 'Pro Clean',
+                                serviceName: serviceName,
+                                serviceId: serviceId,
+                                imageAsset: 'assets/images/shoe_cleaning/formal_shoes.png',
+                                isPerPiece: showPrices,
+                                quantities: Map<String, int>.from(_qtyByItemName),
+                                clothIdByItemName: clothIdByName,
+                                unitPricesInr: unitPrices,
+                                weightKg: weightKg,
+                                note: _othersController.text,
+                              );
+
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Added to cart')),
+                          );
+                        } catch (e) {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(e.toString())),
+                          );
+                        }
                       },
                     ),
                     const SizedBox(height: 10),
@@ -215,8 +241,6 @@ class _ShoeCleaningScreenState extends State<ShoeCleaningScreen> {
     );
   }
 }
-
-enum _ShoeType { sportsShoes, formalShoes, sneakers, loafers }
 
 class _TopBar extends StatelessWidget {
   final String title;

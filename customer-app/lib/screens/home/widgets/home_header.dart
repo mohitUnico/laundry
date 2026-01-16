@@ -8,25 +8,43 @@ class HomeHeader extends StatelessWidget {
   final String userName;
   final String location;
   final int notificationCount;
+  final String? profileImageUrl;
 
   const HomeHeader({
     super.key,
     required this.userName,
     required this.location,
     required this.notificationCount,
+    this.profileImageUrl,
   });
 
   @override
   Widget build(BuildContext context) {
+    final imageUrl = profileImageUrl;
     return Row(
       children: [
         ClipOval(
-          child: Image.asset(
-            'assets/icons/profile_pic_demo.png',
-            width: 44,
-            height: 44,
-            fit: BoxFit.cover,
-          ),
+          child: (imageUrl != null && imageUrl.isNotEmpty)
+              ? Image.network(
+                  imageUrl,
+                  width: 44,
+                  height: 44,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Image.asset(
+                      'assets/icons/profile_pic_demo.png',
+                      width: 44,
+                      height: 44,
+                      fit: BoxFit.cover,
+                    );
+                  },
+                )
+              : Image.asset(
+                  'assets/icons/profile_pic_demo.png',
+                  width: 44,
+                  height: 44,
+                  fit: BoxFit.cover,
+                ),
         ),
         const SizedBox(width: 12),
         Expanded(

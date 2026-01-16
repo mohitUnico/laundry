@@ -1,38 +1,48 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme/app_text_styles.dart';
+import '../../../models/service_item.dart';
 import 'home_colors.dart';
 
 enum ProCleanPricingType { kgWise, perPiece }
 
 class ProCleanSelection {
+  final String? serviceId;
   final String categoryName;
   final ProCleanPricingType pricingType;
 
   const ProCleanSelection({
+    required this.serviceId,
     required this.categoryName,
     required this.pricingType,
   });
 }
 
 class ProCleanBottomSheet extends StatefulWidget {
-  const ProCleanBottomSheet({super.key});
+  const ProCleanBottomSheet({super.key, required this.services, this.isLoading = false});
 
-  static Future<ProCleanSelection?> show(BuildContext context) {
+  static Future<ProCleanSelection?> show(
+    BuildContext context, {
+    required List<ServiceItem> services,
+    bool isLoading = false,
+  }) {
     return showModalBottomSheet<ProCleanSelection?>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => const ProCleanBottomSheet(),
+      builder: (_) => ProCleanBottomSheet(services: services, isLoading: isLoading),
     );
   }
+
+  final List<ServiceItem> services;
+  final bool isLoading;
 
   @override
   State<ProCleanBottomSheet> createState() => _ProCleanBottomSheetState();
 }
 
 class _ProCleanBottomSheetState extends State<ProCleanBottomSheet> {
-  String _selectedCategory = _categories.first.title;
+  late _ProCleanCategory _selectedCategory;
   ProCleanPricingType _pricingType = ProCleanPricingType.kgWise;
 
   static const _categories = <_ProCleanCategory>[
@@ -63,9 +73,36 @@ class _ProCleanBottomSheetState extends State<ProCleanBottomSheet> {
     ),
   ];
 
+  List<_ProCleanCategory> get _effectiveCategories {
+    final services = widget.services;
+    if (services.isEmpty) return const [];
+
+    // Keep the design consistent: reuse the existing subtitle/image set by index,
+    // but replace the displayed title with backend service names.
+    return List.generate(services.length, (i) {
+      final template = _categories[i % _categories.length];
+      return _ProCleanCategory(
+        serviceId: services[i].serviceId,
+        title: services[i].serviceName,
+        subtitle: template.subtitle,
+        imageAsset: template.imageAsset,
+      );
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final list = _effectiveCategories;
+    _selectedCategory = list.isNotEmpty ? list.first : _categories.first;
+  }
+
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
+    final isLoading = widget.isLoading;
+    final items = _effectiveCategories;
+    final canProceed = items.isNotEmpty && !isLoading;
 
     return SafeArea(
       top: false,
@@ -102,16 +139,31 @@ class _ProCleanBottomSheetState extends State<ProCleanBottomSheet> {
                     .copyWith(fontSize: 12),
               ),
               const SizedBox(height: 10),
-              for (final c in _categories) ...[
-                _ServiceRow(
-                  title: c.title,
-                  subtitle: c.subtitle,
-                  imageAsset: c.imageAsset,
-                  isSelected: c.title == _selectedCategory,
-                  onTap: () => setState(() => _selectedCategory = c.title),
-                ),
-                const SizedBox(height: 10),
-              ],
+              if (isLoading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 18),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (items.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text(
+                    'No services available right now. Please try again.',
+                    textAlign: TextAlign.center,
+                    style: AppTextStyles.body(color: HomeColors.muted).copyWith(fontSize: 12),
+                  ),
+                )
+              else
+                for (final c in items) ...[
+                  _ServiceRow(
+                    title: c.title,
+                    subtitle: c.subtitle,
+                    imageAsset: c.imageAsset,
+                    isSelected: c.title == _selectedCategory.title,
+                    onTap: () => setState(() => _selectedCategory = c),
+                  ),
+                  const SizedBox(height: 10),
+                ],
               const SizedBox(height: 6),
               Container(
                 width: double.infinity,
@@ -166,12 +218,17 @@ class _ProCleanBottomSheetState extends State<ProCleanBottomSheet> {
                     child: _BottomButton(
                       label: 'Next',
                       variant: _BottomButtonVariant.filled,
-                      onTap: () => Navigator.of(context).pop(
-                        ProCleanSelection(
-                          categoryName: _selectedCategory,
-                          pricingType: _pricingType,
-                        ),
-                      ),
+                      onTap: canProceed
+                          ? () => Navigator.of(context).pop(
+                                ProCleanSelection(
+                                  serviceId: _selectedCategory.serviceId?.isEmpty == true
+                                      ? null
+                                      : _selectedCategory.serviceId,
+                                  categoryName: _selectedCategory.title,
+                                  pricingType: _pricingType,
+                                ),
+                              )
+                          : () {},
                     ),
                   ),
                 ],
@@ -185,11 +242,13 @@ class _ProCleanBottomSheetState extends State<ProCleanBottomSheet> {
 }
 
 class _ProCleanCategory {
+  final String? serviceId;
   final String title;
   final String subtitle;
   final String imageAsset;
 
   const _ProCleanCategory({
+    this.serviceId,
     required this.title,
     required this.subtitle,
     required this.imageAsset,

@@ -309,6 +309,9 @@ class _ServiceSection extends StatelessWidget {
         ? (service.unitPricesInr ?? const <String, int>{})
         : const <String, int>{};
     final subtotal = service.subtotalInr;
+    final weightLabel = (!showPrices && service.weightKg != null && service.weightKg! > 0)
+        ? '${service.weightKg!.toStringAsFixed(service.weightKg! % 1 == 0 ? 0 : 1)} kg'
+        : null;
 
     return Column(
       children: [
@@ -343,7 +346,7 @@ class _ServiceSection extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${service.totalQuantity} items',
+                        weightLabel ?? '${service.totalQuantity} items',
                         style: AppTextStyles.body(color: HomeColors.muted)
                             .copyWith(fontSize: 12),
                       ),

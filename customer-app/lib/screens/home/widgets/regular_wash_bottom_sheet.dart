@@ -1,50 +1,72 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme/app_text_styles.dart';
+import '../../../models/service_item.dart';
 import 'home_colors.dart';
 
 enum RegularWashPricingType { kgWise, perPiece }
 
 class RegularWashSelection {
+  final String? serviceId;
   final String serviceName;
   final RegularWashPricingType pricingType;
 
   const RegularWashSelection({
+    required this.serviceId,
     required this.serviceName,
     required this.pricingType,
   });
 }
 
 class RegularWashBottomSheet extends StatefulWidget {
-  const RegularWashBottomSheet({super.key});
+  const RegularWashBottomSheet({super.key, required this.services, this.isLoading = false});
 
-  static Future<RegularWashSelection?> show(BuildContext context) {
+  static Future<RegularWashSelection?> show(
+    BuildContext context, {
+    required List<ServiceItem> services,
+    bool isLoading = false,
+  }) {
     return showModalBottomSheet<RegularWashSelection?>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => const RegularWashBottomSheet(),
+      builder: (_) => RegularWashBottomSheet(services: services, isLoading: isLoading),
     );
   }
+
+  final List<ServiceItem> services;
+  final bool isLoading;
 
   @override
   State<RegularWashBottomSheet> createState() => _RegularWashBottomSheetState();
 }
 
 class _RegularWashBottomSheetState extends State<RegularWashBottomSheet> {
-  String _selectedService = 'Wash & Fold';
+  late ServiceItem _selectedService;
   RegularWashPricingType _pricingType = RegularWashPricingType.kgWise;
 
-  static const _services = <String>[
-    'Wash & Fold',
-    'Wash & Iron',
-    'Iron only',
-    'Hand Wash',
-  ];
+  List<ServiceItem> get _effectiveServices => widget.services;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedService = _effectiveServices.isNotEmpty
+        ? _effectiveServices.first
+        : const ServiceItem(
+            serviceId: '',
+            categoryId: '',
+            serviceName: '',
+            isActive: true,
+            displayOrder: 0,
+          );
+  }
 
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
+    final isLoading = widget.isLoading;
+    final items = _effectiveServices;
+    final canProceed = items.isNotEmpty && !isLoading;
 
     return SafeArea(
       top: false,
@@ -83,14 +105,29 @@ class _RegularWashBottomSheetState extends State<RegularWashBottomSheet> {
                     .copyWith(fontSize: 12),
               ),
               const SizedBox(height: 10),
-              for (final s in _services) ...[
-                _ServicePill(
-                  label: s,
-                  isSelected: s == _selectedService,
-                  onTap: () => setState(() => _selectedService = s),
-                ),
-                const SizedBox(height: 10),
-              ],
+              if (isLoading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 18),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (items.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text(
+                    'No services available right now. Please try again.',
+                    textAlign: TextAlign.center,
+                    style: AppTextStyles.body(color: HomeColors.muted).copyWith(fontSize: 12),
+                  ),
+                )
+              else
+                for (final s in items) ...[
+                  _ServicePill(
+                    label: s.serviceName,
+                    isSelected: s.serviceName == _selectedService.serviceName,
+                    onTap: () => setState(() => _selectedService = s),
+                  ),
+                  const SizedBox(height: 10),
+                ],
               const SizedBox(height: 6),
               Container(
                 width: double.infinity,
@@ -145,12 +182,17 @@ class _RegularWashBottomSheetState extends State<RegularWashBottomSheet> {
                     child: _BottomButton(
                       label: 'Next',
                       variant: _BottomButtonVariant.filled,
-                      onTap: () => Navigator.of(context).pop(
-                        RegularWashSelection(
-                          serviceName: _selectedService,
-                          pricingType: _pricingType,
-                        ),
-                      ),
+                      onTap: canProceed
+                          ? () => Navigator.of(context).pop(
+                                RegularWashSelection(
+                                  serviceId: _selectedService.serviceId.isEmpty
+                                      ? null
+                                      : _selectedService.serviceId,
+                                  serviceName: _selectedService.serviceName,
+                                  pricingType: _pricingType,
+                                ),
+                              )
+                          : () {},
                     ),
                   ),
                 ],

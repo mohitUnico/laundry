@@ -18,6 +18,7 @@ class LocationPermissionScreen extends StatefulWidget {
 class _LocationPermissionScreenState extends State<LocationPermissionScreen> {
   bool _isLoading = false;
   bool _permissionGranted = false;
+  bool _isNavigating = false;
 
   @override
   void initState() {
@@ -284,13 +285,17 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen> {
                       const SizedBox(height: 22),
                       PrimaryButton(
                         label: 'Done',
-                        onPressed: () {
-                          // Clear auth stack so back can never return to auth screens.
-                          Navigator.of(context).pushNamedAndRemoveUntil(
-                            AppRoutes.shell,
-                            (route) => false,
-                          );
-                        },
+                        isLoading: _isNavigating,
+                        onPressed: _isNavigating
+                            ? null
+                            : () async {
+                                setState(() => _isNavigating = true);
+                                // Clear auth stack so back can never return to auth screens.
+                                Navigator.of(context).pushNamedAndRemoveUntil(
+                                  AppRoutes.shell,
+                                  (route) => false,
+                                );
+                              },
                       ),
                       const SizedBox(height: 6),
                     ],

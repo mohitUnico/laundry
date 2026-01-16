@@ -3,8 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../../../routes/app_routes.dart';
 import '../../../providers/cart_provider.dart';
+import '../../../providers/service_catalog_provider.dart';
 import '../../../theme/app_text_styles.dart';
-import '../../../utils/pricing.dart';
 import '../../home/widgets/home_bottom_nav.dart';
 import '../../home/widgets/home_colors.dart';
 import 'widgets/others_field.dart';
@@ -19,23 +19,99 @@ class StainTreatmentScreen extends StatefulWidget {
 
 class _StainTreatmentScreenState extends State<StainTreatmentScreen> {
   final _othersController = TextEditingController();
+  final TextEditingController _weightController = TextEditingController();
 
-  int _heavyStain = 0;
-  int _lightStain = 0;
+  final Map<String, int> _qtyByItemName = {};
+  bool _didInit = false;
+  String? _serviceId;
 
   @override
   void dispose() {
     _othersController.dispose();
+    _weightController.dispose();
     super.dispose();
   }
 
-  int get _total => _heavyStain + _lightStain;
+  Future<double?> _askWeightKg() async {
+    _weightController.text = '';
+    return showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Enter weight (kg)'),
+        content: TextField(
+          controller: _weightController,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(hintText: 'e.g. 3.5'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final v = double.tryParse(_weightController.text.trim());
+              Navigator.of(ctx).pop(v);
+            },
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  int get _total => _qtyByItemName.values.fold(0, (a, b) => a + b);
+
+  String _priceText(double perUnitPrice) => '₹${perUnitPrice.toStringAsFixed(0)}/pc';
+
+  String _assetForItemName(String itemName) {
+    final n = itemName.toLowerCase();
+    if (n.contains('heavy')) return 'assets/images/stain_treatment/heavy_stain.png';
+    if (n.contains('light')) return 'assets/images/stain_treatment/light_stain.png';
+    return 'assets/images/stain_treatment/heavy_stain.png';
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_didInit) return;
+    _didInit = true;
+
+    final selection =
+        ModalRoute.of(context)?.settings.arguments as ProCleanSelection?;
+    _serviceId = selection?.serviceId;
+
+    final sid = _serviceId;
+    if (sid == null || sid.isEmpty) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await context
+          .read<ServiceCatalogProvider>()
+          .fetchClothesItemsForService(serviceId: sid, isActive: true);
+      if (!mounted) return;
+      final items =
+          context.read<ServiceCatalogProvider>().clothesItemsForService(sid);
+      setState(() {
+        for (final it in items) {
+          _qtyByItemName.putIfAbsent(it.itemName, () => 0);
+        }
+      });
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final selection =
         ModalRoute.of(context)?.settings.arguments as ProCleanSelection?;
     final showPrices = selection?.pricingType == ProCleanPricingType.perPiece;
+    final serviceName = selection?.categoryName ?? 'Stain Treatment';
+    final sid = selection?.serviceId;
+    final catalog = context.watch<ServiceCatalogProvider>();
+    final items =
+        (sid == null || sid.isEmpty) ? const [] : catalog.clothesItemsForService(sid);
+    final isLoading =
+        (sid == null || sid.isEmpty) ? false : catalog.isLoadingClothesItems(sid);
     return Scaffold(
       backgroundColor: HomeColors.background,
       body: SafeArea(
@@ -53,74 +129,87 @@ class _StainTreatmentScreenState extends State<StainTreatmentScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 child: Column(
                   children: [
-                    _ItemCard(
-                      title: 'Heavy Stain',
-                      imageAsset: 'assets/images/stain_treatment/heavy_stain.png',
-                      priceText: showPrices
-                          ? Pricing.inrPerPc(
-                              Pricing.unitPriceInr(
-                                category: 'Pro Clean',
-                                serviceName: 'Stain Treatment',
-                                itemName: 'Heavy Stain',
-                              ),
-                            )
-                          : null,
-                      value: _heavyStain,
-                      onMinus: () => setState(
-                        () => _heavyStain = (_heavyStain - 1).clamp(0, 999),
+                    if (sid != null && sid.isNotEmpty && isLoading)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 24, bottom: 24),
+                        child: Center(child: CircularProgressIndicator()),
                       ),
-                      onPlus: () => setState(
-                        () => _heavyStain = (_heavyStain + 1).clamp(0, 999),
+                    for (final it in items) ...[
+                      _ItemCard(
+                        title: it.itemName,
+                        imageAsset: _assetForItemName(it.itemName),
+                        priceText: showPrices ? _priceText(it.perUnitPrice) : null,
+                        value: _qtyByItemName[it.itemName] ?? 0,
+                        onMinus: () => setState(() {
+                          _qtyByItemName[it.itemName] =
+                              ((_qtyByItemName[it.itemName] ?? 0) - 1).clamp(0, 999);
+                        }),
+                        onPlus: () => setState(() {
+                          _qtyByItemName[it.itemName] =
+                              ((_qtyByItemName[it.itemName] ?? 0) + 1).clamp(0, 999);
+                        }),
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    _ItemCard(
-                      title: 'Light Stain',
-                      imageAsset: 'assets/images/stain_treatment/light_stain.png',
-                      priceText: showPrices
-                          ? Pricing.inrPerPc(
-                              Pricing.unitPriceInr(
-                                category: 'Pro Clean',
-                                serviceName: 'Stain Treatment',
-                                itemName: 'Light Stain',
-                              ),
-                            )
-                          : null,
-                      value: _lightStain,
-                      onMinus: () => setState(
-                        () => _lightStain = (_lightStain - 1).clamp(0, 999),
-                      ),
-                      onPlus: () => setState(
-                        () => _lightStain = (_lightStain + 1).clamp(0, 999),
-                      ),
-                    ),
+                      const SizedBox(height: 10),
+                    ],
                     const SizedBox(height: 12),
                     OthersField(controller: _othersController),
                     const SizedBox(height: 12),
                     _OrderSummaryCard(
-                      heavyStain: _heavyStain,
-                      lightStain: _lightStain,
+                      rows: _qtyByItemName.entries
+                          .where((e) => e.value > 0)
+                          .map((e) => MapEntry(e.key, e.value))
+                          .toList(),
                       total: _total,
                     ),
                     const SizedBox(height: 16),
                     _PrimaryGradientButton(
                       label: 'Add to Cart',
-                      onTap: () {
-                        context.read<CartProvider>().addOrMerge(
-                              category: 'Pro Clean',
-                              serviceName: 'Stain Treatment',
-                              imageAsset: 'assets/images/stain_treatment/heavy_stain.png',
-                              isPerPiece: showPrices,
-                              quantities: {
-                                'Heavy Stain': _heavyStain,
-                                'Light Stain': _lightStain,
-                              },
-                              note: _othersController.text,
-                            );
+                      onTap: () async {
+                        final serviceId = sid;
+                        if (serviceId == null || serviceId.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Missing service id')),
+                          );
+                          return;
+                        }
 
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Added to cart')),
-                        );
+                        final clothIdByName = <String, String>{
+                          for (final it in items) it.itemName: it.clothId,
+                        };
+                        final unitPrices = <String, int>{
+                          for (final it in items) it.itemName: it.perUnitPrice.round(),
+                        };
+
+                        double? weightKg;
+                        if (!showPrices) {
+                          weightKg = await _askWeightKg();
+                          if (weightKg == null || weightKg <= 0) return;
+                        }
+
+                        try {
+                          await context.read<CartProvider>().addAndSave(
+                                category: 'Pro Clean',
+                                serviceName: serviceName,
+                                serviceId: serviceId,
+                                imageAsset: 'assets/images/stain_treatment/heavy_stain.png',
+                                isPerPiece: showPrices,
+                                quantities: Map<String, int>.from(_qtyByItemName),
+                                clothIdByItemName: clothIdByName,
+                                unitPricesInr: unitPrices,
+                                weightKg: weightKg,
+                                note: _othersController.text,
+                              );
+
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Added to cart')),
+                          );
+                        } catch (e) {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(e.toString())),
+                          );
+                        }
                       },
                     ),
                     const SizedBox(height: 10),
@@ -328,13 +417,11 @@ class _QtyButton extends StatelessWidget {
 }
 
 class _OrderSummaryCard extends StatelessWidget {
-  final int heavyStain;
-  final int lightStain;
+  final List<MapEntry<String, int>> rows;
   final int total;
 
   const _OrderSummaryCard({
-    required this.heavyStain,
-    required this.lightStain,
+    required this.rows,
     required this.total,
   });
 
@@ -357,8 +444,7 @@ class _OrderSummaryCard extends StatelessWidget {
                 AppTextStyles.header(color: HomeColors.text).copyWith(fontSize: 12),
           ),
           const SizedBox(height: 10),
-          _SummaryRow(label: 'Heavy Stain', value: '$heavyStain'),
-          _SummaryRow(label: 'Light Stain', value: '$lightStain'),
+          for (final r in rows) _SummaryRow(label: r.key, value: '${r.value}'),
           const SizedBox(height: 8),
           const Divider(height: 1, thickness: 1, color: HomeColors.borderSoft),
           const SizedBox(height: 8),

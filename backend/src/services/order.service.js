@@ -216,6 +216,7 @@ exports.createOrder = async (customerId, payload) => {
         const order = await tx.order.create({
             data: {
                 customer_id: customerId,
+                cart_id: cart.cart_id,
                 order_status: OrderStatus.draft,
                 pricing_model: pricingModel,
                 order_type: order_type,
@@ -326,6 +327,7 @@ exports.confirmOrder = async (customerId, orderId) => {
             },
             select: {
                 order_id: true,
+                cart_id: true,
                 order_status: true,
                 pricing_model: true,
                 billing_status: true,
@@ -375,15 +377,9 @@ exports.confirmOrder = async (customerId, orderId) => {
             },
         });
 
-        // Delete the customer's active cart (latest). Cart items/selections cascade delete.
-        const activeCart = await tx.cart.findFirst({
-            where: { customer_id: customerId, is_active: true },
-            orderBy: { updated_at: 'desc' },
-            select: { cart_id: true },
-        });
-
-        if (activeCart) {
-            await tx.cart.delete({ where: { cart_id: activeCart.cart_id } });
+        // Delete the cart associated with this order. Cart items/selections cascade delete.
+        if (order.cart_id) {
+            await tx.cart.delete({ where: { cart_id: order.cart_id } });
         }
 
         return {

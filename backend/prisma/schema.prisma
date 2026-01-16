@@ -241,6 +241,7 @@ model Cart {
   updated_at  DateTime   @updatedAt
   customer    Customer   @relation(fields: [customer_id], references: [customer_id], onDelete: Cascade)
   cart_items  CartItem[]
+  orders      Order[]
 
   @@index([customer_id])
   @@map("carts")
@@ -286,6 +287,7 @@ model CartItemSelection {
 model Order {
   order_id                              String          @id @default(uuid())
   customer_id                           String
+  cart_id                               String?
   order_status                          OrderStatus
   pricing_model                         PricingModel
   order_type                            OrderType       @default(both)
@@ -310,6 +312,7 @@ model Order {
   bill                                  Bill?
   delivery                              Delivery?
   order_items                           OrderItem[]
+  cart                                  Cart?           @relation(fields: [cart_id], references: [cart_id])
   customer                              Customer        @relation(fields: [customer_id], references: [customer_id])
   delivery_address                      CustomerAddress @relation("DeliveryAddress", fields: [delivery_address_id], references: [address_id])
   pickup_address                        CustomerAddress @relation("PickupAddress", fields: [pickup_address_id], references: [address_id])

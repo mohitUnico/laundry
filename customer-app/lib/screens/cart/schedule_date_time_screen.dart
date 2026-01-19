@@ -8,6 +8,9 @@ import '../../routes/app_routes.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/order_provider.dart';
 import '../../models/order_record.dart';
+import '../../repositories/order_repository.dart';
+import '../../repositories/customer_info_repository.dart';
+import '../../services/customer_info_service.dart';
 import 'delivery_options_screen.dart';
 
 class ScheduleDateTimeArgs {
@@ -167,7 +170,7 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                   child: Material(
                     color: Colors.transparent,
                     child: InkWell(
-                      onTap: () {
+                      onTap: () async {
                         final dateLabel = '${_monthShort(selectedDate.month)} ${selectedDate.day}';
                         final timeLabel = _formatTime12h(_fromHour, _fromMinute, _fromAmPm);
 
@@ -185,7 +188,7 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                           return;
                         }
 
-                        // Otherwise, create order directly (no payment screen for any cart type)
+                        // Otherwise, create order via backend
                         final cart = context.read<CartProvider>();
                         final items = cart.items;
                         if (items.isEmpty) {
@@ -195,46 +198,160 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                           return;
                         }
 
-                        final totalItems = items.fold<int>(0, (a, x) => a + x.totalQuantity);
-                        final totalInr = cart.totalInr; // per-piece total (kg-wise is 0 by design)
+                        final cartId = cart.activeCartId;
+                        if (cartId == null || cartId.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('No active cart found. Please add items to cart.')),
+                          );
+                          return;
+                        }
 
-                        final orderIdNum =
-                            (DateTime.now().millisecondsSinceEpoch % 90000) + 10000;
-                        final orderId = '#LD$orderIdNum';
-                        final title = items.length == 1 ? items.first.category : 'Mixed';
-                        final placedAt = DateTime.now();
-                        final placedDateLabel =
-                            '${_monthShort(placedAt.month)} ${placedAt.day}, ${placedAt.year}';
-                        final placedTimeLabel = _formatTime12h(
-                          placedAt.hour > 12
-                              ? placedAt.hour - 12
-                              : (placedAt.hour == 0 ? 12 : placedAt.hour),
-                          placedAt.minute,
-                          placedAt.hour >= 12 ? 1 : 0,
-                        );
+                        // Check cart type to determine flow
+                        final hasPricedItems = cart.hasPricedItems;
+                        final hasOnlyKgWise = cart.hasOnlyKgWiseItems;
 
-                        context.read<OrderProvider>().addOrder(
-                              OrderRecord(
-                                id: orderId,
-                                title: title,
-                                items: items,
-                                totalItems: totalItems,
-                                totalInr: totalInr,
-                                dateLabel: dateLabel,
-                                timeLabel: timeLabel,
-                                placedAt: placedAt,
-                                placedDateLabel: placedDateLabel,
-                                placedTimeLabel: placedTimeLabel,
-                                status: OrderStatus.inProgress,
-                              ),
+                        // If cart has only kg-wise items, skip payment screen and create order directly
+                        if (hasOnlyKgWise) {
+                          // Show loading
+                          if (!mounted) return;
+                          showDialog(
+                            context: context,
+                            barrierDismissible: false,
+                            builder: (context) => const Center(
+                              child: CircularProgressIndicator(),
+                            ),
+                          );
+
+                          try {
+                            // Fetch addresses
+                            final addressRepo = CustomerInfoRepository();
+                            final addresses = await addressRepo.getAddresses();
+
+                            if (addresses.isEmpty) {
+                              if (mounted) {
+                                Navigator.of(context).pop(); // Close loading
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Please add an address before placing an order'),
+                                  ),
+                                );
+                              }
+                              return;
+                            }
+
+                            // Use default address or first address
+                            final defaultAddress = addresses.firstWhere(
+                              (a) => a.isDefault,
+                              orElse: () => addresses.first,
                             );
 
-                        cart.clear();
+                            // Determine pickup and delivery addresses based on order type
+                            final orderType = option.toBackendOrderType();
+                            String pickupAddressId;
+                            String deliveryAddressId;
 
-                        Navigator.of(context).pushNamedAndRemoveUntil(
-                          AppRoutes.orderSuccessful,
-                          (r) => false,
-                        );
+                            switch (option) {
+                              case DeliveryOptionType.pickupOnly:
+                                pickupAddressId = defaultAddress.addressId;
+                                deliveryAddressId = defaultAddress.addressId; // Not used but required
+                                break;
+                              case DeliveryOptionType.deliveryOnly:
+                                pickupAddressId = defaultAddress.addressId; // Not used but required
+                                deliveryAddressId = defaultAddress.addressId;
+                                break;
+                              case DeliveryOptionType.pickupAndDelivery:
+                                pickupAddressId = defaultAddress.addressId;
+                                deliveryAddressId = defaultAddress.addressId;
+                                break;
+                            }
+
+                            // Convert date/time to ISO format
+                            final pickupDateTime = DateTime(
+                              selectedDate.year,
+                              selectedDate.month,
+                              selectedDate.day,
+                              _fromAmPm == 1 && _fromHour != 12
+                                  ? _fromHour + 12
+                                  : (_fromAmPm == 0 && _fromHour == 12 ? 0 : _fromHour),
+                              _fromMinute,
+                            );
+                            final pickupDateIso = pickupDateTime.toIso8601String();
+
+                            // Create order via backend
+                            final orderRepo = OrderRepository();
+                            final orderResult = await orderRepo.createOrder(
+                              cartId: cartId,
+                              pickupAddressId: pickupAddressId,
+                              deliveryAddressId: deliveryAddressId,
+                              orderType: orderType,
+                              pickupDate: pickupDateIso,
+                              deliveryDate: null,
+                              specialInstructions: null,
+                            );
+
+                            if (!mounted) return;
+                            Navigator.of(context).pop(); // Close loading
+
+                            // Create local order record for UI
+                            final totalItems = items.fold<int>(0, (a, x) => a + x.totalQuantity);
+                            final title = items.length == 1 ? items.first.category : 'Mixed';
+                            final placedAt = DateTime.now();
+                            final placedDateLabel =
+                                '${_monthShort(placedAt.month)} ${placedAt.day}, ${placedAt.year}';
+                            final placedTimeLabel = _formatTime12h(
+                              placedAt.hour > 12
+                                  ? placedAt.hour - 12
+                                  : (placedAt.hour == 0 ? 12 : placedAt.hour),
+                              placedAt.minute,
+                              placedAt.hour >= 12 ? 1 : 0,
+                            );
+
+                            context.read<OrderProvider>().addOrder(
+                                  OrderRecord(
+                                    id: orderResult.orderId,
+                                    title: title,
+                                    items: items,
+                                    totalItems: totalItems,
+                                    totalInr: 0, // Kg-wise items have no upfront price
+                                    dateLabel: dateLabel,
+                                    timeLabel: timeLabel,
+                                    placedAt: placedAt,
+                                    placedDateLabel: placedDateLabel,
+                                    placedTimeLabel: placedTimeLabel,
+                                    status: OrderStatus.inProgress,
+                                  ),
+                                );
+
+                            cart.clear();
+
+                            if (!mounted) return;
+                            Navigator.of(context).pushNamedAndRemoveUntil(
+                              AppRoutes.orderSuccessful,
+                              (r) => false,
+                            );
+                          } catch (e) {
+                            if (!mounted) return;
+                            Navigator.of(context).pop(); // Close loading
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Failed to create order: ${e.toString()}'),
+                                duration: const Duration(seconds: 4),
+                              ),
+                            );
+                          }
+                        } else {
+                          // If cart has per-piece items (only or mixed), navigate to payment screen
+                          // Payment screen will create the order after payment confirmation
+                          if (!mounted) return;
+                          Navigator.of(context).pushNamed(
+                            AppRoutes.payment,
+                            arguments: {
+                              'dateLabel': dateLabel,
+                              'timeLabel': timeLabel,
+                              'deliveryOption': option.name,
+                            },
+                          );
+                        }
                       },
                       borderRadius: BorderRadius.circular(18),
                       child: Ink(

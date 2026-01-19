@@ -30,11 +30,13 @@ const identifierSchema = Joi.string()
   });
 
 const phoneSchema = Joi.string()
-  .pattern(/^[0-9]{10}$/)
+  .pattern(/^(\+?[0-9]{1,4}[\s-]?)?[0-9]{6,15}$/)
+  .max(20)
   .allow(null, '')
   .optional()
   .messages({
-    'string.pattern.base': 'Phone number must be exactly 10 digits'
+    'string.pattern.base': 'Phone number must be in valid format (e.g., "+91 9876543210", "9876543210", "+1 9876543210")',
+    'string.max': 'Phone number must not exceed 20 characters'
   });
 
 const flexiblePhoneSchema = Joi.string()

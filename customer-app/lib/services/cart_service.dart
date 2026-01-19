@@ -66,6 +66,32 @@ class CartService {
     }
   }
 
+  Future<List<Map<String, dynamic>>> getCarts() async {
+    try {
+      final res = await _api.get('/carts');
+      final data = (res.data as Map<String, dynamic>)['data'] as List?;
+      return (data ?? []).whereType<Map<String, dynamic>>().toList();
+    } on DioException catch (e) {
+      final msg = _extractErrorMessage(e, 'Failed to fetch cart items');
+      throw Exception(msg);
+    } catch (e) {
+      throw Exception('Failed to fetch cart items: $e');
+    }
+  }
+
+  Future<void> deleteCartItem({
+    required String cartItemId,
+  }) async {
+    try {
+      await _api.delete('/carts/items/$cartItemId');
+    } on DioException catch (e) {
+      final msg = _extractErrorMessage(e, 'Failed to delete cart item');
+      throw Exception(msg);
+    } catch (e) {
+      throw Exception('Failed to delete cart item: $e');
+    }
+  }
+
   String _extractErrorMessage(DioException e, String fallback) {
     try {
       final data = e.response?.data;

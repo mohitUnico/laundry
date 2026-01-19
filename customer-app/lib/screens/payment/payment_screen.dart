@@ -9,6 +9,8 @@ import '../../models/order_record.dart';
 import '../../routes/app_routes.dart';
 import '../../utils/pricing.dart';
 import '../../models/promo_code_model.dart';
+import '../../repositories/order_repository.dart';
+import '../../repositories/customer_info_repository.dart';
 import '../cart/delivery_options_screen.dart';
 
 class PaymentScreen extends StatefulWidget {
@@ -175,29 +177,24 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     top: false,
                     child: _PayButton(
                       amount: finalTotal,
-                      onTap: () {
-                        // Create order after payment
+                      onTap: () async {
+                        // Create order via backend, then process payment
                         final cart = context.read<CartProvider>();
                         final items = cart.items;
-                        final totalItems = items.fold<int>(0, (a, x) => a + x.totalQuantity);
-                        final totalInr = cart.totalInr;
+                        if (items.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Cart is empty')),
+                          );
+                          return;
+                        }
 
-                        final orderIdNum =
-                            (DateTime.now().millisecondsSinceEpoch % 90000) + 10000;
-                        final orderId = '#LD$orderIdNum';
-                        final title = items.length == 1 ? items.first.category : 'Mixed';
-                        final placedAt = DateTime.now();
-                        final placedDateLabel = _formatDateLabel(placedAt);
-                        final placedTimeLabel = _formatTime12h(
-                          placedAt.hour > 12 ? placedAt.hour - 12 : (placedAt.hour == 0 ? 12 : placedAt.hour),
-                          placedAt.minute,
-                          placedAt.hour >= 12 ? 1 : 0,
-                        );
-
-                        // Get schedule from route arguments
-                        final args = ModalRoute.of(context)?.settings.arguments as Map<String, String>?;
-                        final dateLabel = args?['dateLabel'] ?? 'Dec 20';
-                        final timeLabel = args?['timeLabel'] ?? '2:30 PM';
+                        final cartId = cart.activeCartId;
+                        if (cartId == null || cartId.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('No active cart found. Please add items to cart.')),
+                          );
+                          return;
+                        }
 
                         // Get delivery option from route arguments
                         final paymentArgs = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
@@ -207,70 +204,176 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           orElse: () => DeliveryOptionType.pickupOnly,
                         );
 
-                        // Calculate fees for passing to success screen
-                        final perPieceItems = items.where((x) => x.isPerPiece).toList();
-                        final itemTotal = perPieceItems.fold<int>(0, (sum, x) => sum + x.subtotalInr);
-                        final handlingFee = (itemTotal * 0.114).round(); // ~11.4% handling fee
-                        final pickupFeeOriginal = 0; // FREE
-                        final deliveryFeeAmount = 0; // FREE
-                        
-                        int pickupFee = 0; // FREE
-                        int deliveryFee = 0; // FREE
-                        
-                        final subtotal = itemTotal + handlingFee + pickupFee + deliveryFee;
-                        // Calculate original total based on delivery option
-                        final originalPickupFee = (deliveryOption == DeliveryOptionType.pickupOnly ||
-                                deliveryOption == DeliveryOptionType.pickupAndDelivery)
-                            ? pickupFeeOriginal
-                            : 0;
-                        final originalDeliveryFee = (deliveryOption == DeliveryOptionType.deliveryOnly ||
-                                deliveryOption == DeliveryOptionType.pickupAndDelivery)
-                            ? deliveryFee
-                            : 0;
-                        final originalTotal = itemTotal + handlingFee + originalPickupFee + originalDeliveryFee;
-                        final finalTotal = subtotal - _promoDiscount;
+                        // Get schedule from route arguments
+                        final dateLabel = paymentArgs?['dateLabel'] as String? ?? 'Dec 20';
+                        final timeLabel = paymentArgs?['timeLabel'] as String? ?? '2:30 PM';
 
-                        // Generate transaction ID
-                        final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
-                        final transactionId = 'QUCVG${timestamp.length > 7 ? timestamp.substring(timestamp.length - 7) : timestamp.padLeft(7, '0')}';
-
-                        context.read<OrderProvider>().addOrder(
-                              OrderRecord(
-                                id: orderId,
-                                title: title,
-                                items: items,
-                                totalItems: totalItems,
-                                totalInr: totalInr,
-                                dateLabel: dateLabel,
-                                timeLabel: timeLabel,
-                                placedAt: placedAt,
-                                placedDateLabel: placedDateLabel,
-                                placedTimeLabel: placedTimeLabel,
-                                status: OrderStatus.inProgress,
-                                paymentMethod: _selectedMethod,
-                              ),
-                            );
-
-                        cart.clear();
-
-                        // Navigate to payment successful screen with transaction details
-                        Navigator.of(context).pushNamedAndRemoveUntil(
-                          AppRoutes.paymentSuccessful,
-                          (r) => false,
-                          arguments: {
-                            'transactionId': transactionId,
-                            'itemTotal': itemTotal,
-                            'handlingFee': handlingFee,
-                            'pickupFeeOriginal': pickupFeeOriginal,
-                            'pickupFee': pickupFee,
-                            'deliveryFee': deliveryFee,
-                            'originalTotal': originalTotal,
-                            'finalTotal': finalTotal,
-                            'deliveryOption': deliveryOption.name,
-                            'promoCode': _appliedPromoCode,
-                            'promoDiscount': _promoDiscount,
-                          },
+                        // Show loading
+                        if (!mounted) return;
+                        showDialog(
+                          context: context,
+                          barrierDismissible: false,
+                          builder: (context) => const Center(
+                            child: CircularProgressIndicator(),
+                          ),
                         );
+
+                        try {
+                          // Fetch addresses
+                          final addressRepo = CustomerInfoRepository();
+                          final addresses = await addressRepo.getAddresses();
+
+                          if (addresses.isEmpty) {
+                            if (mounted) {
+                              Navigator.of(context).pop(); // Close loading
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Please add an address before placing an order'),
+                                ),
+                              );
+                            }
+                            return;
+                          }
+
+                          // Use default address or first address
+                          final defaultAddress = addresses.firstWhere(
+                            (a) => a.isDefault,
+                            orElse: () => addresses.first,
+                          );
+
+                          // Determine pickup and delivery addresses based on order type
+                          final orderType = deliveryOption.toBackendOrderType();
+                          String pickupAddressId;
+                          String deliveryAddressId;
+
+                          switch (deliveryOption) {
+                            case DeliveryOptionType.pickupOnly:
+                              pickupAddressId = defaultAddress.addressId;
+                              deliveryAddressId = defaultAddress.addressId; // Not used but required
+                              break;
+                            case DeliveryOptionType.deliveryOnly:
+                              pickupAddressId = defaultAddress.addressId; // Not used but required
+                              deliveryAddressId = defaultAddress.addressId;
+                              break;
+                            case DeliveryOptionType.pickupAndDelivery:
+                              pickupAddressId = defaultAddress.addressId;
+                              deliveryAddressId = defaultAddress.addressId;
+                              break;
+                          }
+
+                          // Parse date/time from arguments or use current time + 1 day as default
+                          DateTime pickupDateTime;
+                          try {
+                            // Try to parse from dateLabel and timeLabel
+                            // For simplicity, use current time + 1 day as default
+                            pickupDateTime = DateTime.now().add(const Duration(days: 1));
+                          } catch (_) {
+                            pickupDateTime = DateTime.now().add(const Duration(days: 1));
+                          }
+                          final pickupDateIso = pickupDateTime.toIso8601String();
+
+                          // Create order via backend
+                          final orderRepo = OrderRepository();
+                          final orderResult = await orderRepo.createOrder(
+                            cartId: cartId,
+                            pickupAddressId: pickupAddressId,
+                            deliveryAddressId: deliveryAddressId,
+                            orderType: orderType,
+                            pickupDate: pickupDateIso,
+                            deliveryDate: null,
+                            specialInstructions: null,
+                          );
+
+                          if (!mounted) return;
+                          Navigator.of(context).pop(); // Close loading
+
+                          // Calculate fees for passing to success screen
+                          final totalItems = items.fold<int>(0, (a, x) => a + x.totalQuantity);
+                          final totalInr = cart.totalInr;
+                          final perPieceItems = items.where((x) => x.isPerPiece).toList();
+                          final itemTotal = perPieceItems.fold<int>(0, (sum, x) => sum + x.subtotalInr);
+                          final handlingFee = (itemTotal * 0.114).round(); // ~11.4% handling fee
+                          final pickupFeeOriginal = 0; // FREE
+                          final deliveryFeeAmount = 0; // FREE
+                          
+                          int pickupFee = 0; // FREE
+                          int deliveryFee = 0; // FREE
+                          
+                          final subtotal = itemTotal + handlingFee + pickupFee + deliveryFee;
+                          // Calculate original total based on delivery option
+                          final originalPickupFee = (deliveryOption == DeliveryOptionType.pickupOnly ||
+                                  deliveryOption == DeliveryOptionType.pickupAndDelivery)
+                              ? pickupFeeOriginal
+                              : 0;
+                          final originalDeliveryFee = (deliveryOption == DeliveryOptionType.deliveryOnly ||
+                                  deliveryOption == DeliveryOptionType.pickupAndDelivery)
+                              ? deliveryFee
+                              : 0;
+                          final originalTotal = itemTotal + handlingFee + originalPickupFee + originalDeliveryFee;
+                          final finalTotal = subtotal - _promoDiscount;
+
+                          // Generate transaction ID
+                          final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+                          final transactionId = 'QUCVG${timestamp.length > 7 ? timestamp.substring(timestamp.length - 7) : timestamp.padLeft(7, '0')}';
+
+                          // Create local order record for UI
+                          final title = items.length == 1 ? items.first.category : 'Mixed';
+                          final placedAt = DateTime.now();
+                          final placedDateLabel = _formatDateLabel(placedAt);
+                          final placedTimeLabel = _formatTime12h(
+                            placedAt.hour > 12 ? placedAt.hour - 12 : (placedAt.hour == 0 ? 12 : placedAt.hour),
+                            placedAt.minute,
+                            placedAt.hour >= 12 ? 1 : 0,
+                          );
+
+                          context.read<OrderProvider>().addOrder(
+                                OrderRecord(
+                                  id: orderResult.orderId,
+                                  title: title,
+                                  items: items,
+                                  totalItems: totalItems,
+                                  totalInr: totalInr,
+                                  dateLabel: dateLabel,
+                                  timeLabel: timeLabel,
+                                  placedAt: placedAt,
+                                  placedDateLabel: placedDateLabel,
+                                  placedTimeLabel: placedTimeLabel,
+                                  status: OrderStatus.inProgress,
+                                  paymentMethod: _selectedMethod,
+                                ),
+                              );
+
+                          cart.clear();
+
+                          if (!mounted) return;
+                          // Navigate to payment successful screen with transaction details
+                          Navigator.of(context).pushNamedAndRemoveUntil(
+                            AppRoutes.paymentSuccessful,
+                            (r) => false,
+                            arguments: {
+                              'transactionId': transactionId,
+                              'itemTotal': itemTotal,
+                              'handlingFee': handlingFee,
+                              'pickupFeeOriginal': pickupFeeOriginal,
+                              'pickupFee': pickupFee,
+                              'deliveryFee': deliveryFee,
+                              'originalTotal': originalTotal,
+                              'finalTotal': finalTotal,
+                              'deliveryOption': deliveryOption.name,
+                              'promoCode': _appliedPromoCode,
+                              'promoDiscount': _promoDiscount,
+                            },
+                          );
+                        } catch (e) {
+                          if (!mounted) return;
+                          Navigator.of(context).pop(); // Close loading
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Failed to create order: ${e.toString()}'),
+                              duration: const Duration(seconds: 4),
+                            ),
+                          );
+                        }
                       },
                     ),
                   ),

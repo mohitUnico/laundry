@@ -9,8 +9,13 @@ import '../repositories/cart_repository.dart';
 class CartProvider with ChangeNotifier {
   final CartRepository _repo;
   final List<CartItem> _items = [];
+  String? _activeCartId;
+  bool _isAddingToCart = false;
 
   CartProvider({CartRepository? repo}) : _repo = repo ?? CartRepository();
+
+  String? get activeCartId => _activeCartId;
+  bool get isAddingToCart => _isAddingToCart;
 
   List<CartItem> get items => List.unmodifiable(_items);
 
@@ -18,6 +23,10 @@ class CartProvider with ChangeNotifier {
       _items.where((x) => x.isPerPiece).fold<int>(0, (sum, x) => sum + x.subtotalInr);
 
   bool get hasPricedItems => _items.any((x) => x.isPerPiece);
+  
+  bool get hasOnlyKgWiseItems => _items.isNotEmpty && _items.every((x) => !x.isPerPiece);
+  
+  bool get hasMixedItems => _items.any((x) => x.isPerPiece) && _items.any((x) => !x.isPerPiece);
 
   void addOrMerge({
     required String category,
@@ -111,18 +120,24 @@ class CartProvider with ChangeNotifier {
     String? imageAsset,
     String? note,
   }) async {
-    // First update local cart (so UI responds immediately)
-    addOrMerge(
-      category: category,
-      serviceName: serviceName,
-      quantities: isPerPiece ? quantities : const <String, int>{},
-      isPerPiece: isPerPiece,
-      unitPricesInr: unitPricesInr,
-      imageAsset: imageAsset,
-      note: note,
-    );
+    if (_isAddingToCart) return; // Prevent multiple calls
+    
+    _isAddingToCart = true;
+    notifyListeners();
 
-    // Then persist to backend with exact payload keys expected by backend.
+    try {
+      // First update local cart (so UI responds immediately)
+      addOrMerge(
+        category: category,
+        serviceName: serviceName,
+        quantities: isPerPiece ? quantities : const <String, int>{},
+        isPerPiece: isPerPiece,
+        unitPricesInr: unitPricesInr,
+        imageAsset: imageAsset,
+        note: note,
+      );
+
+      // Then persist to backend with exact payload keys expected by backend.
     final cleaned = <String, int>{};
     for (final e in quantities.entries) {
       if (e.value > 0) cleaned[e.key] = e.value;
@@ -174,6 +189,9 @@ class CartProvider with ChangeNotifier {
     // Note: backend currently returns only cart item ids (not selection ids), so we update by cloth_id.
     final addRes = await _repo.addCartItems(items: itemsPayload);
 
+    // Store active cart_id for order creation
+    _activeCartId = addRes.cartId;
+
     // Attach server-required metadata locally (serviceId, clothId map, prices, weight)
     // so we can build payloads later if needed.
     final idx = _items.lastIndexWhere((x) => x.category == category && x.serviceName == serviceName);
@@ -187,12 +205,125 @@ class CartProvider with ChangeNotifier {
         cartItemId: addRes.addedCartItemIds.isNotEmpty ? addRes.addedCartItemIds.first : existing.cartItemId,
       );
       notifyListeners();
+    } finally {
+      _isAddingToCart = false;
+      notifyListeners();
     }
   }
 
   void remove(String id) {
+    final item = _items.firstWhere((x) => x.id == id, orElse: () => throw Exception('Item not found'));
     _items.removeWhere((x) => x.id == id);
     notifyListeners();
+
+    // Delete from backend if cartItemId exists
+    if (item.cartItemId != null && item.cartItemId!.isNotEmpty) {
+      unawaited(_repo.deleteCartItem(cartItemId: item.cartItemId!));
+    }
+  }
+
+  Future<void> fetchFromBackend() async {
+    try {
+      final carts = await _repo.getCarts();
+      _items.clear();
+
+      // Find the active cart
+      final activeCart = carts.firstWhere(
+        (cart) => cart['is_active'] == true,
+        orElse: () => <String, dynamic>{},
+      );
+
+      if (activeCart.isEmpty) {
+        _activeCartId = null;
+        notifyListeners();
+        return;
+      }
+
+      // Store active cart_id
+      _activeCartId = activeCart['cart_id'] as String?;
+
+      final cartItems = (activeCart['cart_items'] as List?) ?? [];
+      for (final cartItemData in cartItems) {
+        final service = cartItemData['service'] as Map<String, dynamic>?;
+        if (service == null) continue;
+
+        final serviceName = service['service_name'] as String? ?? '';
+        final pricingType = cartItemData['pricing_type'] as String? ?? 'per_unit';
+        final isPerPiece = pricingType == 'per_unit';
+        final cartItemId = cartItemData['cart_item_id'] as String? ?? '';
+
+        // Get category from service (if available) or default
+        final category = 'Service'; // Default, can be enhanced if category is in response
+
+        if (isPerPiece) {
+          final selections = (cartItemData['item_selections'] as List?) ?? [];
+          final quantities = <String, int>{};
+          final clothIdByItemName = <String, String>{};
+          final unitPricesInr = <String, int>{};
+
+          for (final selection in selections) {
+            final clothItem = selection['cloth_item'] as Map<String, dynamic>?;
+            if (clothItem == null) continue;
+
+            final itemName = clothItem['item_name'] as String? ?? '';
+            final quantity = selection['quantity'] as int? ?? 0;
+            final clothId = clothItem['cloth_id'] as String? ?? '';
+            final perUnitPrice = (clothItem['per_unit_price'] is num)
+                ? (clothItem['per_unit_price'] as num).toInt()
+                : 0;
+
+            if (itemName.isNotEmpty && quantity > 0) {
+              quantities[itemName] = quantity;
+              clothIdByItemName[itemName] = clothId;
+              unitPricesInr[itemName] = perUnitPrice;
+            }
+          }
+
+          if (quantities.isNotEmpty) {
+            _items.add(
+              CartItem(
+                id: cartItemId.isNotEmpty ? cartItemId : DateTime.now().microsecondsSinceEpoch.toString(),
+                category: category,
+                serviceName: serviceName,
+                serviceId: service['service_id'] as String?,
+                cartItemId: cartItemId,
+                quantities: quantities,
+                clothIdByItemName: clothIdByItemName,
+                unitPricesInr: unitPricesInr,
+                isPerPiece: true,
+                imageAsset: service['icon_url'] as String?,
+              ),
+            );
+          }
+        } else {
+          // Per kg item
+          final weightKg = (cartItemData['weight_kg'] is num)
+              ? (cartItemData['weight_kg'] as num).toDouble()
+              : null;
+
+          if (weightKg != null && weightKg > 0) {
+            _items.add(
+              CartItem(
+                id: cartItemId.isNotEmpty ? cartItemId : DateTime.now().microsecondsSinceEpoch.toString(),
+                category: category,
+                serviceName: serviceName,
+                serviceId: service['service_id'] as String?,
+                cartItemId: cartItemId,
+                quantities: const <String, int>{},
+                isPerPiece: false,
+                weightKg: weightKg,
+                imageAsset: service['icon_url'] as String?,
+              ),
+            );
+          }
+        }
+      }
+
+      notifyListeners();
+    } catch (e) {
+      // Silently fail - cart will remain in local state
+      debugPrint('Failed to fetch cart from backend: $e');
+    }
   }
 
   void incrementFirst(String id) {
@@ -282,6 +413,7 @@ class CartProvider with ChangeNotifier {
 
   void clear() {
     _items.clear();
+    _activeCartId = null;
     notifyListeners();
   }
 }

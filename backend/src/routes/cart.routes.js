@@ -2,7 +2,7 @@ const express = require('express');
 const cartController = require('../controllers/cart.controller');
 const { authenticateJWT, authorize } = require('../middleware/auth.middleware');
 const { validate } = require('../middleware/validation.middleware');
-const { setSelectionQuantitySchema } = require('../validators/cart.validator');
+const { setSelectionQuantitySchema, addCartItemsSchema } = require('../validators/cart.validator');
 const { ValidationError } = require('../utils/errors');
 const Joi = require('joi');
 
@@ -30,7 +30,7 @@ router.get('/', authenticateJWT, authorize('customer'), cartController.getCarts)
 
 // POST /api/v1/carts/items
 // Adds items to the customer's active cart (creates a cart if none exists)
-router.post('/items', authenticateJWT, authorize('customer'), cartController.addCartItems);
+router.post('/items', authenticateJWT, authorize('customer'), validate(addCartItemsSchema), cartController.addCartItems);
 
 // PATCH /api/v1/carts/items/:cartItemId/selections/quantity
 // Single endpoint to handle both increment and decrement by setting the desired quantity.
@@ -61,7 +61,7 @@ router.patch(
 );
 
 // DELETE /api/v1/carts/items/:cartItemId
-router.delete('/items/:cartItemId', authenticateJWT, authorize('customer'), cartController.deleteCartItem);
+router.delete('/items/:cartItemId', authenticateJWT, authorize('customer'), validateUuidParam('cartItemId'), cartController.deleteCartItem);
 
 module.exports = router;
 

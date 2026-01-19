@@ -85,7 +85,9 @@ class _SignupScreenState extends State<SignupScreen> {
     if (firstNameError == null && lastNameError == null && phoneError == null) {
       final fullName =
           '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}'.trim();
+      
       // Format phone with country code: "+91 9876543210"
+      // Backend now accepts flexible phone format with country code
       final phone = PhoneFieldWithCountryPicker.formatPhoneForStorage(
         _selectedCountry,
         _phoneController.text.trim(),
@@ -96,7 +98,7 @@ class _SignupScreenState extends State<SignupScreen> {
         await context.read<AuthProvider>().completeCustomerRegistration(
               sessionToken: args.sessionToken,
               fullName: fullName,
-              phone: phone,
+              phone: phone.isEmpty ? null : phone,
             );
 
         if (!mounted) return;

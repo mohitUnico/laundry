@@ -163,54 +163,59 @@ class _RegularWashServiceScreenState extends State<RegularWashServiceScreen> {
                       total: _total,
                     ),
                     const SizedBox(height: 14),
-                    _PrimaryButton(
-                      label: 'Add to Cart',
-                      onTap: () async {
-                        final sid = widget.serviceId;
-                        if (sid == null || sid.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Missing service id')),
-                          );
-                          return;
-                        }
-
-                        final clothIdByName = <String, String>{
-                          for (final it in effectiveItems) it.itemName: it.clothId,
-                        };
-                        final unitPrices = <String, int>{
-                          for (final it in effectiveItems) it.itemName: it.perUnitPrice.round(),
-                        };
-
-                        double? weightKg;
-                        if (!widget.showPrices) {
-                          weightKg = await _askWeightKg();
-                          if (weightKg == null || weightKg <= 0) return;
-                        }
-
-                        try {
-                          await context.read<CartProvider>().addAndSave(
-                                category: 'Regular Wash',
-                                serviceName: widget.serviceTitle,
-                                serviceId: sid,
-                                imageAsset: 'assets/images/regular_wash/top_wear.png',
-                                isPerPiece: widget.showPrices,
-                                quantities: Map<String, int>.from(_qtyByItemName),
-                                clothIdByItemName: clothIdByName,
-                                unitPricesInr: unitPrices,
-                                weightKg: weightKg,
-                                note: _othersController.text,
+                    Consumer<CartProvider>(
+                      builder: (context, cart, _) {
+                        return _PrimaryButton(
+                          label: 'Add to Cart',
+                          isLoading: cart.isAddingToCart,
+                          onTap: cart.isAddingToCart ? () {} : () async {
+                            final sid = widget.serviceId;
+                            if (sid == null || sid.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Missing service id')),
                               );
+                              return;
+                            }
 
-                          if (!mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Added to cart')),
-                          );
-                        } catch (e) {
-                          if (!mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(e.toString())),
-                          );
-                        }
+                            final clothIdByName = <String, String>{
+                              for (final it in effectiveItems) it.itemName: it.clothId,
+                            };
+                            final unitPrices = <String, int>{
+                              for (final it in effectiveItems) it.itemName: it.perUnitPrice.round(),
+                            };
+
+                            double? weightKg;
+                            if (!widget.showPrices) {
+                              weightKg = await _askWeightKg();
+                              if (weightKg == null || weightKg <= 0) return;
+                            }
+
+                            try {
+                              await context.read<CartProvider>().addAndSave(
+                                    category: 'Regular Wash',
+                                    serviceName: widget.serviceTitle,
+                                    serviceId: sid,
+                                    imageAsset: 'assets/images/regular_wash/top_wear.png',
+                                    isPerPiece: widget.showPrices,
+                                    quantities: Map<String, int>.from(_qtyByItemName),
+                                    clothIdByItemName: clothIdByName,
+                                    unitPricesInr: unitPrices,
+                                    weightKg: weightKg,
+                                    note: _othersController.text,
+                                  );
+
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Added to cart')),
+                              );
+                            } catch (e) {
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(e.toString())),
+                              );
+                            }
+                          },
+                        );
                       },
                     ),
                   ],
@@ -546,29 +551,40 @@ class _SummaryRow extends StatelessWidget {
 class _PrimaryButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
+  final bool isLoading;
 
   const _PrimaryButton({
     required this.label,
     required this.onTap,
+    this.isLoading = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: onTap,
+      onTap: isLoading ? null : onTap,
       borderRadius: BorderRadius.circular(18),
       child: Container(
         width: double.infinity,
         height: 50,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: HomeColors.primary,
+          color: isLoading ? Colors.grey : HomeColors.primary,
           borderRadius: BorderRadius.circular(18),
         ),
-        child: Text(
-          label,
-          style: AppTextStyles.header(color: Colors.white).copyWith(fontSize: 14),
-        ),
+        child: isLoading
+            ? const SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            : Text(
+                label,
+                style: AppTextStyles.header(color: Colors.white).copyWith(fontSize: 14),
+              ),
       ),
     );
   }

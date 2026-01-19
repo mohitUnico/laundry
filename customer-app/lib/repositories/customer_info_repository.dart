@@ -8,21 +8,39 @@ class CustomerInfoRepository {
   CustomerInfoRepository({CustomerInfoService? service})
       : _service = service ?? CustomerInfoService();
 
-  Future<Map<String, dynamic>> uploadProfileImage({required File file}) {
-    return _service.uploadProfileImage(file: file);
+  Future<List<CustomerAddress>> getAddresses() {
+    return _service.getAddresses();
+  }
+
+  Future<CustomerAddress> createAddress({
+    required String addressLabel,
+    required String fullAddress,
+    required double latitude,
+    required double longitude,
+    bool isDefault = false,
+    String? deliveryNote,
+  }) {
+    return _service.createAddress(
+      addressLabel: addressLabel,
+      fullAddress: fullAddress,
+      latitude: latitude,
+      longitude: longitude,
+      isDefault: isDefault,
+      deliveryNote: deliveryNote,
+    );
   }
 
   Future<Map<String, dynamic>> updateProfile({
     String? fullName,
     String? phone,
-    String? profileImageUrl,
   }) {
     return _service.updateProfile(
       fullName: fullName,
       phone: phone,
-      profileImageUrl: profileImageUrl,
     );
   }
+
+  Future<Map<String, dynamic>> uploadProfileImage({required File file}) {
+    return _service.uploadProfileImage(file: file);
+  }
 }
-
-

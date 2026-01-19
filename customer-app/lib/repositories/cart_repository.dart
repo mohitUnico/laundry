@@ -22,6 +22,16 @@ class CartRepository {
       quantity: quantity,
     );
   }
+
+  Future<List<Map<String, dynamic>>> getCarts() {
+    return _service.getCarts();
+  }
+
+  Future<void> deleteCartItem({
+    required String cartItemId,
+  }) {
+    return _service.deleteCartItem(cartItemId: cartItemId);
+  }
 }
 
 

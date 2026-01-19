@@ -168,53 +168,58 @@ class _ProCleanScreenState extends State<ProCleanScreen> {
                         const SizedBox(height: 10),
                       ],
                     const SizedBox(height: 16),
-                    _PrimaryGradientButton(
-                      label: 'Add to Cart',
-                      onTap: () async {
-                        final serviceId = sid;
-                        if (serviceId == null || serviceId.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Missing service id')),
-                          );
-                          return;
-                        }
-
-                        final clothIdByName = <String, String>{
-                          for (final it in items) it.itemName: it.clothId,
-                        };
-                        final unitPrices = <String, int>{
-                          for (final it in items) it.itemName: it.perUnitPrice.round(),
-                        };
-
-                        double? weightKg;
-                        if (!showPrices) {
-                          weightKg = await _askWeightKg();
-                          if (weightKg == null || weightKg <= 0) return;
-                        }
-
-                        try {
-                          await context.read<CartProvider>().addAndSave(
-                                category: 'Pro Clean',
-                                serviceName: serviceName,
-                                serviceId: serviceId,
-                                imageAsset: 'assets/images/home/pro_clean.png',
-                                isPerPiece: showPrices,
-                                quantities: Map<String, int>.from(_qtyByItemName),
-                                clothIdByItemName: clothIdByName,
-                                unitPricesInr: unitPrices,
-                                weightKg: weightKg,
+                    Consumer<CartProvider>(
+                      builder: (context, cart, _) {
+                        return _PrimaryGradientButton(
+                          label: 'Add to Cart',
+                          isLoading: cart.isAddingToCart,
+                          onTap: cart.isAddingToCart ? () {} : () async {
+                            final serviceId = sid;
+                            if (serviceId == null || serviceId.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Missing service id')),
                               );
+                              return;
+                            }
 
-                          if (!mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Added to cart')),
-                          );
-                        } catch (e) {
-                          if (!mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(e.toString())),
-                          );
-                        }
+                            final clothIdByName = <String, String>{
+                              for (final it in items) it.itemName: it.clothId,
+                            };
+                            final unitPrices = <String, int>{
+                              for (final it in items) it.itemName: it.perUnitPrice.round(),
+                            };
+
+                            double? weightKg;
+                            if (!showPrices) {
+                              weightKg = await _askWeightKg();
+                              if (weightKg == null || weightKg <= 0) return;
+                            }
+
+                            try {
+                              await context.read<CartProvider>().addAndSave(
+                                    category: 'Pro Clean',
+                                    serviceName: serviceName,
+                                    serviceId: serviceId,
+                                    imageAsset: 'assets/images/home/pro_clean.png',
+                                    isPerPiece: showPrices,
+                                    quantities: Map<String, int>.from(_qtyByItemName),
+                                    clothIdByItemName: clothIdByName,
+                                    unitPricesInr: unitPrices,
+                                    weightKg: weightKg,
+                                  );
+
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Added to cart')),
+                              );
+                            } catch (e) {
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(e.toString())),
+                              );
+                            }
+                          },
+                        );
                       },
                     ),
                     const SizedBox(height: 10),
@@ -378,34 +383,48 @@ class _QtyButton extends StatelessWidget {
 class _PrimaryGradientButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
+  final bool isLoading;
 
   const _PrimaryGradientButton({
     required this.label,
     required this.onTap,
+    this.isLoading = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: onTap,
+      onTap: isLoading ? null : onTap,
       borderRadius: BorderRadius.circular(16),
       child: Container(
         height: 52,
         width: double.infinity,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
-          gradient: const LinearGradient(
-            colors: [
-              HomeColors.primary,
-              Color(0xFF1F2F8E), // slightly darker shade for depth
-            ],
-          ),
+          gradient: isLoading
+              ? null
+              : const LinearGradient(
+                  colors: [
+                    HomeColors.primary,
+                    Color(0xFF1F2F8E), // slightly darker shade for depth
+                  ],
+                ),
+          color: isLoading ? Colors.grey : null,
         ),
         alignment: Alignment.center,
-        child: Text(
-          label,
-          style: AppTextStyles.button(color: Colors.white),
-        ),
+        child: isLoading
+            ? const SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            : Text(
+                label,
+                style: AppTextStyles.button(color: Colors.white),
+              ),
       ),
     );
   }

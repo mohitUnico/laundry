@@ -169,9 +169,12 @@ class _WinterWearScreenState extends State<WinterWearScreen> {
                       total: _total,
                     ),
                     const SizedBox(height: 16),
-                    _PrimaryGradientButton(
-                      label: 'Add to Cart',
-                      onTap: () async {
+                    Consumer<CartProvider>(
+                      builder: (context, cart, _) {
+                        return _PrimaryGradientButton(
+                          label: 'Add to Cart',
+                          isLoading: cart.isAddingToCart,
+                          onTap: cart.isAddingToCart ? () {} : () async {
                         final serviceId = sid;
                         if (serviceId == null || serviceId.isEmpty) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -193,30 +196,32 @@ class _WinterWearScreenState extends State<WinterWearScreen> {
                           if (weightKg == null || weightKg <= 0) return;
                         }
 
-                        try {
-                          await context.read<CartProvider>().addAndSave(
-                                category: 'Pro Clean',
-                                serviceName: serviceName,
-                                serviceId: serviceId,
-                                imageAsset: 'assets/images/winter_wear/jackets.png',
-                                isPerPiece: showPrices,
-                                quantities: Map<String, int>.from(_qtyByItemName),
-                                clothIdByItemName: clothIdByName,
-                                unitPricesInr: unitPrices,
-                                weightKg: weightKg,
-                                note: _othersController.text,
-                              );
+                            try {
+                              await context.read<CartProvider>().addAndSave(
+                                    category: 'Pro Clean',
+                                    serviceName: serviceName,
+                                    serviceId: serviceId,
+                                    imageAsset: 'assets/images/winter_wear/jackets.png',
+                                    isPerPiece: showPrices,
+                                    quantities: Map<String, int>.from(_qtyByItemName),
+                                    clothIdByItemName: clothIdByName,
+                                    unitPricesInr: unitPrices,
+                                    weightKg: weightKg,
+                                    note: _othersController.text,
+                                  );
 
-                          if (!mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Added to cart')),
-                          );
-                        } catch (e) {
-                          if (!mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(e.toString())),
-                          );
-                        }
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Added to cart')),
+                              );
+                            } catch (e) {
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(e.toString())),
+                              );
+                            }
+                          },
+                        );
                       },
                     ),
                     const SizedBox(height: 10),
@@ -498,10 +503,12 @@ class _SummaryRow extends StatelessWidget {
 class _PrimaryGradientButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
+  final bool isLoading;
 
   const _PrimaryGradientButton({
     required this.label,
     required this.onTap,
+    this.isLoading = false,
   });
 
   @override
@@ -512,23 +519,35 @@ class _PrimaryGradientButton extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap,
+          onTap: isLoading ? null : onTap,
           borderRadius: BorderRadius.circular(26),
           child: Ink(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(26),
-              gradient: const LinearGradient(
-                colors: [Color(0xFF2437B6), Color(0xFF2C3CA5)],
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-              ),
+              gradient: isLoading
+                  ? null
+                  : const LinearGradient(
+                      colors: [Color(0xFF2437B6), Color(0xFF2C3CA5)],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+              color: isLoading ? Colors.grey : null,
             ),
             child: Center(
-              child: Text(
-                label,
-                style: AppTextStyles.header(color: Colors.white)
-                    .copyWith(fontSize: 14),
-              ),
+              child: isLoading
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : Text(
+                      label,
+                      style: AppTextStyles.header(color: Colors.white)
+                          .copyWith(fontSize: 14),
+                    ),
             ),
           ),
         ),

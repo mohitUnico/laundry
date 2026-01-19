@@ -40,3 +40,22 @@ exports.confirmOrder = async (req, res, next) => {
         next(error);
     }
 };
+
+exports.getCustomerOrders = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'customer') {
+            throw new AuthorizationError('Only customers can view their orders');
+        }
+
+        const customerId = req.user.user_id;
+        const result = await orderService.getCustomerOrders(customerId, req.query);
+
+        res.status(200).json({
+            success: true,
+            data: result,
+            message: 'Orders fetched successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};

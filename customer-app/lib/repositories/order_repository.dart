@@ -24,5 +24,17 @@ class OrderRepository {
       specialInstructions: specialInstructions,
     );
   }
+
+  Future<Map<String, dynamic>> getOrders({
+    int page = 1,
+    int limit = 10,
+    String? status,
+  }) {
+    return _service.getOrders(
+      page: page,
+      limit: limit,
+      status: status,
+    );
+  }
 }
 

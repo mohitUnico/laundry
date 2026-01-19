@@ -27,6 +27,15 @@ class _CartScreenState extends State<CartScreen> {
   String _formatInr(int value) => Pricing.inr(value);
 
   @override
+  void initState() {
+    super.initState();
+    // Fetch cart items from backend when screen loads
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<CartProvider>().fetchFromBackend();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: HomeColors.background,
@@ -104,42 +113,157 @@ class _CartScreenState extends State<CartScreen> {
                       );
                     }
 
-                    // Group items by category
-                    final byCategory = <String, List<CartItem>>{};
-                    for (final item in items) {
-                      byCategory.putIfAbsent(item.category, () => []).add(item);
+                    // Separate items by pricing type
+                    final perPieceItems = items.where((x) => x.isPerPiece).toList();
+                    final kgWiseItems = items.where((x) => !x.isPerPiece).toList();
+
+                    // Group per-piece items by category
+                    final perPieceByCategory = <String, List<CartItem>>{};
+                    for (final item in perPieceItems) {
+                      perPieceByCategory.putIfAbsent(item.category, () => []).add(item);
+                    }
+
+                    // Group kg-wise items by category and service
+                    // Count how many times each service appears
+                    final kgWiseByCategory = <String, List<CartItem>>{};
+                    final kgWiseServiceCounts = <String, int>{}; // Track count per service
+                    for (final item in kgWiseItems) {
+                      final serviceKey = '${item.category}_${item.serviceName}';
+                      kgWiseServiceCounts[serviceKey] = (kgWiseServiceCounts[serviceKey] ?? 0) + 1;
+                      kgWiseByCategory.putIfAbsent(item.category, () => []).add(item);
                     }
 
                     return ListView(
                       padding: const EdgeInsets.only(bottom: 16),
                       children: [
-                        for (final categoryEntry in byCategory.entries) ...[
-                          _CategorySection(
-                            category: categoryEntry.key,
-                            services: categoryEntry.value,
-                            isExpanded: _expandedCategories[categoryEntry.key] ?? true,
-                            onToggle: () => setState(() {
-                              _expandedCategories[categoryEntry.key] =
-                                  !(_expandedCategories[categoryEntry.key] ?? true);
-                            }),
-                            onServiceToggle: (serviceId) => setState(() {
-                              _expandedServices[serviceId] =
-                                  !(_expandedServices[serviceId] ?? true);
-                            }),
-                            expandedServices: _expandedServices,
-                            onItemQuantityChange: (itemId, itemName, delta) {
-                              context.read<CartProvider>().updateItemQuantity(
-                                    itemId,
-                                    itemName,
-                                    delta,
-                                  );
-                            },
-                            onDeleteService: (itemId) {
-                              context.read<CartProvider>().remove(itemId);
-                            },
-                            formatInr: _formatInr,
+                        // Per-Piece Items Section
+                        if (perPieceItems.isNotEmpty) ...[
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.check_circle_outline,
+                                  size: 18,
+                                  color: HomeColors.primary,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Per-Piece Items',
+                                  style: AppTextStyles.header(color: HomeColors.text)
+                                      .copyWith(fontSize: 16, fontWeight: FontWeight.w600),
+                                ),
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 12),
+                          for (final categoryEntry in perPieceByCategory.entries) ...[
+                            _CategorySection(
+                              category: categoryEntry.key,
+                              services: categoryEntry.value,
+                              isExpanded: _expandedCategories[categoryEntry.key] ?? true,
+                              onToggle: () => setState(() {
+                                _expandedCategories[categoryEntry.key] =
+                                    !(_expandedCategories[categoryEntry.key] ?? true);
+                              }),
+                              onServiceToggle: (serviceId) => setState(() {
+                                _expandedServices[serviceId] =
+                                    !(_expandedServices[serviceId] ?? true);
+                              }),
+                              expandedServices: _expandedServices,
+                              onItemQuantityChange: (itemId, itemName, delta) {
+                                context.read<CartProvider>().updateItemQuantity(
+                                      itemId,
+                                      itemName,
+                                      delta,
+                                    );
+                              },
+                            onDeleteService: (itemId) async {
+                              try {
+                                await context.read<CartProvider>().remove(itemId);
+                              } catch (e) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Failed to delete item: ${e.toString()}')),
+                                  );
+                                }
+                              }
+                            },
+                              formatInr: _formatInr,
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                        ],
+                        // Kg-Wise Items Section
+                        if (kgWiseItems.isNotEmpty) ...[
+                          if (perPieceItems.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            const Divider(height: 24, thickness: 1),
+                            const SizedBox(height: 8),
+                          ],
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.scale_outlined,
+                                  size: 18,
+                                  color: HomeColors.primary,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Kg-Wise Items',
+                                  style: AppTextStyles.header(color: HomeColors.text)
+                                      .copyWith(fontSize: 16, fontWeight: FontWeight.w600),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFEF3C7),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: const Color(0xFFFCD34D)),
+                                  ),
+                                  child: Text(
+                                    'Price after supervision',
+                                    style: AppTextStyles.body(color: const Color(0xFF92400E))
+                                        .copyWith(fontSize: 10),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          for (final categoryEntry in kgWiseByCategory.entries) ...[
+                            _CategorySection(
+                              category: categoryEntry.key,
+                              services: categoryEntry.value,
+                              isExpanded: _expandedCategories[categoryEntry.key] ?? true,
+                              onToggle: () => setState(() {
+                                _expandedCategories[categoryEntry.key] =
+                                    !(_expandedCategories[categoryEntry.key] ?? true);
+                              }),
+                              onServiceToggle: (serviceId) => setState(() {
+                                _expandedServices[serviceId] =
+                                    !(_expandedServices[serviceId] ?? true);
+                              }),
+                              expandedServices: _expandedServices,
+                              onItemQuantityChange: (itemId, itemName, delta) {
+                                // Kg-wise items don't have quantity changes
+                              },
+                            onDeleteService: (itemId) async {
+                              try {
+                                await context.read<CartProvider>().remove(itemId);
+                              } catch (e) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Failed to delete item: ${e.toString()}')),
+                                  );
+                                }
+                              }
+                            },
+                              formatInr: _formatInr,
+                            ),
+                            const SizedBox(height: 12),
+                          ],
                         ],
                         const SizedBox(height: 14),
                         Consumer<CartProvider>(
@@ -266,18 +390,60 @@ class _CategorySection extends StatelessWidget {
           ),
           if (isExpanded) ...[
             const Divider(height: 1, thickness: 1),
-            for (final service in services) ...[
-              _ServiceSection(
-                service: service,
-                isExpanded: expandedServices[service.id] ?? true,
-                onToggle: () => onServiceToggle(service.id),
-                onItemQuantityChange: (itemName, delta) =>
-                    onItemQuantityChange(service.id, itemName, delta),
-                onDelete: () => onDeleteService(service.id),
-                formatInr: formatInr,
-              ),
-              if (service != services.last) const Divider(height: 1, thickness: 1),
-            ],
+            // Group services by serviceName to show individual entries
+            Builder(
+              builder: (context) {
+                // Group services by serviceName
+                final servicesByServiceName = <String, List<CartItem>>{};
+                for (final service in services) {
+                  servicesByServiceName.putIfAbsent(service.serviceName, () => []).add(service);
+                }
+                
+                return Column(
+                  children: [
+                    for (final serviceGroup in servicesByServiceName.entries) ...[
+                      // Show service group header if multiple items
+                      if (serviceGroup.value.length > 1) ...[
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          child: Row(
+                            children: [
+                              Text(
+                                serviceGroup.key,
+                                style: AppTextStyles.header(color: HomeColors.text)
+                                    .copyWith(fontSize: 14),
+                              ),
+                              const Spacer(),
+                              Text(
+                                '${serviceGroup.value.length} items',
+                                style: AppTextStyles.body(color: HomeColors.muted)
+                                    .copyWith(fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Divider(height: 1, thickness: 1),
+                      ],
+                      // Show each service entry
+                      for (int i = 0; i < serviceGroup.value.length; i++) ...[
+                        _ServiceSection(
+                          service: serviceGroup.value[i],
+                          isExpanded: expandedServices[serviceGroup.value[i].id] ?? true,
+                          onToggle: () => onServiceToggle(serviceGroup.value[i].id),
+                          onItemQuantityChange: (itemName, delta) =>
+                              onItemQuantityChange(serviceGroup.value[i].id, itemName, delta),
+                          onDelete: () => onDeleteService(serviceGroup.value[i].id),
+                          formatInr: formatInr,
+                          showServiceName: serviceGroup.value.length == 1, // Only show service name if single item
+                        ),
+                        if (i < serviceGroup.value.length - 1)
+                          const Divider(height: 1, thickness: 1),
+                      ],
+                    ],
+                  ],
+                );
+              },
+            ),
           ],
         ],
       ),
@@ -293,6 +459,8 @@ class _ServiceSection extends StatelessWidget {
   final VoidCallback onDelete;
   final String Function(int) formatInr;
 
+  final bool showServiceName; // Whether to show service name in header
+
   const _ServiceSection({
     required this.service,
     required this.isExpanded,
@@ -300,6 +468,7 @@ class _ServiceSection extends StatelessWidget {
     required this.onItemQuantityChange,
     required this.onDelete,
     required this.formatInr,
+    this.showServiceName = true, // Default to showing service name
   });
 
   @override
@@ -340,15 +509,42 @@ class _ServiceSection extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        service.serviceName,
-                        style: AppTextStyles.header(color: HomeColors.text),
-                      ),
+                      if (showServiceName) ...[
+                        Text(
+                          service.serviceName,
+                          style: AppTextStyles.header(color: HomeColors.text),
+                        ),
+                      ] else ...[
+                        // For grouped items, show a generic label
+                        Text(
+                          'Item',
+                          style: AppTextStyles.header(color: HomeColors.text),
+                        ),
+                      ],
                       const SizedBox(height: 4),
-                      Text(
-                        weightLabel ?? '${service.totalQuantity} items',
-                        style: AppTextStyles.body(color: HomeColors.muted)
-                            .copyWith(fontSize: 12),
+                      Builder(
+                        builder: (context) {
+                          // For kg-wise items, count how many kg-wise items exist in the cart
+                          if (!showPrices) {
+                            // Get all kg-wise items from the cart provider
+                            final cart = context.read<CartProvider>();
+                            final allKgWiseItems = cart.items.where((x) => !x.isPerPiece).toList();
+                            final count = allKgWiseItems.length;
+                            return Text(
+                              count == 1 ? '1 item' : '$count items',
+                              style: AppTextStyles.body(color: HomeColors.muted)
+                                  .copyWith(fontSize: 12),
+                            );
+                          }
+                          // For per-piece items
+                          return Text(
+                            service.quantities.length == 1
+                                ? '${service.totalQuantity} ${service.quantities.keys.first}${service.totalQuantity > 1 ? 's' : ''}'
+                                : '${service.quantities.length} items (${service.totalQuantity} total)',
+                            style: AppTextStyles.body(color: HomeColors.muted)
+                                .copyWith(fontSize: 12),
+                          );
+                        },
                       ),
                       if (showPrices && subtotal > 0) ...[
                         const SizedBox(height: 4),
@@ -390,17 +586,29 @@ class _ServiceSection extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
             child: Column(
               children: [
-                for (final itemEntry in service.quantities.entries) ...[
-                  _ItemRow(
-                    itemName: itemEntry.key,
-                    quantity: itemEntry.value,
-                    unitPrice: showPrices ? (prices[itemEntry.key] ?? 0) : null,
-                    onIncrement: () => onItemQuantityChange(itemEntry.key, 1),
-                    onDecrement: () => onItemQuantityChange(itemEntry.key, -1),
-                    formatInr: formatInr,
+                // Show individual cloth items for both per-piece and kg-wise items
+                if (service.quantities.isNotEmpty) ...[
+                  for (final itemEntry in service.quantities.entries) ...[
+                    _ItemRow(
+                      itemName: itemEntry.key,
+                      quantity: itemEntry.value,
+                      unitPrice: showPrices ? (prices[itemEntry.key] ?? 0) : null,
+                      onIncrement: () => onItemQuantityChange(itemEntry.key, 1),
+                      onDecrement: () => onItemQuantityChange(itemEntry.key, -1),
+                      formatInr: formatInr,
+                    ),
+                    if (itemEntry != service.quantities.entries.last)
+                      const SizedBox(height: 8),
+                  ],
+                ] else ...[
+                  // Fallback: if no quantities, show service name (shouldn't happen normally)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      service.serviceName,
+                      style: AppTextStyles.body(color: HomeColors.text),
+                    ),
                   ),
-                  if (itemEntry != service.quantities.entries.last)
-                    const SizedBox(height: 8),
                 ],
                 if (service.note != null && service.note!.isNotEmpty) ...[
                   const SizedBox(height: 8),
@@ -505,6 +713,43 @@ class _ItemRow extends StatelessWidget {
               textAlign: TextAlign.right,
               style: AppTextStyles.header(color: HomeColors.primary).copyWith(fontSize: 14),
             ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _KgWiseItemRow extends StatelessWidget {
+  final String serviceName;
+  final double? weightKg;
+  final String Function(int) formatInr;
+
+  const _KgWiseItemRow({
+    required this.serviceName,
+    this.weightKg,
+    required this.formatInr,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            serviceName,
+            style: AppTextStyles.body(color: HomeColors.text),
+          ),
+        ),
+        if (weightKg != null && weightKg! > 0) ...[
+          Text(
+            '${weightKg!.toStringAsFixed(weightKg! % 1 == 0 ? 0 : 1)} kg',
+            style: AppTextStyles.body(color: HomeColors.muted).copyWith(fontSize: 12),
+          ),
+        ] else ...[
+          Text(
+            'Weight to be calculated',
+            style: AppTextStyles.body(color: HomeColors.muted).copyWith(fontSize: 12),
           ),
         ],
       ],

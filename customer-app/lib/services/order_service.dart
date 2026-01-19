@@ -83,6 +83,35 @@ class OrderService {
     }
   }
 
+  Future<Map<String, dynamic>> getOrders({
+    int page = 1,
+    int limit = 10,
+    String? status,
+  }) async {
+    try {
+      final queryParams = <String, dynamic>{
+        'page': page,
+        'limit': limit,
+      };
+      if (status != null && status.isNotEmpty) {
+        queryParams['status'] = status;
+      }
+
+      final res = await _api.get(
+        '/orders',
+        queryParameters: queryParams,
+      );
+
+      final data = (res.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
+      return data;
+    } on DioException catch (e) {
+      final msg = _extractErrorMessage(e, 'Failed to fetch orders');
+      throw Exception(msg);
+    } catch (e) {
+      throw Exception('Failed to fetch orders: $e');
+    }
+  }
+
   String _extractErrorMessage(DioException e, String fallback) {
     try {
       final data = e.response?.data;

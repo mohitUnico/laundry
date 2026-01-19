@@ -30,25 +30,35 @@ class ApiService {
     _dio = Dio(
       BaseOptions(
         baseUrl: resolveBaseUrl(),
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 10),
+        connectTimeout: const Duration(seconds: 5), // Reduced from 10s to 5s
+        receiveTimeout: const Duration(seconds: 5), // Reduced from 10s to 5s
+        sendTimeout: const Duration(seconds: 5), // Added send timeout
         headers: {'Content-Type': 'application/json'},
       ),
     );
 
-    // Request interceptor
+    // Request interceptor - ensures Authorization header is always added when token exists
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
           final skipAuth = options.extra['skipAuth'] == true;
           if (!skipAuth) {
-            var token = await AuthStorage.getAuthToken();
-            if (token != null && token.isNotEmpty && JwtUtils.isExpired(token)) {
-              // Try to refresh once before sending the request.
-              await _refreshIfPossible();
-              token = await AuthStorage.getAuthToken();
-            }
+            // Get token without proactive refresh to avoid latency
+            // Token refresh will happen on 401 error if needed
+            final token = await AuthStorage.getAuthToken();
+            
+            // Only add token if it exists and is not obviously expired
+            // Let the error handler deal with refresh on 401
             if (token != null && token.isNotEmpty) {
+              // Quick check: only refresh if token is definitely expired (not "expiring soon")
+              // This avoids blocking every request with token refresh
+              if (JwtUtils.isExpired(token)) {
+                // Token is already expired, try refresh in background (don't block request)
+                _refreshIfPossible().catchError((_) {
+                  // Ignore refresh errors, let 401 handler deal with it
+                });
+              }
+              
               options.headers['Authorization'] = 'Bearer $token';
             }
           }
@@ -62,17 +72,22 @@ class ApiService {
           final alreadyRetried = req.extra['retried'] == true;
           final skipRefresh = req.extra['skipRefresh'] == true;
 
+          // Retry on 401 (Unauthorized) - token expired or invalid
           if (status == 401 && !alreadyRetried && !skipRefresh) {
             try {
+              // Try to refresh the token
               await _refreshIfPossible();
               final token = await AuthStorage.getAuthToken();
               if (token != null && token.isNotEmpty) {
+                // Update the request with new token and retry
                 req.headers['Authorization'] = 'Bearer $token';
                 req.extra['retried'] = true;
                 final clone = await _dio.fetch(req);
                 return handler.resolve(clone);
               }
-            } catch (_) {
+            } catch (e) {
+              // If refresh fails, clear session and let error propagate
+              await AuthStorage.clearSession();
               // fallthrough to original error
             }
           }
@@ -126,31 +141,54 @@ class ApiService {
     return completer.future;
   }
 
-  Future<Response> get(String path, {Map<String, dynamic>? queryParameters}) {
-    return _dio.get(path, queryParameters: queryParameters);
-  }
-
-  Future<Response> post(String path, {dynamic data}) {
-    return _dio.post(path, data: data);
-  }
-
-  Future<Response> postFormData(String path, {required FormData data}) {
-    return _dio.post(
+  Future<Response> get(String path, {Map<String, dynamic>? queryParameters, Options? options}) {
+    return _dio.get(
       path,
-      data: data,
-      options: Options(contentType: 'multipart/form-data'),
+      queryParameters: queryParameters,
+      options: options,
     );
   }
 
-  Future<Response> put(String path, {dynamic data}) {
-    return _dio.put(path, data: data);
+  Future<Response> post(String path, {dynamic data, Options? options}) {
+    return _dio.post(
+      path,
+      data: data,
+      options: options,
+    );
   }
 
-  Future<Response> patch(String path, {dynamic data}) {
-    return _dio.patch(path, data: data);
+  Future<Response> postFormData(String path, {required FormData data, Options? options}) {
+    final mergedOptions = Options(
+      contentType: 'multipart/form-data',
+      extra: {...?options?.extra},
+    );
+    return _dio.post(
+      path,
+      data: data,
+      options: mergedOptions,
+    );
   }
 
-  Future<Response> delete(String path) {
-    return _dio.delete(path);
+  Future<Response> put(String path, {dynamic data, Options? options}) {
+    return _dio.put(
+      path,
+      data: data,
+      options: options,
+    );
+  }
+
+  Future<Response> patch(String path, {dynamic data, Options? options}) {
+    return _dio.patch(
+      path,
+      data: data,
+      options: options,
+    );
+  }
+
+  Future<Response> delete(String path, {Options? options}) {
+    return _dio.delete(
+      path,
+      options: options,
+    );
   }
 }

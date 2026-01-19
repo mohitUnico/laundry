@@ -21,4 +21,12 @@ router.post(
     orderController.confirmOrder
 );
 
+// GET /api/v1/orders - Get customer orders with pagination
+router.get(
+    '/',
+    authenticateJWT,
+    authorize('customer'),
+    orderController.getCustomerOrders
+);
+
 module.exports = router;

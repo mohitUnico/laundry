@@ -30,6 +30,10 @@ class CustomerInfoRepository {
     );
   }
 
+  Future<Map<String, dynamic>> getProfile() {
+    return _service.getProfile();
+  }
+
   Future<Map<String, dynamic>> updateProfile({
     String? fullName,
     String? phone,

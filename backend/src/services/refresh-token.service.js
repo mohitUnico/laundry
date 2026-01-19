@@ -9,7 +9,7 @@ const { AuthenticationError, ValidationError, NotFoundError } = require('../util
 // instead of relying on the generated Prisma model.
 
 const REFRESH_TOKEN_BYTES = parseInt(process.env.REFRESH_TOKEN_BYTES || '48', 10);
-const REFRESH_TOKEN_EXPIRY_DAYS = parseInt(process.env.REFRESH_TOKEN_EXPIRY_DAYS || '30', 10);
+const REFRESH_TOKEN_EXPIRY_DAYS = parseInt(process.env.REFRESH_TOKEN_EXPIRY_DAYS || '90', 10); // Increased to 90 days
 
 function _hashRefreshToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');

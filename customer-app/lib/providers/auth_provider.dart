@@ -6,6 +6,7 @@ import '../repositories/auth_repository.dart';
 import '../repositories/customer_info_repository.dart';
 import '../utils/prefs_keys.dart';
 import '../utils/jwt_utils.dart';
+import '../utils/auth_storage.dart';
 
 class AuthProvider with ChangeNotifier {
   String? _token;
@@ -102,6 +103,20 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> fetchProfile() async {
+    try {
+      final profile = await _customerInfoRepository.getProfile();
+      _userOrCustomer = {
+        ...?_userOrCustomer,
+        ...profile,
+      };
+      notifyListeners();
+    } catch (e) {
+      // Silently fail - don't block UI if profile fetch fails
+      debugPrint('Failed to fetch profile: $e');
+    }
+  }
+
   Future<void> updateProfileRemote({
     String? fullName,
     String? phone,
@@ -152,6 +167,23 @@ class AuthProvider with ChangeNotifier {
         _token = stored;
         _isAuthenticated = true;
       }
+      
+      // Fetch full profile from backend to ensure phone and other data are up-to-date
+      // This ensures phone number is always available after app restart
+      if (_isAuthenticated) {
+        try {
+          final profile = await _customerInfoRepository.getProfile();
+          _userOrCustomer = {
+            ...?_userOrCustomer,
+            ...profile,
+          };
+        } catch (e) {
+          // Silently fail - profile will be fetched when needed
+          // This prevents blocking app startup if profile fetch fails
+          debugPrint('Failed to fetch profile during hydration: $e');
+        }
+      }
+      
       notifyListeners();
     }
   }
@@ -201,9 +233,16 @@ class AuthProvider with ChangeNotifier {
       if (!result.isNewUser) {
         final token = result.token;
         if (token == null || token.isEmpty) throw Exception('Missing token');
+        // Token is already stored by AuthRepository.verifyCustomerOtp
+        // Just sync the local state
         _token = token;
         _userOrCustomer = result.user;
         _isAuthenticated = true;
+        // Ensure token is in storage (repository should have done this, but double-check)
+        await AuthStorage.setAuthToken(token);
+        if (result.refreshToken != null && result.refreshToken!.isNotEmpty) {
+          await AuthStorage.setRefreshToken(result.refreshToken!);
+        }
       }
 
       return result;
@@ -233,9 +272,14 @@ class AuthProvider with ChangeNotifier {
         address: address,
       );
 
+      // Token is already stored by AuthRepository.completeCustomerRegistration
+      // Just sync the local state
       _token = result.token;
       _userOrCustomer = result.customer;
       _isAuthenticated = true;
+      // Ensure token is in storage (repository should have done this, but double-check)
+      await AuthStorage.setAuthToken(result.token);
+      await AuthStorage.setRefreshToken(result.refreshToken);
 
       // Create a default address for testing the entire flow
       // Using Mumbai, India coordinates as default location

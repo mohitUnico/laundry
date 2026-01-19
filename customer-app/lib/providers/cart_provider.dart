@@ -127,10 +127,11 @@ class CartProvider with ChangeNotifier {
 
     try {
       // First update local cart (so UI responds immediately)
+      // For both per-piece and kg-wise, include quantities to show cloth items
       addOrMerge(
         category: category,
         serviceName: serviceName,
-        quantities: isPerPiece ? quantities : const <String, int>{},
+        quantities: quantities, // Include quantities for both per-piece and kg-wise
         isPerPiece: isPerPiece,
         unitPricesInr: unitPricesInr,
         imageAsset: imageAsset,
@@ -138,87 +139,118 @@ class CartProvider with ChangeNotifier {
       );
 
       // Then persist to backend with exact payload keys expected by backend.
-    final cleaned = <String, int>{};
-    for (final e in quantities.entries) {
-      if (e.value > 0) cleaned[e.key] = e.value;
-    }
-
-    final List<Map<String, dynamic>> itemsPayload;
-
-    if (isPerPiece) {
-      final selections = <Map<String, dynamic>>[];
-      for (final e in cleaned.entries) {
-        final clothId = clothIdByItemName[e.key];
-        if (clothId == null || clothId.isEmpty) {
-          throw Exception('Missing cloth_id for item: ${e.key}');
-        }
-        selections.add({
-          'cloth_id': clothId,
-          'quantity': e.value,
-        });
+      final cleaned = <String, int>{};
+      for (final e in quantities.entries) {
+        if (e.value > 0) cleaned[e.key] = e.value;
       }
 
-      if (selections.isEmpty) {
-        // Nothing to persist for per_unit
-        return;
+      final List<Map<String, dynamic>> itemsPayload;
+
+      if (isPerPiece) {
+        final selections = <Map<String, dynamic>>[];
+        for (final e in cleaned.entries) {
+          final clothId = clothIdByItemName[e.key];
+          if (clothId == null || clothId.isEmpty) {
+            throw Exception('Missing cloth_id for item: ${e.key}');
+          }
+          selections.add({
+            'cloth_id': clothId,
+            'quantity': e.value,
+          });
+        }
+
+        if (selections.isEmpty) {
+          // Nothing to persist for per_unit
+          _isAddingToCart = false;
+          notifyListeners();
+          return;
+        }
+
+        itemsPayload = [
+          {
+            'service_id': serviceId,
+            'pricing_type': 'per_unit',
+            'selections': selections,
+          }
+        ];
+      } else {
+        // For per_kg items, we can also include selections to track cloth items
+        // weight_kg is optional (will be calculated after supervision)
+        final selections = <Map<String, dynamic>>[];
+        for (final e in cleaned.entries) {
+          final clothId = clothIdByItemName[e.key];
+          if (clothId == null || clothId.isEmpty) {
+            throw Exception('Missing cloth_id for item: ${e.key}');
+          }
+          selections.add({
+            'cloth_id': clothId,
+            'quantity': e.value,
+          });
+        }
+
+        itemsPayload = [
+          {
+            'service_id': serviceId,
+            'pricing_type': 'per_kg',
+            // Include selections to track cloth items for kg-wise services
+            'selections': selections.isNotEmpty ? selections : [],
+            // weight_kg is optional - can be null, will be set later
+            'weight_kg': weightKg != null && weightKg! > 0 ? weightKg : null,
+          }
+        ];
       }
 
-      itemsPayload = [
-        {
-          'service_id': serviceId,
-          'pricing_type': 'per_unit',
-          'selections': selections,
-        }
-      ];
-    } else {
-      final w = weightKg;
-      if (w == null || w <= 0) {
-        throw Exception('weight_kg is required for Kg-wise pricing');
+      // Store server cart_item_id so we can update quantities later using a single endpoint.
+      // Note: backend currently returns only cart item ids (not selection ids), so we update by cloth_id.
+      final addRes = await _repo.addCartItems(items: itemsPayload);
+
+      // Store active cart_id for order creation
+      _activeCartId = addRes.cartId;
+
+      // Attach server-required metadata locally (serviceId, clothId map, prices, weight)
+      // so we can build payloads later if needed.
+      final idx = _items.lastIndexWhere((x) => x.category == category && x.serviceName == serviceName);
+      if (idx >= 0) {
+        final existing = _items[idx];
+        _items[idx] = existing.copyWith(
+          serviceId: serviceId,
+          clothIdByItemName: clothIdByItemName,
+          unitPricesInr: unitPricesInr ?? existing.unitPricesInr,
+          weightKg: weightKg ?? existing.weightKg,
+          cartItemId: addRes.addedCartItemIds.isNotEmpty ? addRes.addedCartItemIds.first : existing.cartItemId,
+        );
+        notifyListeners();
       }
-
-      itemsPayload = [
-        {
-          'service_id': serviceId,
-          'pricing_type': 'per_kg',
-          'weight_kg': w,
-        }
-      ];
-    }
-
-    // Store server cart_item_id so we can update quantities later using a single endpoint.
-    // Note: backend currently returns only cart item ids (not selection ids), so we update by cloth_id.
-    final addRes = await _repo.addCartItems(items: itemsPayload);
-
-    // Store active cart_id for order creation
-    _activeCartId = addRes.cartId;
-
-    // Attach server-required metadata locally (serviceId, clothId map, prices, weight)
-    // so we can build payloads later if needed.
-    final idx = _items.lastIndexWhere((x) => x.category == category && x.serviceName == serviceName);
-    if (idx >= 0) {
-      final existing = _items[idx];
-      _items[idx] = existing.copyWith(
-        serviceId: serviceId,
-        clothIdByItemName: clothIdByItemName,
-        unitPricesInr: unitPricesInr ?? existing.unitPricesInr,
-        weightKg: weightKg ?? existing.weightKg,
-        cartItemId: addRes.addedCartItemIds.isNotEmpty ? addRes.addedCartItemIds.first : existing.cartItemId,
-      );
+    } catch (e) {
+      // Re-throw error after resetting loading state
+      _isAddingToCart = false;
       notifyListeners();
+      rethrow;
     } finally {
       _isAddingToCart = false;
       notifyListeners();
     }
   }
 
-  void remove(String id) {
+  Future<void> remove(String id) async {
     final item = _items.firstWhere((x) => x.id == id, orElse: () => throw Exception('Item not found'));
+    final cartItemId = item.cartItemId;
+    
+    // Remove from local state immediately for responsive UI
     _items.removeWhere((x) => x.id == id);
     notifyListeners();
 
     // Delete from backend if cartItemId exists
-    if (item.cartItemId != null && item.cartItemId!.isNotEmpty) {
-      unawaited(_repo.deleteCartItem(cartItemId: item.cartItemId!));
+    if (cartItemId != null && cartItemId.isNotEmpty) {
+      try {
+        await _repo.deleteCartItem(cartItemId: cartItemId);
+      } catch (e) {
+        // If delete fails, re-add item to local state
+        _items.add(item);
+        notifyListeners();
+        debugPrint('Failed to delete cart item from backend: $e');
+        rethrow;
+      }
     }
   }
 
@@ -268,9 +300,18 @@ class CartProvider with ChangeNotifier {
             final itemName = clothItem['item_name'] as String? ?? '';
             final quantity = selection['quantity'] as int? ?? 0;
             final clothId = clothItem['cloth_id'] as String? ?? '';
-            final perUnitPrice = (clothItem['per_unit_price'] is num)
-                ? (clothItem['per_unit_price'] as num).toInt()
-                : 0;
+            
+            // Handle per_unit_price which can be num, String (from Prisma Decimal), or null
+            int perUnitPrice = 0;
+            final priceValue = clothItem['per_unit_price'];
+            if (priceValue != null) {
+              if (priceValue is num) {
+                perUnitPrice = priceValue.toInt();
+              } else if (priceValue is String) {
+                // Prisma Decimal is serialized as string
+                perUnitPrice = (double.tryParse(priceValue) ?? 0.0).toInt();
+              }
+            }
 
             if (itemName.isNotEmpty && quantity > 0) {
               quantities[itemName] = quantity;
@@ -296,26 +337,44 @@ class CartProvider with ChangeNotifier {
             );
           }
         } else {
-          // Per kg item
+          // Per kg item - parse selections if available (to show cloth items)
+          final selections = (cartItemData['item_selections'] as List?) ?? [];
+          final quantities = <String, int>{};
+          final clothIdByItemName = <String, String>{};
+
+          for (final selection in selections) {
+            final clothItem = selection['cloth_item'] as Map<String, dynamic>?;
+            if (clothItem == null) continue;
+
+            final itemName = clothItem['item_name'] as String? ?? '';
+            final quantity = selection['quantity'] as int? ?? 0;
+            final clothId = clothItem['cloth_id'] as String? ?? '';
+
+            if (itemName.isNotEmpty && quantity > 0) {
+              quantities[itemName] = quantity;
+              clothIdByItemName[itemName] = clothId;
+            }
+          }
+
           final weightKg = (cartItemData['weight_kg'] is num)
               ? (cartItemData['weight_kg'] as num).toDouble()
               : null;
 
-          if (weightKg != null && weightKg > 0) {
-            _items.add(
-              CartItem(
-                id: cartItemId.isNotEmpty ? cartItemId : DateTime.now().microsecondsSinceEpoch.toString(),
-                category: category,
-                serviceName: serviceName,
-                serviceId: service['service_id'] as String?,
-                cartItemId: cartItemId,
-                quantities: const <String, int>{},
-                isPerPiece: false,
-                weightKg: weightKg,
-                imageAsset: service['icon_url'] as String?,
-              ),
-            );
-          }
+          // Show kg-wise items even if weight is null
+          _items.add(
+            CartItem(
+              id: cartItemId.isNotEmpty ? cartItemId : DateTime.now().microsecondsSinceEpoch.toString(),
+              category: category,
+              serviceName: serviceName,
+              serviceId: service['service_id'] as String?,
+              cartItemId: cartItemId,
+              quantities: quantities, // Include selections for kg-wise items
+              clothIdByItemName: clothIdByItemName,
+              isPerPiece: false,
+              weightKg: weightKg, // Can be null - will be calculated after supervision
+              imageAsset: service['icon_url'] as String?,
+            ),
+          );
         }
       }
 

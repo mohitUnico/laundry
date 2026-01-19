@@ -65,6 +65,7 @@ exports.addItemsToActiveCart = async (customerId, { items }) => {
             const allowedServiceIds = new Set(serviceRecords.map((s) => s.service_id));
 
             const createdCartItemIds = [];
+            const processedCartItemIds = []; // Track all processed cart items (new and existing)
 
             for (const item of items) {
                 if (!item || typeof item !== 'object') {
@@ -144,6 +145,9 @@ exports.addItemsToActiveCart = async (customerId, { items }) => {
                     });
                     createdCartItemIds.push(cartItem.cart_item_id);
                 }
+                
+                // Track all processed cart items (both new and existing)
+                processedCartItemIds.push(cartItem.cart_item_id);
 
                 // Append selections to the existing or newly created cart item
                 if (selections.length > 0) {
@@ -230,6 +234,10 @@ exports.addItemsToActiveCart = async (customerId, { items }) => {
                 },
             });
 
+            // Attach processed cart item IDs to the result for frontend
+            completeCart.processed_cart_item_ids = processedCartItemIds;
+            completeCart.created_cart_item_ids = createdCartItemIds;
+            
             return completeCart;
         },
         { maxWait: 10000, timeout: 60000 }
@@ -237,22 +245,28 @@ exports.addItemsToActiveCart = async (customerId, { items }) => {
 };
 
 exports.getCustomerCarts = async (customerId) => {
-    const customer = await prisma.customer.findUnique({
-        where: { customer_id: customerId },
-        select: { customer_id: true },
-    });
-
-    if (!customer) {
-        throw new NotFoundError('Customer');
-    }
-
+    // Optimize: Use single query with proper select instead of separate customer check
     const carts = await prisma.cart.findMany({
-        where: { customer_id: customerId },
+        where: { 
+            customer_id: customerId,
+            // Only fetch active carts for better performance
+            is_active: true,
+        },
         orderBy: { created_at: 'desc' },
-        include: {
+        take: 1, // Only need the active cart
+        select: {
+            cart_id: true,
+            is_active: true,
+            created_at: true,
+            updated_at: true,
             cart_items: {
                 orderBy: { created_at: 'desc' },
-                include: {
+                select: {
+                    cart_item_id: true,
+                    pricing_type: true,
+                    weight_kg: true,
+                    created_at: true,
+                    updated_at: true,
                     service: {
                         select: {
                             service_id: true,
@@ -264,7 +278,9 @@ exports.getCustomerCarts = async (customerId) => {
                         },
                     },
                     item_selections: {
-                        include: {
+                        select: {
+                            selection_id: true,
+                            quantity: true,
                             cloth_item: {
                                 select: {
                                     cloth_id: true,
@@ -281,6 +297,7 @@ exports.getCustomerCarts = async (customerId) => {
         },
     });
 
+    // If no active cart found, return empty array (not an error)
     return carts;
 };
 

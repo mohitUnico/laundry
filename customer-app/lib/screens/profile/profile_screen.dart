@@ -7,13 +7,27 @@ import 'edit_profile_dialog.dart';
 import '../home/widgets/home_colors.dart';
 import '../../theme/app_text_styles.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   final bool showBack;
 
   const ProfileScreen({
     super.key,
     this.showBack = false,
   });
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Fetch profile when screen loads to ensure phone number is up-to-date
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<AuthProvider>().fetchProfile();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +40,7 @@ class ProfileScreen extends StatelessWidget {
         elevation: 0,
         centerTitle: true,
         automaticallyImplyLeading: false,
-        leading: showBack
+        leading: widget.showBack
             ? Padding(
                 padding: const EdgeInsets.only(left: 12),
                 child: InkWell(

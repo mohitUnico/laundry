@@ -5,6 +5,7 @@ import '../../../routes/app_routes.dart';
 import '../../../providers/cart_provider.dart';
 import '../../../providers/service_catalog_provider.dart';
 import '../../../theme/app_text_styles.dart';
+import '../../../widgets/cart_success_dialog.dart';
 import '../../home/widgets/home_bottom_nav.dart';
 import '../../home/widgets/home_colors.dart';
 
@@ -184,12 +185,8 @@ class _RegularWashServiceScreenState extends State<RegularWashServiceScreen> {
                               for (final it in effectiveItems) it.itemName: it.perUnitPrice.round(),
                             };
 
-                            double? weightKg;
-                            if (!widget.showPrices) {
-                              weightKg = await _askWeightKg();
-                              if (weightKg == null || weightKg <= 0) return;
-                            }
-
+                            // For kg-wise items, weight will be calculated after supervision
+                            // No need to ask user for weight
                             try {
                               await context.read<CartProvider>().addAndSave(
                                     category: 'Regular Wash',
@@ -200,14 +197,12 @@ class _RegularWashServiceScreenState extends State<RegularWashServiceScreen> {
                                     quantities: Map<String, int>.from(_qtyByItemName),
                                     clothIdByItemName: clothIdByName,
                                     unitPricesInr: unitPrices,
-                                    weightKg: weightKg,
+                                    weightKg: null, // Weight will be calculated after supervision
                                     note: _othersController.text,
-                                  );
+                              );
 
                               if (!mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Added to cart')),
-                              );
+                              showCartSuccessDialog(context);
                             } catch (e) {
                               if (!mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(

@@ -4,10 +4,12 @@ import 'package:provider/provider.dart';
 import '../../routes/app_routes.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/service_catalog_provider.dart';
+import '../../providers/order_provider.dart';
+import '../../models/order_record.dart';
 import 'widgets/home_colors.dart';
 import 'widgets/home_header.dart';
 import 'widgets/offer_carousel.dart';
-import 'widgets/active_order_card.dart';
+import 'widgets/active_orders_carousel.dart';
 import 'widgets/luxury_care_bottom_sheet.dart';
 import 'widgets/pro_clean_bottom_sheet.dart';
 import 'widgets/regular_wash_bottom_sheet.dart';
@@ -21,15 +23,40 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       // Force refresh so newly added categories in Supabase show up even if we have cached data.
       context.read<ServiceCatalogProvider>().fetchServiceCategories(isActive: true, force: true);
+      // Fetch active orders for the home screen
+      _refreshActiveOrders();
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Refresh active orders when app comes back to foreground
+    // This ensures delivered orders are removed from the active orders section
+    if (state == AppLifecycleState.resumed && mounted) {
+      _refreshActiveOrders();
+    }
+  }
+
+  void _refreshActiveOrders() {
+    if (!mounted) return;
+    // Fetch active orders (excludes delivered/closed orders)
+    context.read<OrderProvider>().fetchOrders(status: 'active', limit: 10);
   }
 
   String _pickCategoryName(
@@ -195,16 +222,26 @@ class _HomeContent extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          ActiveOrderCard(
-            orderId: '#LD12345',
-            activeStepIndex: 1,
-            etaText: 'Estimated Delivery: Tomorrow, 4 PM',
-            onTrackNow: () => Navigator.of(context).pushNamed(
-              AppRoutes.orderTracking,
-            ),
+          Consumer<OrderProvider>(
+            builder: (context, orderProvider, _) {
+              final activeOrders = orderProvider.orders
+                  .where((order) => order.status == OrderStatus.inProgress)
+                  .toList();
+
+              if (activeOrders.isEmpty) {
+                // No active orders – still keep some space after coupons
+                return const SizedBox(height: 20);
+              }
+
+              return Column(
+                children: [
+                  const SizedBox(height: 16),
+                  ActiveOrdersCarousel(orders: activeOrders),
+                  const SizedBox(height: 20),
+                ],
+              );
+            },
           ),
-          const SizedBox(height: 14),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

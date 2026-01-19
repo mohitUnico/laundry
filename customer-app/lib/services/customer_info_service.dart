@@ -97,6 +97,19 @@ class CustomerInfoService {
     }
   }
 
+  Future<Map<String, dynamic>> getProfile() async {
+    try {
+      final res = await _api.get('/customer-info/profile');
+      final data = (res.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
+      return data;
+    } on DioException catch (e) {
+      final msg = _extractErrorMessage(e, 'Failed to fetch profile');
+      throw Exception(msg);
+    } catch (e) {
+      throw Exception('Failed to fetch profile: $e');
+    }
+  }
+
   Future<Map<String, dynamic>> updateProfile({
     String? fullName,
     String? phone,

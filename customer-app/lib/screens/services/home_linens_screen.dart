@@ -5,6 +5,7 @@ import '../../routes/app_routes.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/service_catalog_provider.dart';
 import '../../theme/app_text_styles.dart';
+import '../../widgets/cart_success_dialog.dart';
 import '../home/widgets/home_bottom_nav.dart';
 import '../home/widgets/home_colors.dart';
 import 'pro_clean/widgets/others_field.dart';
@@ -176,9 +177,7 @@ class _HomeLinensScreenState extends State<HomeLinensScreen> {
                                   );
 
                               if (!mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Added to cart')),
-                              );
+                              showCartSuccessDialog(context);
                             } catch (e) {
                               if (!mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(

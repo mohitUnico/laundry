@@ -10,17 +10,16 @@ const cartItemSchema = Joi.object({
     pricing_type: Joi.string().valid('per_unit', 'per_kg').required(),
     selections: Joi.array()
         .items(cartItemSelectionSchema)
-        .min(1)
         .when('pricing_type', {
             is: 'per_unit',
-            then: Joi.required(),
-            otherwise: Joi.forbidden(),
+            then: Joi.array().items(cartItemSelectionSchema).min(1).required(), // Required and must have at least 1 item for per_unit
+            otherwise: Joi.array().items(cartItemSelectionSchema).optional().allow(null), // Optional for per_kg (can be null or empty array)
         }),
     weight_kg: Joi.number()
         .positive()
         .when('pricing_type', {
             is: 'per_kg',
-            then: Joi.required(),
+            then: Joi.optional().allow(null),
             otherwise: Joi.forbidden(),
         }),
 });

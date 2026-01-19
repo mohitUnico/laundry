@@ -28,6 +28,30 @@ class OrdersListScreen extends StatefulWidget {
 class _OrdersListScreenState extends State<OrdersListScreen> {
   _OrdersFilter _filter = _OrdersFilter.all;
 
+  @override
+  void initState() {
+    super.initState();
+    // Fetch orders from backend when screen loads
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchOrders();
+    });
+  }
+
+  void _fetchOrders() {
+    final orderProvider = context.read<OrderProvider>();
+    String? status;
+    // For "all" filter, fetch without status (gets all orders)
+    // For "active" filter, fetch with status=active (backend will filter out delivered/closed)
+    // For "completed" filter, fetch with status=delivered
+    if (_filter == _OrdersFilter.active) {
+      status = 'active'; // Backend will filter out delivered and closed orders
+    } else if (_filter == _OrdersFilter.completed) {
+      status = 'completed'; // Backend will fetch delivered and closed orders
+    }
+    // For "all", status is null - fetches all orders
+    orderProvider.fetchOrders(page: 1, limit: 10, status: status);
+  }
+
   List<OrderRecord> _filteredOrders(List<OrderRecord> orders) {
     switch (_filter) {
       case _OrdersFilter.all:
@@ -61,7 +85,10 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
               const SizedBox(height: 14),
               _OrdersFilterRow(
                 value: _filter,
-                onChanged: (next) => setState(() => _filter = next),
+                onChanged: (next) {
+                  setState(() => _filter = next);
+                  _fetchOrders();
+                },
               ),
               const SizedBox(height: 14),
               Consumer<OrderProvider>(
@@ -85,6 +112,32 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
               Expanded(
                 child: Consumer<OrderProvider>(
                   builder: (context, orders, _) {
+                    if (orders.isLoading) {
+                      return const Center(
+                        child: CircularProgressIndicator(),
+                      );
+                    }
+
+                    if (orders.error != null) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'Failed to load orders',
+                              style: AppTextStyles.body(color: const Color(0xFF98A0B5))
+                                  .copyWith(fontSize: 13),
+                            ),
+                            const SizedBox(height: 8),
+                            TextButton(
+                              onPressed: _fetchOrders,
+                              child: const Text('Retry'),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
                     final list = _filteredOrders(orders.orders);
                     if (list.isEmpty) {
                       return Center(
@@ -449,6 +502,10 @@ class _OrderCard extends StatelessWidget {
       OrderStatus.delivered => Icons.check_circle_rounded,
     };
 
+    final hasKgWiseItems = data.items.any((item) => !item.isPerPiece);
+    final hasOnlyPerPiece =
+        data.items.isNotEmpty && !hasKgWiseItems; // all items per-piece
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -468,12 +525,15 @@ class _OrderCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text(
-                data.id,
-                style: AppTextStyles.body(color: const Color(0xFF98A0B5))
-                    .copyWith(fontSize: 12),
+              Flexible(
+                child: Text(
+                  data.id,
+                  style: AppTextStyles.body(color: const Color(0xFF98A0B5))
+                      .copyWith(fontSize: 12),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              const Spacer(),
+              const SizedBox(width: 8),
               Text(
                 statusText,
                 style: AppTextStyles.header(color: statusColor)
@@ -537,11 +597,13 @@ class _OrderCard extends StatelessWidget {
           const SizedBox(height: 12),
           Row(
             children: [
-              Text(
-                Pricing.inr(data.totalInr),
-                style: AppTextStyles.header(color: HomeColors.primary)
-                    .copyWith(fontSize: 22),
-              ),
+              if (hasOnlyPerPiece) ...[
+                Text(
+                  Pricing.inr(data.totalInr),
+                  style: AppTextStyles.header(color: HomeColors.primary)
+                      .copyWith(fontSize: 22),
+                ),
+              ],
               const Spacer(),
               InkWell(
                 onTap: onViewDetails,
@@ -798,26 +860,22 @@ Widget _buildItemsList(OrderRecord order) {
                         padding: const EdgeInsets.only(left: 24),
                         child: Row(
                           children: [
+                            // Show cloth item in the same style as cart screen: "Saree - 2"
                             Expanded(
-                      child: Text(
-                        qtyEntry.key,
-                        style: AppTextStyles.body(color: HomeColors.text)
-                            .copyWith(fontSize: 12),
-                      ),
-                    ),
-                    Text(
-                      'Qty: ${qtyEntry.value}',
-                      style: AppTextStyles.body(color: HomeColors.muted)
-                          .copyWith(fontSize: 10),
-                    ),
-                    if (item.isPerPiece && item.unitPricesInr != null) ...[
-                      const SizedBox(width: 8),
-                      Text(
-                        Pricing.inr((item.unitPricesInr![qtyEntry.key] ?? 0) * qtyEntry.value),
-                        style: AppTextStyles.body(color: HomeColors.text)
-                            .copyWith(fontSize: 12, fontWeight: FontWeight.w600),
-                      ),
-                    ],
+                              child: Text(
+                                '${qtyEntry.key} - ${qtyEntry.value}',
+                                style: AppTextStyles.body(color: HomeColors.text)
+                                    .copyWith(fontSize: 12),
+                              ),
+                            ),
+                            if (item.isPerPiece && item.unitPricesInr != null) ...[
+                              const SizedBox(width: 8),
+                              Text(
+                                Pricing.inr((item.unitPricesInr![qtyEntry.key] ?? 0) * qtyEntry.value),
+                                style: AppTextStyles.body(color: HomeColors.text)
+                                    .copyWith(fontSize: 12, fontWeight: FontWeight.w600),
+                              ),
+                            ],
                           ],
                         ),
                       ),

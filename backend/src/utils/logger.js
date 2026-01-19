@@ -1,7 +1,14 @@
 const winston = require('winston');
 const path = require('path');
+const fs = require('fs');
 
 const { combine, timestamp, printf, colorize, errors } = winston.format;
+
+// Ensure logs directory exists
+const logsDir = path.join(__dirname, '../../logs');
+if (!fs.existsSync(logsDir)) {
+    fs.mkdirSync(logsDir, { recursive: true });
+}
 
 // Custom log format
 const logFormat = printf(({ level, message, timestamp, stack, ...meta }) => {

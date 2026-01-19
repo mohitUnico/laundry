@@ -34,7 +34,10 @@ exports.createOrder = async (customerId, payload) => {
         special_instructions,
     } = payload;
 
-    return prisma.$transaction(async (tx) => {
+    // Interactive transaction default timeout can be too low for complex order creation (P2028).
+    // Increase timeout to avoid Prisma closing the transaction mid-operation.
+    return prisma.$transaction(
+        async (tx) => {
         // Validate customer exists
         const customer = await tx.customer.findUnique({
             where: { customer_id: customerId },
@@ -60,7 +63,8 @@ exports.createOrder = async (customerId, payload) => {
         }
 
         // Fetch active cart with all items and selections
-        const cart = await tx.cart.findFirst({
+        // First try to find cart with provided cart_id, then fall back to customer's active cart
+        let cart = await tx.cart.findFirst({
             where: {
                 cart_id: cart_id,
                 customer_id: customerId,
@@ -94,8 +98,45 @@ exports.createOrder = async (customerId, payload) => {
             },
         });
 
+        // If cart with provided cart_id not found, try to find customer's active cart
         if (!cart) {
-            throw new NotFoundError('Active cart not found');
+            cart = await tx.cart.findFirst({
+                where: {
+                    customer_id: customerId,
+                    is_active: true,
+                },
+                orderBy: { updated_at: 'desc' }, // Get most recently updated active cart
+                include: {
+                    cart_items: {
+                        include: {
+                            service: {
+                                include: {
+                                    category: {
+                                        select: {
+                                            category_id: true,
+                                        },
+                                    },
+                                },
+                            },
+                            item_selections: {
+                                include: {
+                                    cloth_item: {
+                                        select: {
+                                            cloth_id: true,
+                                            per_unit_price: true,
+                                            is_active: true,
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            });
+        }
+
+        if (!cart) {
+            throw new NotFoundError('Active cart not found. Please add items to cart before creating an order');
         }
 
         if (!cart.cart_items || cart.cart_items.length === 0) {
@@ -209,8 +250,28 @@ exports.createOrder = async (customerId, payload) => {
         }
 
         // Set dates (optional; can be updated later)
-        const pickupDate = pickup_date ? new Date(pickup_date) : null;
-        const deliveryDateValue = delivery_date ? new Date(delivery_date) : null;
+        // Parse ISO 8601 date strings (from frontend) and ensure they're stored correctly
+        // The frontend sends UTC ISO strings, which we parse and store as-is
+        let pickupDate = null;
+        let deliveryDateValue = null;
+        
+        if (pickup_date) {
+            const parsed = new Date(pickup_date);
+            // Validate the date is valid
+            if (isNaN(parsed.getTime())) {
+                throw new ValidationError('Invalid pickup_date format. Must be a valid ISO 8601 date string');
+            }
+            pickupDate = parsed;
+        }
+        
+        if (delivery_date) {
+            const parsed = new Date(delivery_date);
+            // Validate the date is valid
+            if (isNaN(parsed.getTime())) {
+                throw new ValidationError('Invalid delivery_date format. Must be a valid ISO 8601 date string');
+            }
+            deliveryDateValue = parsed;
+        }
 
         // Create order draft
         const order = await tx.order.create({
@@ -283,13 +344,25 @@ exports.createOrder = async (customerId, payload) => {
                     tax_amount: new Decimal(0),
                     discount: new Decimal(0),
                     final_amount: totalAmount,
-                    // No payment method is selected at this stage in current API payload.
-                    // Using a placeholder value keeps the schema satisfied; it can be updated later.
+                    // Payment method and status will be updated when payment is processed
                     payment_method: 'pending',
+                    payment_status: 'pending',
                 },
                 select: { bill_id: true },
             });
         }
+
+        // Delete all cart items and mark cart as inactive after order creation
+        // This ensures the cart is completely cleared after successful order placement
+        await tx.cartItem.deleteMany({
+            where: { cart_id: cart.cart_id },
+        });
+        
+        await tx.cart.update({
+            where: { cart_id: cart.cart_id },
+            data: { is_active: false },
+            select: { cart_id: true },
+        });
 
         return {
             order_id: order.order_id,
@@ -301,7 +374,9 @@ exports.createOrder = async (customerId, payload) => {
             billing_status: order.billing_status,
             items_count: createdOrderItems.length,
         };
-    });
+        },
+        { maxWait: 10000, timeout: 60000 } // Increase timeout to 60 seconds for complex order creation
+    );
 };
 
 /**
@@ -390,6 +465,169 @@ exports.confirmOrder = async (customerId, orderId) => {
             total_amount: updated.total_amount.toString(),
         };
     });
+};
+
+/**
+ * Get orders for a customer with pagination and status filter
+ * @param {string} customerId - Customer ID
+ * @param {object} query - Query parameters
+ * @param {number} query.page - Page number (default: 1)
+ * @param {number} query.limit - Items per page (default: 10)
+ * @param {string} query.status - Order status filter (optional)
+ * @returns {Promise<object>} Orders list with pagination
+ */
+exports.getCustomerOrders = async (customerId, query = {}) => {
+    const { page = 1, limit = 10, status } = query;
+
+    const safePage = Number.isInteger(page) ? page : parseInt(page);
+    const safeLimit = Number.isInteger(limit) ? limit : parseInt(limit);
+
+    if (!Number.isInteger(safePage) || safePage < 1) {
+        throw new ValidationError('page must be >= 1');
+    }
+    if (!Number.isInteger(safeLimit) || safeLimit < 1 || safeLimit > 100) {
+        throw new ValidationError('limit must be between 1 and 100');
+    }
+
+    const skip = (safePage - 1) * safeLimit;
+
+    // Handle special status filters
+    let where;
+    if (status === 'active') {
+        // Active orders: all orders except delivered, closed, cancelled, and draft
+        // These are the statuses that should NOT appear in active orders
+        where = {
+            customer_id: customerId,
+            order_status: {
+                notIn: ['delivered', 'closed', 'cancelled', 'draft'],
+            },
+        };
+    } else if (status === 'completed') {
+        // Completed orders: delivered or closed (cancelled orders are not considered completed)
+        where = {
+            customer_id: customerId,
+            order_status: {
+                in: ['delivered', 'closed'],
+            },
+        };
+    } else {
+        // Specific status or all orders
+        where = {
+            customer_id: customerId,
+            ...(status ? { order_status: status } : {}),
+        };
+    }
+
+    const [total, orders] = await Promise.all([
+        prisma.order.count({ where }),
+        prisma.order.findMany({
+            where,
+            skip,
+            take: safeLimit,
+            orderBy: { created_at: 'desc' },
+            select: {
+                order_id: true,
+                order_status: true,
+                pricing_model: true,
+                order_type: true,
+                total_amount: true,
+                billing_status: true,
+                pickup_date: true,
+                delivery_date: true,
+                created_at: true,
+                updated_at: true,
+                order_items: {
+                    select: {
+                        item_id: true,
+                        pricing_type: true,
+                        quantity: true,
+                        weight_kg: true,
+                        item_selections: {
+                            select: {
+                                selection_id: true,
+                                quantity: true,
+                                cloth_item: {
+                                    select: {
+                                        cloth_id: true,
+                                        item_name: true,
+                                        per_unit_price: true,
+                                        service: {
+                                            select: {
+                                                service_id: true,
+                                                service_name: true,
+                                                category: {
+                                                    select: {
+                                                        category_id: true,
+                                                        category_name: true,
+                                                    },
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+                bill: {
+                    select: {
+                        bill_id: true,
+                        final_amount: true,
+                        payment_method: true,
+                        payment_status: true,
+                    },
+                },
+            },
+        }),
+    ]);
+
+    const totalPages = Math.ceil(total / safeLimit);
+
+    return {
+        orders: orders.map((order) => ({
+            order_id: order.order_id,
+            order_status: order.order_status,
+            pricing_model: order.pricing_model,
+            order_type: order.order_type,
+            total_amount: order.total_amount.toString(),
+            billing_status: order.billing_status,
+            pickup_date: order.pickup_date,
+            delivery_date: order.delivery_date,
+            created_at: order.created_at,
+            updated_at: order.updated_at,
+            items_count: order.order_items.length,
+            items: order.order_items.map((item) => ({
+                item_id: item.item_id,
+                pricing_type: item.pricing_type,
+                quantity: item.quantity,
+                weight_kg: item.weight_kg?.toString() || null,
+                selections: (item.item_selections || []).map((sel) => ({
+                    selection_id: sel.selection_id,
+                    quantity: sel.quantity,
+                    cloth_name: sel.cloth_item?.item_name || '',
+                    service_name: sel.cloth_item?.service?.service_name || '',
+                    category_name: sel.cloth_item?.service?.category?.category_name || '',
+                    per_unit_price: sel.cloth_item?.per_unit_price
+                        ? sel.cloth_item.per_unit_price.toString()
+                        : null,
+                })),
+            })),
+            bill: order.bill ? {
+                bill_id: order.bill.bill_id,
+                final_amount: order.bill.final_amount.toString(),
+                payment_method: order.bill.payment_method,
+                payment_status: order.bill.payment_status,
+            } : null,
+        })),
+        pagination: {
+            page: safePage,
+            limit: safeLimit,
+            total,
+            total_pages: totalPages,
+            has_next: safePage < totalPages,
+            has_prev: safePage > 1,
+        },
+    };
 };
 
 module.exports = exports;

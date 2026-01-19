@@ -266,16 +266,28 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                             }
 
                             // Convert date/time to ISO format
+                            // Calculate 24-hour format hour from 12-hour format
+                            int hour24;
+                            if (_fromAmPm == 1) {
+                                // PM: add 12 except for 12 PM (noon)
+                                hour24 = _fromHour == 12 ? 12 : _fromHour + 12;
+                            } else {
+                                // AM: 12 AM becomes 0, others stay the same
+                                hour24 = _fromHour == 12 ? 0 : _fromHour;
+                            }
+                            
+                            // Create DateTime in local timezone (represents user's selected time)
                             final pickupDateTime = DateTime(
                               selectedDate.year,
                               selectedDate.month,
                               selectedDate.day,
-                              _fromAmPm == 1 && _fromHour != 12
-                                  ? _fromHour + 12
-                                  : (_fromAmPm == 0 && _fromHour == 12 ? 0 : _fromHour),
+                              hour24,
                               _fromMinute,
                             );
-                            final pickupDateIso = pickupDateTime.toIso8601String();
+                            
+                            // Convert to UTC ISO string for backend storage
+                            // This ensures consistent UTC storage regardless of user's timezone
+                            final pickupDateIso = pickupDateTime.toUtc().toIso8601String();
 
                             // Create order via backend
                             final orderRepo = OrderRepository();
@@ -319,6 +331,7 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                                     placedDateLabel: placedDateLabel,
                                     placedTimeLabel: placedTimeLabel,
                                     status: OrderStatus.inProgress,
+                                    backendStatus: 'placed', // Newly created order
                                   ),
                                 );
 

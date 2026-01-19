@@ -137,6 +137,25 @@ exports.uploadProfileImage = async (req, res, next) => {
     }
 };
 
+exports.getProfile = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'customer') {
+            throw new AuthorizationError('Only customers can view profile');
+        }
+
+        const customerId = req.user.user_id;
+        const profile = await customerInfoService.getCustomerProfile(customerId);
+
+        res.status(200).json({
+            success: true,
+            data: profile,
+            message: 'Profile fetched successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 exports.updateProfile = async (req, res, next) => {
     try {
         if (req.user.role !== 'customer') {

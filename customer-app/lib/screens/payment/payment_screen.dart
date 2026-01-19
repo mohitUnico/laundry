@@ -6,11 +6,13 @@ import '../../theme/app_text_styles.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/order_provider.dart';
 import '../../models/order_record.dart';
+import '../../models/cart_item.dart';
 import '../../routes/app_routes.dart';
 import '../../utils/pricing.dart';
 import '../../models/promo_code_model.dart';
 import '../../repositories/order_repository.dart';
 import '../../repositories/customer_info_repository.dart';
+import '../../repositories/payment_repository.dart';
 import '../cart/delivery_options_screen.dart';
 
 class PaymentScreen extends StatefulWidget {
@@ -92,6 +94,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       children: [
                         const SizedBox(height: 20),
                         _BillSummaryCard(
+                          perPieceItems: perPieceItems,
                           itemTotal: itemTotal,
                           handlingFee: handlingFee,
                           pickupFeeOriginal: pickupFeeOriginal,
@@ -312,9 +315,48 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           final originalTotal = itemTotal + handlingFee + originalPickupFee + originalDeliveryFee;
                           final finalTotal = subtotal - _promoDiscount;
 
-                          // Generate transaction ID
+                          // Process payment via backend
+                          final paymentRepo = PaymentRepository();
+                          String transactionId;
+                          String paymentMethodBackend;
+                          String paymentStatus;
+                          
+                          // Map PaymentMethod enum to backend payment_method string
+                          switch (_selectedMethod) {
+                            case PaymentMethod.visa:
+                            case PaymentMethod.mastercard:
+                              paymentMethodBackend = 'card';
+                              paymentStatus = 'completed';
+                              break;
+                            case PaymentMethod.cod:
+                              paymentMethodBackend = 'cod';
+                              paymentStatus = 'pending'; // COD is paid on delivery
+                              break;
+                            default:
+                              paymentMethodBackend = 'card';
+                              paymentStatus = 'completed';
+                          }
+
+                          // Generate transaction ID (for card payments, this would come from payment gateway)
+                          // For COD, transaction ID is generated when payment is confirmed on delivery
                           final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
-                          final transactionId = 'QUCVG${timestamp.length > 7 ? timestamp.substring(timestamp.length - 7) : timestamp.padLeft(7, '0')}';
+                          transactionId = 'QUCVG${timestamp.length > 7 ? timestamp.substring(timestamp.length - 7) : timestamp.padLeft(7, '0')}';
+
+                          // Process payment and update bill
+                          final paymentResult = await paymentRepo.processPayment(
+                            orderId: orderResult.orderId,
+                            paymentMethod: paymentMethodBackend,
+                            transactionId: paymentStatus == 'completed' ? transactionId : null, // Only set transaction ID for completed payments
+                            paymentStatus: paymentStatus,
+                          );
+
+                          // Use transaction ID from payment result if available
+                          if (paymentResult.transactionId != null && paymentResult.transactionId!.isNotEmpty) {
+                            transactionId = paymentResult.transactionId!;
+                          } else if (paymentStatus == 'pending') {
+                            // For pending payments (COD), use a placeholder or empty
+                            transactionId = 'Pending';
+                          }
 
                           // Create local order record for UI
                           final title = items.length == 1 ? items.first.category : 'Mixed';
@@ -339,6 +381,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                                   placedDateLabel: placedDateLabel,
                                   placedTimeLabel: placedTimeLabel,
                                   status: OrderStatus.inProgress,
+                                  backendStatus: 'placed', // Newly created order
                                   paymentMethod: _selectedMethod,
                                 ),
                               );
@@ -346,24 +389,35 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           cart.clear();
 
                           if (!mounted) return;
-                          // Navigate to payment successful screen with transaction details
-                          Navigator.of(context).pushNamedAndRemoveUntil(
-                            AppRoutes.paymentSuccessful,
-                            (r) => false,
-                            arguments: {
-                              'transactionId': transactionId,
-                              'itemTotal': itemTotal,
-                              'handlingFee': handlingFee,
-                              'pickupFeeOriginal': pickupFeeOriginal,
-                              'pickupFee': pickupFee,
-                              'deliveryFee': deliveryFee,
-                              'originalTotal': originalTotal,
-                              'finalTotal': finalTotal,
-                              'deliveryOption': deliveryOption.name,
-                              'promoCode': _appliedPromoCode,
-                              'promoDiscount': _promoDiscount,
-                            },
-                          );
+                          
+                          // Navigate based on payment method
+                          if (_selectedMethod == PaymentMethod.cod) {
+                            // For COD, navigate to order successful screen
+                            Navigator.of(context).pushNamedAndRemoveUntil(
+                              AppRoutes.orderSuccessful,
+                              (r) => false,
+                              arguments: orderResult.orderId,
+                            );
+                          } else {
+                            // For card payments, navigate to payment successful screen
+                            Navigator.of(context).pushNamedAndRemoveUntil(
+                              AppRoutes.paymentSuccessful,
+                              (r) => false,
+                              arguments: {
+                                'transactionId': transactionId,
+                                'itemTotal': itemTotal,
+                                'handlingFee': handlingFee,
+                                'pickupFeeOriginal': pickupFeeOriginal,
+                                'pickupFee': pickupFee,
+                                'deliveryFee': deliveryFee,
+                                'originalTotal': originalTotal,
+                                'finalTotal': finalTotal,
+                                'deliveryOption': deliveryOption.name,
+                                'promoCode': _appliedPromoCode,
+                                'promoDiscount': _promoDiscount,
+                              },
+                            );
+                          }
                         } catch (e) {
                           if (!mounted) return;
                           Navigator.of(context).pop(); // Close loading
@@ -429,6 +483,7 @@ class _TopBar extends StatelessWidget {
 }
 
 class _BillSummaryCard extends StatelessWidget {
+  final List<CartItem> perPieceItems;
   final int itemTotal;
   final int handlingFee;
   final int pickupFeeOriginal;
@@ -445,6 +500,7 @@ class _BillSummaryCard extends StatelessWidget {
   final Function(String code, int discount) onApplyPromo;
 
   const _BillSummaryCard({
+    required this.perPieceItems,
     required this.itemTotal,
     required this.handlingFee,
     required this.pickupFeeOriginal,
@@ -531,11 +587,91 @@ class _BillSummaryCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          _FeeRow(
-            label: 'Item Total',
-            amount: itemTotal,
-          ),
-          const SizedBox(height: 8),
+          // Per-piece item wise pricing (like in cart screen)
+          if (perPieceItems.isNotEmpty) ...[
+            Text(
+              'Per-Piece Items',
+              style: AppTextStyles.body(color: const Color(0xFF6B7280))
+                  .copyWith(fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            for (final item in perPieceItems) ...[
+              for (final entry in item.quantities.entries) ...[
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    children: [
+                      // e.g. "Saree - 2"
+                      Expanded(
+                        child: Text(
+                          '${entry.key} - ${entry.value}',
+                          style: AppTextStyles.body(color: HomeColors.text)
+                              .copyWith(fontSize: 12),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        Pricing.inr(
+                          (item.unitPricesInr?[entry.key] ?? 0) * entry.value,
+                        ),
+                        style: AppTextStyles.body(color: HomeColors.text)
+                            .copyWith(fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+            const SizedBox(height: 12),
+          ],
+          // Per-Piece Items Total
+          if (itemTotal > 0) ...[
+            _FeeRow(
+              label: 'Per-Piece Items Total',
+              amount: itemTotal,
+            ),
+            const SizedBox(height: 8),
+          ],
+          // Kg-Wise Items Note
+          if (hasKgWise) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF3F4F6),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE5E7EB)),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.scale_outlined,
+                    size: 18,
+                    color: HomeColors.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Kg-Wise Items',
+                          style: AppTextStyles.header(color: HomeColors.text)
+                              .copyWith(fontSize: 13, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Amount will be calculated after supervision',
+                          style: AppTextStyles.body(color: HomeColors.muted)
+                              .copyWith(fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           _FeeRow(
             label: 'Handling Fee',
             amount: handlingFee,

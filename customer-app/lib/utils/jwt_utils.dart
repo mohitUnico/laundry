@@ -26,6 +26,26 @@ class JwtUtils {
       return true;
     }
   }
+
+  /// Check if token will expire within the specified minutes
+  static bool willExpireSoon(String token, {int minutes = 5}) {
+    try {
+      final payload = decodePayload(token);
+      if (payload.isEmpty) return true;
+
+      final exp = payload['exp'];
+      if (exp is! num) return true;
+
+      final expMs = (exp * 1000).toInt();
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      final expiresInMs = expMs - nowMs;
+      
+      // Return true if expired or will expire within specified minutes
+      return expiresInMs <= minutes * 60 * 1000;
+    } catch (_) {
+      return true;
+    }
+  }
 }
 
 

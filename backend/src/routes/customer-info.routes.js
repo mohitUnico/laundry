@@ -80,6 +80,15 @@ router.post(
     customerInfoController.uploadProfileImage
 );
 
+// GET /api/v1/customer-info/profile
+// Get authenticated customer's profile
+router.get(
+    '/profile',
+    authenticateJWT,
+    authorize('customer'),
+    customerInfoController.getProfile
+);
+
 // PATCH /api/v1/customer-info/profile
 // Update authenticated customer's profile fields (name/phone/profile_image_url)
 router.patch(

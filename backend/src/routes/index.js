@@ -9,6 +9,7 @@ const clothesRoutes = require('./clothes.routes');
 const customerInfoRoutes = require('./customer-info.routes');
 const adminOrderManagementRoutes = require('./admin-order-management.routes');
 const adminCustomerManagementRoutes = require('./admin-customer-management.routes');
+const paymentRoutes = require('./payment.routes');
 
 const router = express.Router();
 
@@ -75,6 +76,7 @@ router.use('/clothes', clothesRoutes);
 router.use('/customer-info', customerInfoRoutes);
 router.use('/admin/orders', adminOrderManagementRoutes);
 router.use('/admin/customers', adminCustomerManagementRoutes);
+router.use('/payments', paymentRoutes);
 
 module.exports = router;
 

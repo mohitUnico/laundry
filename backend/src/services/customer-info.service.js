@@ -266,6 +266,29 @@ exports.uploadCustomerProfileImage = async (customerId, file) => {
     });
 };
 
+exports.getCustomerProfile = async (customerId) => {
+    assertUuid(customerId, 'customerId');
+
+    const customer = await prisma.customer.findUnique({
+        where: { customer_id: customerId },
+        select: {
+            customer_id: true,
+            full_name: true,
+            email: true,
+            phone: true,
+            profile_image_url: true,
+            created_at: true,
+            updated_at: true,
+        },
+    });
+
+    if (!customer) {
+        throw new NotFoundError('Customer');
+    }
+
+    return customer;
+};
+
 exports.updateCustomerProfile = async (customerId, payload) => {
     assertUuid(customerId, 'customerId');
 

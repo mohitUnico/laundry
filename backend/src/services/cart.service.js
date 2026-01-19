@@ -121,26 +121,70 @@ exports.addItemsToActiveCart = async (customerId, { items }) => {
                     }
                 }
 
-                const cartItem = await tx.cartItem.create({
-                    data: {
+                // Check if a cart item with the same service_id and pricing_type already exists
+                let cartItem = await tx.cartItem.findFirst({
+                    where: {
                         cart_id: cart.cart_id,
                         service_id: item.service_id,
                         pricing_type: item.pricing_type,
-                        weight_kg: item.pricing_type === 'per_kg' ? item.weight_kg ?? null : null,
                     },
                     select: { cart_item_id: true },
                 });
 
-                createdCartItemIds.push(cartItem.cart_item_id);
-
-                if (selections.length > 0) {
-                    await tx.cartItemSelection.createMany({
-                        data: selections.map((s) => ({
-                            cart_item_id: cartItem.cart_item_id,
-                            cloth_id: s.cloth_id,
-                            quantity: s.quantity,
-                        })),
+                // If cart item doesn't exist, create a new one
+                if (!cartItem) {
+                    cartItem = await tx.cartItem.create({
+                        data: {
+                            cart_id: cart.cart_id,
+                            service_id: item.service_id,
+                            pricing_type: item.pricing_type,
+                            weight_kg: item.pricing_type === 'per_kg' ? item.weight_kg ?? null : null,
+                        },
+                        select: { cart_item_id: true },
                     });
+                    createdCartItemIds.push(cartItem.cart_item_id);
+                }
+
+                // Append selections to the existing or newly created cart item
+                if (selections.length > 0) {
+                    // Get existing selections for this cart item
+                    const existingSelections = await tx.cartItemSelection.findMany({
+                        where: {
+                            cart_item_id: cartItem.cart_item_id,
+                        },
+                        select: {
+                            selection_id: true,
+                            cloth_id: true,
+                            quantity: true,
+                        },
+                    });
+
+                    // Create a map of existing selections by cloth_id
+                    const existingSelectionsMap = new Map(
+                        existingSelections.map((s) => [s.cloth_id, { selection_id: s.selection_id, quantity: s.quantity }])
+                    );
+
+                    // Process each new selection
+                    for (const selection of selections) {
+                        const existing = existingSelectionsMap.get(selection.cloth_id);
+
+                        if (existing) {
+                            // If selection already exists, add the quantities together
+                            await tx.cartItemSelection.update({
+                                where: { selection_id: existing.selection_id },
+                                data: { quantity: existing.quantity + selection.quantity },
+                            });
+                        } else {
+                            // If selection doesn't exist, create a new one
+                            await tx.cartItemSelection.create({
+                                data: {
+                                    cart_item_id: cartItem.cart_item_id,
+                                    cloth_id: selection.cloth_id,
+                                    quantity: selection.quantity,
+                                },
+                            });
+                        }
+                    }
                 }
             }
 
@@ -151,10 +195,42 @@ exports.addItemsToActiveCart = async (customerId, { items }) => {
                 select: { cart_id: true },
             });
 
-            return {
-                cart_id: cart.cart_id,
-                added_cart_item_ids: createdCartItemIds,
-            };
+            // Fetch and return the complete cart with all items and selections
+            const completeCart = await tx.cart.findUnique({
+                where: { cart_id: cart.cart_id },
+                include: {
+                    cart_items: {
+                        orderBy: { created_at: 'desc' },
+                        include: {
+                            service: {
+                                select: {
+                                    service_id: true,
+                                    service_name: true,
+                                    base_price: true,
+                                    per_kg_price: true,
+                                    icon_url: true,
+                                    is_active: true,
+                                },
+                            },
+                            item_selections: {
+                                include: {
+                                    cloth_item: {
+                                        select: {
+                                            cloth_id: true,
+                                            item_name: true,
+                                            per_unit_price: true,
+                                            icon_url: true,
+                                            is_active: true,
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            });
+
+            return completeCart;
         },
         { maxWait: 10000, timeout: 60000 }
     );

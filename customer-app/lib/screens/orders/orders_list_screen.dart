@@ -814,117 +814,155 @@ void _showOrderDetailsDialog(BuildContext context, OrderRecord order) {
 }
 
 Widget _buildItemsList(OrderRecord order) {
-  final byCategory = <String, Map<String, List<CartItem>>>{};
-  for (final item in order.items) {
-    byCategory.putIfAbsent(item.category, () => {})
-        .putIfAbsent(item.serviceName, () => [])
-        .add(item);
-  }
-
+  // Separate items by pricing type
   final perPieceItems = order.items.where((x) => x.isPerPiece).toList();
   final kgWiseItems = order.items.where((x) => !x.isPerPiece).toList();
-  final isCod = order.paymentMethod == PaymentMethod.cod;
+  final hasAnyKgWise = kgWiseItems.isNotEmpty;
+  // If there are any kg-wise items, per-piece items should also show "Bill pending"
+  // because total bill will be generated after weighing
+  final isCod = hasAnyKgWise 
+      ? true // Show pending if there are kg-wise items
+      : (order.paymentMethod == PaymentMethod.cod);
+
+  // Group per-piece items by category
+  final perPieceByCategory = <String, List<CartItem>>{};
+  for (final item in perPieceItems) {
+    perPieceByCategory.putIfAbsent(item.category, () => []).add(item);
+  }
+
+  // Group kg-wise items by category
+  final kgWiseByCategory = <String, List<CartItem>>{};
+  for (final item in kgWiseItems) {
+    kgWiseByCategory.putIfAbsent(item.category, () => []).add(item);
+  }
 
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      for (final categoryEntry in byCategory.entries) ...[
-        Text(
-          categoryEntry.key,
-          style: AppTextStyles.header(color: HomeColors.text)
-              .copyWith(fontSize: 14),
-        ),
-        const SizedBox(height: 8),
-        for (final serviceEntry in categoryEntry.value.entries) ...[
-          Padding(
-            padding: const EdgeInsets.only(left: 12),
-            child: Text(
-              serviceEntry.key,
-              style: AppTextStyles.body(color: HomeColors.muted)
-                  .copyWith(fontSize: 12, fontWeight: FontWeight.w600),
+      // Per-Piece Items Section
+      if (perPieceItems.isNotEmpty) ...[
+        for (final categoryEntry in perPieceByCategory.entries) ...[
+          Text(
+            categoryEntry.key,
+            style: AppTextStyles.header(color: HomeColors.text)
+                .copyWith(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          for (final item in categoryEntry.value) ...[
+            // Service name
+            Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: Text(
+                item.serviceName.isNotEmpty ? item.serviceName : 'Service',
+                style: AppTextStyles.body(color: HomeColors.text)
+                    .copyWith(fontSize: 13, fontWeight: FontWeight.w600),
+              ),
             ),
-          ),
-          const SizedBox(height: 6),
-          // Check if this service has per-piece or kg-wise items
-          Builder(
-            builder: (context) {
-              final hasPerPieceInService = serviceEntry.value.any((item) => item.isPerPiece);
-              final hasKgWiseInService = serviceEntry.value.any((item) => !item.isPerPiece);
-              
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (final item in serviceEntry.value) ...[
-                    for (final qtyEntry in item.quantities.entries) ...[
-                      Padding(
-                        padding: const EdgeInsets.only(left: 24),
-                        child: Row(
-                          children: [
-                            // Show cloth item in the same style as cart screen: "Saree - 2"
-                            Expanded(
-                              child: Text(
-                                '${qtyEntry.key} - ${qtyEntry.value}',
-                                style: AppTextStyles.body(color: HomeColors.text)
-                                    .copyWith(fontSize: 12),
-                              ),
-                            ),
-                            if (item.isPerPiece && item.unitPricesInr != null) ...[
-                              const SizedBox(width: 8),
-                              Text(
-                                Pricing.inr((item.unitPricesInr![qtyEntry.key] ?? 0) * qtyEntry.value),
-                                style: AppTextStyles.body(color: HomeColors.text)
-                                    .copyWith(fontSize: 12, fontWeight: FontWeight.w600),
-                              ),
-                            ],
-                          ],
+            const SizedBox(height: 6),
+            // Individual cloth items with quantities
+            if (item.quantities.isNotEmpty) ...[
+              for (final qtyEntry in item.quantities.entries) ...[
+                Padding(
+                  padding: const EdgeInsets.only(left: 24),
+                  child: Row(
+                    children: [
+                      // Show cloth item: "Saree - 2"
+                      Expanded(
+                        child: Text(
+                          '${qtyEntry.key} - ${qtyEntry.value}',
+                          style: AppTextStyles.body(color: HomeColors.text)
+                              .copyWith(fontSize: 12),
                         ),
                       ),
-                      const SizedBox(height: 4),
-                    ],
-                    if (item.note != null && item.note!.isNotEmpty) ...[
-                      Padding(
-                        padding: const EdgeInsets.only(left: 24, top: 4),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                    Icon(
-                      Icons.note_outlined,
-                      size: 14,
-                      color: HomeColors.muted,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        item.note!,
-                        style: AppTextStyles.body(color: HomeColors.muted)
-                            .copyWith(fontSize: 10),
-                      ),
-                    ),
-                          ],
+                      // Show price for per-piece items
+                      if (item.unitPricesInr != null) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          Pricing.inr((item.unitPricesInr![qtyEntry.key] ?? 0) * qtyEntry.value),
+                          style: AppTextStyles.body(color: HomeColors.text)
+                              .copyWith(fontSize: 12, fontWeight: FontWeight.w600),
                         ),
-                      ),
-                      const SizedBox(height: 4),
+                      ],
                     ],
-                  ],
-                  // Show payment status for this service
-                  if (hasPerPieceInService || hasKgWiseInService) ...[
-                    const SizedBox(height: 6),
-                    Padding(
-                      padding: const EdgeInsets.only(left: 24),
-                      child: _ItemSetPaymentStatus(
-                        isPerPiece: hasPerPieceInService,
-                        isKgWise: hasKgWiseInService,
-                        isCod: isCod,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                ],
-              );
-            },
-          ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+              ],
+            ],
+            // Payment status for per-piece items
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.only(left: 24),
+              child: _ItemSetPaymentStatus(
+                isPerPiece: true,
+                isKgWise: false,
+                isCod: isCod,
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
         ],
-        const SizedBox(height: 12),
+      ],
+      // Kg-Wise Items Section
+      if (kgWiseItems.isNotEmpty) ...[
+        if (perPieceItems.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          const Divider(height: 1, thickness: 1, color: HomeColors.borderSoft),
+          const SizedBox(height: 12),
+        ],
+        for (final categoryEntry in kgWiseByCategory.entries) ...[
+          Text(
+            categoryEntry.key,
+            style: AppTextStyles.header(color: HomeColors.text)
+                .copyWith(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          for (final item in categoryEntry.value) ...[
+            // Service name
+            Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: Text(
+                item.serviceName.isNotEmpty ? item.serviceName : 'Service',
+                style: AppTextStyles.body(color: HomeColors.text)
+                    .copyWith(fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+            ),
+            const SizedBox(height: 6),
+            // Individual cloth items with quantities (similar to cart screen)
+            if (item.quantities.isNotEmpty) ...[
+              for (final qtyEntry in item.quantities.entries) ...[
+                Padding(
+                  padding: const EdgeInsets.only(left: 24),
+                  child: Row(
+                    children: [
+                      // Show cloth item: "Saree - 2" (same style as cart screen)
+                      Expanded(
+                        child: Text(
+                          '${qtyEntry.key} - ${qtyEntry.value}',
+                          style: AppTextStyles.body(color: HomeColors.text)
+                              .copyWith(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 4),
+              ],
+            ],
+            // Payment status for kg-wise items
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.only(left: 24),
+              child: _ItemSetPaymentStatus(
+                isPerPiece: false,
+                isKgWise: true,
+                isCod: isCod,
+                hasAnyKgWiseInOrder: hasAnyKgWise,
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ],
       ],
     ],
   );
@@ -941,7 +979,12 @@ class _PaymentStatusSection extends StatelessWidget {
     final kgWiseItems = order.items.where((x) => !x.isPerPiece).toList();
     final hasPerPiece = perPieceItems.isNotEmpty;
     final hasKgWise = kgWiseItems.isNotEmpty;
-    final isCod = order.paymentMethod == PaymentMethod.cod;
+    // If there are any kg-wise items, per-piece items should also show "Bill pending"
+    // because total bill will be generated after weighing
+    final hasAnyKgWise = hasKgWise;
+    final isCod = hasAnyKgWise 
+        ? true // Show pending if there are kg-wise items
+        : (order.paymentMethod == PaymentMethod.cod);
     final hasPayment = order.paymentMethod != null;
 
     return Column(
@@ -981,7 +1024,7 @@ class _PaymentStatusSection extends StatelessWidget {
                 Expanded(
                   child: Text(
                     isCod
-                        ? 'Bill pending (COD)'
+                        ? (hasKgWise ? 'Bill pending (kg-wise)' : 'Bill pending (COD)')
                         : 'Bill paid',
                     style: AppTextStyles.body(
                       color: isCod
@@ -1075,11 +1118,13 @@ class _ItemSetPaymentStatus extends StatelessWidget {
   final bool isPerPiece;
   final bool isKgWise;
   final bool isCod;
+  final bool hasAnyKgWiseInOrder;
 
   const _ItemSetPaymentStatus({
     required this.isPerPiece,
     required this.isKgWise,
     required this.isCod,
+    this.hasAnyKgWiseInOrder = false,
   });
 
   @override
@@ -1114,7 +1159,9 @@ class _ItemSetPaymentStatus extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  isCod ? 'Bill pending (COD)' : 'Bill paid',
+                  isCod 
+                      ? (hasAnyKgWiseInOrder ? 'Bill pending (kg-wise)' : 'Bill pending (COD)')
+                      : 'Bill paid',
                   style: AppTextStyles.body(
                     color: isCod
                         ? const Color(0xFF92400E)

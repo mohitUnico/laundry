@@ -26,6 +26,8 @@ class CartProvider with ChangeNotifier {
   
   bool get hasOnlyKgWiseItems => _items.isNotEmpty && _items.every((x) => !x.isPerPiece);
   
+  bool get hasAnyKgWiseItems => _items.any((x) => !x.isPerPiece);
+  
   bool get hasMixedItems => _items.any((x) => x.isPerPiece) && _items.any((x) => !x.isPerPiece);
 
   void addOrMerge({

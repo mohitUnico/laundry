@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 
 param(
   [string]$DeviceId = "",
-  [string]$ApiBaseUrl = "http://localhost:3000/api/v1"
+  [string]$ApiBaseUrl = "http://13.232.71.139:4000/api/v1"
 )
 
 Write-Host "== Laundry Customer App (USB) ==" -ForegroundColor Cyan

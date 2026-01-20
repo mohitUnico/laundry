@@ -19,6 +19,7 @@ import '../screens/services/regular_wash/regular_wash_service_screen.dart';
 import '../screens/orders/order_tracking_screen.dart';
 import '../screens/cart/delivery_options_screen.dart';
 import '../screens/cart/schedule_date_time_screen.dart';
+import '../screens/cart/order_confirmation_screen.dart';
 import '../screens/payment/payment_screen.dart';
 import '../screens/payment/payment_successful_screen.dart';
 import '../screens/orders/order_successful_screen.dart';
@@ -58,6 +59,7 @@ class AppRoutes {
   static const String orderTracking = '/orders/tracking';
   static const String deliveryOptions = '/cart/delivery-options';
   static const String scheduleDateTime = '/cart/schedule-date-time';
+  static const String orderConfirmation = '/cart/order-confirmation';
   static const String payment = '/payment';
   static const String paymentSuccessful = '/payment-successful';
   static const String orderSuccessful = '/order-successful';
@@ -151,6 +153,7 @@ class AppRoutes {
       orderTracking: (context) => const OrderTrackingScreen(),
       deliveryOptions: (context) => const DeliveryOptionsScreen(),
       scheduleDateTime: (context) => const ScheduleDateTimeScreen(),
+      orderConfirmation: (context) => const OrderConfirmationScreen(),
       payment: (context) => const PaymentScreen(),
       paymentSuccessful: (context) => const PaymentSuccessfulScreen(),
       orderSuccessful: (context) => const OrderSuccessfulScreen(),

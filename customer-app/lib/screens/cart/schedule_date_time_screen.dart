@@ -12,6 +12,7 @@ import '../../repositories/order_repository.dart';
 import '../../repositories/customer_info_repository.dart';
 import '../../services/customer_info_service.dart';
 import 'delivery_options_screen.dart';
+import 'order_confirmation_screen.dart';
 
 class ScheduleDateTimeArgs {
   final DeliveryOptionType option;
@@ -207,153 +208,22 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                         }
 
                         // Check cart type to determine flow
-                        final hasPricedItems = cart.hasPricedItems;
-                        final hasOnlyKgWise = cart.hasOnlyKgWiseItems;
+                        final hasAnyKgWise = cart.hasAnyKgWiseItems;
 
-                        // If cart has only kg-wise items, skip payment screen and create order directly
-                        if (hasOnlyKgWise) {
-                          // Show loading
+                        // If cart has ANY kg-wise items (even if mixed with per-piece), 
+                        // navigate to order confirmation screen
+                        if (hasAnyKgWise) {
                           if (!mounted) return;
-                          showDialog(
-                            context: context,
-                            barrierDismissible: false,
-                            builder: (context) => const Center(
-                              child: CircularProgressIndicator(),
+                          Navigator.of(context).pushNamed(
+                            AppRoutes.orderConfirmation,
+                            arguments: OrderConfirmationArgs(
+                              deliveryOption: option,
+                              dateLabel: dateLabel,
+                              timeLabel: timeLabel,
                             ),
                           );
-
-                          try {
-                            // Fetch addresses
-                            final addressRepo = CustomerInfoRepository();
-                            final addresses = await addressRepo.getAddresses();
-
-                            if (addresses.isEmpty) {
-                              if (mounted) {
-                                Navigator.of(context).pop(); // Close loading
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Please add an address before placing an order'),
-                                  ),
-                                );
-                              }
-                              return;
-                            }
-
-                            // Use default address or first address
-                            final defaultAddress = addresses.firstWhere(
-                              (a) => a.isDefault,
-                              orElse: () => addresses.first,
-                            );
-
-                            // Determine pickup and delivery addresses based on order type
-                            final orderType = option.toBackendOrderType();
-                            String pickupAddressId;
-                            String deliveryAddressId;
-
-                            switch (option) {
-                              case DeliveryOptionType.pickupOnly:
-                                pickupAddressId = defaultAddress.addressId;
-                                deliveryAddressId = defaultAddress.addressId; // Not used but required
-                                break;
-                              case DeliveryOptionType.deliveryOnly:
-                                pickupAddressId = defaultAddress.addressId; // Not used but required
-                                deliveryAddressId = defaultAddress.addressId;
-                                break;
-                              case DeliveryOptionType.pickupAndDelivery:
-                                pickupAddressId = defaultAddress.addressId;
-                                deliveryAddressId = defaultAddress.addressId;
-                                break;
-                            }
-
-                            // Convert date/time to ISO format
-                            // Calculate 24-hour format hour from 12-hour format
-                            int hour24;
-                            if (_fromAmPm == 1) {
-                                // PM: add 12 except for 12 PM (noon)
-                                hour24 = _fromHour == 12 ? 12 : _fromHour + 12;
-                            } else {
-                                // AM: 12 AM becomes 0, others stay the same
-                                hour24 = _fromHour == 12 ? 0 : _fromHour;
-                            }
-                            
-                            // Create DateTime in local timezone (represents user's selected time)
-                            final pickupDateTime = DateTime(
-                              selectedDate.year,
-                              selectedDate.month,
-                              selectedDate.day,
-                              hour24,
-                              _fromMinute,
-                            );
-                            
-                            // Convert to UTC ISO string for backend storage
-                            // This ensures consistent UTC storage regardless of user's timezone
-                            final pickupDateIso = pickupDateTime.toUtc().toIso8601String();
-
-                            // Create order via backend
-                            final orderRepo = OrderRepository();
-                            final orderResult = await orderRepo.createOrder(
-                              cartId: cartId,
-                              pickupAddressId: pickupAddressId,
-                              deliveryAddressId: deliveryAddressId,
-                              orderType: orderType,
-                              pickupDate: pickupDateIso,
-                              deliveryDate: null,
-                              specialInstructions: null,
-                            );
-
-                            if (!mounted) return;
-                            Navigator.of(context).pop(); // Close loading
-
-                            // Create local order record for UI
-                            final totalItems = items.fold<int>(0, (a, x) => a + x.totalQuantity);
-                            final title = items.length == 1 ? items.first.category : 'Mixed';
-                            final placedAt = DateTime.now();
-                            final placedDateLabel =
-                                '${_monthShort(placedAt.month)} ${placedAt.day}, ${placedAt.year}';
-                            final placedTimeLabel = _formatTime12h(
-                              placedAt.hour > 12
-                                  ? placedAt.hour - 12
-                                  : (placedAt.hour == 0 ? 12 : placedAt.hour),
-                              placedAt.minute,
-                              placedAt.hour >= 12 ? 1 : 0,
-                            );
-
-                            context.read<OrderProvider>().addOrder(
-                                  OrderRecord(
-                                    id: orderResult.orderId,
-                                    title: title,
-                                    items: items,
-                                    totalItems: totalItems,
-                                    totalInr: 0, // Kg-wise items have no upfront price
-                                    dateLabel: dateLabel,
-                                    timeLabel: timeLabel,
-                                    placedAt: placedAt,
-                                    placedDateLabel: placedDateLabel,
-                                    placedTimeLabel: placedTimeLabel,
-                                    status: OrderStatus.inProgress,
-                                    backendStatus: 'placed', // Newly created order
-                                  ),
-                                );
-
-                            cart.clear();
-
-                            if (!mounted) return;
-                            Navigator.of(context).pushNamedAndRemoveUntil(
-                              AppRoutes.orderSuccessful,
-                              (r) => false,
-                            );
-                          } catch (e) {
-                            if (!mounted) return;
-                            Navigator.of(context).pop(); // Close loading
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Failed to create order: ${e.toString()}'),
-                                duration: const Duration(seconds: 4),
-                              ),
-                            );
-                          }
                         } else {
-                          // If cart has per-piece items (only or mixed), navigate to payment screen
+                          // If cart has ONLY per-piece items (no kg-wise items), navigate to payment screen
                           // Payment screen will create the order after payment confirmation
                           if (!mounted) return;
                           Navigator.of(context).pushNamed(

@@ -9,21 +9,20 @@ class ApiService {
   late Dio _dio;
   static Future<void>? _refreshInFlight;
 
-  // Local backend (see backend/.env PORT=3000).
+  // Deployed backend at http://13.232.71.139:4000
   //
   // IMPORTANT:
-  // - Android emulator: use http://10.0.2.2:3000/api/v1
-  // - Real device: use your PC LAN IP (e.g. http://192.168.x.x:3000/api/v1)
-  // - USB-only (no Wi‑Fi): use adb reverse and then http://localhost:3000/api/v1
-  //
-  // You can always override:
-  // flutter run --dart-define=API_BASE_URL=http://192.168.1.9:3000/api/v1
+  // - Default: Uses deployed backend at http://13.232.71.139:4000/api/v1
+  // - For local development, override with:
+  //   flutter run --dart-define=API_BASE_URL=http://localhost:3000/api/v1
+  // - Android emulator (local): use http://10.0.2.2:3000/api/v1
+  // - Real device (local): use your PC LAN IP (e.g. http://192.168.x.x:3000/api/v1)
   static String resolveBaseUrl() {
     const defined = String.fromEnvironment('API_BASE_URL', defaultValue: '');
     if (defined.isNotEmpty) return defined;
 
-    // Default for local dev. For real devices or emulators, pass API_BASE_URL.
-    return 'http://localhost:3000/api/v1';
+    // Default: Deployed backend
+    return 'http://13.232.71.139:4000/api/v1';
   }
 
   ApiService() {

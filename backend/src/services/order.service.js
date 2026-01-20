@@ -1,4 +1,4 @@
-const { Prisma, OrderStatus } = require('@prisma/client');
+const { Prisma, OrderStatus, PaymentStatus } = require('@prisma/client');
 const prisma = require('../config/database');
 const { NotFoundError, ValidationError } = require('../utils/errors');
 
@@ -346,7 +346,7 @@ exports.createOrder = async (customerId, payload) => {
                     final_amount: totalAmount,
                     // Payment method and status will be updated when payment is processed
                     payment_method: 'pending',
-                    payment_status: 'pending',
+                    payment_status: PaymentStatus.pending, // Use Prisma enum value
                 },
                 select: { bill_id: true },
             });

@@ -98,7 +98,21 @@ export type AdminCustomersListResponse = {
   };
 };
 
+export type AdminOrdersSummary = {
+  pending: number;
+  outForDelivery: number;
+  inProgress: number;
+  completedToday: number;
+};
+
 export const adminManagementApi = {
+  getAdminOrdersSummary: async (params?: { from?: string; to?: string; completedDate?: string }) => {
+    const response = await axiosInstance.get<ApiEnvelope<AdminOrdersSummary>>('/admin/orders/summary', {
+      params,
+    });
+    return response.data;
+  },
+
   getAdminOrders: async (params?: {
     status?: string;
     search?: string;

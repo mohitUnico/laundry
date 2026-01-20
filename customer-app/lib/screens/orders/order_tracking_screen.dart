@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../theme/app_text_styles.dart';
 import '../home/widgets/home_colors.dart';
 import '../../routes/app_routes.dart';
+import '../../routes/route_args.dart';
+import '../../services/customer_info_service.dart';
+import '../../utils/supabase_config.dart';
 
 class OrderTrackingScreen extends StatefulWidget {
   const OrderTrackingScreen({super.key});
@@ -14,8 +17,105 @@ class OrderTrackingScreen extends StatefulWidget {
 }
 
 class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
-  // 0..4
-  final int _activeIndex = 3;
+  // 0..4 (0 = Pickup)
+  int _activeIndex = 0;
+
+  LatLng? _pickupLatLng;
+  LatLng? _riderLatLng;
+  bool _isLoadingLocation = true;
+  String? _orderId;
+  String? _pickupAddressText;
+  RealtimeChannel? _orderChannel;
+
+  @override
+  void initState() {
+    super.initState();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Read orderId from route arguments once and subscribe to realtime updates.
+    if (_orderId == null) {
+      final args = ModalRoute.of(context)?.settings.arguments;
+      if (args is OrderTrackingArgs) {
+        _orderId = args.orderId;
+        _pickupAddressText = args.pickupAddress;
+
+        if (args.pickupLat != null && args.pickupLng != null) {
+          final lat = args.pickupLat!;
+          final lng = args.pickupLng!;
+          _pickupLatLng = LatLng(lat, lng);
+          _riderLatLng = LatLng(lat + 0.0007, lng + 0.0007);
+        }
+
+        _subscribeToOrderRealtime();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _orderChannel?.unsubscribe();
+    super.dispose();
+  }
+
+  void _subscribeToOrderRealtime() {
+    if (!SupabaseConfig.isEnabled) return;
+    final id = _orderId;
+    if (id == null || id.isEmpty) return;
+
+    try {
+      final client = Supabase.instance.client;
+      _orderChannel = client
+          .channel('orders:track:$id')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.update,
+            schema: 'public',
+            table: 'orders',
+            callback: (payload) {
+              // Ignore updates for other orders if the channel receives them.
+              final updatedId = payload.newRecord['order_id'] as String?;
+              if (updatedId == null || updatedId != id) return;
+
+              final newStatus = payload.newRecord['order_status'] as String?;
+              if (newStatus == null) return;
+              final mappedIndex = _mapStatusToStepIndex(newStatus);
+              if (!mounted) return;
+              setState(() {
+                _activeIndex = mappedIndex;
+              });
+            },
+          )
+          .subscribe();
+    } catch (_) {
+      // Ignore realtime errors; UI will still work with initial data.
+    }
+  }
+
+  int _mapStatusToStepIndex(String status) {
+    switch (status) {
+      case 'placed':
+      case 'pickup_assigned':
+      case 'picked_up':
+        return 0; // Pickup
+      case 'received_by_collection':
+      case 'submitted_to_services':
+      case 'services_in_progress':
+        return 1; // In Process
+      case 'services_completed':
+      case 'dispatch_assigned':
+        return 2; // Ready
+      case 'out_for_delivery':
+        return 3; // Out for Delivery
+      case 'payment_pending':
+      case 'delivered':
+      case 'closed':
+        return 4; // Delivered
+      default:
+        return 0;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -23,7 +123,12 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       backgroundColor: HomeColors.background,
       body: Stack(
         children: [
-          const Positioned.fill(child: _OsmMapBackground()),
+          Positioned.fill(
+            child: _GoogleMapBackground(
+              pickup: _pickupLatLng,
+              rider: _riderLatLng,
+            ),
+          ),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.only(left: 12, top: 8),
@@ -73,6 +178,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                 riderName: 'Nadaan Sharma',
                 riderRole: 'Delivery Man',
                 scrollController: scrollController,
+                pickupAddress: _pickupAddressText,
               );
             },
           ),
@@ -82,77 +188,66 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   }
 }
 
-class _OsmMapBackground extends StatelessWidget {
-  const _OsmMapBackground();
+class _GoogleMapBackground extends StatelessWidget {
+  final LatLng? pickup;
+  final LatLng? rider;
+
+  const _GoogleMapBackground({
+    this.pickup,
+    this.rider,
+  });
 
   @override
   Widget build(BuildContext context) {
-    // Demo coordinates for now (Bengaluru-ish). Replace with real order coordinates later.
-    const pickup = LatLng(12.9716, 77.5946);
-    const rider = LatLng(12.9628, 77.6038);
-    const drop = LatLng(12.9352, 77.6245);
+    // Fallback demo coordinates (Bengaluru-ish) if no saved address is found.
+    const fallbackPickup = LatLng(12.9716, 77.5946);
+    const fallbackRider = LatLng(12.9723, 77.5953);
+    const fallbackDrop = LatLng(12.9352, 77.6245);
 
-    return FlutterMap(
-      options: const MapOptions(
-        initialCenter: pickup,
-        initialZoom: 13.8,
-        interactionOptions: InteractionOptions(
-          flags: InteractiveFlag.all,
-        ),
+    final effectivePickup = pickup ?? fallbackPickup;
+    final effectiveRider = rider ?? fallbackRider;
+    final effectiveDrop = fallbackDrop;
+
+    final markers = <Marker>{
+      Marker(
+        markerId: const MarkerId('pickup'),
+        position: effectivePickup,
+        infoWindow: const InfoWindow(title: 'Pickup'),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
       ),
-      children: [
-        TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'laundry_customer_app',
-        ),
-        PolylineLayer(
-          polylines: [
-            Polyline(
-              points: const [pickup, rider, drop],
-              color: HomeColors.primary,
-              strokeWidth: 4,
-            ),
-          ],
-        ),
-        MarkerLayer(
-          markers: [
-            _marker(pickup, const Color(0xFF16A34A), Icons.location_on_rounded),
-            _marker(rider, const Color(0xFF2437B6), Icons.delivery_dining_rounded),
-            _marker(drop, const Color(0xFFF97316), Icons.flag_rounded),
-          ],
-        ),
-      ],
+      Marker(
+        markerId: const MarkerId('rider'),
+        position: effectiveRider,
+        infoWindow: const InfoWindow(title: 'Delivery Partner'),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+      ),
+      Marker(
+        markerId: const MarkerId('drop'),
+        position: effectiveDrop,
+        infoWindow: const InfoWindow(title: 'Drop'),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+      ),
+    };
+
+    final polyline = Polyline(
+      polylineId: const PolylineId('route'),
+      points: [effectivePickup, effectiveRider, effectiveDrop],
+      color: HomeColors.primary,
+      width: 4,
     );
-  }
 
-  Marker _marker(LatLng p, Color color, IconData icon) {
-    return Marker(
-      point: p,
-      width: 44,
-      height: 44,
-      alignment: Alignment.topCenter,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x1A000000),
-              blurRadius: 14,
-              offset: Offset(0, 8),
-            ),
-          ],
-          border: Border.all(color: const Color(0xFFE5E7EB)),
-        ),
-        child: Center(
-          child: Container(
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-            child: Icon(icon, color: Colors.white, size: 18),
-          ),
-        ),
+    return GoogleMap(
+      initialCameraPosition: CameraPosition(
+        target: effectivePickup,
+        zoom: 14,
       ),
+      markers: markers,
+      polylines: {polyline},
+      myLocationEnabled: false,
+      myLocationButtonEnabled: false,
+      zoomControlsEnabled: false,
+      compassEnabled: false,
+      mapToolbarEnabled: false,
     );
   }
 }
@@ -162,12 +257,14 @@ class _BottomPanel extends StatelessWidget {
   final String riderName;
   final String riderRole;
   final ScrollController scrollController;
+  final String? pickupAddress;
 
   const _BottomPanel({
     required this.activeIndex,
     required this.riderName,
     required this.riderRole,
     required this.scrollController,
+    this.pickupAddress,
   });
 
   @override
@@ -219,7 +316,10 @@ class _BottomPanel extends StatelessWidget {
               borderRadius: BorderRadius.circular(18),
               border: Border.all(color: HomeColors.borderSoft),
             ),
-            child: _Timeline(activeIndex: activeIndex),
+            child: _Timeline(
+              activeIndex: activeIndex,
+              pickupAddress: pickupAddress,
+            ),
           ),
           const SizedBox(height: 12),
           _RiderCard(name: riderName, role: riderRole),
@@ -231,15 +331,19 @@ class _BottomPanel extends StatelessWidget {
 
 class _Timeline extends StatelessWidget {
   final int activeIndex;
+  final String? pickupAddress;
 
-  const _Timeline({required this.activeIndex});
+  const _Timeline({
+    required this.activeIndex,
+    this.pickupAddress,
+  });
 
   @override
   Widget build(BuildContext context) {
     final items = <_TimelineItemData>[
-      const _TimelineItemData(
+      _TimelineItemData(
         title: 'Pickup',
-        subtitle: '#24, Green Meadows Apartment, MG Road..',
+        subtitle: pickupAddress,
         iconAsset: 'assets/icons/order_track/pickup.png',
       ),
       const _TimelineItemData(
@@ -259,7 +363,7 @@ class _Timeline extends StatelessWidget {
       ),
       const _TimelineItemData(
         title: 'Delivered',
-        subtitle: '#24, Green Meadows Apartment, MG Road..',
+        subtitle: null,
         iconAsset: 'assets/icons/order_track/delivered.png',
       ),
     ];

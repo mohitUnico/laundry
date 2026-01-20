@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../models/order_record.dart';
 import '../../../routes/app_routes.dart';
+import '../../../routes/route_args.dart';
 import '../../../theme/app_text_styles.dart';
 import 'active_order_card.dart';
 import 'home_colors.dart';
@@ -28,14 +29,29 @@ class _ActiveOrdersCarouselState extends State<ActiveOrdersCarousel> {
   void initState() {
     super.initState();
     if (widget.orders.isEmpty) return;
-    // < 1.0 so users can peek previous/next banner.
+    // Show one full card at a time (no peek)
     final initial = (widget.orders.length * _loopMultiplier) ~/ 2;
     final alignedInitial = initial - (initial % widget.orders.length);
     _controller = PageController(
-      viewportFraction: 0.88,
+      viewportFraction: 1.0, // Full width - one card at a time
       initialPage: alignedInitial,
     );
     _index = 0;
+  }
+
+  @override
+  void didUpdateWidget(ActiveOrdersCarousel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Reset controller if orders list changes
+    if (oldWidget.orders.length != widget.orders.length && widget.orders.isNotEmpty) {
+      final initial = (widget.orders.length * _loopMultiplier) ~/ 2;
+      final alignedInitial = initial - (initial % widget.orders.length);
+      _controller = PageController(
+        viewportFraction: 1.0,
+        initialPage: alignedInitial,
+      );
+      _index = 0;
+    }
   }
 
   @override
@@ -48,30 +64,25 @@ class _ActiveOrdersCarouselState extends State<ActiveOrdersCarousel> {
 
   int _mapOrderStatusToStepIndex(String backendStatus) {
     // Map backend order status to stepper index (0-3)
-    // Step 0: Picked Up (placed, pickup_assigned, picked_up)
-    // Step 1: Cleaning (received_by_collection, submitted_to_services, services_in_progress)
-    // Step 2: Ready (services_completed, dispatch_assigned)
-    // Step 3: Delivered (out_for_delivery, payment_pending, delivered)
+    // Step 0: Placed
+    // Step 1: Picked Up
+    // Step 2: In Progress
+    // Step 3: Delivered
     
     final status = backendStatus.toLowerCase();
     
-    if (status == 'placed' || status == 'pickup_assigned' || status == 'picked_up') {
-      return 0; // Picked Up
-    } else if (status == 'received_by_collection' || 
-               status == 'submitted_to_services' || 
-               status == 'services_in_progress') {
-      return 1; // Cleaning
-    } else if (status == 'services_completed' || status == 'dispatch_assigned') {
-      return 2; // Ready
-    } else if (status == 'out_for_delivery' || 
-               status == 'payment_pending' || 
-               status == 'delivered' || 
-               status == 'closed') {
+    if (status == 'placed') {
+      return 0; // Placed
+    } else if (status == 'picked_up') {
+      return 1; // Picked Up
+    } else if (status == 'in_progress') {
+      return 2; // In Progress
+    } else if (status == 'delivered') {
       return 3; // Delivered
     }
     
-    // Default to step 1 for unknown statuses
-    return 1;
+    // Default to step 0 (placed) for unknown statuses
+    return 0;
   }
 
   String _formatEtaText(OrderRecord order) {
@@ -131,15 +142,20 @@ class _ActiveOrdersCarouselState extends State<ActiveOrdersCarousel> {
 
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 6),
-        child: ActiveOrderCard(
-          orderId: order.id,
-          activeStepIndex: stepIndex,
-          etaText: etaText,
-          onTrackNow: () => Navigator.of(context).pushNamed(
-            AppRoutes.orderTracking,
-            arguments: order.id,
+          child: ActiveOrderCard(
+            orderId: order.id,
+            activeStepIndex: stepIndex,
+            etaText: etaText,
+            onTrackNow: () => Navigator.of(context).pushNamed(
+              AppRoutes.orderTracking,
+              arguments: OrderTrackingArgs(
+                orderId: order.id,
+                pickupAddress: order.pickupAddress,
+                pickupLat: order.pickupLat,
+                pickupLng: order.pickupLng,
+              ),
+            ),
           ),
-        ),
       );
     }
 
@@ -148,33 +164,52 @@ class _ActiveOrdersCarouselState extends State<ActiveOrdersCarousel> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        SizedBox(
-          height: 165, // Match the actual card content height
-          child: PageView.builder(
-            controller: _controller,
-            itemCount: totalPages,
-            padEnds: true,
-            onPageChanged: (v) =>
-                setState(() => _index = v % widget.orders.length),
-            itemBuilder: (context, i) {
-              final order = widget.orders[i % widget.orders.length];
-              final stepIndex = _mapOrderStatusToStepIndex(order.backendStatus);
-              final etaText = _formatEtaText(order);
-              
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6),
-                child: ActiveOrderCard(
-                  orderId: order.id,
-                  activeStepIndex: stepIndex,
-                  etaText: etaText,
-                  onTrackNow: () => Navigator.of(context).pushNamed(
-                    AppRoutes.orderTracking,
-                    arguments: order.id,
-                  ),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final screenWidth = constraints.maxWidth;
+            return SizedBox(
+              height: 150, // Reduced height to make the active order card shorter
+              width: screenWidth, // Use exact width from constraints
+              child: ClipRect(
+                clipBehavior: Clip.hardEdge, // Hard clip to prevent any overflow
+                child: PageView.builder(
+                  controller: _controller,
+                  itemCount: totalPages,
+                  padEnds: false, // No padding at ends - one full card at a time
+                  physics: const PageScrollPhysics(), // Snap to pages
+                  clipBehavior: Clip.hardEdge, // Hard clip for PageView
+                  onPageChanged: (v) =>
+                      setState(() => _index = v % widget.orders.length),
+                  itemBuilder: (context, i) {
+                    final order = widget.orders[i % widget.orders.length];
+                    final stepIndex = _mapOrderStatusToStepIndex(order.backendStatus);
+                    final etaText = _formatEtaText(order);
+                    
+                    return SizedBox(
+                      width: screenWidth, // Exact width matching constraints
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        child: ActiveOrderCard(
+                          orderId: order.id,
+                          activeStepIndex: stepIndex,
+                          etaText: etaText,
+                          onTrackNow: () => Navigator.of(context).pushNamed(
+                            AppRoutes.orderTracking,
+                            arguments: OrderTrackingArgs(
+                              orderId: order.id,
+                              pickupAddress: order.pickupAddress,
+                              pickupLat: order.pickupLat,
+                              pickupLng: order.pickupLng,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
-              );
-            },
-          ),
+              ),
+            );
+          },
         ),
         if (widget.orders.length > 1)
           Padding(

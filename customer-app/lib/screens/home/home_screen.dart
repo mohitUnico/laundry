@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../routes/app_routes.dart';
 import '../../providers/auth_provider.dart';
@@ -15,6 +16,7 @@ import 'widgets/pro_clean_bottom_sheet.dart';
 import 'widgets/regular_wash_bottom_sheet.dart';
 import 'widgets/service_tile.dart';
 import '../../models/service_item.dart';
+import '../../utils/supabase_config.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -24,6 +26,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+  RealtimeChannel? _ordersChannel;
+
   @override
   void initState() {
     super.initState();
@@ -34,12 +38,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       context.read<ServiceCatalogProvider>().fetchServiceCategories(isActive: true, force: true);
       // Fetch active orders for the home screen
       _refreshActiveOrders();
+      _subscribeToOrdersRealtime();
     });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _ordersChannel?.unsubscribe();
     super.dispose();
   }
 
@@ -57,6 +63,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     // Fetch active orders (excludes delivered/closed orders)
     context.read<OrderProvider>().fetchOrders(status: 'active', limit: 10);
+  }
+
+  void _subscribeToOrdersRealtime() {
+    if (!SupabaseConfig.isEnabled) return;
+
+    try {
+      final client = Supabase.instance.client;
+      _ordersChannel = client
+          .channel('public:orders')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.update,
+            schema: 'public',
+            table: 'orders',
+            callback: (payload) {
+              // Whenever any order row updates, refresh active orders.
+              if (!mounted) return;
+              _refreshActiveOrders();
+            },
+          )
+          .subscribe();
+    } catch (_) {
+      // If Supabase isn't initialized or channel fails, ignore and rely on manual refresh.
+    }
   }
 
   String _pickCategoryName(
@@ -237,7 +266,8 @@ class _HomeContent extends StatelessWidget {
                 children: [
                   const SizedBox(height: 16),
                   ActiveOrdersCarousel(orders: activeOrders),
-                  const SizedBox(height: 20),
+                  // Tighter gap below active order card
+                  const SizedBox(height: 8),
                 ],
               );
             },

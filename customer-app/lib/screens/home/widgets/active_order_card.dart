@@ -17,7 +17,7 @@ class ActiveOrderCard extends StatelessWidget {
     this.onTrackNow,
   });
 
-  static const _steps = ['Picked Up', 'Cleaning', 'Ready', 'Delivered'];
+  static const _steps = ['Placed', 'Picked Up', 'In Progress', 'Delivered'];
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +25,8 @@ class ActiveOrderCard extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+      // Minimal bottom padding to avoid excess white space below Track Now
+      padding: const EdgeInsets.fromLTRB(18, 16, 16, 4),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(26),
@@ -41,6 +42,7 @@ class ActiveOrderCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center, // Center content vertically
         children: [
           Row(
             children: [
@@ -66,12 +68,13 @@ class ActiveOrderCard extends StatelessWidget {
               ),
             ],
           ),
+          // Space below the header row (Active Order + ID)
           const SizedBox(height: 14),
           _OrderStepper(
             activeIndex: clampedStep,
             labels: _steps,
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
@@ -129,15 +132,33 @@ class _OrderStepper extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 340),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
+            // Dots row with connecting lines
             Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 for (var i = 0; i < labels.length; i++) ...[
-                  _Dot(isActive: i <= activeIndex),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _Dot(isActive: i <= activeIndex),
+                      const SizedBox(height: 6),
+                      Text(
+                        labels[i],
+                        textAlign: TextAlign.center,
+                        style: AppTextStyles.body(
+                          color: i <= activeIndex
+                              ? HomeColors.primary
+                              : const Color(0xFF9AA3B2),
+                        ).copyWith(fontSize: 12),
+                      ),
+                    ],
+                  ),
                   if (i != labels.length - 1)
                     Expanded(
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        padding: const EdgeInsets.only(bottom: 9), // Align line with dot center
                         child: Container(
                           height: 4,
                           decoration: BoxDecoration(
@@ -150,23 +171,6 @@ class _OrderStepper extends StatelessWidget {
                       ),
                     ),
                 ],
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                for (var i = 0; i < labels.length; i++)
-                  Expanded(
-                    child: Text(
-                      labels[i],
-                      textAlign: TextAlign.center,
-                      style: AppTextStyles.body(
-                        color: i <= activeIndex
-                            ? HomeColors.primary
-                            : const Color(0xFF9AA3B2),
-                      ).copyWith(fontSize: 12),
-                    ),
-                  ),
               ],
             ),
           ],

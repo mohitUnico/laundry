@@ -98,9 +98,12 @@ class OrderProvider with ChangeNotifier {
   OrderRecord? _mapBackendOrderToOrderRecord(Map<String, dynamic> data) {
     try {
       final orderId = (data['order_id'] ?? '') as String;
-      final orderStatus = (data['order_status'] ?? '') as String;
+      final orderStatusRaw = (data['order_status'] ?? '') as String;
+      // Default to "placed" if status is empty or null
+      final orderStatus = orderStatusRaw.isEmpty ? 'placed' : orderStatusRaw;
       final createdAt = data['created_at'] as String?;
       final pickupDate = data['pickup_date'] as String?;
+      final pickupAddressMap = data['pickup_address'] as Map<String, dynamic>?;
       final totalAmount = (data['total_amount'] ?? '0') as String;
       final items = (data['items'] as List?) ?? [];
       final bill = data['bill'] as Map<String, dynamic>?;
@@ -279,6 +282,18 @@ class OrderProvider with ChangeNotifier {
       // Calculate total amount
       final totalInr = (double.tryParse(totalAmount) ?? 0.0).toInt();
 
+      // Pickup address (for tracking)
+      String? pickupAddress;
+      double? pickupLat;
+      double? pickupLng;
+      if (pickupAddressMap != null) {
+        pickupAddress = (pickupAddressMap['full_address'] ?? '') as String;
+        final lat = pickupAddressMap['latitude'];
+        final lng = pickupAddressMap['longitude'];
+        if (lat is num) pickupLat = lat.toDouble();
+        if (lng is num) pickupLng = lng.toDouble();
+      }
+
       return OrderRecord(
         id: orderId,
         title: title ?? (cartItems.length == 1 ? cartItems.first.category : 'Mixed'),
@@ -293,6 +308,9 @@ class OrderProvider with ChangeNotifier {
         status: status,
         backendStatus: orderStatus, // Store original backend status string
         paymentMethod: paymentMethod,
+        pickupAddress: pickupAddress,
+        pickupLat: pickupLat,
+        pickupLng: pickupLng,
       );
     } catch (e) {
       debugPrint('Error mapping order: $e');

@@ -8,4 +8,18 @@ class SignupArgs {
   });
 }
 
+class OrderTrackingArgs {
+  final String orderId;
+  final String? pickupAddress;
+  final double? pickupLat;
+  final double? pickupLng;
+
+  const OrderTrackingArgs({
+    required this.orderId,
+    this.pickupAddress,
+    this.pickupLat,
+    this.pickupLng,
+  });
+}
+
 

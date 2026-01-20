@@ -49,21 +49,99 @@ class _SelectLocationScreenState extends State<SelectLocationScreen> {
   Future<void> _handleAddNewAddress() async {
     final result = await Navigator.of(context).pushNamed(AppRoutes.mapPicker);
     if (result != null && mounted) {
-      // Refresh addresses after adding new one
-      _loadAddresses();
+      // Navigate to address form with location data
+      final locationData = result as Map<String, dynamic>;
+      final formResult = await Navigator.of(context).pushNamed(
+        AppRoutes.addressForm,
+        arguments: locationData,
+      );
+      if (formResult == true && mounted) {
+        // Refresh addresses after adding new one
+        _loadAddresses();
+      }
     }
   }
 
   Future<void> _handleUseCurrentLocation() async {
     final result = await Navigator.of(context).pushNamed(AppRoutes.mapPicker);
     if (result != null && mounted) {
-      // Refresh addresses after adding new one
-      _loadAddresses();
+      // Navigate to address form with location data
+      final locationData = result as Map<String, dynamic>;
+      final formResult = await Navigator.of(context).pushNamed(
+        AppRoutes.addressForm,
+        arguments: locationData,
+      );
+      if (formResult == true && mounted) {
+        // Refresh addresses after adding new one
+        _loadAddresses();
+      }
     }
   }
 
   void _handleAddressSelected(CustomerAddress address) {
     Navigator.of(context).pop(address);
+  }
+
+  Future<void> _handleEditAddress(CustomerAddress address) async {
+    final result = await Navigator.of(context).pushNamed(
+      AppRoutes.addressForm,
+      arguments: {
+        'addressId': address.addressId,
+        'addressLabel': address.addressLabel,
+        'fullAddress': address.fullAddress,
+        'latitude': address.latitude,
+        'longitude': address.longitude,
+        'deliveryNote': address.deliveryNote,
+        'isDefault': address.isDefault,
+        'isEdit': true,
+      },
+    );
+    if (result == true && mounted) {
+      // Refresh addresses after editing
+      _loadAddresses();
+    }
+  }
+
+  Future<void> _handleDeleteAddress(CustomerAddress address) async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Address'),
+        content: Text('Are you sure you want to delete "${address.addressLabel}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await _customerInfoService.deleteAddress(address.addressId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Address deleted successfully')),
+        );
+        _loadAddresses();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete address: ${e.toString()}')),
+        );
+      }
+    }
   }
 
   @override
@@ -144,13 +222,8 @@ class _SelectLocationScreenState extends State<SelectLocationScreen> {
                               child: _SavedAddressTile(
                                 address: address,
                                 onTap: () => _handleAddressSelected(address),
-                                onEdit: () {
-                                  // TODO: Implement edit functionality
-                                },
-                                onDelete: () async {
-                                  // TODO: Implement delete functionality
-                                  _loadAddresses();
-                                },
+                                onEdit: () => _handleEditAddress(address),
+                                onDelete: () => _handleDeleteAddress(address),
                               ),
                             )),
                       const SizedBox(height: 22),

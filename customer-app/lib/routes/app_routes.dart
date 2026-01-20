@@ -25,6 +25,10 @@ import '../screens/orders/order_successful_screen.dart';
 import '../screens/home/widgets/regular_wash_bottom_sheet.dart';
 import '../screens/notifications/notifications_screen.dart';
 import '../screens/profile/payment_methods_screen.dart';
+import '../screens/profile/favorites_screen.dart';
+import '../screens/profile/help_center_screen.dart';
+import '../screens/profile/terms_conditions_screen.dart';
+import '../screens/profile/privacy_policy_screen.dart';
 
 class AppRoutes {
   static const String bootstrap = '/';
@@ -59,6 +63,10 @@ class AppRoutes {
   static const String orderSuccessful = '/order-successful';
   static const String notifications = '/notifications';
   static const String paymentMethods = '/profile/payment-methods';
+  static const String favorites = '/profile/favorites';
+  static const String helpCenter = '/profile/help-center';
+  static const String termsConditions = '/profile/terms-conditions';
+  static const String privacyPolicy = '/profile/privacy-policy';
 
   static Map<String, WidgetBuilder> get routes {
     return {
@@ -148,6 +156,10 @@ class AppRoutes {
       orderSuccessful: (context) => const OrderSuccessfulScreen(),
       notifications: (context) => const NotificationsScreen(),
       paymentMethods: (context) => const PaymentMethodsScreen(),
+      favorites: (context) => const FavoritesScreen(),
+      helpCenter: (context) => const HelpCenterScreen(),
+      termsConditions: (context) => const TermsConditionsScreen(),
+      privacyPolicy: (context) => const PrivacyPolicyScreen(),
     };
   }
 }

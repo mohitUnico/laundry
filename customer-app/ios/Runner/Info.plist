@@ -53,5 +53,12 @@
 	<string>We need access to your location to help delivery partners find you easily.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>We need access to your location to help delivery partners find you easily.</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>whatsapp</string>
+		<string>mailto</string>
+		<string>tel</string>
+		<string>https</string>
+	</array>
 </dict>
 </plist>

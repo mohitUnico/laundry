@@ -105,14 +105,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   iconColor: HomeColors.primary,
                   title: 'Notifications',
                   subtitle: 'Push, email, SMS preferences',
-                  onTap: () {},
+                  onTap: () =>
+                      Navigator.of(context).pushNamed(AppRoutes.notifications),
                 ),
                 _SettingsItem(
                   icon: Icons.favorite_border_rounded,
                   iconColor: HomeColors.primary,
                   title: 'Favorites',
                   subtitle: 'Your preferred services',
-                  onTap: () {},
+                  onTap: () =>
+                      Navigator.of(context).pushNamed(AppRoutes.favorites),
                 ),
               ],
             ),
@@ -126,21 +128,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   iconColor: const Color(0xFFFF9C6A),
                   title: 'Help Center',
                   subtitle: 'FAQs and support',
-                  onTap: () {},
+                  onTap: () =>
+                      Navigator.of(context).pushNamed(AppRoutes.helpCenter),
                 ),
                 _SettingsItem(
                   icon: Icons.description_outlined,
                   iconColor: const Color(0xFFFF9C6A),
                   title: 'Terms & Conditions',
                   subtitle: 'Legal information',
-                  onTap: () {},
+                  onTap: () =>
+                      Navigator.of(context).pushNamed(AppRoutes.termsConditions),
                 ),
                 _SettingsItem(
                   icon: Icons.privacy_tip_outlined,
                   iconColor: const Color(0xFFFF9C6A),
                   title: 'Privacy Policy',
                   subtitle: 'How we protect your data',
-                  onTap: () {},
+                  onTap: () =>
+                      Navigator.of(context).pushNamed(AppRoutes.privacyPolicy),
                 ),
                 _SettingsItem(
                   icon: Icons.settings_outlined,

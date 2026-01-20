@@ -317,19 +317,17 @@ exports.createOrder = async (customerId, payload) => {
             });
             createdOrderItems.push(orderItem);
 
-            // Create order item selections for per_unit items
-            if (orderItem.pricing_type === 'per_unit') {
-                // Find the corresponding selections for this cart item
-                const cartItem = cart.cart_items[i];
-                if (cartItem.item_selections && cartItem.item_selections.length > 0) {
-                    await tx.orderItemSelection.createMany({
-                        data: cartItem.item_selections.map((selection) => ({
-                            order_item_id: orderItem.item_id,
-                            cloth_id: selection.cloth_id,
-                            quantity: selection.quantity,
-                        })),
-                    });
-                }
+            // Create order item selections for both per_unit and per_kg items
+            // Both can have selections (cloth items) that need to be preserved
+            const cartItem = cart.cart_items[i];
+            if (cartItem.item_selections && cartItem.item_selections.length > 0) {
+                await tx.orderItemSelection.createMany({
+                    data: cartItem.item_selections.map((selection) => ({
+                        order_item_id: orderItem.item_id,
+                        cloth_id: selection.cloth_id,
+                        quantity: selection.quantity,
+                    })),
+                });
             }
         }
 
@@ -542,6 +540,18 @@ exports.getCustomerOrders = async (customerId, query = {}) => {
                         pricing_type: true,
                         quantity: true,
                         weight_kg: true,
+                        service: {
+                            select: {
+                                service_id: true,
+                                service_name: true,
+                                category: {
+                                    select: {
+                                        category_id: true,
+                                        category_name: true,
+                                    },
+                                },
+                            },
+                        },
                         item_selections: {
                             select: {
                                 selection_id: true,
@@ -596,22 +606,34 @@ exports.getCustomerOrders = async (customerId, query = {}) => {
             created_at: order.created_at,
             updated_at: order.updated_at,
             items_count: order.order_items.length,
-            items: order.order_items.map((item) => ({
-                item_id: item.item_id,
-                pricing_type: item.pricing_type,
-                quantity: item.quantity,
-                weight_kg: item.weight_kg?.toString() || null,
-                selections: (item.item_selections || []).map((sel) => ({
+            items: order.order_items.map((item) => {
+                // Get service info from order_item.service (fallback) or from first selection
+                const serviceFromItem = item.service;
+                const serviceNameFromItem = serviceFromItem?.service_name || '';
+                const categoryNameFromItem = serviceFromItem?.category?.category_name || '';
+                
+                // Map selections, using service info from item as fallback
+                const selections = (item.item_selections || []).map((sel) => ({
                     selection_id: sel.selection_id,
                     quantity: sel.quantity,
                     cloth_name: sel.cloth_item?.item_name || '',
-                    service_name: sel.cloth_item?.service?.service_name || '',
-                    category_name: sel.cloth_item?.service?.category?.category_name || '',
+                    service_name: sel.cloth_item?.service?.service_name || serviceNameFromItem,
+                    category_name: sel.cloth_item?.service?.category?.category_name || categoryNameFromItem,
                     per_unit_price: sel.cloth_item?.per_unit_price
                         ? sel.cloth_item.per_unit_price.toString()
                         : null,
-                })),
-            })),
+                }));
+                
+                return {
+                    item_id: item.item_id,
+                    pricing_type: item.pricing_type,
+                    quantity: item.quantity,
+                    weight_kg: item.weight_kg?.toString() || null,
+                    service_name: serviceNameFromItem, // Include service name at item level
+                    category_name: categoryNameFromItem, // Include category name at item level
+                    selections: selections,
+                };
+            }),
             bill: order.bill ? {
                 bill_id: order.bill.bill_id,
                 final_amount: order.bill.final_amount.toString(),

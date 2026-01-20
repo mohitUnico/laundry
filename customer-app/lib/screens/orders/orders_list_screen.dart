@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -25,19 +26,43 @@ class OrdersListScreen extends StatefulWidget {
   State<OrdersListScreen> createState() => _OrdersListScreenState();
 }
 
-class _OrdersListScreenState extends State<OrdersListScreen> {
+class _OrdersListScreenState extends State<OrdersListScreen> with WidgetsBindingObserver {
   _OrdersFilter _filter = _OrdersFilter.all;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Fetch orders from backend when screen loads
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _fetchOrders();
     });
   }
 
-  void _fetchOrders() {
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Refresh orders when app comes back to foreground
+    // This ensures orders are up-to-date after returning from notification panel or background
+    if (state == AppLifecycleState.resumed && mounted) {
+      // Add a small delay to ensure app is fully resumed
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted) {
+          _fetchOrders();
+        }
+      });
+    }
+  }
+
+  Future<void> _fetchOrders() async {
+    if (!mounted) return;
+    
     final orderProvider = context.read<OrderProvider>();
     String? status;
     // For "all" filter, fetch without status (gets all orders)
@@ -49,7 +74,13 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
       status = 'completed'; // Backend will fetch delivered and closed orders
     }
     // For "all", status is null - fetches all orders
-    orderProvider.fetchOrders(page: 1, limit: 10, status: status);
+    try {
+      await orderProvider.fetchOrders(page: 1, limit: 10, status: status);
+    } catch (e) {
+      // Error is already handled in OrderProvider
+      // Orders will be preserved if fetch fails
+      debugPrint('Failed to fetch orders: $e');
+    }
   }
 
   List<OrderRecord> _filteredOrders(List<OrderRecord> orders) {
@@ -110,59 +141,73 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
                 },
               ),
               Expanded(
-                child: Consumer<OrderProvider>(
-                  builder: (context, orders, _) {
-                    if (orders.isLoading) {
-                      return const Center(
-                        child: CircularProgressIndicator(),
-                      );
-                    }
+                child: RefreshIndicator(
+                  onRefresh: () async {
+                    await _fetchOrders();
+                  },
+                  child: Consumer<OrderProvider>(
+                    builder: (context, orders, _) {
+                      if (orders.isLoading && orders.orders.isEmpty) {
+                        return const Center(
+                          child: CircularProgressIndicator(),
+                        );
+                      }
 
-                    if (orders.error != null) {
-                      return Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
+                      if (orders.error != null && orders.orders.isEmpty) {
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                'Failed to load orders',
+                                style: AppTextStyles.body(color: const Color(0xFF98A0B5))
+                                    .copyWith(fontSize: 13),
+                              ),
+                              const SizedBox(height: 8),
+                              TextButton(
+                                onPressed: _fetchOrders,
+                                child: const Text('Retry'),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      final list = _filteredOrders(orders.orders);
+                      if (list.isEmpty) {
+                        // Return scrollable widget for RefreshIndicator to work
+                        return ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
                           children: [
-                            Text(
-                              'Failed to load orders',
-                              style: AppTextStyles.body(color: const Color(0xFF98A0B5))
-                                  .copyWith(fontSize: 13),
-                            ),
-                            const SizedBox(height: 8),
-                            TextButton(
-                              onPressed: _fetchOrders,
-                              child: const Text('Retry'),
+                            SizedBox(
+                              height: MediaQuery.of(context).size.height * 0.3,
+                              child: Center(
+                                child: Text(
+                                  'No orders yet',
+                                  style: AppTextStyles.body(color: const Color(0xFF98A0B5))
+                                      .copyWith(fontSize: 13),
+                                ),
+                              ),
                             ),
                           ],
-                        ),
-                      );
-                    }
-
-                    final list = _filteredOrders(orders.orders);
-                    if (list.isEmpty) {
-                      return Center(
-                        child: Text(
-                          'No orders yet',
-                          style: AppTextStyles.body(color: const Color(0xFF98A0B5))
-                              .copyWith(fontSize: 13),
-                        ),
-                      );
-                    }
-
-                    return ListView.separated(
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.only(bottom: 16),
-                      itemCount: list.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                        final order = list[index];
-                    return _OrderCard(
-                      data: order,
-                          onViewDetails: () => _showOrderDetailsDialog(context, order),
                         );
-                      },
-                    );
-                  },
+                      }
+
+                      return ListView.separated(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.only(bottom: 16),
+                        itemCount: list.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
+                          final order = list[index];
+                          return _OrderCard(
+                            data: order,
+                            onViewDetails: () => _showOrderDetailsDialog(context, order),
+                          );
+                        },
+                      );
+                    },
+                  ),
                 ),
               ),
             ],

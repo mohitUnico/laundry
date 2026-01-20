@@ -46,17 +46,26 @@ class OrderProvider with ChangeNotifier {
       final result = await _repo.getOrders(page: page, limit: limit, status: status);
       final ordersList = (result['orders'] as List?) ?? [];
       
-      _orders.clear();
+      // Only clear orders if fetch was successful
+      // This prevents clearing orders if there's a network issue or error
+      final newOrders = <OrderRecord>[];
       for (final orderData in ordersList) {
         final order = _mapBackendOrderToOrderRecord(orderData as Map<String, dynamic>);
         if (order != null) {
-          _orders.add(order);
+          newOrders.add(order);
         }
       }
+      
+      // Update orders list only if we got valid data
+      // If newOrders is empty but fetch succeeded, it means there are no orders (not an error)
+      _orders.clear();
+      _orders.addAll(newOrders);
       _error = null;
     } catch (e) {
       _error = e.toString();
-      // Keep existing orders on error
+      // Keep existing orders on error - don't clear them
+      // This ensures UI doesn't show "no orders" when there's a network issue
+      debugPrint('Error fetching orders: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -175,23 +184,59 @@ class OrderProvider with ChangeNotifier {
             );
           }
         } else {
-          // Per-kg items
-          final serviceName = selections.isNotEmpty
-              ? (selections.first as Map<String, dynamic>)['service_name'] as String?
-              : 'Service';
+          // Per-kg items - extract quantities from selections (similar to cart)
+          final quantities = <String, int>{};
+          final clothIdByItemName = <String, String>{};
+          
+          // Get service name and category from item level (fallback) or from selections
+          final serviceNameFromItem = item['service_name'] as String?;
+          final categoryNameFromItem = item['category_name'] as String?;
+          
+          // Extract service name and category from first selection (preferred)
+          String? serviceName;
+          String? finalCategoryName = categoryName;
+          
+          for (final sel in selections) {
+            final selection = sel as Map<String, dynamic>;
+            final clothName = (selection['cloth_name'] ?? '') as String;
+            final qty = (selection['quantity'] ?? 0) as int;
+            
+            // Extract service name and category from first valid selection
+            if (serviceName == null && clothName.isNotEmpty) {
+              serviceName = selection['service_name'] as String?;
+              finalCategoryName = selection['category_name'] as String? ?? categoryName;
+            }
+            
+            // Aggregate quantities by cloth name
+            if (clothName.isNotEmpty && qty > 0) {
+              quantities[clothName] = (quantities[clothName] ?? 0) + qty;
+              totalItems += qty;
+            }
+          }
+          
+          // Use service name from selections first, then from item level, then fallback
+          final finalServiceName = serviceName ?? serviceNameFromItem ?? 'Service';
+          final finalCategory = finalCategoryName ?? categoryNameFromItem ?? categoryName ?? 'Unknown';
+          
+          // Always add the item, even if quantities are empty (for display purposes)
+          // This ensures service name and category are shown
           cartItems.add(
             CartItem(
               id: (item['item_id'] ?? '') as String,
-              category: categoryName ?? 'Unknown',
-              serviceName: serviceName ?? 'Service',
-              quantities: const {},
+              category: finalCategory,
+              serviceName: finalServiceName,
+              quantities: quantities, // Include quantities for kg-wise items to show cloth items
+              clothIdByItemName: clothIdByItemName,
               isPerPiece: false,
               weightKg: (item['weight_kg'] as String?) != null
                   ? double.tryParse(item['weight_kg'] as String)
                   : null,
             ),
           );
-          totalItems += 1;
+          // If no quantities, count as 1 item
+          if (quantities.isEmpty) {
+            totalItems += 1;
+          }
         }
       }
 

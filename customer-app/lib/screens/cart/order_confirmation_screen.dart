@@ -409,102 +409,363 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
                             ],
                           ),
                           const SizedBox(height: 16),
-                          // Per-Piece Items
+                          // Per-Piece Items Section
                           if (perPieceItems.isNotEmpty) ...[
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.check_circle_outline,
+                                    size: 18,
+                                    color: HomeColors.primary,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Per-Piece Items',
+                                    style: AppTextStyles.header(color: HomeColors.text)
+                                        .copyWith(fontSize: 14, fontWeight: FontWeight.w600),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 12),
                             if (perPieceByCategory.isNotEmpty) ...[
                               for (final categoryEntry in perPieceByCategory.entries) ...[
-                                Text(
-                                  categoryEntry.key,
-                                  style: AppTextStyles.header(color: HomeColors.text)
-                                      .copyWith(fontSize: 14, fontWeight: FontWeight.w600),
+                                // Category Header
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: HomeColors.primary.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.category_outlined,
+                                        size: 16,
+                                        color: HomeColors.primary,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        categoryEntry.key,
+                                        style: AppTextStyles.header(color: HomeColors.text)
+                                            .copyWith(fontSize: 13, fontWeight: FontWeight.w600),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                                const SizedBox(height: 8),
+                                const SizedBox(height: 10),
+                                // Service Items
                                 for (final item in categoryEntry.value) ...[
-                                  Padding(
-                                    padding: const EdgeInsets.only(left: 12),
+                                  Container(
+                                    margin: const EdgeInsets.only(bottom: 10),
+                                    padding: const EdgeInsets.all(14),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(
+                                        color: HomeColors.borderSoft,
+                                        width: 1,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: HomeColors.primary.withValues(alpha: 0.03),
+                                          blurRadius: 4,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text(
-                                          item.serviceName.isNotEmpty
-                                              ? item.serviceName
-                                              : 'Service',
-                                          style: AppTextStyles.body(color: HomeColors.text)
-                                              .copyWith(fontSize: 13, fontWeight: FontWeight.w600),
-                                        ),
-                                        const SizedBox(height: 6),
-                                        if (item.quantities.isNotEmpty) ...[
-                                          for (final qtyEntry in item.quantities.entries) ...[
-                                            Padding(
-                                              padding: const EdgeInsets.only(left: 12),
-                                              child: Text(
-                                                '${qtyEntry.key} - ${qtyEntry.value}',
-                                                style: AppTextStyles.body(color: HomeColors.muted)
-                                                    .copyWith(fontSize: 12),
+                                        // Service Name
+                                        Row(
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.all(6),
+                                              decoration: BoxDecoration(
+                                                color: HomeColors.primary.withValues(alpha: 0.1),
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: Icon(
+                                                Icons.local_laundry_service_rounded,
+                                                size: 16,
+                                                color: HomeColors.primary,
                                               ),
                                             ),
-                                            const SizedBox(height: 4),
+                                            const SizedBox(width: 10),
+                                            Expanded(
+                                              child: Text(
+                                                item.serviceName.isNotEmpty
+                                                    ? item.serviceName
+                                                    : 'Service',
+                                                style: AppTextStyles.body(color: HomeColors.text)
+                                                    .copyWith(
+                                                      fontSize: 14,
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
+                                              ),
+                                            ),
                                           ],
+                                        ),
+                                        const SizedBox(height: 12),
+                                        // Cloth Items List
+                                        if (item.quantities.isNotEmpty) ...[
+                                          Container(
+                                            padding: const EdgeInsets.all(10),
+                                            decoration: BoxDecoration(
+                                              color: HomeColors.background,
+                                              borderRadius: BorderRadius.circular(10),
+                                            ),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                for (final qtyEntry in item.quantities.entries) ...[
+                                                  Padding(
+                                                    padding: const EdgeInsets.symmetric(vertical: 4),
+                                                    child: Row(
+                                                      children: [
+                                                        Container(
+                                                          width: 6,
+                                                          height: 6,
+                                                          decoration: BoxDecoration(
+                                                            color: HomeColors.primary,
+                                                            shape: BoxShape.circle,
+                                                          ),
+                                                        ),
+                                                        const SizedBox(width: 10),
+                                                        Expanded(
+                                                          child: Text(
+                                                            qtyEntry.key,
+                                                            style: AppTextStyles.body(
+                                                              color: HomeColors.text,
+                                                            ).copyWith(fontSize: 13),
+                                                          ),
+                                                        ),
+                                                        Container(
+                                                          padding: const EdgeInsets.symmetric(
+                                                            horizontal: 8,
+                                                            vertical: 4,
+                                                          ),
+                                                          decoration: BoxDecoration(
+                                                            color: HomeColors.primary.withValues(alpha: 0.1),
+                                                            borderRadius: BorderRadius.circular(6),
+                                                          ),
+                                                          child: Text(
+                                                            'Qty: ${qtyEntry.value}',
+                                                            style: AppTextStyles.body(
+                                                              color: HomeColors.primary,
+                                                            ).copyWith(
+                                                              fontSize: 11,
+                                                              fontWeight: FontWeight.w600,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+                                          ),
                                         ],
-                                        const SizedBox(height: 8),
                                       ],
                                     ),
                                   ),
                                 ],
                                 if (categoryEntry != perPieceByCategory.entries.last ||
                                     kgWiseItems.isNotEmpty)
-                                  const SizedBox(height: 12),
+                                  const SizedBox(height: 16),
                               ],
                             ],
                           ],
-                          // Kg-Wise Items
+                          // Kg-Wise Items Section
                           if (kgWiseItems.isNotEmpty) ...[
                             if (perPieceItems.isNotEmpty) ...[
+                              const SizedBox(height: 12),
                               const Divider(height: 1, thickness: 1, color: HomeColors.borderSoft),
                               const SizedBox(height: 12),
                             ],
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.scale_outlined,
+                                    size: 18,
+                                    color: HomeColors.primary,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Kg-Wise Items',
+                                    style: AppTextStyles.header(color: HomeColors.text)
+                                        .copyWith(fontSize: 14, fontWeight: FontWeight.w600),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFEF3C7),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: const Color(0xFFFCD34D)),
+                                    ),
+                                    child: Text(
+                                      'Price after supervision',
+                                      style: AppTextStyles.body(color: const Color(0xFF92400E))
+                                          .copyWith(fontSize: 10),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 12),
                             if (kgWiseByCategory.isNotEmpty) ...[
                               for (final categoryEntry in kgWiseByCategory.entries) ...[
-                                Text(
-                                  categoryEntry.key,
-                                  style: AppTextStyles.header(color: HomeColors.text)
-                                      .copyWith(fontSize: 14, fontWeight: FontWeight.w600),
+                                // Category Header
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFFEDD5),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.category_outlined,
+                                        size: 16,
+                                        color: const Color(0xFFF97316),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        categoryEntry.key,
+                                        style: AppTextStyles.header(color: HomeColors.text)
+                                            .copyWith(fontSize: 13, fontWeight: FontWeight.w600),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                                const SizedBox(height: 8),
+                                const SizedBox(height: 10),
+                                // Service Items
                                 for (final item in categoryEntry.value) ...[
-                                  Padding(
-                                    padding: const EdgeInsets.only(left: 12),
+                                  Container(
+                                    margin: const EdgeInsets.only(bottom: 10),
+                                    padding: const EdgeInsets.all(14),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(
+                                        color: const Color(0xFFFFEDD5),
+                                        width: 1.5,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: const Color(0xFFFFEDD5).withValues(alpha: 0.3),
+                                          blurRadius: 4,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text(
-                                          item.serviceName.isNotEmpty
-                                              ? item.serviceName
-                                              : 'Service',
-                                          style: AppTextStyles.body(color: HomeColors.text)
-                                              .copyWith(fontSize: 13, fontWeight: FontWeight.w600),
-                                        ),
-                                        const SizedBox(height: 6),
-                                        if (item.quantities.isNotEmpty) ...[
-                                          for (final qtyEntry in item.quantities.entries) ...[
-                                            Padding(
-                                              padding: const EdgeInsets.only(left: 12),
-                                              child: Text(
-                                                '${qtyEntry.key} - ${qtyEntry.value}',
-                                                style: AppTextStyles.body(color: HomeColors.muted)
-                                                    .copyWith(fontSize: 12),
+                                        // Service Name
+                                        Row(
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.all(6),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFFFEDD5),
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: const Icon(
+                                                Icons.scale_outlined,
+                                                size: 16,
+                                                color: Color(0xFFF97316),
                                               ),
                                             ),
-                                            const SizedBox(height: 4),
+                                            const SizedBox(width: 10),
+                                            Expanded(
+                                              child: Text(
+                                                item.serviceName.isNotEmpty
+                                                    ? item.serviceName
+                                                    : 'Service',
+                                                style: AppTextStyles.body(color: HomeColors.text)
+                                                    .copyWith(
+                                                      fontSize: 14,
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
+                                              ),
+                                            ),
                                           ],
+                                        ),
+                                        const SizedBox(height: 12),
+                                        // Cloth Items List
+                                        if (item.quantities.isNotEmpty) ...[
+                                          Container(
+                                            padding: const EdgeInsets.all(10),
+                                            decoration: BoxDecoration(
+                                              color: HomeColors.background,
+                                              borderRadius: BorderRadius.circular(10),
+                                            ),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                for (final qtyEntry in item.quantities.entries) ...[
+                                                  Padding(
+                                                    padding: const EdgeInsets.symmetric(vertical: 4),
+                                                    child: Row(
+                                                      children: [
+                                                        Container(
+                                                          width: 6,
+                                                          height: 6,
+                                                          decoration: const BoxDecoration(
+                                                            color: Color(0xFFF97316),
+                                                            shape: BoxShape.circle,
+                                                          ),
+                                                        ),
+                                                        const SizedBox(width: 10),
+                                                        Expanded(
+                                                          child: Text(
+                                                            qtyEntry.key,
+                                                            style: AppTextStyles.body(
+                                                              color: HomeColors.text,
+                                                            ).copyWith(fontSize: 13),
+                                                          ),
+                                                        ),
+                                                        Container(
+                                                          padding: const EdgeInsets.symmetric(
+                                                            horizontal: 8,
+                                                            vertical: 4,
+                                                          ),
+                                                          decoration: BoxDecoration(
+                                                            color: const Color(0xFFFFEDD5),
+                                                            borderRadius: BorderRadius.circular(6),
+                                                          ),
+                                                          child: Text(
+                                                            'Qty: ${qtyEntry.value}',
+                                                            style: AppTextStyles.body(
+                                                              color: const Color(0xFFF97316),
+                                                            ).copyWith(
+                                                              fontSize: 11,
+                                                              fontWeight: FontWeight.w600,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+                                          ),
                                         ],
-                                        const SizedBox(height: 8),
                                       ],
                                     ),
                                   ),
                                 ],
                                 if (categoryEntry != kgWiseByCategory.entries.last)
-                                  const SizedBox(height: 12),
+                                  const SizedBox(height: 16),
                               ],
                             ],
                           ],

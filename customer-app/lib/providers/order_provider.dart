@@ -9,6 +9,7 @@ class OrderProvider with ChangeNotifier {
   final OrderRepository _repo;
   bool _isLoading = false;
   String? _error;
+  bool _isFetching = false; // Prevent concurrent fetches
 
   OrderProvider({OrderRepository? repo}) : _repo = repo ?? OrderRepository();
 
@@ -38,6 +39,13 @@ class OrderProvider with ChangeNotifier {
   }
 
   Future<void> fetchOrders({int page = 1, int limit = 10, String? status}) async {
+    // Prevent concurrent fetches
+    if (_isFetching) {
+      debugPrint('Order fetch already in progress, skipping...');
+      return;
+    }
+
+    _isFetching = true;
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -56,10 +64,24 @@ class OrderProvider with ChangeNotifier {
         }
       }
       
-      // Update orders list only if we got valid data
-      // If newOrders is empty but fetch succeeded, it means there are no orders (not an error)
-      _orders.clear();
-      _orders.addAll(newOrders);
+      // Store previous orders count for validation
+      final hadPreviousOrders = _orders.isNotEmpty;
+      
+      // Only update orders list if we successfully fetched data
+      // If we get an empty response but previously had orders, it might be a temporary backend issue
+      // In that case, we'll keep the existing orders to prevent flickering "no orders" state
+      // However, if we explicitly get an empty response and never had orders, that's valid
+      if (newOrders.isNotEmpty || !hadPreviousOrders) {
+        // Only clear if we have new orders OR if we never had orders before
+        // This prevents clearing existing orders when backend returns empty due to timing issues
+        _orders.clear();
+        _orders.addAll(newOrders);
+      } else {
+        // If we had orders before but got empty response, log it but don't clear
+        // This handles cases where backend might return empty temporarily
+        debugPrint('Received empty orders list but had previous orders. Keeping existing orders to prevent flickering.');
+      }
+      
       _error = null;
     } catch (e) {
       _error = e.toString();
@@ -68,6 +90,7 @@ class OrderProvider with ChangeNotifier {
       debugPrint('Error fetching orders: $e');
     } finally {
       _isLoading = false;
+      _isFetching = false;
       notifyListeners();
     }
   }

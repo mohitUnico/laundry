@@ -143,56 +143,48 @@ class _ActiveOrdersCarouselState extends State<ActiveOrdersCarousel> {
       );
     }
 
-    final textScale = MediaQuery.textScalerOf(context).scale(1);
-    // Card height similar to ActiveOrderCard
-    final cardHeight = (180 * textScale).clamp(180.0, 220.0);
     final totalPages = widget.orders.length * _loopMultiplier;
 
-    return SizedBox(
-      height: cardHeight + 40, // content + container padding
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: PageView.builder(
-              controller: _controller,
-              itemCount: totalPages,
-              padEnds: true,
-              onPageChanged: (v) =>
-                  setState(() => _index = v % widget.orders.length),
-              itemBuilder: (context, i) {
-                final order = widget.orders[i % widget.orders.length];
-                final stepIndex = _mapOrderStatusToStepIndex(order.backendStatus);
-                final etaText = _formatEtaText(order);
-                
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  child: ActiveOrderCard(
-                    orderId: order.id,
-                    activeStepIndex: stepIndex,
-                    etaText: etaText,
-                    onTrackNow: () => Navigator.of(context).pushNamed(
-                      AppRoutes.orderTracking,
-                      arguments: order.id,
-                    ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          height: 165, // Match the actual card content height
+          child: PageView.builder(
+            controller: _controller,
+            itemCount: totalPages,
+            padEnds: true,
+            onPageChanged: (v) =>
+                setState(() => _index = v % widget.orders.length),
+            itemBuilder: (context, i) {
+              final order = widget.orders[i % widget.orders.length];
+              final stepIndex = _mapOrderStatusToStepIndex(order.backendStatus);
+              final etaText = _formatEtaText(order);
+              
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: ActiveOrderCard(
+                  orderId: order.id,
+                  activeStepIndex: stepIndex,
+                  etaText: etaText,
+                  onTrackNow: () => Navigator.of(context).pushNamed(
+                    AppRoutes.orderTracking,
+                    arguments: order.id,
                   ),
-                );
-              },
+                ),
+              );
+            },
+          ),
+        ),
+        if (widget.orders.length > 1)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: _Indicator(
+              currentIndex: _index,
+              count: widget.orders.length,
             ),
           ),
-          if (widget.orders.length > 1)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 10,
-              child: IgnorePointer(
-                child: _Indicator(
-                  currentIndex: _index,
-                  count: widget.orders.length,
-                ),
-              ),
-            ),
-        ],
-      ),
+      ],
     );
   }
 }

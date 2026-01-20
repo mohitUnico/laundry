@@ -64,6 +64,13 @@ class _OrdersListScreenState extends State<OrdersListScreen> with WidgetsBinding
     if (!mounted) return;
     
     final orderProvider = context.read<OrderProvider>();
+    
+    // Prevent rapid successive fetches
+    if (orderProvider.isLoading) {
+      debugPrint('Order fetch already in progress, skipping...');
+      return;
+    }
+    
     String? status;
     // For "all" filter, fetch without status (gets all orders)
     // For "active" filter, fetch with status=active (backend will filter out delivered/closed)

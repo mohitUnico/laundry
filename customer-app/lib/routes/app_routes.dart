@@ -30,6 +30,8 @@ import '../screens/profile/favorites_screen.dart';
 import '../screens/profile/help_center_screen.dart';
 import '../screens/profile/terms_conditions_screen.dart';
 import '../screens/profile/privacy_policy_screen.dart';
+import '../screens/location/map_picker_screen.dart';
+import '../screens/location/address_form_screen.dart';
 
 class AppRoutes {
   static const String bootstrap = '/';
@@ -69,6 +71,8 @@ class AppRoutes {
   static const String helpCenter = '/profile/help-center';
   static const String termsConditions = '/profile/terms-conditions';
   static const String privacyPolicy = '/profile/privacy-policy';
+  static const String mapPicker = '/location/map-picker';
+  static const String addressForm = '/location/address-form';
 
   static Map<String, WidgetBuilder> get routes {
     return {
@@ -163,6 +167,15 @@ class AppRoutes {
       helpCenter: (context) => const HelpCenterScreen(),
       termsConditions: (context) => const TermsConditionsScreen(),
       privacyPolicy: (context) => const PrivacyPolicyScreen(),
+      mapPicker: (context) {
+        final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+        return MapPickerScreen(
+          initialLatitude: args?['latitude'] as double?,
+          initialLongitude: args?['longitude'] as double?,
+          initialAddress: args?['address'] as String?,
+        );
+      },
+      addressForm: (context) => const AddressFormScreen(),
     };
   }
 }

@@ -3,8 +3,6 @@ generator client {
   binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
 }
 
-// Note: Using Prisma 6 syntax. The `url` property is required in Prisma 6.
-// Linter warnings about Prisma 7+ syntax can be ignored.
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
@@ -69,7 +67,6 @@ model Customer {
   addresses         CustomerAddress[]
   orders            Order[]
   carts             Cart[]
-  customer_reviews  CustomerReview[]
 
   @@map("customers")
 }
@@ -115,7 +112,6 @@ model DeliveryStaff {
   created_at           DateTime           @default(now())
   updated_at           DateTime           @updatedAt
   deliveries           Delivery[]
-  pickups              Pickup[]
 
   @@index([verification_status])
   @@index([is_verified_by_admin])
@@ -143,6 +139,12 @@ model Staff {
 
   service Service? @relation(fields: [service_id], references: [service_id])
 
+  // Orders received by staff (collection manager role)
+  orders_received Order[] @relation("ReceivedByStaff")
+
+  // Orders dispatched by staff (distribution manager role)
+  orders_dispatched Order[] @relation("DispatchedByStaff")
+
   // Service queue items assigned to staff (service man role)
   service_queue_items ServiceQueueItem[] @relation("ServiceQueueAssignedStaff")
 
@@ -160,15 +162,17 @@ enum StaffRole {
 // ==================== SERVICE CATALOG ====================
 
 model ServiceCategory {
-  category_id   String    @id @default(uuid())
-  category_name String    @db.VarChar(100)
-  description   String?
-  icon_url      String?   @db.VarChar(500)
-  display_order Int       @default(0)
-  is_active     Boolean   @default(true)
-  created_at    DateTime  @default(now())
-  updated_at    DateTime  @updatedAt
-  services      Service[]
+  category_id      String    @id @default(uuid())
+  category_name    String    @db.VarChar(100)
+  description      String?
+  icon_url         String?   @db.VarChar(500)
+  foreground_color String    @default("2841CF") @db.VarChar(6)
+  background_color String    @default("FFFFFF") @db.VarChar(6)
+  display_order    Int       @default(0)
+  is_active        Boolean   @default(true)
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+  services         Service[]
 
   @@map("service_categories")
 }
@@ -204,16 +208,17 @@ model Service {
 }
 
 model ClothesItem {
-  cloth_id       String   @id @default(uuid())
+  cloth_id       String      @id @default(uuid())
   service_id     String
-  item_name      String   @db.VarChar(100)
-  per_unit_price Decimal  @db.Decimal(10, 2)
-  icon_url       String?  @db.VarChar(500)
-  is_active      Boolean  @default(true)
-  display_order  Int      @default(0)
-  created_at     DateTime @default(now())
-  updated_at     DateTime @updatedAt
-  service        Service  @relation(fields: [service_id], references: [service_id])
+  item_name      String      @db.VarChar(100)
+  per_unit_price Decimal     @db.Decimal(10, 2)
+  icon_url       String?     @db.VarChar(500)
+  is_active      Boolean     @default(true)
+  display_order  Int         @default(0)
+  created_at     DateTime    @default(now())
+  updated_at     DateTime    @updatedAt
+  service        Service     @relation(fields: [service_id], references: [service_id])
+  order_items    OrderItem[]
 
   // Cart item selections
   cart_item_selections CartItemSelection[]
@@ -236,6 +241,7 @@ model Cart {
   updated_at  DateTime   @updatedAt
   customer    Customer   @relation(fields: [customer_id], references: [customer_id], onDelete: Cascade)
   cart_items  CartItem[]
+  orders      Order[]
 
   @@index([customer_id])
   @@map("carts")
@@ -279,48 +285,58 @@ model CartItemSelection {
 // ==================== ORDER MANAGEMENT ====================
 
 model Order {
-  order_id                     String          @id @default(uuid())
-  customer_id                  String
-  // Cart used to create this order (kept until confirmation; deleted on confirm_order)
-  source_cart_id               String?
-  order_status                 OrderStatus
-  pricing_model                PricingModel
-  order_type                   OrderType       @default(both)
-  // For orders containing any per_kg items, total_amount is unknown at creation time and will be calculated later.
-  total_amount                 Decimal?        @db.Decimal(10, 2)
-  pickup_address_id            String
-  delivery_address_id          String
-  preferred_pickup_slot_from   DateTime? // Preferred pickup slot start date and time
-  preferred_pickup_slot_to     DateTime? // Preferred pickup slot end date and time
-  preferred_delivery_slot_from DateTime? // Preferred delivery slot start date and time
-  preferred_delivery_slot_to   DateTime? // Preferred delivery slot end date and time
-  special_instructions         String?
-  billing_status               BillingStatus   @default(pending)
-  submitted_to_services_at     DateTime?
-  created_at                   DateTime        @default(now())
-  updated_at                   DateTime        @updatedAt
-  bill                         Bill?
-  delivery                     Delivery?
-  order_items                  OrderItem[]
-  customer_review_entry        CustomerReview?
-  customer                     Customer        @relation(fields: [customer_id], references: [customer_id])
-  delivery_address             CustomerAddress @relation("DeliveryAddress", fields: [delivery_address_id], references: [address_id])
-  pickup_address               CustomerAddress @relation("PickupAddress", fields: [pickup_address_id], references: [address_id])
+  order_id                              String          @id @default(uuid())
+  customer_id                           String
+  cart_id                               String?
+  order_status                          OrderStatus
+  pricing_model                         PricingModel
+  order_type                            OrderType       @default(both)
+  total_amount                          Decimal         @db.Decimal(10, 2)
+  pickup_address_id                     String
+  delivery_address_id                   String
+  pickup_date                           DateTime?
+  delivery_date                         DateTime?
+  special_instructions                  String?
+  customer_rating                       Decimal?        @db.Decimal(3, 2)
+  customer_review                       String?
+  billing_status                        BillingStatus   @default(pending)
+  // New workflow tracking fields
+  received_by_collection_manager_id     String?
+  received_at                           DateTime?
+  submitted_to_services_at              DateTime?
+  dispatched_by_distribution_manager_id String?
+  dispatched_at                         DateTime?
+  payment_confirmed_at                  DateTime?
+  created_at                            DateTime        @default(now())
+  updated_at                            DateTime        @updatedAt
+  bill                                  Bill?
+  delivery                              Delivery?
+  order_items                           OrderItem[]
+  cart                                  Cart?           @relation(fields: [cart_id], references: [cart_id])
+  customer                              Customer        @relation(fields: [customer_id], references: [customer_id])
+  delivery_address                      CustomerAddress @relation("DeliveryAddress", fields: [delivery_address_id], references: [address_id])
+  pickup_address                        CustomerAddress @relation("PickupAddress", fields: [pickup_address_id], references: [address_id])
+
+  // Staff who received the order (collection manager role)
+  received_by_manager Staff? @relation("ReceivedByStaff", fields: [received_by_collection_manager_id], references: [staff_id])
+
+  // Staff who dispatched the order (distribution manager role)
+  dispatched_by_manager Staff? @relation("DispatchedByStaff", fields: [dispatched_by_distribution_manager_id], references: [staff_id])
 
   // Service queue items for this order
   service_queue_items ServiceQueueItem[]
-  pickup              Pickup?
 
   @@index([customer_id])
-  @@index([source_cart_id])
   @@index([order_status])
   @@index([billing_status])
   @@index([created_at])
+  @@index([received_by_collection_manager_id])
+  @@index([dispatched_by_distribution_manager_id])
   @@map("orders")
 }
 
 enum OrderStatus {
-  draft // Order created but not confirmed yet
+  draft // Order draft created from cart (not yet confirmed)
   placed // Customer placed order
   pickup_assigned // Delivery partner assigned for pickup
   picked_up // Order picked up from customer
@@ -354,36 +370,38 @@ enum BillingStatus {
 }
 
 model OrderItem {
-  item_id           String               @id @default(uuid())
-  order_id          String
-  service_id        String
-  pricing_type      PricingModel // per_unit or per_kg
-  // For per_unit pricing: quantity is sum of selections
-  // For per_kg pricing: weight_kg is used
-  quantity          Int? // Total quantity for per_unit items (sum of selections)
-  weight_kg         Decimal?             @db.Decimal(10, 2) // For per_kg pricing
-  // Subtotal is:
-  // - per_unit: SUM(order_item_selections.subtotal)
-  // - per_kg: services.per_kg_price * weight_kg
-  subtotal          Decimal?             @db.Decimal(10, 2)
-  order_item_status OrderItemStatus      @default(assigned)
-  created_at        DateTime             @default(now())
-  updated_at        DateTime             @updatedAt
-  service           Service              @relation(fields: [service_id], references: [service_id])
-  order             Order                @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
+  item_id         String               @id @default(uuid())
+  order_id        String
+  service_id      String
+  pricing_type    PricingModel // per_unit or per_kg
+  // For per_unit pricing: clothes_id is required, quantity is sum of selections
+  // For per_kg pricing: clothes_id is null, weight_kg is used
+  clothes_id      String?
+  quantity        Int? // Total quantity for per_unit items (sum of selections)
+  weight_kg       Decimal?             @db.Decimal(10, 2) // For per_kg pricing
+  unit_price      Decimal              @db.Decimal(10, 2) // Price per unit or per kg
+  subtotal        Decimal              @db.Decimal(10, 2)
+  item_status     OrderItemStatus      @default(pending)
+  assigned_at     DateTime?
+  completed_at    DateTime?
+  created_at      DateTime             @default(now())
+  updated_at      DateTime             @updatedAt
+  clothes         ClothesItem?         @relation(fields: [clothes_id], references: [cloth_id])
+  service         Service              @relation(fields: [service_id], references: [service_id])
+  order           Order                @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
   // Individual cloth item selections (for per_unit pricing)
-  item_selections   OrderItemSelection[]
+  item_selections OrderItemSelection[]
 
   @@index([order_id])
   @@index([service_id])
-  @@index([order_item_status])
+  @@index([item_status])
   @@index([pricing_type])
   @@map("order_items")
 }
 
 enum OrderItemStatus {
-  assigned
-  on_process
+  pending
+  in_progress
   completed
 }
 
@@ -394,8 +412,6 @@ model OrderItemSelection {
   order_item_id String
   cloth_id      String
   quantity      Int
-  unit_price    Decimal     @db.Decimal(10, 2)
-  subtotal      Decimal     @db.Decimal(10, 2)
   created_at    DateTime    @default(now())
   order_item    OrderItem   @relation(fields: [order_item_id], references: [item_id], onDelete: Cascade)
   cloth_item    ClothesItem @relation(fields: [cloth_id], references: [cloth_id])
@@ -403,22 +419,6 @@ model OrderItemSelection {
   @@index([order_item_id])
   @@index([cloth_id])
   @@map("order_item_selections")
-}
-
-model CustomerReview {
-  review_id   String   @id @default(uuid())
-  order_id    String   @unique
-  customer_id String
-  rating      Decimal  @db.Decimal(3, 2)
-  review      String?
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
-
-  order    Order    @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
-  customer Customer @relation(fields: [customer_id], references: [customer_id], onDelete: Cascade)
-
-  @@index([customer_id])
-  @@map("customer_reviews")
 }
 
 // ==================== SERVICE QUEUE (FIFO) ====================
@@ -489,25 +489,26 @@ enum PaymentStatus {
 // ==================== DELIVERY MANAGEMENT ====================
 
 model Delivery {
-  delivery_id          String           @id @default(uuid())
-  order_id             String           @unique
+  delivery_id          String             @id @default(uuid())
+  order_id             String             @unique
   staff_id             String
   delivery_type        DeliveryType // pickup or drop
-  delivery_status      String           @db.VarChar(50)
-  assigned_at          DateTime         @default(now())
+  delivery_status      String             @db.VarChar(50)
+  assigned_at          DateTime           @default(now())
   completed_at         DateTime?
-  delivery_rating      Decimal?         @db.Decimal(3, 2)
+  delivery_rating      Decimal?           @db.Decimal(3, 2)
   delivery_review      String?
-  delivery_fee         Decimal          @db.Decimal(10, 2)
-  distance_km          Decimal?         @db.Decimal(10, 2)
+  delivery_fee         Decimal            @db.Decimal(10, 2)
+  distance_km          Decimal?           @db.Decimal(10, 2)
   estimated_duration   Int?
   actual_duration      Int?
-  needs_weight_machine Boolean          @default(false) // If order has per_kg items
-  created_at           DateTime         @default(now())
-  updated_at           DateTime         @updatedAt
-  order                Order            @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
-  staff                DeliveryStaff    @relation(fields: [staff_id], references: [staff_id])
+  needs_weight_machine Boolean            @default(false) // If order has per_kg items
+  created_at           DateTime           @default(now())
+  updated_at           DateTime           @updatedAt
+  order                Order              @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
+  staff                DeliveryStaff      @relation(fields: [staff_id], references: [staff_id])
   drop                 DropForDelivery?
+  pickup               PickupForDelivery?
 
   @@index([staff_id])
   @@index([delivery_status])
@@ -520,29 +521,21 @@ enum DeliveryType {
   drop
 }
 
-model Pickup {
-  pickup_id            String         @id @default(uuid())
-  order_id             String         @unique
-  staff_id             String? // Temporarily nullable for migration, set to NOT NULL after ensuring all records have staff_id
-  pickup_status        String         @db.VarChar(50)
-  assigned_at          DateTime       @default(now())
-  completed_at         DateTime?
-  pickup_rating        Decimal?       @db.Decimal(3, 2)
-  pickup_review        String?
-  pickup_fee           Decimal        @db.Decimal(10, 2)
-  distance_km          Decimal?       @db.Decimal(10, 2)
-  estimated_duration   Int?
-  actual_duration      Int?
-  needs_weight_machine Boolean        @default(false) // If order has per_kg items
-  pickup_proof         String?        @db.VarChar(500) // Photo proof URL
-  created_at           DateTime       @default(now())
-  updated_at           DateTime       @updatedAt
-  order                Order          @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
-  staff                DeliveryStaff? @relation(fields: [staff_id], references: [staff_id])
+model PickupForDelivery {
+  pickup_id      String    @id @default(uuid())
+  delivery_id    String    @unique
+  pickup_address String
+  pickup_lat     Decimal   @db.Decimal(10, 8)
+  pickup_lng     Decimal   @db.Decimal(11, 8)
+  pickup_status  String    @db.VarChar(50)
+  pickup_time    DateTime?
+  pickup_proof   String?   @db.VarChar(500) // Photo proof URL
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+  delivery       Delivery  @relation(fields: [delivery_id], references: [delivery_id], onDelete: Cascade)
 
-  @@index([staff_id])
   @@index([pickup_status])
-  @@map("pickup")
+  @@map("pickup_for_delivery")
 }
 
 model DropForDelivery {
@@ -621,4 +614,22 @@ model OtpSession {
   @@index([session_token])
   @@index([expires_at])
   @@map("otp_sessions")
+}
+
+// ==================== AUTH SESSION (REFRESH TOKENS) ====================
+
+model RefreshToken {
+  token_id             String    @id @default(uuid())
+  user_id              String
+  user_type            String    @db.VarChar(30)
+  token_hash           String    @unique @db.VarChar(64) // sha256 hex
+  expires_at           DateTime
+  created_at           DateTime  @default(now())
+  revoked_at           DateTime?
+  replaced_by_token_id String?
+
+  @@index([user_id, user_type])
+  @@index([expires_at])
+  @@index([revoked_at])
+  @@map("refresh_tokens")
 }

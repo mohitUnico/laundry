@@ -3,19 +3,22 @@ import 'package:provider/provider.dart';
 
 import '../../../routes/app_routes.dart';
 import '../../../providers/cart_provider.dart';
+import '../../../providers/service_catalog_provider.dart';
 import '../../../theme/app_text_styles.dart';
-import '../../../utils/pricing.dart';
+import '../../../widgets/cart_success_dialog.dart';
 import '../../home/widgets/home_bottom_nav.dart';
 import '../../home/widgets/home_colors.dart';
 
 class RegularWashServiceScreen extends StatefulWidget {
   final String serviceTitle;
   final bool showPrices;
+  final String? serviceId;
 
   const RegularWashServiceScreen({
     super.key,
     required this.serviceTitle,
     this.showPrices = true,
+    this.serviceId,
   });
 
   @override
@@ -25,23 +28,92 @@ class RegularWashServiceScreen extends StatefulWidget {
 class _RegularWashServiceScreenState extends State<RegularWashServiceScreen> {
   final _othersController = TextEditingController();
 
-  final Map<_ItemType, int> _qty = {
-    _ItemType.topWear: 0,
-    _ItemType.bottomWear: 0,
-    _ItemType.saree: 0,
-    _ItemType.kurta: 0,
-  };
+  final Map<String, int> _qtyByItemName = {};
+  final TextEditingController _weightController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final serviceId = widget.serviceId;
+      if (!mounted || serviceId == null || serviceId.isEmpty) return;
+      await context
+          .read<ServiceCatalogProvider>()
+          .fetchClothesItemsForService(serviceId: serviceId, isActive: true);
+      if (!mounted) return;
+      final items = context.read<ServiceCatalogProvider>().clothesItemsForService(serviceId);
+      setState(() {
+        for (final it in items) {
+          _qtyByItemName.putIfAbsent(it.itemName, () => 0);
+        }
+      });
+    });
+  }
 
   @override
   void dispose() {
     _othersController.dispose();
+    _weightController.dispose();
     super.dispose();
   }
 
-  int get _total => _qty.values.fold(0, (a, b) => a + b);
+  Future<double?> _askWeightKg() async {
+    _weightController.text = '';
+    return showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Enter weight (kg)'),
+        content: TextField(
+          controller: _weightController,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(hintText: 'e.g. 3.5'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final v = double.tryParse(_weightController.text.trim());
+              Navigator.of(ctx).pop(v);
+            },
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  int get _total => _qtyByItemName.values.fold(0, (a, b) => a + b);
+
+  String _priceText(double perUnitPrice) => '₹${perUnitPrice.toStringAsFixed(0)}/pc';
+
+  String _assetForItemName(String itemName) {
+    final n = itemName.toLowerCase();
+    if (n.contains('top')) return 'assets/images/regular_wash/top_wear.png';
+    if (n.contains('bottom')) return 'assets/images/regular_wash/bottom_wear.png';
+    if (n.contains('saree')) return 'assets/images/regular_wash/saree.png';
+    if (n.contains('kurta')) return 'assets/images/regular_wash/kurta.png';
+    return 'assets/images/regular_wash/top_wear.png';
+  }
 
   @override
   Widget build(BuildContext context) {
+    final serviceId = widget.serviceId;
+    final catalog = context.watch<ServiceCatalogProvider>();
+    final items = (serviceId == null || serviceId.isEmpty)
+        ? const []
+        : catalog.clothesItemsForService(serviceId);
+    final isLoading = (serviceId == null || serviceId.isEmpty)
+        ? false
+        : catalog.isLoadingClothesItems(serviceId);
+
+    // If we don't have a serviceId (legacy route entry), fall back to the old hardcoded UI.
+    final effectiveItems = items.isNotEmpty
+        ? items
+        : const [];
+
     return Scaffold(
       backgroundColor: HomeColors.background,
       body: SafeArea(
@@ -59,127 +131,85 @@ class _RegularWashServiceScreenState extends State<RegularWashServiceScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 child: Column(
                   children: [
-                    _ItemCard(
-                      title: 'Top Wear',
-                      imageAsset: 'assets/images/regular_wash/top_wear.png',
-                      priceText: widget.showPrices
-                          ? Pricing.inrPerPc(
-                              Pricing.unitPriceInr(
-                                category: 'Regular Wash',
-                                serviceName: widget.serviceTitle,
-                                itemName: 'Top Wear',
-                              ),
-                            )
-                          : null,
-                      value: _qty[_ItemType.topWear]!,
-                      onMinus: () => setState(() {
-                        _qty[_ItemType.topWear] =
-                            (_qty[_ItemType.topWear]! - 1).clamp(0, 999);
-                      }),
-                      onPlus: () => setState(() {
-                        _qty[_ItemType.topWear] =
-                            (_qty[_ItemType.topWear]! + 1).clamp(0, 999);
-                      }),
-                    ),
-                    const SizedBox(height: 10),
-                    _ItemCard(
-                      title: 'Bottom Wear',
-                      imageAsset: 'assets/images/regular_wash/bottom_wear.png',
-                      priceText: widget.showPrices
-                          ? Pricing.inrPerPc(
-                              Pricing.unitPriceInr(
-                                category: 'Regular Wash',
-                                serviceName: widget.serviceTitle,
-                                itemName: 'Bottom Wear',
-                              ),
-                            )
-                          : null,
-                      value: _qty[_ItemType.bottomWear]!,
-                      onMinus: () => setState(() {
-                        _qty[_ItemType.bottomWear] =
-                            (_qty[_ItemType.bottomWear]! - 1).clamp(0, 999);
-                      }),
-                      onPlus: () => setState(() {
-                        _qty[_ItemType.bottomWear] =
-                            (_qty[_ItemType.bottomWear]! + 1).clamp(0, 999);
-                      }),
-                    ),
-                    const SizedBox(height: 10),
-                    _ItemCard(
-                      title: 'Saree',
-                      imageAsset: 'assets/images/regular_wash/saree.png',
-                      priceText: widget.showPrices
-                          ? Pricing.inrPerPc(
-                              Pricing.unitPriceInr(
-                                category: 'Regular Wash',
-                                serviceName: widget.serviceTitle,
-                                itemName: 'Saree',
-                              ),
-                            )
-                          : null,
-                      value: _qty[_ItemType.saree]!,
-                      onMinus: () => setState(() {
-                        _qty[_ItemType.saree] =
-                            (_qty[_ItemType.saree]! - 1).clamp(0, 999);
-                      }),
-                      onPlus: () => setState(() {
-                        _qty[_ItemType.saree] =
-                            (_qty[_ItemType.saree]! + 1).clamp(0, 999);
-                      }),
-                    ),
-                    const SizedBox(height: 10),
-                    _ItemCard(
-                      title: 'Kurta',
-                      imageAsset: 'assets/images/regular_wash/kurta.png',
-                      priceText: widget.showPrices
-                          ? Pricing.inrPerPc(
-                              Pricing.unitPriceInr(
-                                category: 'Regular Wash',
-                                serviceName: widget.serviceTitle,
-                                itemName: 'Kurta',
-                              ),
-                            )
-                          : null,
-                      value: _qty[_ItemType.kurta]!,
-                      onMinus: () => setState(() {
-                        _qty[_ItemType.kurta] =
-                            (_qty[_ItemType.kurta]! - 1).clamp(0, 999);
-                      }),
-                      onPlus: () => setState(() {
-                        _qty[_ItemType.kurta] =
-                            (_qty[_ItemType.kurta]! + 1).clamp(0, 999);
-                      }),
-                    ),
+                    if (serviceId != null && serviceId.isNotEmpty && isLoading)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 24, bottom: 24),
+                        child: Center(child: CircularProgressIndicator()),
+                      ),
+                    for (final it in effectiveItems) ...[
+                      _ItemCard(
+                        title: it.itemName,
+                        imageAsset: _assetForItemName(it.itemName),
+                        priceText: widget.showPrices ? _priceText(it.perUnitPrice) : null,
+                        value: _qtyByItemName[it.itemName] ?? 0,
+                        onMinus: () => setState(() {
+                          _qtyByItemName[it.itemName] =
+                              ((_qtyByItemName[it.itemName] ?? 0) - 1).clamp(0, 999);
+                        }),
+                        onPlus: () => setState(() {
+                          _qtyByItemName[it.itemName] =
+                              ((_qtyByItemName[it.itemName] ?? 0) + 1).clamp(0, 999);
+                        }),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
                     const SizedBox(height: 12),
                     _OthersField(controller: _othersController),
                     const SizedBox(height: 12),
                     _OrderSummaryCard(
-                      topWear: _qty[_ItemType.topWear]!,
-                      bottomWear: _qty[_ItemType.bottomWear]!,
-                      saree: _qty[_ItemType.saree]!,
-                      kurta: _qty[_ItemType.kurta]!,
+                      rows: _qtyByItemName.entries
+                          .where((e) => e.value > 0)
+                          .map((e) => MapEntry(e.key, e.value))
+                          .toList(),
                       total: _total,
                     ),
                     const SizedBox(height: 14),
-                    _PrimaryButton(
-                      label: 'Add to Cart',
-                      onTap: () {
-                        context.read<CartProvider>().addOrMerge(
-                              category: 'Regular Wash',
-                              serviceName: widget.serviceTitle,
-                              imageAsset: 'assets/images/regular_wash/top_wear.png',
-                              isPerPiece: widget.showPrices,
-                              quantities: {
-                                'Top Wear': _qty[_ItemType.topWear] ?? 0,
-                                'Bottom Wear': _qty[_ItemType.bottomWear] ?? 0,
-                                'Saree': _qty[_ItemType.saree] ?? 0,
-                                'Kurta': _qty[_ItemType.kurta] ?? 0,
-                              },
-                              note: _othersController.text,
-                            );
+                    Consumer<CartProvider>(
+                      builder: (context, cart, _) {
+                        return _PrimaryButton(
+                          label: 'Add to Cart',
+                          isLoading: cart.isAddingToCart,
+                          onTap: cart.isAddingToCart ? () {} : () async {
+                            final sid = widget.serviceId;
+                            if (sid == null || sid.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Missing service id')),
+                              );
+                              return;
+                            }
 
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Added to cart')),
+                            final clothIdByName = <String, String>{
+                              for (final it in effectiveItems) it.itemName: it.clothId,
+                            };
+                            final unitPrices = <String, int>{
+                              for (final it in effectiveItems) it.itemName: it.perUnitPrice.round(),
+                            };
+
+                            // For kg-wise items, weight will be calculated after supervision
+                            // No need to ask user for weight
+                            try {
+                              await context.read<CartProvider>().addAndSave(
+                                    category: 'Regular Wash',
+                                    serviceName: widget.serviceTitle,
+                                    serviceId: sid,
+                                    imageAsset: 'assets/images/regular_wash/top_wear.png',
+                                    isPerPiece: widget.showPrices,
+                                    quantities: Map<String, int>.from(_qtyByItemName),
+                                    clothIdByItemName: clothIdByName,
+                                    unitPricesInr: unitPrices,
+                                    weightKg: null, // Weight will be calculated after supervision
+                                    note: _othersController.text,
+                              );
+
+                              if (!mounted) return;
+                              showCartSuccessDialog(context);
+                            } catch (e) {
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(e.toString())),
+                              );
+                            }
+                          },
                         );
                       },
                     ),
@@ -205,8 +235,6 @@ class _RegularWashServiceScreenState extends State<RegularWashServiceScreen> {
     );
   }
 }
-
-enum _ItemType { topWear, bottomWear, saree, kurta }
 
 class _TopBar extends StatelessWidget {
   final String title;
@@ -445,17 +473,11 @@ class _OthersField extends StatelessWidget {
 }
 
 class _OrderSummaryCard extends StatelessWidget {
-  final int topWear;
-  final int bottomWear;
-  final int saree;
-  final int kurta;
+  final List<MapEntry<String, int>> rows;
   final int total;
 
   const _OrderSummaryCard({
-    required this.topWear,
-    required this.bottomWear,
-    required this.saree,
-    required this.kurta,
+    required this.rows,
     required this.total,
   });
 
@@ -478,10 +500,7 @@ class _OrderSummaryCard extends StatelessWidget {
                 AppTextStyles.header(color: HomeColors.text).copyWith(fontSize: 12),
           ),
           const SizedBox(height: 10),
-          _SummaryRow(label: 'Top Wear', value: '$topWear'),
-          _SummaryRow(label: 'Bottom Wear', value: '$bottomWear'),
-          _SummaryRow(label: 'Saree', value: '$saree'),
-          _SummaryRow(label: 'Kurta', value: '$kurta'),
+          for (final r in rows) _SummaryRow(label: r.key, value: '${r.value}'),
           const SizedBox(height: 8),
           const Divider(height: 1, thickness: 1, color: HomeColors.borderSoft),
           const SizedBox(height: 8),
@@ -527,29 +546,40 @@ class _SummaryRow extends StatelessWidget {
 class _PrimaryButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
+  final bool isLoading;
 
   const _PrimaryButton({
     required this.label,
     required this.onTap,
+    this.isLoading = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: onTap,
+      onTap: isLoading ? null : onTap,
       borderRadius: BorderRadius.circular(18),
       child: Container(
         width: double.infinity,
         height: 50,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: HomeColors.primary,
+          color: isLoading ? Colors.grey : HomeColors.primary,
           borderRadius: BorderRadius.circular(18),
         ),
-        child: Text(
-          label,
-          style: AppTextStyles.header(color: Colors.white).copyWith(fontSize: 14),
-        ),
+        child: isLoading
+            ? const SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            : Text(
+                label,
+                style: AppTextStyles.header(color: Colors.white).copyWith(fontSize: 14),
+              ),
       ),
     );
   }

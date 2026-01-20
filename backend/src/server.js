@@ -7,13 +7,19 @@ const PORT = process.env.PORT || 5000;
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
-    logger.error('❌ Uncaught Exception:', error);
+    console.error('❌ Uncaught Exception:', error);
+    if (logger && typeof logger.error === 'function') {
+        logger.error('❌ Uncaught Exception:', error);
+    }
     process.exit(1);
 });
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (reason, promise) => {
-    logger.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+    if (logger && typeof logger.error === 'function') {
+        logger.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+    }
     process.exit(1);
 });
 

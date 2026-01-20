@@ -15,6 +15,7 @@ class OrderRecord {
   final String placedDateLabel; // e.g. Dec 20, 2024
   final String placedTimeLabel; // e.g. 2:30 PM
   final OrderStatus status;
+  final String backendStatus; // Store actual backend status string for accurate step mapping
   final PaymentMethod? paymentMethod; // null for kg-wise only orders
 
   const OrderRecord({
@@ -29,6 +30,7 @@ class OrderRecord {
     required this.placedDateLabel,
     required this.placedTimeLabel,
     required this.status,
+    required this.backendStatus,
     this.paymentMethod,
   });
 
@@ -44,6 +46,7 @@ class OrderRecord {
     String? placedDateLabel,
     String? placedTimeLabel,
     OrderStatus? status,
+    String? backendStatus,
     PaymentMethod? paymentMethod,
   }) {
     return OrderRecord(
@@ -58,6 +61,7 @@ class OrderRecord {
       placedDateLabel: placedDateLabel ?? this.placedDateLabel,
       placedTimeLabel: placedTimeLabel ?? this.placedTimeLabel,
       status: status ?? this.status,
+      backendStatus: backendStatus ?? this.backendStatus,
       paymentMethod: paymentMethod ?? this.paymentMethod,
     );
   }

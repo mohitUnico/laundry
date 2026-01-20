@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import '../../models/notification_model.dart';
+
 import '../home/widgets/home_colors.dart';
 import '../../theme/app_text_styles.dart';
 
@@ -12,347 +11,269 @@ class NotificationsScreen extends StatefulWidget {
 }
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
-  NotificationFilter _selectedFilter = NotificationFilter.all;
-  
-  List<NotificationModel> _notifications = [
-    NotificationModel(
-      id: '1',
-      type: NotificationType.reminder,
-      title: 'Pickup reminder:',
-      description: 'Don\'t forget your scheduled pickup at 4 PM today!',
-      timestamp: DateTime.now().subtract(const Duration(minutes: 10)),
-      isRead: false,
-      iconData: Icons.notifications_outlined,
-      actions: ['Mark as read', 'Delete'],
-    ),
-    NotificationModel(
-      id: '2',
-      type: NotificationType.deliveryUpdate,
-      title: 'Delivery Partner',
-      description: 'Your order is out for delivery! 🚚',
-      timestamp: DateTime.now().subtract(const Duration(minutes: 20)),
-      isRead: false,
-      iconData: Icons.person_outline,
-      actions: ['Reply', 'Mark as read', 'Delete'],
-    ),
-    NotificationModel(
-      id: '3',
-      type: NotificationType.achievement,
-      title: 'Congratulations:',
-      description: 'You\'ve completed 10 orders with us!',
-      timestamp: DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day, 11, 4),
-      isRead: true,
-      iconData: Icons.celebration_outlined,
-      actions: ['Mark as read', 'Delete'],
-    ),
-    NotificationModel(
-      id: '4',
-      type: NotificationType.promotion,
-      title: 'New Service Available:',
-      description: 'Try our Premium Dry Cleaning service!',
-      timestamp: DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day, 10, 0),
-      isRead: true,
-      iconData: Icons.check_circle_outline,
-      actions: ['Mark as read', 'Delete'],
-    ),
-    NotificationModel(
-      id: '5',
-      type: NotificationType.orderUpdate,
-      title: 'Order Status Update:',
-      description: 'Your order #12345 is ready for pickup',
-      timestamp: DateTime.now().subtract(const Duration(days: 1)),
-      isRead: true,
-      iconData: Icons.check_circle_outline,
-      actions: ['Accept', 'Mark as read', 'Delete'],
-    ),
-  ];
+  // App Notifications
+  bool _pushOrderUpdates = true;
+  bool _pushDeliveryUpdates = true;
+  bool _pushPromotions = true;
+  bool _pushReminders = true;
+  bool _pushAchievements = false;
 
-  List<NotificationModel> get _filteredNotifications {
-    switch (_selectedFilter) {
-      case NotificationFilter.all:
-        return _notifications;
-      case NotificationFilter.mentions:
-        return _notifications.where((n) => n.type == NotificationType.deliveryUpdate).toList();
-      case NotificationFilter.unread:
-        return _notifications.where((n) => !n.isRead).toList();
-    }
-  }
-
-  int get _unreadCount => _notifications.where((n) => !n.isRead).length;
-
-  void _markAllAsRead() {
-    setState(() {
-      for (int i = 0; i < _notifications.length; i++) {
-        _notifications[i] = NotificationModel(
-          id: _notifications[i].id,
-          type: _notifications[i].type,
-          title: _notifications[i].title,
-          description: _notifications[i].description,
-          timestamp: _notifications[i].timestamp,
-          isRead: true,
-          iconData: _notifications[i].iconData,
-          actions: _notifications[i].actions,
-        );
-      }
-    });
-  }
-
-  void _markAsRead(String id) {
-    setState(() {
-      final index = _notifications.indexWhere((n) => n.id == id);
-      if (index != -1) {
-        _notifications[index] = NotificationModel(
-          id: _notifications[index].id,
-          type: _notifications[index].type,
-          title: _notifications[index].title,
-          description: _notifications[index].description,
-          timestamp: _notifications[index].timestamp,
-          isRead: true,
-          iconData: _notifications[index].iconData,
-          actions: _notifications[index].actions,
-        );
-      }
-    });
-  }
-
-  void _deleteNotification(String id) {
-    setState(() {
-      _notifications.removeWhere((n) => n.id == id);
-    });
-  }
+  // Email Notifications
+  bool _emailOrderUpdates = true;
+  bool _emailDeliveryUpdates = false;
+  bool _emailPromotions = true;
+  bool _emailReminders = false;
+  bool _emailAchievements = false;
 
   @override
   Widget build(BuildContext context) {
-    final filtered = _filteredNotifications;
-    
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5), // Light gray background
+      backgroundColor: HomeColors.background,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: HomeColors.background,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: Text(
-          'Notifications',
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: Colors.black,
-          ),
-        ),
-        actions: [
-          TextButton.icon(
-            onPressed: _markAllAsRead,
-            icon: const Icon(Icons.check_circle, color: Color(0xFF2C3CA5), size: 18),
-            label: Text(
-              'Make all as read',
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: const Color(0xFF2C3CA5),
+        centerTitle: true,
+        automaticallyImplyLeading: false,
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 12),
+          child: InkWell(
+            onTap: () => Navigator.of(context).maybePop(),
+            borderRadius: BorderRadius.circular(18),
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: HomeColors.borderSoft),
+              ),
+              child: const Icon(
+                Icons.arrow_back_ios_new_rounded,
+                size: 18,
+                color: HomeColors.text,
               ),
             ),
           ),
-        ],
+        ),
+        title: Text(
+          'Notifications',
+          style: AppTextStyles.header(color: HomeColors.text),
+        ),
       ),
-      body: Column(
-        children: [
-          // Filter tabs
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-            child: Row(
-              children: [
-                _FilterTab(
-                  label: 'All Notifications ${_notifications.length}',
-                  isSelected: _selectedFilter == NotificationFilter.all,
-                  onTap: () => setState(() => _selectedFilter = NotificationFilter.all),
-                ),
-                const SizedBox(width: 8),
-                _FilterTab(
-                  label: 'Mentions',
-                  isSelected: _selectedFilter == NotificationFilter.mentions,
-                  onTap: () => setState(() => _selectedFilter = NotificationFilter.mentions),
-                ),
-                const SizedBox(width: 8),
-                _FilterTab(
-                  label: 'Unread',
-                  isSelected: _selectedFilter == NotificationFilter.unread,
-                  onTap: () => setState(() => _selectedFilter = NotificationFilter.unread),
-                ),
-              ],
-            ),
-          ),
-          // Notifications list
-          Expanded(
-            child: filtered.isEmpty
-                ? Center(
-                    child: Text(
-                      'No notifications',
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        color: HomeColors.muted,
-                      ),
-                    ),
-                  )
-                : ListView.separated(
-                    padding: const EdgeInsets.symmetric(horizontal: 18),
-                    itemCount: filtered.length,
-                    separatorBuilder: (context, index) => const Divider(height: 1, thickness: 1, color: Color(0xFFE0E0E0)),
-                    itemBuilder: (context, index) {
-                      final notification = filtered[index];
-                      return _NotificationItem(
-                        notification: notification,
-                        onMarkAsRead: () => _markAsRead(notification.id),
-                        onDelete: () => _deleteNotification(notification.id),
-                      );
-                    },
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 10),
+              const _SectionTitle('App Notifications'),
+              const SizedBox(height: 10),
+              _NotificationSettingsCard(
+                items: [
+                  _NotificationToggleItem(
+                    icon: Icons.shopping_bag_rounded,
+                    iconColor: HomeColors.primary,
+                    title: 'Order Updates',
+                    subtitle: 'Order status changes and updates',
+                    value: _pushOrderUpdates,
+                    onChanged: (value) => setState(() => _pushOrderUpdates = value),
                   ),
+                  _NotificationToggleItem(
+                    icon: Icons.local_shipping_rounded,
+                    iconColor: const Color(0xFF10B981),
+                    title: 'Delivery Updates',
+                    subtitle: 'Pickup and delivery notifications',
+                    value: _pushDeliveryUpdates,
+                    onChanged: (value) => setState(() => _pushDeliveryUpdates = value),
+                  ),
+                  _NotificationToggleItem(
+                    icon: Icons.tag_rounded,
+                    iconColor: const Color(0xFFFF9800),
+                    title: 'Promotions & Offers',
+                    subtitle: 'Special deals and discounts',
+                    value: _pushPromotions,
+                    onChanged: (value) => setState(() => _pushPromotions = value),
+                  ),
+                  _NotificationToggleItem(
+                    icon: Icons.access_time_rounded,
+                    iconColor: const Color(0xFFFF6B35),
+                    title: 'Reminders',
+                    subtitle: 'Pickup and delivery reminders',
+                    value: _pushReminders,
+                    onChanged: (value) => setState(() => _pushReminders = value),
+                  ),
+                  _NotificationToggleItem(
+                    icon: Icons.celebration_rounded,
+                    iconColor: const Color(0xFFFFD700),
+                    title: 'Achievements',
+                    subtitle: 'Milestones and rewards',
+                    value: _pushAchievements,
+                    onChanged: (value) => setState(() => _pushAchievements = value),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const _SectionTitle('Email Notifications'),
+              const SizedBox(height: 10),
+              _NotificationSettingsCard(
+                items: [
+                  _NotificationToggleItem(
+                    icon: Icons.shopping_bag_rounded,
+                    iconColor: HomeColors.primary,
+                    title: 'Order Updates',
+                    subtitle: 'Order status changes and updates',
+                    value: _emailOrderUpdates,
+                    onChanged: (value) => setState(() => _emailOrderUpdates = value),
+                  ),
+                  _NotificationToggleItem(
+                    icon: Icons.local_shipping_rounded,
+                    iconColor: const Color(0xFF10B981),
+                    title: 'Delivery Updates',
+                    subtitle: 'Pickup and delivery notifications',
+                    value: _emailDeliveryUpdates,
+                    onChanged: (value) => setState(() => _emailDeliveryUpdates = value),
+                  ),
+                  _NotificationToggleItem(
+                    icon: Icons.tag_rounded,
+                    iconColor: const Color(0xFFFF9800),
+                    title: 'Promotions & Offers',
+                    subtitle: 'Special deals and discounts',
+                    value: _emailPromotions,
+                    onChanged: (value) => setState(() => _emailPromotions = value),
+                  ),
+                  _NotificationToggleItem(
+                    icon: Icons.access_time_rounded,
+                    iconColor: const Color(0xFFFF6B35),
+                    title: 'Reminders',
+                    subtitle: 'Pickup and delivery reminders',
+                    value: _emailReminders,
+                    onChanged: (value) => setState(() => _emailReminders = value),
+                  ),
+                  _NotificationToggleItem(
+                    icon: Icons.celebration_rounded,
+                    iconColor: const Color(0xFFFFD700),
+                    title: 'Achievements',
+                    subtitle: 'Milestones and rewards',
+                    value: _emailAchievements,
+                    onChanged: (value) => setState(() => _emailAchievements = value),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 }
 
-class _FilterTab extends StatelessWidget {
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
+class _SectionTitle extends StatelessWidget {
+  final String title;
 
-  const _FilterTab({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
+  const _SectionTitle(this.title);
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFE8E8E8) : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: Colors.black,
-            width: 1,
-          ),
-        ),
-        child: Text(
-          label,
-          style: GoogleFonts.poppins(
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-            color: Colors.black,
-          ),
-        ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: Text(
+        title,
+        style: AppTextStyles.header(color: HomeColors.text),
       ),
     );
   }
 }
 
-class _NotificationItem extends StatelessWidget {
-  final NotificationModel notification;
-  final VoidCallback onMarkAsRead;
-  final VoidCallback onDelete;
+class _NotificationSettingsCard extends StatelessWidget {
+  final List<_NotificationToggleItem> items;
 
-  const _NotificationItem({
-    required this.notification,
-    required this.onMarkAsRead,
-    required this.onDelete,
-  });
+  const _NotificationSettingsCard({required this.items});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: HomeColors.borderSoft),
+      ),
+      child: Column(
         children: [
-          // Icon
-          Container(
-            width: 40,
-            height: 40,
-            alignment: Alignment.center,
-            child: notification.iconData != null
-                ? Icon(
-                    notification.iconData,
-                    size: 24,
-                    color: Colors.black87,
-                  )
-                : notification.iconAsset != null
-                    ? Image.asset(notification.iconAsset!)
-                    : const Icon(Icons.notifications_outlined),
-          ),
-          const SizedBox(width: 12),
-          // Content
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Title
-                Text(
-                  notification.title,
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                // Description
-                Text(
-                  notification.description,
-                  style: GoogleFonts.poppins(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w400,
-                    color: const Color(0xFF666666),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                // Actions
-                Wrap(
-                  spacing: 12,
-                  children: notification.actions.map((action) {
-                    return InkWell(
-                      onTap: () {
-                        if (action == 'Mark as read') {
-                          onMarkAsRead();
-                        } else if (action == 'Delete') {
-                          onDelete();
-                        }
-                      },
-                      child: Text(
-                        action,
-                        style: GoogleFonts.poppins(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: const Color(0xFF2C3CA5),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ],
-            ),
-          ),
-          // Timestamp
-          Text(
-            notification.timeAgo,
-            style: GoogleFonts.poppins(
-              fontSize: 12,
-              fontWeight: FontWeight.w400,
-              color: const Color(0xFF666666),
-            ),
-          ),
+          for (var i = 0; i < items.length; i++) ...[
+            items[i],
+            if (i != items.length - 1)
+              const Padding(
+                padding: EdgeInsets.only(left: 52),
+                child: Divider(height: 1, thickness: 1, color: HomeColors.borderSoft),
+              ),
+          ],
         ],
       ),
     );
   }
 }
 
+class _NotificationToggleItem extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _NotificationToggleItem({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, size: 20, color: iconColor),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: AppTextStyles.listItemTitle(color: HomeColors.text),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: AppTextStyles.body(color: HomeColors.muted),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Switch(
+            value: value,
+            onChanged: onChanged,
+            activeColor: HomeColors.primary,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+        ],
+      ),
+    );
+  }
+}

@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:country_picker/country_picker.dart';
 
+import '../../providers/auth_provider.dart';
 import '../../routes/app_routes.dart';
+import '../../routes/route_args.dart';
 import '../../utils/validators.dart';
+import '../../widgets/phone_field_with_country_picker.dart';
 import 'widgets/auth_colors.dart';
 import 'widgets/auth_illustration.dart';
 import 'widgets/labeled_divider.dart';
@@ -20,9 +25,12 @@ class _SignupScreenState extends State<SignupScreen> {
   final TextEditingController _lastNameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   
+  Country _selectedCountry = Country.parse('IN'); // Default to India
+  
   String? _firstNameError;
   String? _lastNameError;
   String? _phoneError;
+  bool _isSubmitting = false;
 
   @override
   void initState() {
@@ -53,7 +61,15 @@ class _SignupScreenState extends State<SignupScreen> {
     super.dispose();
   }
 
-  void _handleNext() {
+  Future<void> _handleNext() async {
+    final args = ModalRoute.of(context)?.settings.arguments as SignupArgs?;
+    if (args == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Missing signup session. Please login again.')),
+      );
+      return;
+    }
+
     // Validate all fields
     final firstNameError = Validators.firstName(_firstNameController.text);
     final lastNameError = Validators.lastName(_lastNameController.text);
@@ -67,7 +83,34 @@ class _SignupScreenState extends State<SignupScreen> {
 
     // Only proceed if all validations pass
     if (firstNameError == null && lastNameError == null && phoneError == null) {
-      Navigator.of(context).pushNamed(AppRoutes.profilePhoto);
+      final fullName =
+          '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}'.trim();
+      
+      // Format phone with country code: "+91 9876543210"
+      // Backend now accepts flexible phone format with country code
+      final phone = PhoneFieldWithCountryPicker.formatPhoneForStorage(
+        _selectedCountry,
+        _phoneController.text.trim(),
+      );
+
+      setState(() => _isSubmitting = true);
+      try {
+        await context.read<AuthProvider>().completeCustomerRegistration(
+              sessionToken: args.sessionToken,
+              fullName: fullName,
+              phone: phone.isEmpty ? null : phone,
+            );
+
+        if (!mounted) return;
+        Navigator.of(context).pushNamed(AppRoutes.profilePhoto);
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Registration failed: ${e.toString()}')),
+        );
+      } finally {
+        if (mounted) setState(() => _isSubmitting = false);
+      }
     }
   }
 
@@ -127,23 +170,31 @@ class _SignupScreenState extends State<SignupScreen> {
                       const SizedBox(height: 14),
                       const LabeledDivider(label: 'Phone No'),
                       const SizedBox(height: 10),
-                      PillTextField(
+                      PhoneFieldWithCountryPicker(
                         controller: _phoneController,
                         hintText: 'Enter your phone number',
-                        keyboardType: TextInputType.phone,
                         errorText: _phoneError,
+                        initialCountry: _selectedCountry,
+                        onCountryChanged: (Country country) {
+                          setState(() {
+                            _selectedCountry = country;
+                          });
+                        },
                       ),
                       const SizedBox(height: 18),
                       PrimaryButton(
                         label: 'Next',
-                        onPressed: () {
+                        isLoading: _isSubmitting,
+                        onPressed: _isSubmitting
+                            ? null
+                            : () async {
                           // Clear errors when user clicks next
                           setState(() {
                             _firstNameError = null;
                             _lastNameError = null;
                             _phoneError = null;
                           });
-                          _handleNext();
+                          await _handleNext();
                         },
                       ),
                       const SizedBox(height: 8),

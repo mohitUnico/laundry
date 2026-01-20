@@ -13,7 +13,7 @@ exports.createOrder = async (req, res, next) => {
         res.status(201).json({
             success: true,
             data: order,
-            message: 'Draft order created successfully. Please confirm the order to proceed.',
+            message: 'Order created successfully',
         });
     } catch (error) {
         next(error);
@@ -27,7 +27,8 @@ exports.confirmOrder = async (req, res, next) => {
         }
 
         const customerId = req.user.user_id;
-        const orderId = req.params.orderId;
+        const { orderId } = req.params;
+
         const order = await orderService.confirmOrder(customerId, orderId);
 
         res.status(200).json({
@@ -40,39 +41,19 @@ exports.confirmOrder = async (req, res, next) => {
     }
 };
 
-exports.listOrders = async (req, res, next) => {
+exports.getCustomerOrders = async (req, res, next) => {
     try {
         if (req.user.role !== 'customer') {
             throw new AuthorizationError('Only customers can view their orders');
         }
 
         const customerId = req.user.user_id;
-        const result = await orderService.listOrders(customerId, req.query);
+        const result = await orderService.getCustomerOrders(customerId, req.query);
 
         res.status(200).json({
             success: true,
-            data: result.orders,
-            pagination: result.pagination,
+            data: result,
             message: 'Orders fetched successfully',
-        });
-    } catch (error) {
-        next(error);
-    }
-};
-
-exports.getOrderById = async (req, res, next) => {
-    try {
-        if (req.user.role !== 'customer') {
-            throw new AuthorizationError('Only customers can view their orders');
-        }
-
-        const customerId = req.user.user_id;
-        const order = await orderService.getOrderById(customerId, req.params.orderId);
-
-        res.status(200).json({
-            success: true,
-            data: order,
-            message: 'Order fetched successfully',
         });
     } catch (error) {
         next(error);

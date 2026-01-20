@@ -19,10 +19,19 @@ import '../screens/services/regular_wash/regular_wash_service_screen.dart';
 import '../screens/orders/order_tracking_screen.dart';
 import '../screens/cart/delivery_options_screen.dart';
 import '../screens/cart/schedule_date_time_screen.dart';
+import '../screens/cart/order_confirmation_screen.dart';
 import '../screens/payment/payment_screen.dart';
 import '../screens/payment/payment_successful_screen.dart';
+import '../screens/orders/order_successful_screen.dart';
 import '../screens/home/widgets/regular_wash_bottom_sheet.dart';
 import '../screens/notifications/notifications_screen.dart';
+import '../screens/profile/payment_methods_screen.dart';
+import '../screens/profile/favorites_screen.dart';
+import '../screens/profile/help_center_screen.dart';
+import '../screens/profile/terms_conditions_screen.dart';
+import '../screens/profile/privacy_policy_screen.dart';
+import '../screens/location/map_picker_screen.dart';
+import '../screens/location/address_form_screen.dart';
 
 class AppRoutes {
   static const String bootstrap = '/';
@@ -52,9 +61,18 @@ class AppRoutes {
   static const String orderTracking = '/orders/tracking';
   static const String deliveryOptions = '/cart/delivery-options';
   static const String scheduleDateTime = '/cart/schedule-date-time';
+  static const String orderConfirmation = '/cart/order-confirmation';
   static const String payment = '/payment';
   static const String paymentSuccessful = '/payment-successful';
+  static const String orderSuccessful = '/order-successful';
   static const String notifications = '/notifications';
+  static const String paymentMethods = '/profile/payment-methods';
+  static const String favorites = '/profile/favorites';
+  static const String helpCenter = '/profile/help-center';
+  static const String termsConditions = '/profile/terms-conditions';
+  static const String privacyPolicy = '/profile/privacy-policy';
+  static const String mapPicker = '/location/map-picker';
+  static const String addressForm = '/location/address-form';
 
   static Map<String, WidgetBuilder> get routes {
     return {
@@ -75,6 +93,11 @@ class AppRoutes {
       washAndFold: (context) =>
           RegularWashServiceScreen(
             serviceTitle: 'Wash & Fold',
+            serviceId: (() {
+              final sel =
+                  ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
+              return sel?.serviceId;
+            })(),
             showPrices: (() {
               final sel =
                   ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
@@ -84,6 +107,11 @@ class AppRoutes {
       washAndIron: (context) =>
           RegularWashServiceScreen(
             serviceTitle: 'Wash & Iron',
+            serviceId: (() {
+              final sel =
+                  ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
+              return sel?.serviceId;
+            })(),
             showPrices: (() {
               final sel =
                   ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
@@ -93,6 +121,11 @@ class AppRoutes {
       ironOnly: (context) =>
           RegularWashServiceScreen(
             serviceTitle: 'Iron only',
+            serviceId: (() {
+              final sel =
+                  ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
+              return sel?.serviceId;
+            })(),
             showPrices: (() {
               final sel =
                   ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
@@ -102,6 +135,11 @@ class AppRoutes {
       handWash: (context) =>
           RegularWashServiceScreen(
             serviceTitle: 'Hand Wash',
+            serviceId: (() {
+              final sel =
+                  ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
+              return sel?.serviceId;
+            })(),
             showPrices: (() {
               final sel =
                   ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
@@ -119,9 +157,25 @@ class AppRoutes {
       orderTracking: (context) => const OrderTrackingScreen(),
       deliveryOptions: (context) => const DeliveryOptionsScreen(),
       scheduleDateTime: (context) => const ScheduleDateTimeScreen(),
+      orderConfirmation: (context) => const OrderConfirmationScreen(),
       payment: (context) => const PaymentScreen(),
       paymentSuccessful: (context) => const PaymentSuccessfulScreen(),
+      orderSuccessful: (context) => const OrderSuccessfulScreen(),
       notifications: (context) => const NotificationsScreen(),
+      paymentMethods: (context) => const PaymentMethodsScreen(),
+      favorites: (context) => const FavoritesScreen(),
+      helpCenter: (context) => const HelpCenterScreen(),
+      termsConditions: (context) => const TermsConditionsScreen(),
+      privacyPolicy: (context) => const PrivacyPolicyScreen(),
+      mapPicker: (context) {
+        final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+        return MapPickerScreen(
+          initialLatitude: args?['latitude'] as double?,
+          initialLongitude: args?['longitude'] as double?,
+          initialAddress: args?['address'] as String?,
+        );
+      },
+      addressForm: (context) => const AddressFormScreen(),
     };
   }
 }

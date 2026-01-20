@@ -40,19 +40,29 @@ class ActiveOrderCard extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Row(
             children: [
-              Text(
-                'Active Order',
-                style: AppTextStyles.header(color: HomeColors.text)
-                    .copyWith(fontSize: 18),
+              Expanded(
+                child: Text(
+                  'Active Order',
+                  style: AppTextStyles.header(color: HomeColors.text)
+                      .copyWith(fontSize: 18),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              const Spacer(),
-              Text(
-                orderId,
-                style: AppTextStyles.body(color: HomeColors.muted)
-                    .copyWith(fontSize: 12),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  orderId,
+                  style: AppTextStyles.body(color: HomeColors.muted)
+                      .copyWith(fontSize: 12),
+                  textAlign: TextAlign.right,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ],
           ),
@@ -76,7 +86,7 @@ class ActiveOrderCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(10),
                 child: Padding(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [

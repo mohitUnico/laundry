@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../providers/auth_provider.dart';
 import '../../routes/app_routes.dart';
+import '../../utils/prefs_keys.dart';
 
 class BootstrapScreen extends StatefulWidget {
   const BootstrapScreen({super.key});
@@ -20,8 +24,26 @@ class _BootstrapScreenState extends State<BootstrapScreen> {
 
   Future<void> _navigateNext() async {
     if (!mounted) return;
-    // Always show intro screens first, then proceed to OTP/login.
-    Navigator.of(context).pushReplacementNamed(AppRoutes.onboarding);
+
+    // 1) Onboarding gate
+    final prefs = await SharedPreferences.getInstance();
+    final onboardingSeen = prefs.getBool(PrefsKeys.onboardingSeen) ?? false;
+    if (!onboardingSeen) {
+      if (!mounted) return;
+      Navigator.of(context).pushReplacementNamed(AppRoutes.onboarding);
+      return;
+    }
+
+    // 2) Auth session restore
+    final auth = context.read<AuthProvider>();
+    await auth.hydrateFromStorage();
+
+    if (!mounted) return;
+    if (auth.hasValidSession) {
+      Navigator.of(context).pushReplacementNamed(AppRoutes.shell);
+    } else {
+      Navigator.of(context).pushReplacementNamed(AppRoutes.login);
+    }
   }
 
   @override

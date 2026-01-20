@@ -50,11 +50,7 @@ class ClothesService {
             return await prisma.serviceCategory.findMany({
                 where,
                 orderBy: [{ display_order: 'asc' }, { created_at: 'desc' }],
-                include: {
-                    services: {
-                        orderBy: [{ display_order: 'asc' }, { created_at: 'desc' }],
-                    },
-                },
+                // List endpoint should return only categories (no nested services)
             });
         } catch (error) {
             logger.error('Failed to list service categories', { error: error.message });
@@ -172,7 +168,7 @@ class ClothesService {
                 where,
                 orderBy: [{ display_order: 'asc' }, { created_at: 'desc' }],
                 include: {
-                    category: true,
+                    // List endpoint should not include category details in each service
                     clothes_items: {
                         orderBy: [{ display_order: 'asc' }, { created_at: 'desc' }],
                     },
@@ -321,11 +317,7 @@ class ClothesService {
             return await prisma.clothesItem.findMany({
                 where,
                 orderBy: [{ display_order: 'asc' }, { created_at: 'desc' }],
-                include: {
-                    service: {
-                        include: { category: true },
-                    },
-                },
+                // List endpoint should not include service details in each clothes item
             });
         } catch (error) {
             logger.error('Failed to list clothes items', { error: error.message });

@@ -27,11 +27,8 @@ exports.adminOrdersSummaryQuerySchema = Joi.object({
 
 exports.adminOrdersListQuerySchema = Joi.object({
     status: statusListSchema,
-    search: Joi.string().trim().min(1).max(200),
     from: Joi.date().iso(),
     to: Joi.date().iso(),
-    // optional: list "completed today" style orders for a given UTC day (filters by updated_at)
-    completedDate: Joi.date().iso(),
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(20),
 });

@@ -1,38 +1,48 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme/app_text_styles.dart';
+import '../../../models/service_item.dart';
 import 'home_colors.dart';
 
 enum LuxuryCarePricingType { kgWise, perPiece }
 
 class LuxuryCareSelection {
+  final String? serviceId;
   final String serviceName;
   final LuxuryCarePricingType pricingType;
 
   const LuxuryCareSelection({
+    required this.serviceId,
     required this.serviceName,
     required this.pricingType,
   });
 }
 
 class LuxuryCareBottomSheet extends StatefulWidget {
-  const LuxuryCareBottomSheet({super.key});
+  const LuxuryCareBottomSheet({super.key, required this.services, this.isLoading = false});
 
-  static Future<LuxuryCareSelection?> show(BuildContext context) {
+  static Future<LuxuryCareSelection?> show(
+    BuildContext context, {
+    required List<ServiceItem> services,
+    bool isLoading = false,
+  }) {
     return showModalBottomSheet<LuxuryCareSelection?>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => const LuxuryCareBottomSheet(),
+      builder: (_) => LuxuryCareBottomSheet(services: services, isLoading: isLoading),
     );
   }
+
+  final List<ServiceItem> services;
+  final bool isLoading;
 
   @override
   State<LuxuryCareBottomSheet> createState() => _LuxuryCareBottomSheetState();
 }
 
 class _LuxuryCareBottomSheetState extends State<LuxuryCareBottomSheet> {
-  String _selectedService = _services.first.title;
+  late _LuxuryCareService _selectedService;
   LuxuryCarePricingType _pricingType = LuxuryCarePricingType.kgWise;
 
   static const _services = <_LuxuryCareService>[
@@ -48,9 +58,34 @@ class _LuxuryCareBottomSheetState extends State<LuxuryCareBottomSheet> {
     ),
   ];
 
+  List<_LuxuryCareService> get _effectiveServices {
+    final services = widget.services;
+    if (services.isEmpty) return const [];
+
+    return List.generate(services.length, (i) {
+      final template = _services[i % _services.length];
+      return _LuxuryCareService(
+        serviceId: services[i].serviceId,
+        title: services[i].serviceName,
+        subtitle: template.subtitle,
+        imageAsset: template.imageAsset,
+      );
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final list = _effectiveServices;
+    _selectedService = list.isNotEmpty ? list.first : _services.first;
+  }
+
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
+    final isLoading = widget.isLoading;
+    final items = _effectiveServices;
+    final canProceed = items.isNotEmpty && !isLoading;
 
     return SafeArea(
       top: false,
@@ -89,16 +124,31 @@ class _LuxuryCareBottomSheetState extends State<LuxuryCareBottomSheet> {
                 ),
               ),
               const SizedBox(height: 12),
-              for (final s in _services) ...[
-                _ServiceRow(
-                  title: s.title,
-                  subtitle: s.subtitle,
-                  imageAsset: s.imageAsset,
-                  isSelected: s.title == _selectedService,
-                  onTap: () => setState(() => _selectedService = s.title),
-                ),
-                const SizedBox(height: 12),
-              ],
+              if (isLoading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 18),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (items.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text(
+                    'No services available right now. Please try again.',
+                    textAlign: TextAlign.center,
+                    style: AppTextStyles.body(color: HomeColors.muted).copyWith(fontSize: 12),
+                  ),
+                )
+              else
+                for (final s in items) ...[
+                  _ServiceRow(
+                    title: s.title,
+                    subtitle: s.subtitle,
+                    imageAsset: s.imageAsset,
+                    isSelected: s.title == _selectedService.title,
+                    onTap: () => setState(() => _selectedService = s),
+                  ),
+                  const SizedBox(height: 12),
+                ],
               const SizedBox(height: 6),
               Container(
                 width: double.infinity,
@@ -153,12 +203,17 @@ class _LuxuryCareBottomSheetState extends State<LuxuryCareBottomSheet> {
                     child: _BottomButton(
                       label: 'Next',
                       variant: _BottomButtonVariant.filled,
-                      onTap: () => Navigator.of(context).pop(
-                        LuxuryCareSelection(
-                          serviceName: _selectedService,
-                          pricingType: _pricingType,
-                        ),
-                      ),
+                      onTap: canProceed
+                          ? () => Navigator.of(context).pop(
+                                LuxuryCareSelection(
+                                  serviceId: _selectedService.serviceId?.isEmpty == true
+                                      ? null
+                                      : _selectedService.serviceId,
+                                  serviceName: _selectedService.title,
+                                  pricingType: _pricingType,
+                                ),
+                              )
+                          : () {},
                     ),
                   ),
                 ],
@@ -172,11 +227,13 @@ class _LuxuryCareBottomSheetState extends State<LuxuryCareBottomSheet> {
 }
 
 class _LuxuryCareService {
+  final String? serviceId;
   final String title;
   final String subtitle;
   final String imageAsset;
 
   const _LuxuryCareService({
+    this.serviceId,
     required this.title,
     required this.subtitle,
     required this.imageAsset,

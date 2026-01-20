@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -25,8 +26,69 @@ class OrdersListScreen extends StatefulWidget {
   State<OrdersListScreen> createState() => _OrdersListScreenState();
 }
 
-class _OrdersListScreenState extends State<OrdersListScreen> {
+class _OrdersListScreenState extends State<OrdersListScreen> with WidgetsBindingObserver {
   _OrdersFilter _filter = _OrdersFilter.all;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Fetch orders from backend when screen loads
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchOrders();
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Refresh orders when app comes back to foreground
+    // This ensures orders are up-to-date after returning from notification panel or background
+    if (state == AppLifecycleState.resumed && mounted) {
+      // Add a small delay to ensure app is fully resumed
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted) {
+          _fetchOrders();
+        }
+      });
+    }
+  }
+
+  Future<void> _fetchOrders() async {
+    if (!mounted) return;
+    
+    final orderProvider = context.read<OrderProvider>();
+    
+    // Prevent rapid successive fetches
+    if (orderProvider.isLoading) {
+      debugPrint('Order fetch already in progress, skipping...');
+      return;
+    }
+    
+    String? status;
+    // For "all" filter, fetch without status (gets all orders)
+    // For "active" filter, fetch with status=active (backend will filter out delivered/closed)
+    // For "completed" filter, fetch with status=delivered
+    if (_filter == _OrdersFilter.active) {
+      status = 'active'; // Backend will filter out delivered and closed orders
+    } else if (_filter == _OrdersFilter.completed) {
+      status = 'completed'; // Backend will fetch delivered and closed orders
+    }
+    // For "all", status is null - fetches all orders
+    try {
+      await orderProvider.fetchOrders(page: 1, limit: 10, status: status);
+    } catch (e) {
+      // Error is already handled in OrderProvider
+      // Orders will be preserved if fetch fails
+      debugPrint('Failed to fetch orders: $e');
+    }
+  }
 
   List<OrderRecord> _filteredOrders(List<OrderRecord> orders) {
     switch (_filter) {
@@ -61,7 +123,10 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
               const SizedBox(height: 14),
               _OrdersFilterRow(
                 value: _filter,
-                onChanged: (next) => setState(() => _filter = next),
+                onChanged: (next) {
+                  setState(() => _filter = next);
+                  _fetchOrders();
+                },
               ),
               const SizedBox(height: 14),
               Consumer<OrderProvider>(
@@ -83,33 +148,73 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
                 },
               ),
               Expanded(
-                child: Consumer<OrderProvider>(
-                  builder: (context, orders, _) {
-                    final list = _filteredOrders(orders.orders);
-                    if (list.isEmpty) {
-                      return Center(
-                        child: Text(
-                          'No orders yet',
-                          style: AppTextStyles.body(color: const Color(0xFF98A0B5))
-                              .copyWith(fontSize: 13),
-                        ),
-                      );
-                    }
-
-                    return ListView.separated(
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.only(bottom: 16),
-                      itemCount: list.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                        final order = list[index];
-                    return _OrderCard(
-                      data: order,
-                          onViewDetails: () => _showOrderDetailsDialog(context, order),
-                        );
-                      },
-                    );
+                child: RefreshIndicator(
+                  onRefresh: () async {
+                    await _fetchOrders();
                   },
+                  child: Consumer<OrderProvider>(
+                    builder: (context, orders, _) {
+                      if (orders.isLoading && orders.orders.isEmpty) {
+                        return const Center(
+                          child: CircularProgressIndicator(),
+                        );
+                      }
+
+                      if (orders.error != null && orders.orders.isEmpty) {
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                'Failed to load orders',
+                                style: AppTextStyles.body(color: const Color(0xFF98A0B5))
+                                    .copyWith(fontSize: 13),
+                              ),
+                              const SizedBox(height: 8),
+                              TextButton(
+                                onPressed: _fetchOrders,
+                                child: const Text('Retry'),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      final list = _filteredOrders(orders.orders);
+                      if (list.isEmpty) {
+                        // Return scrollable widget for RefreshIndicator to work
+                        return ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          children: [
+                            SizedBox(
+                              height: MediaQuery.of(context).size.height * 0.3,
+                              child: Center(
+                                child: Text(
+                                  'No orders yet',
+                                  style: AppTextStyles.body(color: const Color(0xFF98A0B5))
+                                      .copyWith(fontSize: 13),
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      }
+
+                      return ListView.separated(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.only(bottom: 16),
+                        itemCount: list.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
+                          final order = list[index];
+                          return _OrderCard(
+                            data: order,
+                            onViewDetails: () => _showOrderDetailsDialog(context, order),
+                          );
+                        },
+                      );
+                    },
+                  ),
                 ),
               ),
             ],
@@ -449,6 +554,10 @@ class _OrderCard extends StatelessWidget {
       OrderStatus.delivered => Icons.check_circle_rounded,
     };
 
+    final hasKgWiseItems = data.items.any((item) => !item.isPerPiece);
+    final hasOnlyPerPiece =
+        data.items.isNotEmpty && !hasKgWiseItems; // all items per-piece
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -468,12 +577,15 @@ class _OrderCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text(
-                data.id,
-                style: AppTextStyles.body(color: const Color(0xFF98A0B5))
-                    .copyWith(fontSize: 12),
+              Flexible(
+                child: Text(
+                  data.id,
+                  style: AppTextStyles.body(color: const Color(0xFF98A0B5))
+                      .copyWith(fontSize: 12),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              const Spacer(),
+              const SizedBox(width: 8),
               Text(
                 statusText,
                 style: AppTextStyles.header(color: statusColor)
@@ -537,11 +649,13 @@ class _OrderCard extends StatelessWidget {
           const SizedBox(height: 12),
           Row(
             children: [
-              Text(
-                Pricing.inr(data.totalInr),
-                style: AppTextStyles.header(color: HomeColors.primary)
-                    .copyWith(fontSize: 22),
-              ),
+              if (hasOnlyPerPiece) ...[
+                Text(
+                  Pricing.inr(data.totalInr),
+                  style: AppTextStyles.header(color: HomeColors.primary)
+                      .copyWith(fontSize: 22),
+                ),
+              ],
               const Spacer(),
               InkWell(
                 onTap: onViewDetails,
@@ -752,121 +866,155 @@ void _showOrderDetailsDialog(BuildContext context, OrderRecord order) {
 }
 
 Widget _buildItemsList(OrderRecord order) {
-  final byCategory = <String, Map<String, List<CartItem>>>{};
-  for (final item in order.items) {
-    byCategory.putIfAbsent(item.category, () => {})
-        .putIfAbsent(item.serviceName, () => [])
-        .add(item);
-  }
-
+  // Separate items by pricing type
   final perPieceItems = order.items.where((x) => x.isPerPiece).toList();
   final kgWiseItems = order.items.where((x) => !x.isPerPiece).toList();
-  final isCod = order.paymentMethod == PaymentMethod.cod;
+  final hasAnyKgWise = kgWiseItems.isNotEmpty;
+  // If there are any kg-wise items, per-piece items should also show "Bill pending"
+  // because total bill will be generated after weighing
+  final isCod = hasAnyKgWise 
+      ? true // Show pending if there are kg-wise items
+      : (order.paymentMethod == PaymentMethod.cod);
+
+  // Group per-piece items by category
+  final perPieceByCategory = <String, List<CartItem>>{};
+  for (final item in perPieceItems) {
+    perPieceByCategory.putIfAbsent(item.category, () => []).add(item);
+  }
+
+  // Group kg-wise items by category
+  final kgWiseByCategory = <String, List<CartItem>>{};
+  for (final item in kgWiseItems) {
+    kgWiseByCategory.putIfAbsent(item.category, () => []).add(item);
+  }
 
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      for (final categoryEntry in byCategory.entries) ...[
-        Text(
-          categoryEntry.key,
-          style: AppTextStyles.header(color: HomeColors.text)
-              .copyWith(fontSize: 14),
-        ),
-        const SizedBox(height: 8),
-        for (final serviceEntry in categoryEntry.value.entries) ...[
-          Padding(
-            padding: const EdgeInsets.only(left: 12),
-            child: Text(
-              serviceEntry.key,
-              style: AppTextStyles.body(color: HomeColors.muted)
-                  .copyWith(fontSize: 12, fontWeight: FontWeight.w600),
+      // Per-Piece Items Section
+      if (perPieceItems.isNotEmpty) ...[
+        for (final categoryEntry in perPieceByCategory.entries) ...[
+          Text(
+            categoryEntry.key,
+            style: AppTextStyles.header(color: HomeColors.text)
+                .copyWith(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          for (final item in categoryEntry.value) ...[
+            // Service name
+            Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: Text(
+                item.serviceName.isNotEmpty ? item.serviceName : 'Service',
+                style: AppTextStyles.body(color: HomeColors.text)
+                    .copyWith(fontSize: 13, fontWeight: FontWeight.w600),
+              ),
             ),
-          ),
-          const SizedBox(height: 6),
-          // Check if this service has per-piece or kg-wise items
-          Builder(
-            builder: (context) {
-              final hasPerPieceInService = serviceEntry.value.any((item) => item.isPerPiece);
-              final hasKgWiseInService = serviceEntry.value.any((item) => !item.isPerPiece);
-              
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (final item in serviceEntry.value) ...[
-                    for (final qtyEntry in item.quantities.entries) ...[
-                      Padding(
-                        padding: const EdgeInsets.only(left: 24),
-                        child: Row(
-                          children: [
-                            Expanded(
-                      child: Text(
-                        qtyEntry.key,
-                        style: AppTextStyles.body(color: HomeColors.text)
-                            .copyWith(fontSize: 12),
-                      ),
-                    ),
-                    Text(
-                      'Qty: ${qtyEntry.value}',
-                      style: AppTextStyles.body(color: HomeColors.muted)
-                          .copyWith(fontSize: 10),
-                    ),
-                    if (item.isPerPiece && item.unitPricesInr != null) ...[
-                      const SizedBox(width: 8),
-                      Text(
-                        Pricing.inr((item.unitPricesInr![qtyEntry.key] ?? 0) * qtyEntry.value),
-                        style: AppTextStyles.body(color: HomeColors.text)
-                            .copyWith(fontSize: 12, fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                          ],
+            const SizedBox(height: 6),
+            // Individual cloth items with quantities
+            if (item.quantities.isNotEmpty) ...[
+              for (final qtyEntry in item.quantities.entries) ...[
+                Padding(
+                  padding: const EdgeInsets.only(left: 24),
+                  child: Row(
+                    children: [
+                      // Show cloth item: "Saree - 2"
+                      Expanded(
+                        child: Text(
+                          '${qtyEntry.key} - ${qtyEntry.value}',
+                          style: AppTextStyles.body(color: HomeColors.text)
+                              .copyWith(fontSize: 12),
                         ),
                       ),
-                      const SizedBox(height: 4),
-                    ],
-                    if (item.note != null && item.note!.isNotEmpty) ...[
-                      Padding(
-                        padding: const EdgeInsets.only(left: 24, top: 4),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                    Icon(
-                      Icons.note_outlined,
-                      size: 14,
-                      color: HomeColors.muted,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        item.note!,
-                        style: AppTextStyles.body(color: HomeColors.muted)
-                            .copyWith(fontSize: 10),
-                      ),
-                    ),
-                          ],
+                      // Show price for per-piece items
+                      if (item.unitPricesInr != null) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          Pricing.inr((item.unitPricesInr![qtyEntry.key] ?? 0) * qtyEntry.value),
+                          style: AppTextStyles.body(color: HomeColors.text)
+                              .copyWith(fontSize: 12, fontWeight: FontWeight.w600),
                         ),
-                      ),
-                      const SizedBox(height: 4),
+                      ],
                     ],
-                  ],
-                  // Show payment status for this service
-                  if (hasPerPieceInService || hasKgWiseInService) ...[
-                    const SizedBox(height: 6),
-                    Padding(
-                      padding: const EdgeInsets.only(left: 24),
-                      child: _ItemSetPaymentStatus(
-                        isPerPiece: hasPerPieceInService,
-                        isKgWise: hasKgWiseInService,
-                        isCod: isCod,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                ],
-              );
-            },
-          ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+              ],
+            ],
+            // Payment status for per-piece items
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.only(left: 24),
+              child: _ItemSetPaymentStatus(
+                isPerPiece: true,
+                isKgWise: false,
+                isCod: isCod,
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
         ],
-        const SizedBox(height: 12),
+      ],
+      // Kg-Wise Items Section
+      if (kgWiseItems.isNotEmpty) ...[
+        if (perPieceItems.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          const Divider(height: 1, thickness: 1, color: HomeColors.borderSoft),
+          const SizedBox(height: 12),
+        ],
+        for (final categoryEntry in kgWiseByCategory.entries) ...[
+          Text(
+            categoryEntry.key,
+            style: AppTextStyles.header(color: HomeColors.text)
+                .copyWith(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          for (final item in categoryEntry.value) ...[
+            // Service name
+            Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: Text(
+                item.serviceName.isNotEmpty ? item.serviceName : 'Service',
+                style: AppTextStyles.body(color: HomeColors.text)
+                    .copyWith(fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+            ),
+            const SizedBox(height: 6),
+            // Individual cloth items with quantities (similar to cart screen)
+            if (item.quantities.isNotEmpty) ...[
+              for (final qtyEntry in item.quantities.entries) ...[
+                Padding(
+                  padding: const EdgeInsets.only(left: 24),
+                  child: Row(
+                    children: [
+                      // Show cloth item: "Saree - 2" (same style as cart screen)
+                      Expanded(
+                        child: Text(
+                          '${qtyEntry.key} - ${qtyEntry.value}',
+                          style: AppTextStyles.body(color: HomeColors.text)
+                              .copyWith(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 4),
+              ],
+            ],
+            // Payment status for kg-wise items
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.only(left: 24),
+              child: _ItemSetPaymentStatus(
+                isPerPiece: false,
+                isKgWise: true,
+                isCod: isCod,
+                hasAnyKgWiseInOrder: hasAnyKgWise,
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ],
       ],
     ],
   );
@@ -883,7 +1031,12 @@ class _PaymentStatusSection extends StatelessWidget {
     final kgWiseItems = order.items.where((x) => !x.isPerPiece).toList();
     final hasPerPiece = perPieceItems.isNotEmpty;
     final hasKgWise = kgWiseItems.isNotEmpty;
-    final isCod = order.paymentMethod == PaymentMethod.cod;
+    // If there are any kg-wise items, per-piece items should also show "Bill pending"
+    // because total bill will be generated after weighing
+    final hasAnyKgWise = hasKgWise;
+    final isCod = hasAnyKgWise 
+        ? true // Show pending if there are kg-wise items
+        : (order.paymentMethod == PaymentMethod.cod);
     final hasPayment = order.paymentMethod != null;
 
     return Column(
@@ -923,7 +1076,7 @@ class _PaymentStatusSection extends StatelessWidget {
                 Expanded(
                   child: Text(
                     isCod
-                        ? 'Bill pending (COD)'
+                        ? (hasKgWise ? 'Bill pending (kg-wise)' : 'Bill pending (COD)')
                         : 'Bill paid',
                     style: AppTextStyles.body(
                       color: isCod
@@ -1017,11 +1170,13 @@ class _ItemSetPaymentStatus extends StatelessWidget {
   final bool isPerPiece;
   final bool isKgWise;
   final bool isCod;
+  final bool hasAnyKgWiseInOrder;
 
   const _ItemSetPaymentStatus({
     required this.isPerPiece,
     required this.isKgWise,
     required this.isCod,
+    this.hasAnyKgWiseInOrder = false,
   });
 
   @override
@@ -1056,7 +1211,9 @@ class _ItemSetPaymentStatus extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  isCod ? 'Bill pending (COD)' : 'Bill paid',
+                  isCod 
+                      ? (hasAnyKgWiseInOrder ? 'Bill pending (kg-wise)' : 'Bill pending (COD)')
+                      : 'Bill paid',
                   style: AppTextStyles.body(
                     color: isCod
                         ? const Color(0xFF92400E)

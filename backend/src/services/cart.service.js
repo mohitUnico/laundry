@@ -16,6 +16,8 @@ const { NotFoundError, ValidationError } = require('../utils/errors');
  * ]
  */
 exports.addItemsToActiveCart = async (customerId, { items }) => {
+    // Interactive transaction default timeout can be too low for larger carts (P2028).
+    // Increase timeout to avoid Prisma closing the transaction mid-operation.
     return prisma.$transaction(
         async (tx) => {
             if (!Array.isArray(items) || items.length === 0) {
@@ -62,27 +64,8 @@ exports.addItemsToActiveCart = async (customerId, { items }) => {
 
             const allowedServiceIds = new Set(serviceRecords.map((s) => s.service_id));
 
-            // Preload existing cart items for this cart so we can merge instead of creating duplicates.
-            // Keyed by `${service_id}:${pricing_type}`.
-            const existingCartItems = await tx.cartItem.findMany({
-                where: {
-                    cart_id: cart.cart_id,
-                    service_id: { in: uniqueServiceIds },
-                },
-                select: {
-                    cart_item_id: true,
-                    service_id: true,
-                    pricing_type: true,
-                    weight_kg: true,
-                },
-            });
-
-            const cartItemByKey = new Map(
-                existingCartItems.map((ci) => [`${ci.service_id}:${ci.pricing_type}`, ci])
-            );
-
-            // Return cart_item_ids that were created or updated by this call.
-            const affectedCartItemIds = [];
+            const createdCartItemIds = [];
+            const processedCartItemIds = []; // Track all processed cart items (new and existing)
 
             for (const item of items) {
                 if (!item || typeof item !== 'object') {
@@ -103,7 +86,7 @@ exports.addItemsToActiveCart = async (customerId, { items }) => {
 
                 const selections = Array.isArray(item.selections) ? item.selections : [];
 
-                // per_unit requires selections (counts). per_kg requires weight_kg.
+                // per_unit requires selections (counts). per_kg can optionally include selections to keep counts.
                 if (item.pricing_type === 'per_unit' && selections.length === 0) {
                     throw new ValidationError('selections are required when pricing_type is per_unit');
                 }
@@ -139,10 +122,17 @@ exports.addItemsToActiveCart = async (customerId, { items }) => {
                     }
                 }
 
-                const key = `${item.service_id}:${item.pricing_type}`;
-                let cartItem = cartItemByKey.get(key);
+                // Check if a cart item with the same service_id and pricing_type already exists
+                let cartItem = await tx.cartItem.findFirst({
+                    where: {
+                        cart_id: cart.cart_id,
+                        service_id: item.service_id,
+                        pricing_type: item.pricing_type,
+                    },
+                    select: { cart_item_id: true },
+                });
 
-                // Create cart item if it doesn't exist yet (merge behavior)
+                // If cart item doesn't exist, create a new one
                 if (!cartItem) {
                     cartItem = await tx.cartItem.create({
                         data: {
@@ -151,54 +141,20 @@ exports.addItemsToActiveCart = async (customerId, { items }) => {
                             pricing_type: item.pricing_type,
                             weight_kg: item.pricing_type === 'per_kg' ? item.weight_kg ?? null : null,
                         },
-                        select: {
-                            cart_item_id: true,
-                            service_id: true,
-                            pricing_type: true,
-                            weight_kg: true,
-                        },
+                        select: { cart_item_id: true },
                     });
-                    cartItemByKey.set(key, cartItem);
-                } else if (item.pricing_type === 'per_kg') {
-                    // For per_kg, keep a single cart_item row and accumulate weight.
-                    const existingWeight = cartItem.weight_kg ?? null;
-                    const incomingWeight = item.weight_kg ?? null;
-
-                    // Validator enforces weight_kg for per_kg, but keep this defensive.
-                    if (incomingWeight !== null) {
-                        const nextWeight =
-                            existingWeight === null ? incomingWeight : Number(existingWeight) + Number(incomingWeight);
-
-                        cartItem = await tx.cartItem.update({
-                            where: { cart_item_id: cartItem.cart_item_id },
-                            data: { weight_kg: nextWeight },
-                            select: {
-                                cart_item_id: true,
-                                service_id: true,
-                                pricing_type: true,
-                                weight_kg: true,
-                            },
-                        });
-                        cartItemByKey.set(key, cartItem);
-                    }
+                    createdCartItemIds.push(cartItem.cart_item_id);
                 }
+                
+                // Track all processed cart items (both new and existing)
+                processedCartItemIds.push(cartItem.cart_item_id);
 
-                affectedCartItemIds.push(cartItem.cart_item_id);
-
-                // Merge selections into the same cart_item for per_unit (and any case where selections are provided)
+                // Append selections to the existing or newly created cart item
                 if (selections.length > 0) {
-                    // Merge duplicates in the incoming payload itself (same cloth_id repeated)
-                    const incomingQtyByClothId = new Map();
-                    for (const s of selections) {
-                        const prev = incomingQtyByClothId.get(s.cloth_id) ?? 0;
-                        incomingQtyByClothId.set(s.cloth_id, prev + s.quantity);
-                    }
-
-                    const clothIds = Array.from(incomingQtyByClothId.keys());
+                    // Get existing selections for this cart item
                     const existingSelections = await tx.cartItemSelection.findMany({
                         where: {
                             cart_item_id: cartItem.cart_item_id,
-                            cloth_id: { in: clothIds },
                         },
                         select: {
                             selection_id: true,
@@ -207,34 +163,32 @@ exports.addItemsToActiveCart = async (customerId, { items }) => {
                         },
                     });
 
-                    const existingByClothId = new Map(
+                    // Create a map of existing selections by cloth_id
+                    const existingSelectionsMap = new Map(
                         existingSelections.map((s) => [s.cloth_id, { selection_id: s.selection_id, quantity: s.quantity }])
                     );
 
-                    for (const [clothId, incQty] of incomingQtyByClothId.entries()) {
-                        const existing = existingByClothId.get(clothId);
+                    // Process each new selection
+                    for (const selection of selections) {
+                        const existing = existingSelectionsMap.get(selection.cloth_id);
+
                         if (existing) {
+                            // If selection already exists, add the quantities together
                             await tx.cartItemSelection.update({
                                 where: { selection_id: existing.selection_id },
-                                data: { quantity: existing.quantity + incQty },
+                                data: { quantity: existing.quantity + selection.quantity },
                             });
                         } else {
+                            // If selection doesn't exist, create a new one
                             await tx.cartItemSelection.create({
                                 data: {
                                     cart_item_id: cartItem.cart_item_id,
-                                    cloth_id: clothId,
-                                    quantity: incQty,
+                                    cloth_id: selection.cloth_id,
+                                    quantity: selection.quantity,
                                 },
                             });
                         }
                     }
-
-                    // Touch cart item updated_at for per_unit changes so clients can rely on ordering/sync.
-                    await tx.cartItem.update({
-                        where: { cart_item_id: cartItem.cart_item_id },
-                        data: { updated_at: new Date() },
-                        select: { cart_item_id: true },
-                    });
                 }
             }
 
@@ -245,35 +199,74 @@ exports.addItemsToActiveCart = async (customerId, { items }) => {
                 select: { cart_id: true },
             });
 
-            return {
-                cart_id: cart.cart_id,
-                added_cart_item_ids: affectedCartItemIds,
-            };
+            // Fetch and return the complete cart with all items and selections
+            const completeCart = await tx.cart.findUnique({
+                where: { cart_id: cart.cart_id },
+                include: {
+                    cart_items: {
+                        orderBy: { created_at: 'desc' },
+                        include: {
+                            service: {
+                                select: {
+                                    service_id: true,
+                                    service_name: true,
+                                    base_price: true,
+                                    per_kg_price: true,
+                                    icon_url: true,
+                                    is_active: true,
+                                },
+                            },
+                            item_selections: {
+                                include: {
+                                    cloth_item: {
+                                        select: {
+                                            cloth_id: true,
+                                            item_name: true,
+                                            per_unit_price: true,
+                                            icon_url: true,
+                                            is_active: true,
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            });
+
+            // Attach processed cart item IDs to the result for frontend
+            completeCart.processed_cart_item_ids = processedCartItemIds;
+            completeCart.created_cart_item_ids = createdCartItemIds;
+            
+            return completeCart;
         },
-        {
-            // Increase interactive transaction timeout to avoid P2028 for larger payloads / slower DB.
-            timeout: 15000,
-        }
+        { maxWait: 10000, timeout: 60000 }
     );
 };
 
 exports.getCustomerCarts = async (customerId) => {
-    const customer = await prisma.customer.findUnique({
-        where: { customer_id: customerId },
-        select: { customer_id: true },
-    });
-
-    if (!customer) {
-        throw new NotFoundError('Customer');
-    }
-
+    // Optimize: Use single query with proper select instead of separate customer check
     const carts = await prisma.cart.findMany({
-        where: { customer_id: customerId },
+        where: { 
+            customer_id: customerId,
+            // Only fetch active carts for better performance
+            is_active: true,
+        },
         orderBy: { created_at: 'desc' },
-        include: {
+        take: 1, // Only need the active cart
+        select: {
+            cart_id: true,
+            is_active: true,
+            created_at: true,
+            updated_at: true,
             cart_items: {
                 orderBy: { created_at: 'desc' },
-                include: {
+                select: {
+                    cart_item_id: true,
+                    pricing_type: true,
+                    weight_kg: true,
+                    created_at: true,
+                    updated_at: true,
                     service: {
                         select: {
                             service_id: true,
@@ -285,7 +278,9 @@ exports.getCustomerCarts = async (customerId) => {
                         },
                     },
                     item_selections: {
-                        include: {
+                        select: {
+                            selection_id: true,
+                            quantity: true,
                             cloth_item: {
                                 select: {
                                     cloth_id: true,
@@ -302,6 +297,7 @@ exports.getCustomerCarts = async (customerId) => {
         },
     });
 
+    // If no active cart found, return empty array (not an error)
     return carts;
 };
 
@@ -314,61 +310,158 @@ exports.updateSelectionQuantity = async (customerId, cartItemId, selectionId, de
         throw new ValidationError('delta must be +1 or -1');
     }
 
-    return prisma.$transaction(
-        async (tx) => {
-            // Ensure selection belongs to the given cartItem AND to the authenticated customer
-            const selection = await tx.cartItemSelection.findFirst({
-                where: {
-                    selection_id: selectionId,
-                    cart_item_id: cartItemId,
-                    cart_item: {
-                        cart: {
-                            customer_id: customerId,
-                        },
+    return prisma.$transaction(async (tx) => {
+        // Ensure selection belongs to the given cartItem AND to the authenticated customer
+        const selection = await tx.cartItemSelection.findFirst({
+            where: {
+                selection_id: selectionId,
+                cart_item_id: cartItemId,
+                cart_item: {
+                    cart: {
+                        customer_id: customerId,
                     },
                 },
-                select: {
-                    selection_id: true,
-                    quantity: true,
-                    cart_item_id: true,
-                    cart_item: { select: { cart_id: true } },
-                },
-            });
+            },
+            select: {
+                selection_id: true,
+                quantity: true,
+                cart_item_id: true,
+                cart_item: { select: { cart_id: true } },
+            },
+        });
 
-            if (!selection) {
-                throw new NotFoundError('Cart item selection');
-            }
-
-            const nextQuantity = selection.quantity + delta;
-
-            if (nextQuantity < 1) {
-                await tx.cartItemSelection.delete({
-                    where: { selection_id: selection.selection_id },
-                });
-            } else {
-                await tx.cartItemSelection.update({
-                    where: { selection_id: selection.selection_id },
-                    data: { quantity: nextQuantity },
-                });
-            }
-
-            await tx.cart.update({
-                where: { cart_id: selection.cart_item.cart_id },
-                data: { updated_at: new Date() },
-                select: { cart_id: true },
-            });
-
-            return {
-                cart_item_id: selection.cart_item_id,
-                selection_id: selection.selection_id,
-                quantity: Math.max(nextQuantity, 0),
-                deleted: nextQuantity < 1,
-            };
-        },
-        {
-            timeout: 15000,
+        if (!selection) {
+            throw new NotFoundError('Cart item selection');
         }
-    );
+
+        const nextQuantity = selection.quantity + delta;
+
+        if (nextQuantity < 1) {
+            await tx.cartItemSelection.delete({
+                where: { selection_id: selection.selection_id },
+            });
+        } else {
+            await tx.cartItemSelection.update({
+                where: { selection_id: selection.selection_id },
+                data: { quantity: nextQuantity },
+            });
+        }
+
+        await tx.cart.update({
+            where: { cart_id: selection.cart_item.cart_id },
+            data: { updated_at: new Date() },
+            select: { cart_id: true },
+        });
+
+        return {
+            cart_item_id: selection.cart_item_id,
+            selection_id: selection.selection_id,
+            quantity: Math.max(nextQuantity, 0),
+            deleted: nextQuantity < 1,
+        };
+    });
+};
+
+/**
+ * Set quantity for a cart item selection identified by (cartItemId, clothId).
+ * If quantity is 0: selection is deleted. If cart item becomes empty (per_unit), cart item is deleted.
+ */
+exports.setSelectionQuantity = async (customerId, cartItemId, clothId, quantity) => {
+    if (!cartItemId || !clothId) {
+        throw new ValidationError('cartItemId and clothId are required');
+    }
+
+    if (!Number.isInteger(quantity) || quantity < 0) {
+        throw new ValidationError('quantity must be an integer >= 0');
+    }
+
+    return prisma.$transaction(async (tx) => {
+        const cartItem = await tx.cartItem.findFirst({
+            where: {
+                cart_item_id: cartItemId,
+                cart: { customer_id: customerId },
+            },
+            select: {
+                cart_item_id: true,
+                cart_id: true,
+                pricing_type: true,
+            },
+        });
+
+        if (!cartItem) {
+            throw new NotFoundError('Cart item');
+        }
+
+        if (cartItem.pricing_type !== 'per_unit') {
+            throw new ValidationError('Selection quantity updates are only supported for per_unit cart items');
+        }
+
+        const existing = await tx.cartItemSelection.findFirst({
+            where: {
+                cart_item_id: cartItem.cart_item_id,
+                cloth_id: clothId,
+            },
+            select: {
+                selection_id: true,
+                quantity: true,
+            },
+        });
+
+        let selectionDeleted = false;
+        let cartItemDeleted = false;
+        let selectionId = existing?.selection_id ?? null;
+
+        if (quantity < 1) {
+            if (existing) {
+                await tx.cartItemSelection.delete({
+                    where: { selection_id: existing.selection_id },
+                });
+                selectionDeleted = true;
+            }
+
+            const remaining = await tx.cartItemSelection.count({
+                where: { cart_item_id: cartItem.cart_item_id },
+            });
+
+            if (remaining < 1) {
+                await tx.cartItem.delete({
+                    where: { cart_item_id: cartItem.cart_item_id },
+                });
+                cartItemDeleted = true;
+            }
+        } else if (existing) {
+            await tx.cartItemSelection.update({
+                where: { selection_id: existing.selection_id },
+                data: { quantity },
+            });
+        } else {
+            const created = await tx.cartItemSelection.create({
+                data: {
+                    cart_item_id: cartItem.cart_item_id,
+                    cloth_id: clothId,
+                    quantity,
+                },
+                select: { selection_id: true },
+            });
+            selectionId = created.selection_id;
+        }
+
+        // Touch cart updated_at (and keep behavior consistent with other mutations)
+        await tx.cart.update({
+            where: { cart_id: cartItem.cart_id },
+            data: { updated_at: new Date() },
+            select: { cart_id: true },
+        });
+
+        return {
+            cart_item_id: cartItem.cart_item_id,
+            selection_id: selectionId,
+            cloth_id: clothId,
+            quantity,
+            deleted: selectionDeleted,
+            cart_item_deleted: cartItemDeleted,
+        };
+    });
 };
 
 exports.removeCartItem = async (customerId, cartItemId) => {
@@ -376,39 +469,34 @@ exports.removeCartItem = async (customerId, cartItemId) => {
         throw new ValidationError('cartItemId is required');
     }
 
-    return prisma.$transaction(
-        async (tx) => {
-            const cartItem = await tx.cartItem.findFirst({
-                where: {
-                    cart_item_id: cartItemId,
-                    cart: { customer_id: customerId },
-                },
-                select: { cart_item_id: true, cart_id: true },
-            });
+    return prisma.$transaction(async (tx) => {
+        const cartItem = await tx.cartItem.findFirst({
+            where: {
+                cart_item_id: cartItemId,
+                cart: { customer_id: customerId },
+            },
+            select: { cart_item_id: true, cart_id: true },
+        });
 
-            if (!cartItem) {
-                throw new NotFoundError('Cart item');
-            }
-
-            await tx.cartItem.delete({
-                where: { cart_item_id: cartItem.cart_item_id },
-            });
-
-            await tx.cart.update({
-                where: { cart_id: cartItem.cart_id },
-                data: { updated_at: new Date() },
-                select: { cart_id: true },
-            });
-
-            return {
-                cart_item_id: cartItem.cart_item_id,
-                deleted: true,
-            };
-        },
-        {
-            timeout: 15000,
+        if (!cartItem) {
+            throw new NotFoundError('Cart item');
         }
-    );
+
+        await tx.cartItem.delete({
+            where: { cart_item_id: cartItem.cart_item_id },
+        });
+
+        await tx.cart.update({
+            where: { cart_id: cartItem.cart_id },
+            data: { updated_at: new Date() },
+            select: { cart_id: true },
+        });
+
+        return {
+            cart_item_id: cartItem.cart_item_id,
+            deleted: true,
+        };
+    });
 };
 
 module.exports = exports;

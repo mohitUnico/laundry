@@ -8,7 +8,11 @@ import '../../routes/app_routes.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/order_provider.dart';
 import '../../models/order_record.dart';
+import '../../repositories/order_repository.dart';
+import '../../repositories/customer_info_repository.dart';
+import '../../services/customer_info_service.dart';
 import 'delivery_options_screen.dart';
+import 'order_confirmation_screen.dart';
 
 class ScheduleDateTimeArgs {
   final DeliveryOptionType option;
@@ -167,7 +171,7 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                   child: Material(
                     color: Colors.transparent,
                     child: InkWell(
-                      onTap: () {
+                      onTap: () async {
                         final dateLabel = '${_monthShort(selectedDate.month)} ${selectedDate.day}';
                         final timeLabel = _formatTime12h(_fromHour, _fromMinute, _fromAmPm);
 
@@ -185,7 +189,7 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                           return;
                         }
 
-                        // Otherwise, navigate to payment screen if there are per-piece items
+                        // Otherwise, create order via backend
                         final cart = context.read<CartProvider>();
                         final items = cart.items;
                         if (items.isEmpty) {
@@ -195,53 +199,40 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                           return;
                         }
 
-                        final hasPerPieceItems = cart.hasPricedItems;
-                        if (hasPerPieceItems) {
-                          // Navigate to payment screen for per-piece items with schedule info and delivery option
+                        final cartId = cart.activeCartId;
+                        if (cartId == null || cartId.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('No active cart found. Please add items to cart.')),
+                          );
+                          return;
+                        }
+
+                        // Check cart type to determine flow
+                        final hasAnyKgWise = cart.hasAnyKgWiseItems;
+
+                        // If cart has ANY kg-wise items (even if mixed with per-piece), 
+                        // navigate to order confirmation screen
+                        if (hasAnyKgWise) {
+                          if (!mounted) return;
+                          Navigator.of(context).pushNamed(
+                            AppRoutes.orderConfirmation,
+                            arguments: OrderConfirmationArgs(
+                              deliveryOption: option,
+                              dateLabel: dateLabel,
+                              timeLabel: timeLabel,
+                            ),
+                          );
+                        } else {
+                          // If cart has ONLY per-piece items (no kg-wise items), navigate to payment screen
+                          // Payment screen will create the order after payment confirmation
+                          if (!mounted) return;
                           Navigator.of(context).pushNamed(
                             AppRoutes.payment,
                             arguments: {
                               'dateLabel': dateLabel,
                               'timeLabel': timeLabel,
-                              'deliveryOption': option.name, // Pass delivery option
+                              'deliveryOption': option.name,
                             },
-                          );
-                        } else {
-                          // Only kg-wise items - create order directly without payment
-                          final totalItems = items.fold<int>(0, (a, x) => a + x.totalQuantity);
-                          final orderIdNum =
-                              (DateTime.now().millisecondsSinceEpoch % 90000) + 10000;
-                          final orderId = '#LD$orderIdNum';
-                          final title = items.length == 1 ? items.first.category : 'Mixed';
-                          final placedAt = DateTime.now();
-                          final placedDateLabel = '${_monthShort(placedAt.month)} ${placedAt.day}, ${placedAt.year}';
-                          final placedTimeLabel = _formatTime12h(
-                            placedAt.hour > 12 ? placedAt.hour - 12 : (placedAt.hour == 0 ? 12 : placedAt.hour),
-                            placedAt.minute,
-                            placedAt.hour >= 12 ? 1 : 0,
-                          );
-
-                          context.read<OrderProvider>().addOrder(
-                                OrderRecord(
-                                  id: orderId,
-                                  title: title,
-                                  items: items,
-                                  totalItems: totalItems,
-                                  totalInr: 0, // No price for kg-wise only
-                                  dateLabel: dateLabel,
-                                  timeLabel: timeLabel,
-                                  placedAt: placedAt,
-                                  placedDateLabel: placedDateLabel,
-                                  placedTimeLabel: placedTimeLabel,
-                                  status: OrderStatus.inProgress,
-                                ),
-                              );
-
-                          cart.clear();
-
-                          Navigator.of(context).pushNamedAndRemoveUntil(
-                            AppRoutes.orders,
-                            (r) => false,
                           );
                         }
                       },

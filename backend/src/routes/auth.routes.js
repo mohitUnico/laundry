@@ -25,7 +25,8 @@ const {
   completeServiceManRegistrationSchema,
   completeCustomerRegistrationSchema,
   completeDeliveryRegistrationSchema,
-  resendOtpSchema
+  resendOtpSchema,
+  refreshTokenSchema
 } = require('../validators/auth.validator');
 
 // ============================================================================
@@ -73,6 +74,14 @@ router.post(
   validate(verifyPortalOtpSchema),
   authController.verifyPortalOtp
 );
+
+/**
+ * @route   POST /api/v1/auth/refresh
+ * @desc    Exchange refresh token for new access token (and rotated refresh token)
+ * @access  Public
+ * @body    { refreshToken: "..." }
+ */
+router.post('/refresh', validate(refreshTokenSchema), authController.refreshToken);
 
 /**
  * @route   POST /api/v1/auth/portal/complete-registration
@@ -257,7 +266,7 @@ router.post(
  *            customerData: { 
  *              fullName, 
  *              phone, 
- *              address: { addressLabel, address, latitude, longitude }
+ *              address?: { addressLabel, address, latitude, longitude }
  *            }
  *          }
  */

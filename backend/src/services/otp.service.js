@@ -17,6 +17,7 @@ const { AppError, ValidationError, NotFoundError, AuthenticationError, Authoriza
 const crypto = require('crypto');
 const emailService = require('./email.service');
 const serviceService = require('./service.service');
+const refreshTokenService = require('./refresh-token.service');
 
 // ============================================================================
 // CONSTANTS
@@ -37,6 +38,9 @@ const USER_TYPES = {
     CUSTOMER: 'customer',
     DELIVERY_STAFF: 'delivery_staff'
 };
+
+// Export user types so other modules can reuse the constants safely.
+exports.USER_TYPES = USER_TYPES;
 
 const PURPOSE = {
     LOGIN_OR_SIGNUP: 'login_or_signup',
@@ -337,13 +341,16 @@ const verifyOtp = async (email, otp, userType, options = {}) => {
                 userId: existingUser.user_id || existingUser.customer_id || existingUser.staff_id
             });
 
-            // Generate JWT token
-            const token = generateToken({
-                userId:
-                    existingUser.user_id ||
-                    existingUser.customer_id ||
-                    existingUser.staff_id ||
-                    existingUser.manager_id,
+            const userId =
+                existingUser.user_id ||
+                existingUser.customer_id ||
+                existingUser.staff_id ||
+                existingUser.manager_id;
+
+            // Generate access + refresh token
+            const tokens = await refreshTokenService.issueTokens({
+                userId,
+                userType,
                 email: existingUser.email,
                 role: existingUser.role || userType,
                 fullName: existingUser.full_name,
@@ -351,13 +358,10 @@ const verifyOtp = async (email, otp, userType, options = {}) => {
 
             return {
                 isNewUser: false,
-                token,
+                token: tokens.token,
+                refreshToken: tokens.refreshToken,
                 user: {
-                    userId:
-                        existingUser.user_id ||
-                        existingUser.customer_id ||
-                        existingUser.staff_id ||
-                        existingUser.manager_id,
+                    userId,
                     email: existingUser.email,
                     fullName: existingUser.full_name,
                     role: existingUser.role || userType,
@@ -1264,9 +1268,9 @@ const completeCustomerRegistration = async (sessionToken, customerData) => {
             return newCustomer;
         });
 
-        // Generate JWT token
-        const token = generateToken({
+        const tokens = await refreshTokenService.issueTokens({
             userId: customer.customer_id,
+            userType: USER_TYPES.CUSTOMER,
             email: customer.email,
             role: 'customer',
             fullName: customer.full_name
@@ -1288,7 +1292,8 @@ const completeCustomerRegistration = async (sessionToken, customerData) => {
         }) : null;
 
         return {
-            token,
+            token: tokens.token,
+            refreshToken: tokens.refreshToken,
             customer: {
                 customerId: customer.customer_id,
                 fullName: customer.full_name,
@@ -1500,6 +1505,7 @@ module.exports = {
 
     // Utility
     cleanupExpiredOtps,
+    refreshAccessToken: refreshTokenService.rotateRefreshToken,
 
     // Constants (for use in controllers/routes)
     USER_TYPES,

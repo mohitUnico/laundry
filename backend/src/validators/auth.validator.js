@@ -30,11 +30,13 @@ const identifierSchema = Joi.string()
   });
 
 const phoneSchema = Joi.string()
-  .pattern(/^[0-9]{10}$/)
+  .pattern(/^(\+?[0-9]{1,4}[\s-]?)?[0-9]{6,15}$/)
+  .max(20)
   .allow(null, '')
   .optional()
   .messages({
-    'string.pattern.base': 'Phone number must be exactly 10 digits'
+    'string.pattern.base': 'Phone number must be in valid format (e.g., "+91 9876543210", "9876543210", "+1 9876543210")',
+    'string.max': 'Phone number must not exceed 20 characters'
   });
 
 const flexiblePhoneSchema = Joi.string()
@@ -316,7 +318,11 @@ const completeCustomerRegistrationSchema = Joi.object({
           'number.max': 'Longitude must be between -180 and 180',
           'any.required': 'Longitude is required'
         })
-    }).optional()
+    })
+      // Address is optional during customer registration.
+      // If provided, all fields above are still required/validated.
+      .optional()
+      .allow(null)
   }).required()
 });
 
@@ -362,6 +368,12 @@ const resendOtpSchema = Joi.object({
   userType: userTypeSchema
 });
 
+const refreshTokenSchema = Joi.object({
+  refreshToken: Joi.string().min(20).required().messages({
+    'any.required': 'Refresh token is required',
+  }),
+});
+
 // ============================================================================
 // EXPORTS
 // ============================================================================
@@ -386,5 +398,6 @@ module.exports = {
   completeDeliveryRegistrationSchema,
 
   // Common
-  resendOtpSchema
+  resendOtpSchema,
+  refreshTokenSchema,
 };

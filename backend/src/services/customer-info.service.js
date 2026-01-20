@@ -1,6 +1,8 @@
 const prisma = require('../config/database');
 const logger = require('../utils/logger');
-const { NotFoundError, ValidationError } = require('../utils/errors');
+const { NotFoundError, ValidationError, AppError } = require('../utils/errors');
+const { getSupabaseClient } = require('../config/supabase');
+const { v4: uuidv4 } = require('uuid');
 
 const UUID_REGEX =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -159,12 +161,13 @@ exports.deleteCustomerAddress = async (customerId, addressId) => {
     });
 };
 
-exports.updateCustomerProfilePicture = async (customerId, payload) => {
+exports.updateCustomerProfileImageUrl = async (customerId, payload) => {
     assertUuid(customerId, 'customerId');
 
-    const { profileImageUrl } = payload;
+    const profileImageUrl =
+        payload?.profile_image_url !== undefined ? payload.profile_image_url : payload?.profileImageUrl;
 
-    if (!(typeof profileImageUrl === 'string' || profileImageUrl === null)) {
+    if (profileImageUrl !== null && typeof profileImageUrl !== 'string') {
         throw new ValidationError('profileImageUrl must be a valid URL or null');
     }
 
@@ -182,12 +185,158 @@ exports.updateCustomerProfilePicture = async (customerId, payload) => {
                 email: true,
                 phone: true,
                 profile_image_url: true,
+                updated_at: true,
             },
         });
 
-        logger.info('Customer profile picture updated', {
+        logger.info('Customer profile image url updated', {
             customerId,
-            hasProfileImage: Boolean(updated.profile_image_url),
+            hasUrl: Boolean(updated.profile_image_url),
+        });
+
+        return updated;
+    });
+};
+
+exports.uploadCustomerProfileImage = async (customerId, file) => {
+    assertUuid(customerId, 'customerId');
+
+    if (!file) {
+        throw new ValidationError('Image file is required');
+    }
+
+    const allowedMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
+    if (!allowedMimeTypes.has(file.mimetype)) {
+        throw new ValidationError('Only JPEG, PNG, or WEBP images are allowed');
+    }
+
+    // Default bucket for customer profile images.
+    // Can be overridden via SUPABASE_CUSTOMER_PROFILE_BUCKET env var.
+    const bucket = process.env.SUPABASE_CUSTOMER_PROFILE_BUCKET || 'customer-info';
+    const ext = file.mimetype === 'image/jpeg' ? 'jpg' : file.mimetype === 'image/png' ? 'png' : 'webp';
+    const objectPath = `customers/${customerId}/${uuidv4()}.${ext}`;
+
+    const supabase = getSupabaseClient();
+
+    // Upload to Supabase Storage
+    const { error: uploadError } = await supabase.storage.from(bucket).upload(objectPath, file.buffer, {
+        contentType: file.mimetype,
+        upsert: true,
+        cacheControl: '3600',
+    });
+
+    if (uploadError) {
+        logger.error('Supabase upload failed', { error: uploadError.message, bucket, objectPath });
+        throw new AppError('Failed to upload image', 500);
+    }
+
+    const { data: publicUrlData } = supabase.storage.from(bucket).getPublicUrl(objectPath);
+    const publicUrl = publicUrlData?.publicUrl;
+
+    if (!publicUrl) {
+        logger.error('Supabase getPublicUrl returned empty url', { bucket, objectPath });
+        throw new AppError('Failed to resolve image URL', 500);
+    }
+
+    return prisma.$transaction(async (tx) => {
+        await ensureCustomerExists(tx, customerId);
+
+        const updated = await tx.customer.update({
+            where: { customer_id: customerId },
+            data: {
+                profile_image_url: publicUrl,
+            },
+            select: {
+                customer_id: true,
+                full_name: true,
+                email: true,
+                phone: true,
+                profile_image_url: true,
+                updated_at: true,
+            },
+        });
+
+        logger.info('Customer profile image uploaded', {
+            customerId,
+            bucket,
+            objectPath,
+        });
+
+        return updated;
+    });
+};
+
+exports.getCustomerProfile = async (customerId) => {
+    assertUuid(customerId, 'customerId');
+
+    const customer = await prisma.customer.findUnique({
+        where: { customer_id: customerId },
+        select: {
+            customer_id: true,
+            full_name: true,
+            email: true,
+            phone: true,
+            profile_image_url: true,
+            created_at: true,
+            updated_at: true,
+        },
+    });
+
+    if (!customer) {
+        throw new NotFoundError('Customer');
+    }
+
+    return customer;
+};
+
+exports.updateCustomerProfile = async (customerId, payload) => {
+    assertUuid(customerId, 'customerId');
+
+    const fullName =
+        payload?.full_name !== undefined ? payload.full_name : payload?.fullName;
+    const phone = payload?.phone;
+    const profileImageUrl =
+        payload?.profile_image_url !== undefined ? payload.profile_image_url : payload?.profileImageUrl;
+
+    if (fullName !== undefined && fullName !== null && typeof fullName !== 'string') {
+        throw new ValidationError('fullName must be a string');
+    }
+    if (phone !== undefined && phone !== null && typeof phone !== 'string') {
+        throw new ValidationError('phone must be a string or null');
+    }
+    if (profileImageUrl !== undefined && profileImageUrl !== null && typeof profileImageUrl !== 'string') {
+        throw new ValidationError('profileImageUrl must be a valid URL or null');
+    }
+
+    return prisma.$transaction(async (tx) => {
+        await ensureCustomerExists(tx, customerId);
+
+        const updated = await tx.customer.update({
+            where: { customer_id: customerId },
+            data: {
+                ...(typeof fullName === 'string' ? { full_name: fullName.trim() } : {}),
+                ...(typeof phone === 'string' ? { phone: phone.trim() } : phone === null ? { phone: null } : {}),
+                ...(typeof profileImageUrl === 'string'
+                    ? { profile_image_url: profileImageUrl }
+                    : profileImageUrl === null
+                      ? { profile_image_url: null }
+                      : {}),
+            },
+            select: {
+                customer_id: true,
+                full_name: true,
+                email: true,
+                phone: true,
+                profile_image_url: true,
+                updated_at: true,
+            },
+        });
+
+        logger.info('Customer profile updated', {
+            customerId,
+            changedName: typeof fullName === 'string',
+            changedPhone: phone !== undefined,
+            changedProfileImage: profileImageUrl !== undefined,
         });
 
         return updated;

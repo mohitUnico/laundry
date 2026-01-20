@@ -3,8 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:provider/provider.dart';
 
 import '../../routes/app_routes.dart';
+import '../../providers/auth_provider.dart';
 import 'widgets/auth_colors.dart';
 import 'widgets/auth_illustration.dart';
 import 'widgets/primary_button.dart';
@@ -20,6 +22,8 @@ class _ProfilePhotoScreenState extends State<ProfilePhotoScreen> {
   File? _selectedImage;
   final ImagePicker _picker = ImagePicker();
   bool _isLoading = false;
+  bool _isNavigating = false;
+  bool _isUploading = false;
 
   Future<void> _pickImage(ImageSource source) async {
     try {
@@ -95,8 +99,16 @@ class _ProfilePhotoScreenState extends State<ProfilePhotoScreen> {
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
-                  onPressed: () => Navigator.of(context)
-                      .pushNamed(AppRoutes.locationPermission),
+                  onPressed: (_isLoading || _isNavigating)
+                      ? null
+                      : () async {
+                          setState(() => _isNavigating = true);
+                          if (!mounted) return;
+                          Navigator.of(context).pushNamedAndRemoveUntil(
+                            AppRoutes.shell,
+                            (route) => false,
+                          );
+                        },
                   style: TextButton.styleFrom(
                     foregroundColor: const Color(0xFF8B90A4),
                   ),
@@ -268,10 +280,35 @@ class _ProfilePhotoScreenState extends State<ProfilePhotoScreen> {
                             const SizedBox(height: 16),
                             PrimaryButton(
                               label: 'Next',
-                              onPressed: () {
-                                Navigator.of(context)
-                                    .pushNamed(AppRoutes.locationPermission);
-                              },
+                              isLoading: _isNavigating || _isUploading,
+                              onPressed: (_isLoading || _isNavigating)
+                                  ? null
+                                  : () async {
+                                      setState(() => _isNavigating = true);
+                                      if (_selectedImage != null) {
+                                        setState(() => _isUploading = true);
+                                        try {
+                                          await context
+                                              .read<AuthProvider>()
+                                              .uploadProfileImage(_selectedImage!);
+                                        } catch (e) {
+                                          if (mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(
+                                                content: Text('Profile image upload failed: $e'),
+                                              ),
+                                            );
+                                          }
+                                        } finally {
+                                          if (mounted) setState(() => _isUploading = false);
+                                        }
+                                      }
+                                      if (!mounted) return;
+                                      Navigator.of(context).pushNamedAndRemoveUntil(
+                                        AppRoutes.shell,
+                                        (route) => false,
+                                      );
+                                    },
                             ),
                             const SizedBox(height: 8),
                           ],

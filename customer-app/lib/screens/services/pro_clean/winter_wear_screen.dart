@@ -3,8 +3,9 @@ import 'package:provider/provider.dart';
 
 import '../../../routes/app_routes.dart';
 import '../../../providers/cart_provider.dart';
+import '../../../providers/service_catalog_provider.dart';
 import '../../../theme/app_text_styles.dart';
-import '../../../utils/pricing.dart';
+import '../../../widgets/cart_success_dialog.dart';
 import '../../home/widgets/home_bottom_nav.dart';
 import '../../home/widgets/home_colors.dart';
 import 'widgets/others_field.dart';
@@ -19,36 +20,95 @@ class WinterWearScreen extends StatefulWidget {
 
 class _WinterWearScreenState extends State<WinterWearScreen> {
   final _othersController = TextEditingController();
+  final TextEditingController _weightController = TextEditingController();
 
-  final Map<_WinterItem, int> _qty = {
-    _WinterItem.woolen: 0,
-    _WinterItem.jackets: 0,
-    _WinterItem.blazers: 0,
-    _WinterItem.accessories: 0,
-    _WinterItem.cashmereSweaters: 0,
-  };
+  final Map<String, int> _qtyByItemName = {};
+  bool _didInit = false;
+  String? _serviceId;
 
   @override
   void dispose() {
     _othersController.dispose();
+    _weightController.dispose();
     super.dispose();
   }
 
-  int get _total => _qty.values.fold(0, (a, b) => a + b);
+  Future<double?> _askWeightKg() async {
+    _weightController.text = '';
+    return showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Enter weight (kg)'),
+        content: TextField(
+          controller: _weightController,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(hintText: 'e.g. 3.5'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final v = double.tryParse(_weightController.text.trim());
+              Navigator.of(ctx).pop(v);
+            },
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  int get _total => _qtyByItemName.values.fold(0, (a, b) => a + b);
 
   List<MapEntry<String, int>> get _nonZeroSummaryRows {
-    final rows = <MapEntry<String, int>>[];
-    void addRow(String label, _WinterItem type) {
-      final v = _qty[type] ?? 0;
-      if (v > 0) rows.add(MapEntry(label, v));
-    }
+    return _qtyByItemName.entries
+        .where((e) => e.value > 0)
+        .map((e) => MapEntry(e.key, e.value))
+        .toList();
+  }
 
-    addRow('Woolen', _WinterItem.woolen);
-    addRow('Jackets', _WinterItem.jackets);
-    addRow('Blazers', _WinterItem.blazers);
-    addRow('Accessories', _WinterItem.accessories);
-    addRow('Cashmere Sweaters', _WinterItem.cashmereSweaters);
-    return rows;
+  String _priceText(double perUnitPrice) => '₹${perUnitPrice.toStringAsFixed(0)}/pc';
+
+  String _assetForItemName(String itemName) {
+    final n = itemName.toLowerCase();
+    if (n.contains('wool')) return 'assets/images/winter_wear/woolen_wear.png';
+    if (n.contains('jacket')) return 'assets/images/winter_wear/jackets.png';
+    if (n.contains('blazer')) return 'assets/images/winter_wear/blazers.png';
+    if (n.contains('access')) return 'assets/images/winter_wear/accessories.png';
+    if (n.contains('cashmere')) return 'assets/images/winter_wear/cashmere.png';
+    return 'assets/images/winter_wear/jackets.png';
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_didInit) return;
+    _didInit = true;
+
+    final selection =
+        ModalRoute.of(context)?.settings.arguments as ProCleanSelection?;
+    _serviceId = selection?.serviceId;
+
+    final sid = _serviceId;
+    if (sid == null || sid.isEmpty) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await context
+          .read<ServiceCatalogProvider>()
+          .fetchClothesItemsForService(serviceId: sid, isActive: true);
+      if (!mounted) return;
+      final items =
+          context.read<ServiceCatalogProvider>().clothesItemsForService(sid);
+      setState(() {
+        for (final it in items) {
+          _qtyByItemName.putIfAbsent(it.itemName, () => 0);
+        }
+      });
+    });
   }
 
   @override
@@ -56,6 +116,13 @@ class _WinterWearScreenState extends State<WinterWearScreen> {
     final selection =
         ModalRoute.of(context)?.settings.arguments as ProCleanSelection?;
     final showPrices = selection?.pricingType == ProCleanPricingType.perPiece;
+    final serviceName = selection?.categoryName ?? 'Winter Wear';
+    final sid = selection?.serviceId;
+    final catalog = context.watch<ServiceCatalogProvider>();
+    final items =
+        (sid == null || sid.isEmpty) ? const [] : catalog.clothesItemsForService(sid);
+    final isLoading =
+        (sid == null || sid.isEmpty) ? false : catalog.isLoadingClothesItems(sid);
     return Scaffold(
       backgroundColor: HomeColors.background,
       body: SafeArea(
@@ -73,120 +140,28 @@ class _WinterWearScreenState extends State<WinterWearScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 child: Column(
                   children: [
-                    _ItemCard(
-                      title: 'Woolen',
-                      imageAsset: 'assets/images/winter_wear/woolen_wear.png',
-                      priceText: showPrices
-                          ? Pricing.inrPerPc(
-                              Pricing.unitPriceInr(
-                                category: 'Pro Clean',
-                                serviceName: 'Winter Wear',
-                                itemName: 'Woolen',
-                              ),
-                            )
-                          : null,
-                      value: _qty[_WinterItem.woolen]!,
-                      onMinus: () => setState(() {
-                        _qty[_WinterItem.woolen] =
-                            (_qty[_WinterItem.woolen]! - 1).clamp(0, 999);
-                      }),
-                      onPlus: () => setState(() {
-                        _qty[_WinterItem.woolen] =
-                            (_qty[_WinterItem.woolen]! + 1).clamp(0, 999);
-                      }),
-                    ),
-                    const SizedBox(height: 10),
-                    _ItemCard(
-                      title: 'Jackets',
-                      imageAsset: 'assets/images/winter_wear/jackets.png',
-                      priceText: showPrices
-                          ? Pricing.inrPerPc(
-                              Pricing.unitPriceInr(
-                                category: 'Pro Clean',
-                                serviceName: 'Winter Wear',
-                                itemName: 'Jackets',
-                              ),
-                            )
-                          : null,
-                      value: _qty[_WinterItem.jackets]!,
-                      onMinus: () => setState(() {
-                        _qty[_WinterItem.jackets] =
-                            (_qty[_WinterItem.jackets]! - 1).clamp(0, 999);
-                      }),
-                      onPlus: () => setState(() {
-                        _qty[_WinterItem.jackets] =
-                            (_qty[_WinterItem.jackets]! + 1).clamp(0, 999);
-                      }),
-                    ),
-                    const SizedBox(height: 10),
-                    _ItemCard(
-                      title: 'Blazers',
-                      imageAsset: 'assets/images/winter_wear/blazers.png',
-                      priceText: showPrices
-                          ? Pricing.inrPerPc(
-                              Pricing.unitPriceInr(
-                                category: 'Pro Clean',
-                                serviceName: 'Winter Wear',
-                                itemName: 'Blazers',
-                              ),
-                            )
-                          : null,
-                      value: _qty[_WinterItem.blazers]!,
-                      onMinus: () => setState(() {
-                        _qty[_WinterItem.blazers] =
-                            (_qty[_WinterItem.blazers]! - 1).clamp(0, 999);
-                      }),
-                      onPlus: () => setState(() {
-                        _qty[_WinterItem.blazers] =
-                            (_qty[_WinterItem.blazers]! + 1).clamp(0, 999);
-                      }),
-                    ),
-                    const SizedBox(height: 10),
-                    _ItemCard(
-                      title: 'Accessories',
-                      imageAsset: 'assets/images/winter_wear/accessories.png',
-                      priceText: showPrices
-                          ? Pricing.inrPerPc(
-                              Pricing.unitPriceInr(
-                                category: 'Pro Clean',
-                                serviceName: 'Winter Wear',
-                                itemName: 'Accessories',
-                              ),
-                            )
-                          : null,
-                      value: _qty[_WinterItem.accessories]!,
-                      onMinus: () => setState(() {
-                        _qty[_WinterItem.accessories] =
-                            (_qty[_WinterItem.accessories]! - 1).clamp(0, 999);
-                      }),
-                      onPlus: () => setState(() {
-                        _qty[_WinterItem.accessories] =
-                            (_qty[_WinterItem.accessories]! + 1).clamp(0, 999);
-                      }),
-                    ),
-                    const SizedBox(height: 10),
-                    _ItemCard(
-                      title: 'Cashmere Sweaters',
-                      imageAsset: 'assets/images/winter_wear/cashmere.png',
-                      priceText: showPrices
-                          ? Pricing.inrPerPc(
-                              Pricing.unitPriceInr(
-                                category: 'Pro Clean',
-                                serviceName: 'Winter Wear',
-                                itemName: 'Cashmere Sweaters',
-                              ),
-                            )
-                          : null,
-                      value: _qty[_WinterItem.cashmereSweaters]!,
-                      onMinus: () => setState(() {
-                        _qty[_WinterItem.cashmereSweaters] =
-                            (_qty[_WinterItem.cashmereSweaters]! - 1).clamp(0, 999);
-                      }),
-                      onPlus: () => setState(() {
-                        _qty[_WinterItem.cashmereSweaters] =
-                            (_qty[_WinterItem.cashmereSweaters]! + 1).clamp(0, 999);
-                      }),
-                    ),
+                    if (sid != null && sid.isNotEmpty && isLoading)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 24, bottom: 24),
+                        child: Center(child: CircularProgressIndicator()),
+                      ),
+                    for (final it in items) ...[
+                      _ItemCard(
+                        title: it.itemName,
+                        imageAsset: _assetForItemName(it.itemName),
+                        priceText: showPrices ? _priceText(it.perUnitPrice) : null,
+                        value: _qtyByItemName[it.itemName] ?? 0,
+                        onMinus: () => setState(() {
+                          _qtyByItemName[it.itemName] =
+                              ((_qtyByItemName[it.itemName] ?? 0) - 1).clamp(0, 999);
+                        }),
+                        onPlus: () => setState(() {
+                          _qtyByItemName[it.itemName] =
+                              ((_qtyByItemName[it.itemName] ?? 0) + 1).clamp(0, 999);
+                        }),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
                     const SizedBox(height: 12),
                     OthersField(controller: _othersController),
                     const SizedBox(height: 12),
@@ -195,27 +170,52 @@ class _WinterWearScreenState extends State<WinterWearScreen> {
                       total: _total,
                     ),
                     const SizedBox(height: 16),
-                    _PrimaryGradientButton(
-                      label: 'Add to Cart',
-                      onTap: () {
-                        context.read<CartProvider>().addOrMerge(
-                              category: 'Pro Clean',
-                              serviceName: 'Winter Wear',
-                              imageAsset: 'assets/images/winter_wear/jackets.png',
-                              isPerPiece: showPrices,
-                              quantities: {
-                                'Woolen': _qty[_WinterItem.woolen] ?? 0,
-                                'Jackets': _qty[_WinterItem.jackets] ?? 0,
-                                'Blazers': _qty[_WinterItem.blazers] ?? 0,
-                                'Accessories': _qty[_WinterItem.accessories] ?? 0,
-                                'Cashmere Sweaters':
-                                    _qty[_WinterItem.cashmereSweaters] ?? 0,
-                              },
-                              note: _othersController.text,
-                            );
+                    Consumer<CartProvider>(
+                      builder: (context, cart, _) {
+                        return _PrimaryGradientButton(
+                          label: 'Add to Cart',
+                          isLoading: cart.isAddingToCart,
+                          onTap: cart.isAddingToCart ? () {} : () async {
+                        final serviceId = sid;
+                        if (serviceId == null || serviceId.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Missing service id')),
+                          );
+                          return;
+                        }
 
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Added to cart')),
+                        final clothIdByName = <String, String>{
+                          for (final it in items) it.itemName: it.clothId,
+                        };
+                        final unitPrices = <String, int>{
+                          for (final it in items) it.itemName: it.perUnitPrice.round(),
+                        };
+
+                            // For kg-wise items, weight will be calculated after supervision
+                            // No need to ask user for weight
+                            try {
+                              await context.read<CartProvider>().addAndSave(
+                                    category: 'Pro Clean',
+                                    serviceName: serviceName,
+                                    serviceId: serviceId,
+                                    imageAsset: 'assets/images/winter_wear/jackets.png',
+                                    isPerPiece: showPrices,
+                                    quantities: Map<String, int>.from(_qtyByItemName),
+                                    clothIdByItemName: clothIdByName,
+                                    unitPricesInr: unitPrices,
+                                    weightKg: null, // Weight will be calculated after supervision
+                                    note: _othersController.text,
+                              );
+
+                              if (!mounted) return;
+                              showCartSuccessDialog(context);
+                            } catch (e) {
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(e.toString())),
+                              );
+                            }
+                          },
                         );
                       },
                     ),
@@ -242,8 +242,6 @@ class _WinterWearScreenState extends State<WinterWearScreen> {
     );
   }
 }
-
-enum _WinterItem { woolen, jackets, blazers, accessories, cashmereSweaters }
 
 class _TopBar extends StatelessWidget {
   final String title;
@@ -500,10 +498,12 @@ class _SummaryRow extends StatelessWidget {
 class _PrimaryGradientButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
+  final bool isLoading;
 
   const _PrimaryGradientButton({
     required this.label,
     required this.onTap,
+    this.isLoading = false,
   });
 
   @override
@@ -514,23 +514,35 @@ class _PrimaryGradientButton extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap,
+          onTap: isLoading ? null : onTap,
           borderRadius: BorderRadius.circular(26),
           child: Ink(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(26),
-              gradient: const LinearGradient(
-                colors: [Color(0xFF2437B6), Color(0xFF2C3CA5)],
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-              ),
+              gradient: isLoading
+                  ? null
+                  : const LinearGradient(
+                      colors: [Color(0xFF2437B6), Color(0xFF2C3CA5)],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+              color: isLoading ? Colors.grey : null,
             ),
             child: Center(
-              child: Text(
-                label,
-                style: AppTextStyles.header(color: Colors.white)
-                    .copyWith(fontSize: 14),
-              ),
+              child: isLoading
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : Text(
+                      label,
+                      style: AppTextStyles.header(color: Colors.white)
+                          .copyWith(fontSize: 14),
+                    ),
             ),
           ),
         ),

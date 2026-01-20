@@ -7,6 +7,19 @@ import 'schedule_date_time_screen.dart';
 
 enum DeliveryOptionType { pickupOnly, deliveryOnly, pickupAndDelivery }
 
+extension DeliveryOptionTypeExtension on DeliveryOptionType {
+  String toBackendOrderType() {
+    switch (this) {
+      case DeliveryOptionType.pickupOnly:
+        return 'pickup_only';
+      case DeliveryOptionType.deliveryOnly:
+        return 'drop_only';
+      case DeliveryOptionType.pickupAndDelivery:
+        return 'both';
+    }
+  }
+}
+
 class DeliveryOptionsScreen extends StatefulWidget {
   const DeliveryOptionsScreen({super.key});
 

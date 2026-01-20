@@ -99,19 +99,76 @@ exports.deleteAddress = async (req, res, next) => {
     }
 };
 
-exports.updateProfilePicture = async (req, res, next) => {
+exports.updateProfileImageUrl = async (req, res, next) => {
     try {
         if (req.user.role !== 'customer') {
-            throw new AuthorizationError('Only customers can manage profile picture');
+            throw new AuthorizationError('Only customers can manage profile');
         }
 
         const customerId = req.user.user_id;
-        const updated = await customerInfoService.updateCustomerProfilePicture(customerId, req.body);
+        const updated = await customerInfoService.updateCustomerProfileImageUrl(customerId, req.body);
 
         res.status(200).json({
             success: true,
             data: updated,
-            message: 'Profile picture updated successfully',
+            message: 'Profile image updated successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.uploadProfileImage = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'customer') {
+            throw new AuthorizationError('Only customers can manage profile');
+        }
+
+        const customerId = req.user.user_id;
+        const updated = await customerInfoService.uploadCustomerProfileImage(customerId, req.file);
+
+        res.status(200).json({
+            success: true,
+            data: updated,
+            message: 'Profile image uploaded successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.getProfile = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'customer') {
+            throw new AuthorizationError('Only customers can view profile');
+        }
+
+        const customerId = req.user.user_id;
+        const profile = await customerInfoService.getCustomerProfile(customerId);
+
+        res.status(200).json({
+            success: true,
+            data: profile,
+            message: 'Profile fetched successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.updateProfile = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'customer') {
+            throw new AuthorizationError('Only customers can manage profile');
+        }
+
+        const customerId = req.user.user_id;
+        const updated = await customerInfoService.updateCustomerProfile(customerId, req.body);
+
+        res.status(200).json({
+            success: true,
+            data: updated,
+            message: 'Profile updated successfully',
         });
     } catch (error) {
         next(error);

@@ -36,6 +36,28 @@ export const RecentOrders: React.FC<RecentOrdersProps> = ({ onViewAll, items = [
 
       {/* Desktop Layout */}
       <div className="hidden md:block space-y-3">
+        <div className="flex items-center gap-4 pb-2 border-b border-slate-100">
+          <div className="w-[180px]">
+            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+              Order / Customer
+            </p>
+          </div>
+          <div className="flex-1 text-right">
+            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+              Amount
+            </p>
+          </div>
+          <div className="flex items-center justify-center min-w-[120px]">
+            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+              Status
+            </p>
+          </div>
+          <div className="text-right min-w-[100px]">
+            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+              Created
+            </p>
+          </div>
+        </div>
         {items.map((order) => (
           <div
             key={order.id}

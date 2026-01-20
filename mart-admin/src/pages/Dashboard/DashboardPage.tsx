@@ -25,7 +25,6 @@ import {
 } from '@/components/dashboard/modals';
 import { Toast, Modal } from '@/components/common';
 import { useToast } from '@/hooks/common';
-import { Download } from 'lucide-react';
 import { useDashboard } from '@/hooks/api';
 import { formatCompactCurrency } from '@/utils/formatters';
 import { dashboardApi } from '@/services/api/modules/dashboardApi';
@@ -55,7 +54,7 @@ export const DashboardPage: React.FC = () => {
     monthly: number;
   } | null>(null);
 
-  const { data, loading, error, range, setRange, refresh } = useDashboard();
+  const { data, error, range, setRange, refresh } = useDashboard();
 
   // Fetch revenue data for different periods
   const fetchRevenueData = useCallback(async () => {
@@ -117,10 +116,6 @@ export const DashboardPage: React.FC = () => {
     fetchRevenueData();
   }, [fetchRevenueData]);
 
-  const handleExportReport = () => {
-    showToast('Report exported successfully!', 'success');
-  };
-
   const handleReportSuccess = () => {
     showToast('Report generated successfully!', 'success');
   };
@@ -146,74 +141,98 @@ export const DashboardPage: React.FC = () => {
     setShowFilteredOrdersModal(true);
   };
 
-  const summary = data.summary;
-  const orderStatus = data.orderStatus;
-  const trend = data.revenueTrend || [];
+  const monthlyOverview = data.monthlyOverview;
+  const dayOverview = data.dayOverview;
+  const trend = data.revenueTrend;
   const satisfaction = data.customerSatisfaction;
 
-  const summaryTotalRevenue = summary ? formatCompactCurrency(summary.totalRevenue || 0) : '—';
-  const summaryActiveOrders = orderStatus
-    ? orderStatus.pending + orderStatus.inProgress + orderStatus.outForDelivery
-    : null;
-  const summaryNewCustomers = summary ? summary.newCustomers : null;
-  const summaryAvgDelivery = summary ? `${summary.averageDeliveryTime} min` : '—';
+  const formatSignedPercent = (value?: number | null) => {
+    const n = typeof value === 'number' && Number.isFinite(value) ? value : 0;
+    const sign = n > 0 ? '+' : '';
+    return `${sign}${n}%`;
+  };
 
-  // Admin dashboard doesn't provide growth deltas; keep UI consistent with "—"
-  const summaryRevenueGrowth = '—';
-  const summaryOrdersGrowth = '—';
-  const summaryCustomersGrowth = '—';
-  const summaryDeliveryGrowth = '—';
+  const isoFromDurationAgo = (durationAgo?: string | null) => {
+    if (!durationAgo) return new Date().toISOString();
+    const match = durationAgo
+      .toLowerCase()
+      .match(/(\d+)\s*(sec|secs|second|seconds|min|mins|minute|minutes|hr|hrs|hour|hours|day|days)\s*ago/);
+    if (!match) return new Date().toISOString();
 
-  const statusItems = orderStatus
+    const value = Number.parseInt(match[1] || '0', 10);
+    const unit = match[2] || '';
+
+    const ms =
+      unit.startsWith('sec')
+        ? value * 1000
+        : unit.startsWith('min')
+          ? value * 60 * 1000
+          : unit.startsWith('hr') || unit.startsWith('hour')
+            ? value * 60 * 60 * 1000
+            : value * 24 * 60 * 60 * 1000;
+
+    return new Date(Date.now() - ms).toISOString();
+  };
+
+  // Monthly overview (mart scoped)
+  const summaryTotalRevenue = monthlyOverview
+    ? formatCompactCurrency(Number.parseFloat(monthlyOverview.total_revenue) || 0)
+    : '—';
+  const summaryTotalOrders = monthlyOverview ? monthlyOverview.total_orders : null;
+  const summaryNewCustomers = monthlyOverview ? monthlyOverview.new_customers : null;
+  const summaryAvgDelivery = monthlyOverview ? `${monthlyOverview.avg_delivery_time} min` : '—';
+
+  // Growth deltas (vs last month), from monthly-overview API
+  const summaryRevenueGrowth = formatSignedPercent(monthlyOverview?.percentage_increase_total_revenue);
+  const summaryOrdersGrowth = `${formatSignedPercent(
+    monthlyOverview?.percentage_increase_total_orders
+  )} from last month`;
+  const summaryCustomersGrowth = `${formatSignedPercent(
+    monthlyOverview?.percentage_increase_new_customers
+  )} from last month`;
+  const summaryDeliveryGrowth = `${formatSignedPercent(
+    monthlyOverview?.percentage_increase_avg_delivery_time
+  )} from last month`;
+
+  const statusItems = dayOverview
     ? [
-        { label: 'Pending', count: orderStatus.pending, color: '#facc15' },
-        { label: 'In progress', count: orderStatus.inProgress, color: '#60a5fa' },
-        { label: 'Out for delivery', count: orderStatus.outForDelivery, color: '#22d3ee' },
-        { label: 'Completed today', count: orderStatus.completedToday, color: '#34d399' },
+        { label: 'Pending', count: dayOverview.pending_orders, color: '#facc15' },
+        { label: 'In progress', count: dayOverview.in_progress, color: '#60a5fa' },
+        { label: 'Out for delivery', count: dayOverview.out_for_delivery, color: '#22d3ee' },
+        { label: 'Completed today', count: dayOverview.completed_today, color: '#34d399' },
       ]
     : undefined;
 
   const recentOrdersItems =
-    (data.recentOrders || []).map((o) => ({
-      id: o.orderNumber,
-      customer: o.customerName || 'Unknown Customer',
-      amount: Number.parseFloat(o.amount) || 0,
+    (data.recentOrders?.data || []).map((o) => ({
+      id: o.order_id,
+      customer: o.customer_name || 'Unknown Customer',
+      amount: Number(o.order_price) || 0,
       status: o.status || 'unknown',
-      timeIso: o.createdAt || new Date().toISOString(),
+      timeIso: isoFromDurationAgo(o.duration_ago),
     })) || [];
 
   const topPerformersItems =
-    (data.topPerformers || []).map((p) => ({
-      name: p.deliveryStaffName,
-      deliveries: p.totalDeliveries,
-      rating: p.rating,
+    (data.topPerformers?.top_performers || []).map((p) => ({
+      name: p.delivery_staff_name,
+      deliveries: p.total_deliveries,
+      rating: p.overall_rating,
       avatarUrl: null,
     })) || [];
 
-  const chartPoints = trend
-    .filter((p) => p.date)
-    .map((p) => ({
-      label: p.date as string,
-      totalRevenue: p.totalRevenue,
-      totalOrders: p.totalOrders,
-    }));
+  const chartPoints = (trend?.data || []).map((p) => ({
+    label: p.label,
+    totalRevenue: p.total_revenue,
+    totalOrders: p.total_orders,
+  }));
 
-  const trendTotals = trend.reduce(
-    (acc, p) => {
-      acc.totalRevenue += p.totalRevenue || 0;
-      acc.totalOrders += p.totalOrders || 0;
-      return acc;
-    },
-    { totalRevenue: 0, totalOrders: 0 }
-  );
+  const trendTotals = {
+    totalRevenue: trend?.total_revenue || 0,
+    totalOrders: trend?.total_orders || 0,
+  };
 
   const handleRangeChange = (nextRange: '7d' | '30d') => {
     setRange(nextRange);
-  };
-
-  const handleRefresh = async () => {
-    await refresh();
-    showToast('Dashboard refreshed', 'success');
   };
 
   const handleRetry = async () => {
@@ -253,7 +272,7 @@ export const DashboardPage: React.FC = () => {
           onClick={() => setShowActiveOrdersModal(true)}
           className="cursor-pointer transform transition-all hover:scale-[1.02] active:scale-[0.98] hover:shadow-lg"
         >
-          <SummaryCard title="Active Orders" value={summaryActiveOrders ?? '—'} growth={summaryOrdersGrowth} />
+          <SummaryCard title="Total Orders" value={summaryTotalOrders ?? '—'} growth={summaryOrdersGrowth} />
         </div>
         <div
           onClick={() => setShowNewCustomersModal(true)}
@@ -303,10 +322,10 @@ export const DashboardPage: React.FC = () => {
         <div className="xl:col-span-1 order-2">
           <div className="space-y-3 sm:space-y-4 md:space-y-5 lg:space-y-6">
             <CustomerSatisfaction
-              value={satisfaction?.overallPercentage ?? 0}
-              fiveStars={satisfaction?.distribution?.fiveStar ?? 0}
-              fourStars={satisfaction?.distribution?.fourStar ?? 0}
-              lessThanThree={satisfaction?.distribution?.lessThanThree ?? 0}
+              value={satisfaction?.overall ?? 0}
+              fiveStars={satisfaction?.five_stars ?? 0}
+              fourStars={satisfaction?.four_stars ?? 0}
+              lessThanThree={satisfaction?.less_than_three ?? 0}
             />
             <QuickActions
               onCreateOrder={() => setShowCreateOrderModal(true)}

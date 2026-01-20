@@ -10,17 +10,11 @@ interface StatusItem {
 interface OrderStatusWidgetProps {
   onStatusClick?: (status: string) => void;
   items?: StatusItem[];
+  loading?: boolean;
 }
 
-const DEFAULT_STATUSES: StatusItem[] = [
-  { label: 'Pending', count: 8, color: '#facc15' },
-  { label: 'In progress', count: 15, color: '#60a5fa' },
-  { label: 'Out for delivery', count: 12, color: '#22d3ee' },
-  { label: 'Completed today', count: 34, color: '#34d399' },
-];
-
-export const OrderStatusWidget: React.FC<OrderStatusWidgetProps> = ({ onStatusClick, items }) => {
-  const statuses = items && items.length > 0 ? items : DEFAULT_STATUSES;
+export const OrderStatusWidget: React.FC<OrderStatusWidgetProps> = ({ onStatusClick, items, loading }) => {
+  const statuses = items && items.length > 0 ? items : [];
 
   const handleClick = (label: string) => {
     if (onStatusClick) {
@@ -35,29 +29,46 @@ export const OrderStatusWidget: React.FC<OrderStatusWidgetProps> = ({ onStatusCl
         <ArrowUpRight size={16} className="sm:w-5 sm:h-5 text-slate-400" />
       </div>
       <div className="grid grid-cols-2 gap-2 sm:gap-3">
-        {statuses.map((status) => (
-          <div
-            key={status.label}
-            onClick={() => handleClick(status.label)}
-            className={`rounded-xl border border-slate-200 px-3 sm:px-4 py-2.5 sm:py-3 bg-white flex items-center justify-between transition-all ${
-              onStatusClick 
-                ? 'cursor-pointer hover:shadow-lg hover:border-slate-300 hover:-translate-y-0.5 active:translate-y-0' 
-                : 'hover:shadow-sm'
-            }`}
-          >
-            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-              <span
-                className="h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full flex-shrink-0"
-                style={{ backgroundColor: status.color }}
-              />
-              <span className="text-xs sm:text-sm text-slate-700 truncate">{status.label}</span>
-            </div>
-            <span className="text-base sm:text-lg font-semibold text-slate-900 flex-shrink-0 ml-2">
-              {status.count}
-            </span>
-          </div>
-        ))}
+        {loading
+          ? Array.from({ length: 4 }).map((_, idx) => (
+              <div
+                // eslint-disable-next-line react/no-array-index-key
+                key={idx}
+                className="rounded-xl border border-slate-200 px-3 sm:px-4 py-2.5 sm:py-3 bg-white flex items-center justify-between"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="h-2.5 w-2.5 rounded-full bg-slate-200 flex-shrink-0" />
+                  <span className="h-3 w-24 bg-slate-200 rounded" />
+                </div>
+                <span className="h-4 w-8 bg-slate-200 rounded" />
+              </div>
+            ))
+          : statuses.map((status) => (
+              <div
+                key={status.label}
+                onClick={() => handleClick(status.label)}
+                className={`rounded-xl border border-slate-200 px-3 sm:px-4 py-2.5 sm:py-3 bg-white flex items-center justify-between transition-all ${
+                  onStatusClick
+                    ? 'cursor-pointer hover:shadow-lg hover:border-slate-300 hover:-translate-y-0.5 active:translate-y-0'
+                    : 'hover:shadow-sm'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                  <span
+                    className="h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: status.color }}
+                  />
+                  <span className="text-xs sm:text-sm text-slate-700 truncate">{status.label}</span>
+                </div>
+                <span className="text-base sm:text-lg font-semibold text-slate-900 flex-shrink-0 ml-2">
+                  {status.count}
+                </span>
+              </div>
+            ))}
       </div>
+      {!loading && statuses.length === 0 ? (
+        <p className="mt-3 text-xs sm:text-sm text-slate-500">No status data available.</p>
+      ) : null}
     </div>
   );
 };

@@ -54,7 +54,7 @@ export const DashboardPage: React.FC = () => {
     monthly: number;
   } | null>(null);
 
-  const { data, error, range, setRange, refresh } = useDashboard();
+  const { data, error, loading, range, setRange, refresh } = useDashboard();
 
   // Fetch revenue data for different periods
   const fetchRevenueData = useCallback(async () => {
@@ -291,7 +291,7 @@ export const DashboardPage: React.FC = () => {
       {/* Order Status + Alert */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
         <div className="lg:col-span-2 order-1 lg:order-1">
-          <OrderStatusWidget items={statusItems} onStatusClick={handleStatusClick} />
+          <OrderStatusWidget items={statusItems} loading={loading} onStatusClick={handleStatusClick} />
         </div>
         <div className="order-2 lg:order-2">
           <AlertCard onCta={() => setShowLateDeliveryModal(true)} />

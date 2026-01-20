@@ -17,6 +17,9 @@ class OrderRecord {
   final OrderStatus status;
   final String backendStatus; // Store actual backend status string for accurate step mapping
   final PaymentMethod? paymentMethod; // null for kg-wise only orders
+  final String? pickupAddress; // Full pickup address text
+  final double? pickupLat;
+  final double? pickupLng;
 
   const OrderRecord({
     required this.id,
@@ -32,6 +35,9 @@ class OrderRecord {
     required this.status,
     required this.backendStatus,
     this.paymentMethod,
+    this.pickupAddress,
+    this.pickupLat,
+    this.pickupLng,
   });
 
   OrderRecord copyWith({
@@ -48,6 +54,9 @@ class OrderRecord {
     OrderStatus? status,
     String? backendStatus,
     PaymentMethod? paymentMethod,
+    String? pickupAddress,
+    double? pickupLat,
+    double? pickupLng,
   }) {
     return OrderRecord(
       id: id ?? this.id,
@@ -63,6 +72,9 @@ class OrderRecord {
       status: status ?? this.status,
       backendStatus: backendStatus ?? this.backendStatus,
       paymentMethod: paymentMethod ?? this.paymentMethod,
+      pickupAddress: pickupAddress ?? this.pickupAddress,
+      pickupLat: pickupLat ?? this.pickupLat,
+      pickupLng: pickupLng ?? this.pickupLng,
     );
   }
 }

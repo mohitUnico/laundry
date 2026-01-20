@@ -201,18 +201,12 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
   }
 
   Future<void> _confirmSelection() async {
-    final result = await Navigator.of(context).pushNamed(
-      AppRoutes.addressForm,
-      arguments: {
-        'latitude': _selectedLocation.latitude,
-        'longitude': _selectedLocation.longitude,
-        'address': _selectedAddress,
-      },
-    );
-    // If address was saved successfully, pop this screen too
-    if (result == true && mounted) {
-      Navigator.of(context).pop(true);
-    }
+    // Return the selected location data
+    Navigator.of(context).pop({
+      'latitude': _selectedLocation.latitude,
+      'longitude': _selectedLocation.longitude,
+      'address': _selectedAddress,
+    });
   }
 
   @override

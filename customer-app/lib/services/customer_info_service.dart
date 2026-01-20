@@ -132,6 +132,69 @@ class CustomerInfoService {
     }
   }
 
+  Future<CustomerAddress> updateAddress({
+    required String addressId,
+    String? addressLabel,
+    String? fullAddress,
+    double? latitude,
+    double? longitude,
+    bool? isDefault,
+    String? deliveryNote,
+  }) async {
+    try {
+      final payload = <String, dynamic>{};
+
+      if (addressLabel != null) {
+        payload['address_label'] = addressLabel;
+      }
+      if (fullAddress != null) {
+        payload['full_address'] = fullAddress;
+      }
+      if (latitude != null) {
+        if (latitude < -90 || latitude > 90) {
+          throw Exception('Latitude must be between -90 and 90');
+        }
+        payload['latitude'] = latitude;
+      }
+      if (longitude != null) {
+        if (longitude < -180 || longitude > 180) {
+          throw Exception('Longitude must be between -180 and 180');
+        }
+        payload['longitude'] = longitude;
+      }
+      if (isDefault != null) {
+        payload['is_default'] = isDefault;
+      }
+      if (deliveryNote != null) {
+        payload['delivery_note'] = deliveryNote.isEmpty ? null : deliveryNote;
+      }
+
+      if (payload.isEmpty) {
+        throw Exception('At least one field must be provided for update');
+      }
+
+      final res = await _api.patch('/customer-info/addresses/$addressId', data: payload);
+      final data = (res.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
+      return CustomerAddress.fromJson(data);
+    } on DioException catch (e) {
+      final msg = _extractErrorMessage(e, 'Failed to update address');
+      throw Exception(msg);
+    } catch (e) {
+      throw Exception('Failed to update address: $e');
+    }
+  }
+
+  Future<void> deleteAddress(String addressId) async {
+    try {
+      await _api.delete('/customer-info/addresses/$addressId');
+    } on DioException catch (e) {
+      final msg = _extractErrorMessage(e, 'Failed to delete address');
+      throw Exception(msg);
+    } catch (e) {
+      throw Exception('Failed to delete address: $e');
+    }
+  }
+
   Future<Map<String, dynamic>> uploadProfileImage({required File file}) async {
     try {
       final formData = FormData.fromMap({

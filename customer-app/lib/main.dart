@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'app.dart';
 import 'providers/auth_provider.dart';
 import 'providers/cart_provider.dart';
@@ -9,12 +11,28 @@ import 'repositories/cart_repository.dart';
 import 'repositories/customer_info_repository.dart';
 import 'repositories/service_catalog_repository.dart';
 import 'providers/service_catalog_provider.dart';
+import 'utils/supabase_config.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // TODO: Initialize Firebase
-  // await Firebase.initializeApp();
+  // Initialize Supabase for realtime updates (if configured)
+  const supabaseUrl = String.fromEnvironment('SUPABASE_URL', defaultValue: '');
+  const supabaseAnonKey =
+      String.fromEnvironment('SUPABASE_ANON_KEY', defaultValue: '');
+
+  if (supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty) {
+    try {
+      await Supabase.initialize(
+        url: supabaseUrl,
+        anonKey: supabaseAnonKey,
+      );
+      SupabaseConfig.isEnabled = true;
+    } catch (_) {
+      // If Supabase init fails, continue without realtime.
+      SupabaseConfig.isEnabled = false;
+    }
+  }
 
   runApp(
     MultiProvider(

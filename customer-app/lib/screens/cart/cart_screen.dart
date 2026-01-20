@@ -7,6 +7,7 @@ import '../../routes/app_routes.dart';
 import '../../theme/app_text_styles.dart';
 import '../../utils/pricing.dart';
 import '../../models/cart_item.dart';
+import '../../services/customer_info_service.dart';
 
 class CartScreen extends StatefulWidget {
   final bool showBack;
@@ -23,6 +24,11 @@ class CartScreen extends StatefulWidget {
 class _CartScreenState extends State<CartScreen> {
   final Map<String, bool> _expandedCategories = {};
   final Map<String, bool> _expandedServices = {};
+  final _customerInfoService = CustomerInfoService();
+  
+  CustomerAddress? _pickupAddress;
+  CustomerAddress? _deliveryAddress;
+  bool _isLoadingAddresses = false;
 
   String _formatInr(int value) => Pricing.inr(value);
 
@@ -32,7 +38,60 @@ class _CartScreenState extends State<CartScreen> {
     // Fetch cart items from backend when screen loads
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<CartProvider>().fetchFromBackend();
+      _loadDefaultAddresses();
     });
+  }
+
+  Future<void> _loadDefaultAddresses() async {
+    setState(() {
+      _isLoadingAddresses = true;
+    });
+
+    try {
+      final addresses = await _customerInfoService.getAddresses();
+      if (addresses.isNotEmpty && mounted) {
+        // Use default address or first address for both pickup and delivery
+        final defaultAddress = addresses.firstWhere(
+          (a) => a.isDefault,
+          orElse: () => addresses.first,
+        );
+        setState(() {
+          _pickupAddress = defaultAddress;
+          _deliveryAddress = defaultAddress;
+          _isLoadingAddresses = false;
+        });
+      } else if (mounted) {
+        setState(() {
+          _isLoadingAddresses = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingAddresses = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _handleChangePickupAddress() async {
+    final result = await Navigator.of(context).pushNamed(AppRoutes.selectLocation);
+    if (result != null && mounted) {
+      final address = result as CustomerAddress;
+      setState(() {
+        _pickupAddress = address;
+      });
+    }
+  }
+
+  Future<void> _handleChangeDeliveryAddress() async {
+    final result = await Navigator.of(context).pushNamed(AppRoutes.selectLocation);
+    if (result != null && mounted) {
+      final address = result as CustomerAddress;
+      setState(() {
+        _deliveryAddress = address;
+      });
+    }
   }
 
   @override
@@ -303,7 +362,13 @@ class _CartScreenState extends State<CartScreen> {
                           style: AppTextStyles.header(color: HomeColors.text),
                         ),
                         const SizedBox(height: 10),
-                        const _AddressCard(),
+                        _AddressCard(
+                          pickupAddress: _pickupAddress,
+                          deliveryAddress: _deliveryAddress,
+                          isLoading: _isLoadingAddresses,
+                          onChangePickup: _handleChangePickupAddress,
+                          onChangeDelivery: _handleChangeDeliveryAddress,
+                        ),
                       ],
                     );
                   },
@@ -831,7 +896,19 @@ class _IconButtonSquare extends StatelessWidget {
 }
 
 class _AddressCard extends StatelessWidget {
-  const _AddressCard();
+  final CustomerAddress? pickupAddress;
+  final CustomerAddress? deliveryAddress;
+  final bool isLoading;
+  final VoidCallback onChangePickup;
+  final VoidCallback onChangeDelivery;
+
+  const _AddressCard({
+    required this.pickupAddress,
+    required this.deliveryAddress,
+    required this.isLoading,
+    required this.onChangePickup,
+    required this.onChangeDelivery,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -908,7 +985,7 @@ class _AddressCard extends StatelessWidget {
                       ),
                     ),
                     InkWell(
-                      onTap: () => Navigator.of(context).pushNamed(AppRoutes.selectLocation),
+                      onTap: onChangePickup,
                       borderRadius: BorderRadius.circular(999),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
@@ -924,24 +1001,76 @@ class _AddressCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 6),
-                Text(
-                  '#24, Green Meadows Apartment, MG Road,\nBengaluru - 560001',
-                  style: AppTextStyles.body(color: HomeColors.muted).copyWith(
-                    height: 1.25,
+                if (isLoading)
+                  const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else if (pickupAddress != null)
+                  Text(
+                    pickupAddress!.fullAddress,
+                    style: AppTextStyles.body(color: HomeColors.muted).copyWith(
+                      height: 1.25,
+                    ),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  )
+                else
+                  Text(
+                    'No address selected',
+                    style: AppTextStyles.body(color: HomeColors.muted).copyWith(
+                      height: 1.25,
+                    ),
                   ),
-                ),
                 const SizedBox(height: 14),
-                Text(
-                  'Delivery Address',
-                  style: AppTextStyles.header(color: HomeColors.text),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Delivery Address',
+                        style: AppTextStyles.header(color: HomeColors.text),
+                      ),
+                    ),
+                    InkWell(
+                      onTap: onChangeDelivery,
+                      borderRadius: BorderRadius.circular(999),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 4,
+                        ),
+                        child: Text(
+                          'Change',
+                          style: AppTextStyles.header(color: HomeColors.primary),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 6),
-                Text(
-                  '#24, Green Meadows Apartment, MG Road,\nBengaluru - 560001',
-                  style: AppTextStyles.body(color: HomeColors.muted).copyWith(
-                    height: 1.25,
+                if (isLoading)
+                  const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else if (deliveryAddress != null)
+                  Text(
+                    deliveryAddress!.fullAddress,
+                    style: AppTextStyles.body(color: HomeColors.muted).copyWith(
+                      height: 1.25,
+                    ),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  )
+                else
+                  Text(
+                    'No address selected',
+                    style: AppTextStyles.body(color: HomeColors.muted).copyWith(
+                      height: 1.25,
+                    ),
                   ),
-                ),
               ],
             ),
           ),

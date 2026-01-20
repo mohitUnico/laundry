@@ -530,6 +530,14 @@ exports.getCustomerOrders = async (customerId, query = {}) => {
                 order_type: true,
                 total_amount: true,
                 billing_status: true,
+                pickup_address: {
+                    select: {
+                        address_id: true,
+                        full_address: true,
+                        latitude: true,
+                        longitude: true,
+                    },
+                },
                 pickup_date: true,
                 delivery_date: true,
                 created_at: true,
@@ -601,6 +609,14 @@ exports.getCustomerOrders = async (customerId, query = {}) => {
             order_type: order.order_type,
             total_amount: order.total_amount.toString(),
             billing_status: order.billing_status,
+            pickup_address: order.pickup_address
+                ? {
+                      address_id: order.pickup_address.address_id,
+                      full_address: order.pickup_address.full_address,
+                      latitude: order.pickup_address.latitude,
+                      longitude: order.pickup_address.longitude,
+                  }
+                : null,
             pickup_date: order.pickup_date,
             delivery_date: order.delivery_date,
             created_at: order.created_at,

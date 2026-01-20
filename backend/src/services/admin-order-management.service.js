@@ -238,28 +238,16 @@ const fetchOrdersWithFallback = async ({ where, skip, take }) => {
                         longitude: true,
                     },
                 },
-                // For per_unit orders, services can be derived via clothes -> service.
+                // For both per_unit and per_kg orders, services can be derived via service relation
                 order_items: {
-                    // Defensive: some DBs have null clothes_id even though Prisma expects string.
-                    // Using `not: ''` avoids selecting NULL rows without using null literals in filters.
-                    where: { clothes_id: { not: '' } },
                     select: {
-                        clothes: {
+                        service: {
                             select: {
-                                service: {
-                                    select: {
-                                        service_id: true,
-                                        service_name: true,
-                                    },
-                                },
+                                service_id: true,
+                                service_name: true,
                             },
                         },
-                    },
-                },
-                // Optional tables in some deployments; may not exist yet.
-                order_items_kg: {
-                    select: {
-                        item_name: true,
+                        pricing_type: true, // To identify per_unit vs per_kg
                     },
                 },
                 service_queue_items: {
@@ -328,20 +316,16 @@ const fetchOrdersWithFallback = async ({ where, skip, take }) => {
                                 longitude: true,
                             },
                         },
-                        // Keep per_unit service derivation, but filter out NULL clothes_id rows defensively
+                        // Get services from order_items (works for both per_unit and per_kg)
                         order_items: {
-                            where: { clothes_id: { not: '' } },
                             select: {
-                                clothes: {
+                                service: {
                                     select: {
-                                        service: {
-                                            select: {
-                                                service_id: true,
-                                                service_name: true,
-                                            },
-                                        },
+                                        service_id: true,
+                                        service_name: true,
                                     },
                                 },
+                                pricing_type: true,
                             },
                         },
                         bill: {
@@ -541,8 +525,7 @@ exports.getAdminOrders = async (query = {}) => {
 
     const mappedOrders = orders.map((o) => {
         const serviceNames = [
-            ...(o.order_items || []).map((i) => i?.clothes?.service?.service_name).filter(Boolean),
-            ...((o.order_items_kg || []).map((i) => i?.item_name).filter(Boolean) || []),
+            ...(o.order_items || []).map((i) => i?.service?.service_name).filter(Boolean),
             ...((o.service_queue_items || []).map((i) => i?.service?.service_name).filter(Boolean) || []),
         ];
         const services = Array.from(new Set(serviceNames));

@@ -30,8 +30,11 @@ import { formatCompactCurrency } from '@/utils/formatters';
 import { dashboardApi } from '@/services/api/modules/dashboardApi';
 import { useEffect, useCallback } from 'react';
 import { Loader2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ROUTES } from '@/routes';
 
 export const DashboardPage: React.FC = () => {
+  const navigate = useNavigate();
   const { toast, showToast, hideToast } = useToast();
   const [showReportModal, setShowReportModal] = useState(false);
   const [showCreateOrderModal, setShowCreateOrderModal] = useState(false);
@@ -317,7 +320,7 @@ export const DashboardPage: React.FC = () => {
       {/* Recent Orders + Customer Satisfaction + Quick Actions */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
         <div className="xl:col-span-2 order-1">
-          <RecentOrders items={recentOrdersItems} onViewAll={() => setShowAllRecentOrdersModal(true)} />
+          <RecentOrders items={recentOrdersItems} onViewAll={() => navigate(ROUTES.ORDERS)} />
         </div>
         <div className="xl:col-span-1 order-2">
           <div className="space-y-3 sm:space-y-4 md:space-y-5 lg:space-y-6">

@@ -1,28 +1,28 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   dashboardApi,
-  AdminDashboardCustomerSatisfaction,
-  AdminDashboardOrderStatus,
-  AdminDashboardRecentOrder,
-  AdminDashboardRevenueTrendPoint,
-  AdminDashboardSummary,
-  AdminDashboardTopPerformer,
+  MartDashboardCustomerSatisfaction,
+  MartDashboardDayOverview,
+  MartDashboardMonthlyOverview,
+  MartDashboardRecentOrders,
+  MartDashboardRevenueTrend,
+  MartDashboardTopPerformers,
 } from '@/services';
 
 type DashboardRange = '7d' | '30d';
 
 export type DashboardState = {
-  summary: AdminDashboardSummary | null;
-  orderStatus: AdminDashboardOrderStatus | null;
-  revenueTrend: AdminDashboardRevenueTrendPoint[] | null;
-  recentOrders: AdminDashboardRecentOrder[] | null;
-  topPerformers: AdminDashboardTopPerformer[] | null;
-  customerSatisfaction: AdminDashboardCustomerSatisfaction | null;
+  monthlyOverview: MartDashboardMonthlyOverview | null;
+  dayOverview: MartDashboardDayOverview | null;
+  revenueTrend: MartDashboardRevenueTrend | null;
+  recentOrders: MartDashboardRecentOrders | null;
+  topPerformers: MartDashboardTopPerformers | null;
+  customerSatisfaction: MartDashboardCustomerSatisfaction | null;
 };
 
 const EMPTY_STATE: DashboardState = {
-  summary: null,
-  orderStatus: null,
+  monthlyOverview: null,
+  dayOverview: null,
   revenueTrend: null,
   recentOrders: null,
   topPerformers: null,
@@ -40,22 +40,29 @@ export const useDashboard = () => {
     setError(null);
 
     try {
-      const [summaryRes, orderStatusRes, revenueTrendRes, recentOrdersRes, topPerformersRes, satisfactionRes] =
+      const [
+        monthlyOverviewRes,
+        revenueTrendRes,
+        recentOrdersRes,
+        topPerformersRes,
+        dayOverviewRes,
+        satisfactionRes,
+      ] =
         await Promise.all([
-          dashboardApi.getAdminSummary(),
-          dashboardApi.getAdminOrderStatus(),
-          dashboardApi.getAdminRevenueTrend({ range }),
-          dashboardApi.getAdminRecentOrders({ limit: 10 }),
-          dashboardApi.getAdminTopPerformers({ limit: 5 }),
-          dashboardApi.getAdminCustomerSatisfaction(),
+          dashboardApi.getMonthlyOverview(),
+          dashboardApi.getRevenueTrend({ range: range === '30d' ? '7weeks' : '7days' }),
+          dashboardApi.getRecentOrders({ limit: 10 }),
+          dashboardApi.getTopPerformers({ limit: 5 }),
+          dashboardApi.getDayOverview(),
+          dashboardApi.getCustomerSatisfaction(),
         ]);
 
       setData({
-        summary: summaryRes.data,
-        orderStatus: orderStatusRes.data,
+        monthlyOverview: monthlyOverviewRes.data,
         revenueTrend: revenueTrendRes.data,
         recentOrders: recentOrdersRes.data,
         topPerformers: topPerformersRes.data,
+        dayOverview: dayOverviewRes.data,
         customerSatisfaction: satisfactionRes.data,
       });
     } catch (e: any) {

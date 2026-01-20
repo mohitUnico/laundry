@@ -1,5 +1,5 @@
-const { PrismaClient, Prisma } = require('@prisma/client');
-const prisma = new PrismaClient();
+const { Prisma } = require('@prisma/client');
+const prisma = require('../config/database');
 const logger = require('../utils/logger');
 const { AppError } = require('../utils/errors');
 
@@ -10,16 +10,13 @@ const { AppError } = require('../utils/errors');
 class DashboardService {
     /**
      * Get monthly overview metrics for a mart
-     * @param {string} martId - Mart ID
+     * @param {string|null} martId - Mart ID (optional for single mart system)
      * @param {Date} currentTimestamp - Current timestamp
      * @returns {Promise<Object>} Monthly overview data
      */
     async getMonthlyOverview(martId, currentTimestamp) {
         try {
             logger.info('Fetching monthly overview', { martId, currentTimestamp });
-            if (!martId) {
-                throw new AppError('Mart ID is required for dashboard calculations', 400);
-            }
 
             const timestamp = new Date(currentTimestamp);
             if (Number.isNaN(timestamp.getTime())) {
@@ -34,25 +31,21 @@ class DashboardService {
             const nextMonthStart = new Date(Date.UTC(year, month + 1, 1, 0, 0, 0));
             const previousMonthStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
 
+            // Build where clause for date range (single mart system - no mart_id filter)
+            const whereClause = (dateStart, dateEnd) => ({
+                metric_date: {
+                    gte: dateStart,
+                    lt: dateEnd,
+                },
+            });
+
             // Fetch current and previous month metrics
             const [currentMonthMetrics, previousMonthMetrics] = await Promise.all([
-                prisma.martDailyMetrics.findMany({
-                    where: {
-                        mart_id: martId,
-                        metric_date: {
-                            gte: currentMonthStart,
-                            lt: nextMonthStart,
-                        },
-                    },
+                prisma.dailyMetrics.findMany({
+                    where: whereClause(currentMonthStart, nextMonthStart),
                 }),
-                prisma.martDailyMetrics.findMany({
-                    where: {
-                        mart_id: martId,
-                        metric_date: {
-                            gte: previousMonthStart,
-                            lt: currentMonthStart,
-                        },
-                    },
+                prisma.dailyMetrics.findMany({
+                    where: whereClause(previousMonthStart, currentMonthStart),
                 }),
             ]);
 
@@ -155,16 +148,13 @@ class DashboardService {
 
     /**
      * Get day overview metrics for a mart
-     * @param {string} martId - Mart ID
+     * @param {string|null} martId - Mart ID (optional for single mart system)
      * @param {Date} currentTimestamp - Current timestamp
      * @returns {Promise<Object>} Day overview data
      */
     async getDayOverview(martId, currentTimestamp) {
         try {
             logger.info('Fetching day overview', { martId, currentTimestamp });
-            if (!martId) {
-                throw new AppError('Mart ID is required for dashboard calculations', 400);
-            }
 
             const timestamp = new Date(currentTimestamp);
             if (Number.isNaN(timestamp.getTime())) {
@@ -181,7 +171,7 @@ class DashboardService {
             const buildCountPromise = (status) =>
                 prisma.order.count({
                     where: {
-                        mart_id: martId,
+                        ...(martId ? { mart_id: martId } : {}),
                         order_status: status,
                         created_at: {
                             gte: dayStart,
@@ -191,10 +181,10 @@ class DashboardService {
                 });
 
             const [pendingOrders, inProgressOrders, outForDeliveryOrders, completedTodayOrders] = await Promise.all([
-                buildCountPromise(Prisma.OrderStatus.pending),
-                buildCountPromise(Prisma.OrderStatus.in_progress),
-                buildCountPromise(Prisma.OrderStatus.out_for_delivery),
-                buildCountPromise(Prisma.OrderStatus.delivered),
+                buildCountPromise('placed'), // Pending orders (placed but not yet picked up)
+                buildCountPromise('services_in_progress'), // Orders in progress
+                buildCountPromise('out_for_delivery'), // Orders out for delivery
+                buildCountPromise('delivered'), // Completed today
             ]);
 
             return {
@@ -211,7 +201,7 @@ class DashboardService {
 
     /**
      * Get revenue trend for a specified time range
-     * @param {string} martId - Mart ID
+     * @param {string|null} martId - Mart ID (optional for single mart system)
      * @param {string} range - Time range (e.g., '7d', '30d', '90d')
      * @param {Date} currentTimestamp - Current timestamp
      * @returns {Promise<Object>} Revenue trend data
@@ -219,9 +209,6 @@ class DashboardService {
     async getRevenueTrend(martId, range, currentTimestamp) {
         try {
             logger.info('Fetching revenue trend', { martId, range, currentTimestamp });
-            if (!martId) {
-                throw new AppError('Mart ID is required for dashboard calculations', 400);
-            }
 
             const timestamp = new Date(currentTimestamp);
             if (Number.isNaN(timestamp.getTime())) {
@@ -319,9 +306,8 @@ class DashboardService {
             const rangeStart = periods[0].start;
             const rangeEnd = periods[periods.length - 1].end;
 
-            const metrics = await prisma.martDailyMetrics.findMany({
+            const metrics = await prisma.dailyMetrics.findMany({
                 where: {
-                    mart_id: martId,
                     metric_date: {
                         gte: rangeStart,
                         lt: rangeEnd,
@@ -353,11 +339,18 @@ class DashboardService {
                 }
             });
 
-            const data = Array.from(periodMap.values()).map((period) => ({
-                label: period.label,
-                total_revenue: parseFloat(period.totalRevenue.toFixed(2)),
-                total_orders: period.totalOrders,
-            }));
+            const data = Array.from(periodMap.values()).map((period) => {
+                const totalRevenue = parseFloat(period.totalRevenue.toFixed(2));
+                const totalOrders = period.totalOrders;
+                const avgOrderValue = totalOrders > 0 ? parseFloat((totalRevenue / totalOrders).toFixed(2)) : 0;
+
+                return {
+                    label: period.label,
+                    total_revenue: totalRevenue,
+                    total_orders: totalOrders,
+                    avg_order_value: avgOrderValue,
+                };
+            });
 
             const totals = data.reduce(
                 (acc, item) => {
@@ -368,12 +361,17 @@ class DashboardService {
                 { totalRevenue: new Prisma.Decimal(0), totalOrders: 0 }
             );
 
+            const totalRevenueValue = parseFloat(totals.totalRevenue.toFixed(2));
+            const totalOrdersValue = totals.totalOrders;
+            const avgOrderValue = totalOrdersValue > 0 ? parseFloat((totalRevenueValue / totalOrdersValue).toFixed(2)) : 0;
+
             return {
                 range: normalizedRange,
                 start_date: rangeStart.toISOString(),
                 end_date: rangeEnd.toISOString(),
-                total_revenue: parseFloat(totals.totalRevenue.toFixed(2)),
-                total_orders: totals.totalOrders,
+                total_revenue: totalRevenueValue,
+                total_orders: totalOrdersValue,
+                avg_order_value: avgOrderValue,
                 data,
             };
         } catch (error) {
@@ -384,7 +382,7 @@ class DashboardService {
 
     /**
      * Get recent orders for a mart
-     * @param {string} martId - Mart ID
+     * @param {string|null} martId - Mart ID (optional for single mart system)
      * @param {number} limit - Number of orders to fetch
      * @param {Date} currentTimestamp - Current timestamp
      * @returns {Promise<Object>} Recent orders data
@@ -392,15 +390,12 @@ class DashboardService {
     async getRecentOrders(martId, limit, currentTimestamp) {
         try {
             logger.info('Fetching recent orders', { martId, limit, currentTimestamp });
-            if (!martId) {
-                throw new AppError('Mart ID is required for dashboard calculations', 400);
-            }
 
             const orderLimit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 5;
 
             const orders = await prisma.order.findMany({
                 where: {
-                    mart_id: martId,
+                    ...(martId ? { mart_id: martId } : {}),
                 },
                 orderBy: {
                     created_at: 'desc',
@@ -428,7 +423,7 @@ class DashboardService {
             }));
 
             return {
-                mart_id: martId,
+                ...(martId ? { mart_id: martId } : {}),
                 count: data.length,
                 data,
             };
@@ -440,21 +435,17 @@ class DashboardService {
 
     /**
      * Get customer satisfaction metrics for a mart
-     * @param {string} martId - Mart ID
+     * @param {string|null} martId - Mart ID (optional for single mart system)
      * @param {Date} currentTimestamp - Current timestamp
      * @returns {Promise<Object>} Customer satisfaction data
      */
     async getCustomerSatisfaction(martId, currentTimestamp) {
         try {
             logger.info('Fetching customer satisfaction', { martId, currentTimestamp });
-            if (!martId) {
-                throw new AppError('Mart ID is required for dashboard calculations', 400);
-            }
 
-            // Fetch all customer ratings for the mart
-            const profiles = await prisma.customerMartProfile.findMany({
+            // Fetch all customer ratings from orders (single mart system - no mart_id filter)
+            const orders = await prisma.order.findMany({
                 where: {
-                    mart_id: martId,
                     customer_rating: {
                         not: null,
                     },
@@ -465,38 +456,36 @@ class DashboardService {
             });
 
             // Convert ratings to numbers for comparison
-            const ratings = profiles
-                .map((profile) => (profile.customer_rating ? parseFloat(profile.customer_rating) : null))
-                .filter((rating) => rating !== null);
+            const ratings = orders
+                .map((order) => (order.customer_rating ? parseFloat(order.customer_rating) : null))
+                .filter((rating) => rating !== null && rating > 0);
 
             const totalRatings = ratings.length;
 
             if (totalRatings === 0) {
                 return {
-                    overall: 0,
-                    five_stars: 0,
-                    four_stars: 0,
-                    less_than_three: 0,
+                    percentage: 0,
+                    count_of_5_stars: 0,
+                    count_of_4_stars: 0,
+                    count_of_less_than_3_stars: 0,
                 };
             }
 
             // Calculate counts for each category
-            const fiveStarsCount = ratings.filter((rating) => rating >= 5.0).length;
-            const fourStarsCount = ratings.filter((rating) => rating >= 4.0 && rating < 5.0).length;
-            const overallCount = ratings.filter((rating) => rating >= 4.0).length;
-            const lessThanThreeCount = ratings.filter((rating) => rating <= 3.0).length;
+            const countOf5Stars = ratings.filter((rating) => rating >= 4.5 && rating <= 5.0).length;
+            const countOf4Stars = ratings.filter((rating) => rating >= 4.0 && rating < 4.5).length;
+            const countOfLessThan3Stars = ratings.filter((rating) => rating < 3.0).length;
 
-            // Calculate percentages (rounded to 2 decimal places)
-            const calculatePercentage = (count, total) => {
-                if (total === 0) return 0;
-                return parseFloat(((count / total) * 100).toFixed(2));
-            };
+            // Calculate overall percentage: average rating out of 5, then convert to percentage
+            const sumRatings = ratings.reduce((sum, rating) => sum + rating, 0);
+            const averageRating = sumRatings / totalRatings;
+            const percentage = parseFloat(((averageRating / 5) * 100).toFixed(2));
 
             return {
-                overall: calculatePercentage(overallCount, totalRatings),
-                five_stars: calculatePercentage(fiveStarsCount, totalRatings),
-                four_stars: calculatePercentage(fourStarsCount, totalRatings),
-                less_than_three: calculatePercentage(lessThanThreeCount, totalRatings),
+                percentage,
+                count_of_5_stars: countOf5Stars,
+                count_of_4_stars: countOf4Stars,
+                count_of_less_than_3_stars: countOfLessThan3Stars,
             };
         } catch (error) {
             logger.error('Error fetching customer satisfaction', error);
@@ -506,7 +495,7 @@ class DashboardService {
 
     /**
      * Get top performing delivery staff for a mart
-     * @param {string} martId - Mart ID
+     * @param {string|null} martId - Mart ID (optional for single mart system)
      * @param {number} limit - Number of top performers to fetch
      * @param {Date} currentTimestamp - Current timestamp
      * @returns {Promise<Object>} Top performers data
@@ -514,16 +503,13 @@ class DashboardService {
     async getTopPerformers(martId, limit, currentTimestamp) {
         try {
             logger.info('Fetching top performers', { martId, limit, currentTimestamp });
-            if (!martId) {
-                throw new AppError('Mart ID is required for dashboard calculations', 400);
-            }
 
             const performerLimit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 50) : 5;
 
             // Fetch delivery staff sorted by total_deliveries (desc), then by average_rating (desc)
             const deliveryStaff = await prisma.deliveryStaff.findMany({
                 where: {
-                    mart_id: martId,
+                    ...(martId ? { mart_id: martId } : {}),
                     is_active: true,
                 },
                 orderBy: [

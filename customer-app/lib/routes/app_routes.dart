@@ -24,6 +24,7 @@ import '../screens/payment/payment_successful_screen.dart';
 import '../screens/orders/order_successful_screen.dart';
 import '../screens/home/widgets/regular_wash_bottom_sheet.dart';
 import '../screens/notifications/notifications_screen.dart';
+import '../screens/profile/payment_methods_screen.dart';
 
 class AppRoutes {
   static const String bootstrap = '/';
@@ -57,6 +58,7 @@ class AppRoutes {
   static const String paymentSuccessful = '/payment-successful';
   static const String orderSuccessful = '/order-successful';
   static const String notifications = '/notifications';
+  static const String paymentMethods = '/profile/payment-methods';
 
   static Map<String, WidgetBuilder> get routes {
     return {
@@ -145,6 +147,7 @@ class AppRoutes {
       paymentSuccessful: (context) => const PaymentSuccessfulScreen(),
       orderSuccessful: (context) => const OrderSuccessfulScreen(),
       notifications: (context) => const NotificationsScreen(),
+      paymentMethods: (context) => const PaymentMethodsScreen(),
     };
   }
 }

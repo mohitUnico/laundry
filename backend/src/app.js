@@ -22,13 +22,30 @@ const allowedOrigins = process.env.CORS_ORIGIN
     ? process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean)
     : ['http://localhost:3000'];
 
+const isDevelopment = process.env.NODE_ENV === 'development';
+
 const corsOptions = {
     origin: (origin, callback) => {
-        if (!origin || allowedOrigins.includes(origin)) {
+        // Allow requests with no origin (mobile apps, Postman, etc.)
+        if (!origin) {
             callback(null, true);
-        } else {
-            callback(new Error(`Not allowed by CORS: ${origin}`));
+            return;
         }
+
+        // In development, allow any localhost origin (for web apps on any port)
+        if (isDevelopment && (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:'))) {
+            callback(null, true);
+            return;
+        }
+
+        // Check against explicitly allowed origins
+        if (allowedOrigins.includes(origin)) {
+            callback(null, true);
+            return;
+        }
+
+        // Reject all other origins
+        callback(new Error(`Not allowed by CORS: ${origin}`));
     },
     credentials: true,
     optionsSuccessStatus: 200,

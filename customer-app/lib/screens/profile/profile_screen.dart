@@ -97,7 +97,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   iconColor: HomeColors.primary,
                   title: 'Payment Methods',
                   subtitle: 'Cards and wallets',
-                  onTap: () {},
+                  onTap: () =>
+                      Navigator.of(context).pushNamed(AppRoutes.paymentMethods),
                 ),
                 _SettingsItem(
                   icon: Icons.notifications_none_rounded,

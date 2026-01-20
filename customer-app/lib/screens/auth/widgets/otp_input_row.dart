@@ -128,13 +128,38 @@ class OtpInputRowState extends State<OtpInputRow> {
                 return;
               }
 
+              // Handle forward navigation when digit is entered
               if (v.isNotEmpty && i < widget.length - 1) {
                 _nodes[i + 1].requestFocus();
               }
+              
+              // Handle backspace navigation - when field becomes empty, move to previous
               if (v.isEmpty && i > 0) {
-                _nodes[i - 1].requestFocus();
+                // Move to previous field and select its content
+                Future.microtask(() {
+                  if (mounted) {
+                    _nodes[i - 1].requestFocus();
+                    // Select all text in previous field so next backspace clears it
+                    if (_controllers[i - 1].text.isNotEmpty) {
+                      _controllers[i - 1].selection = TextSelection(
+                        baseOffset: 0,
+                        extentOffset: _controllers[i - 1].text.length,
+                      );
+                    }
+                  }
+                });
               }
+              
               _emit();
+            },
+            // When user taps a field, select all text for easy editing
+            onTap: () {
+              if (_controllers[i].text.isNotEmpty) {
+                _controllers[i].selection = TextSelection(
+                  baseOffset: 0,
+                  extentOffset: _controllers[i].text.length,
+                );
+              }
             },
           ),
         );

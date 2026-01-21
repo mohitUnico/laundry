@@ -37,22 +37,22 @@ export const RecentOrders: React.FC<RecentOrdersProps> = ({ onViewAll, items = [
       {/* Desktop Layout */}
       <div className="hidden md:block space-y-3">
         <div className="flex items-center gap-4 pb-2 border-b border-slate-100">
-          <div className="w-[180px]">
+          <div className="flex-1 min-w-[220px]">
             <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
               Order / Customer
             </p>
           </div>
-          <div className="flex-1 text-right">
+          <div className="w-[120px] text-right">
             <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
               Amount
             </p>
           </div>
-          <div className="flex items-center justify-center min-w-[120px]">
+          <div className="w-[140px] flex items-center justify-center">
             <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
               Status
             </p>
           </div>
-          <div className="text-right min-w-[100px]">
+          <div className="w-[190px] text-right">
             <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
               Created
             </p>
@@ -63,14 +63,16 @@ export const RecentOrders: React.FC<RecentOrdersProps> = ({ onViewAll, items = [
             key={order.id}
             className="flex items-center gap-4 py-3 border-b border-slate-100 last:border-b-0"
           >
-            <div className="w-[180px]">
+            <div className="flex-1 min-w-[220px]">
               <p className="font-semibold text-slate-900 mb-0.5 text-sm">{order.id}</p>
               <p className="text-xs text-slate-500">{order.customer}</p>
             </div>
-            <div className="flex-1 text-right">
-              <p className="font-semibold text-slate-900 text-sm">{formatCurrency(order.amount)}</p>
+            <div className="w-[120px] text-right">
+              <p className="font-semibold text-slate-900 text-sm tabular-nums">
+                {formatCurrency(order.amount)}
+              </p>
             </div>
-            <div className="flex items-center justify-center min-w-[120px]">
+            <div className="w-[140px] flex items-center justify-center">
               <span
                 className={`px-2 sm:px-3 py-1 rounded-full text-xs font-medium ${
                   order.status.toLowerCase().includes('delivered') || order.status.toLowerCase().includes('closed')
@@ -81,7 +83,7 @@ export const RecentOrders: React.FC<RecentOrdersProps> = ({ onViewAll, items = [
                 {order.status}
               </span>
             </div>
-            <div className="text-right min-w-[100px]">
+            <div className="w-[190px] text-right">
               <p className="text-xs sm:text-sm text-slate-600">{formatTimeAgo(order.timeIso)}</p>
             </div>
           </div>

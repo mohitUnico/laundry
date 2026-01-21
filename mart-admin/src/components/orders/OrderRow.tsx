@@ -27,7 +27,11 @@ function statusClasses(status: OrderRowData['status']) {
   }
 }
 
-export const OrderRow: React.FC<{ row: OrderRowData }> = ({ row }) => {
+export const OrderRow: React.FC<{
+  row: OrderRowData;
+  onView?: (orderId: string) => void;
+  onEdit?: (orderId: string) => void;
+}> = ({ row, onView, onEdit }) => {
   const getInitials = (name: string) => {
     const parts = name.trim().split(' ').filter(Boolean);
     if (parts.length === 0) return '';
@@ -37,12 +41,20 @@ export const OrderRow: React.FC<{ row: OrderRowData }> = ({ row }) => {
 
   return (
     <tr className="border-b border-slate-200 last:border-b-0 hover:bg-slate-50/50 transition-colors">
-      <td className="px-3 sm:px-4 md:px-6 py-3 sm:py-4 md:py-5 font-semibold text-xs sm:text-sm text-slate-900">{row.id}</td>
+      <td className="px-3 sm:px-4 md:px-6 py-3 sm:py-4 md:py-5 font-semibold text-xs sm:text-sm text-slate-900">
+        <div className="truncate" title={row.id}>
+          {row.id}
+        </div>
+      </td>
       <td className="px-3 sm:px-4 md:px-6 py-3 sm:py-4 md:py-5">
         <div className="text-slate-900 font-medium text-xs sm:text-sm">{row.customer}</div>
         <div className="text-[10px] sm:text-xs text-slate-500 mt-0.5 truncate max-w-[200px]">@ {row.address}</div>
       </td>
-      <td className="px-3 sm:px-4 md:px-6 py-3 sm:py-4 md:py-5 text-slate-500 text-xs sm:text-sm hidden md:table-cell">{row.services}</td>
+      <td className="px-3 sm:px-4 md:px-6 py-3 sm:py-4 md:py-5 text-slate-500 text-xs sm:text-sm hidden md:table-cell">
+        <div className="truncate" title={row.services}>
+          {row.services}
+        </div>
+      </td>
       <td className="px-3 sm:px-4 md:px-6 py-3 sm:py-4 md:py-5 text-slate-900 text-xs sm:text-sm font-medium">{row.amount}</td>
       <td className={`px-3 sm:px-4 md:px-6 py-3 sm:py-4 md:py-5 text-xs sm:text-sm font-medium ${statusClasses(row.status)}`}>{row.status}</td>
       <td className="px-3 sm:px-4 md:px-6 py-3 sm:py-4 md:py-5 hidden lg:table-cell">
@@ -78,10 +90,26 @@ export const OrderRow: React.FC<{ row: OrderRowData }> = ({ row }) => {
       </td>
       <td className="px-3 sm:px-4 md:px-6 py-3 sm:py-4 md:py-5">
         <div className="flex items-center gap-2 sm:gap-3 justify-start">
-          <button className="text-slate-400 hover:text-blue-600 transition-colors" aria-label="View order">
+          <button
+            type="button"
+            onClick={() => onView?.(row.id)}
+            disabled={!onView}
+            className={`transition-colors ${
+              onView ? 'text-slate-400 hover:text-blue-600' : 'text-slate-300 cursor-not-allowed'
+            }`}
+            aria-label="View order"
+          >
             <Eye size={16} className="sm:w-[18px] sm:h-[18px]" />
           </button>
-          <button className="text-slate-400 hover:text-blue-600 transition-colors" aria-label="Edit order">
+          <button
+            type="button"
+            onClick={() => onEdit?.(row.id)}
+            disabled={!onEdit}
+            className={`transition-colors ${
+              onEdit ? 'text-slate-400 hover:text-blue-600' : 'text-slate-300 cursor-not-allowed'
+            }`}
+            aria-label="Edit order"
+          >
             <PencilLine size={16} className="sm:w-[18px] sm:h-[18px]" />
           </button>
         </div>

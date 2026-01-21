@@ -47,8 +47,8 @@ class CartProvider with ChangeNotifier {
 
     final trimmedNote = note?.trim();
 
-    // Nothing to add.
-    if (cleaned.isEmpty && (trimmedNote == null || trimmedNote.isEmpty)) return;
+    // Nothing to add (must have at least one item quantity).
+    if (cleaned.isEmpty) return;
 
     final newPrices = <String, int>{};
     if (isPerPiece) {
@@ -128,6 +128,16 @@ class CartProvider with ChangeNotifier {
     notifyListeners();
 
     try {
+      // Must have at least one item selected (non-zero quantity).
+      // We intentionally do NOT allow adding a service with only a note and 0 qty.
+      final cleaned = <String, int>{};
+      for (final e in quantities.entries) {
+        if (e.value > 0) cleaned[e.key] = e.value;
+      }
+      if (cleaned.isEmpty) {
+        throw Exception('Please select at least 1 item before adding to cart.');
+      }
+
       // First update local cart (so UI responds immediately)
       // For both per-piece and kg-wise, include quantities to show cloth items
       addOrMerge(
@@ -141,11 +151,6 @@ class CartProvider with ChangeNotifier {
       );
 
       // Then persist to backend with exact payload keys expected by backend.
-      final cleaned = <String, int>{};
-      for (final e in quantities.entries) {
-        if (e.value > 0) cleaned[e.key] = e.value;
-      }
-
       final List<Map<String, dynamic>> itemsPayload;
 
       if (isPerPiece) {

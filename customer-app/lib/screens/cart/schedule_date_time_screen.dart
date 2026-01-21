@@ -42,6 +42,25 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
   int _toHour = 9; // 1..12
   int _toMinute = 0; // 0..59
 
+  int _to24Hour(int hour12, int amPm) {
+    // amPm: 0=AM, 1=PM
+    if (amPm == 0) {
+      return hour12 == 12 ? 0 : hour12;
+    }
+    return hour12 == 12 ? 12 : hour12 + 12;
+  }
+
+  DateTime _asLocalDateTime(DateTime dateOnly, int hour12, int minute, int amPm) {
+    final h24 = _to24Hour(hour12, amPm);
+    return DateTime(dateOnly.year, dateOnly.month, dateOnly.day, h24, minute);
+  }
+
+  void _showInvalidTimeSnack(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Please select a future time')),
+    );
+  }
+
   String _formatTime(int hour, int minute, int amPm) {
     final hh = hour.toString().padLeft(2, '0');
     final mm = minute.toString().padLeft(2, '0');
@@ -92,6 +111,29 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
     final days = List.generate(5, (i) => DateTime(now.year, now.month, now.day + i));
     final selectedDate = days[_selectedDayIndex.clamp(0, days.length - 1)];
 
+    // If user selects "Today", ensure the selected FROM time is not in the past.
+    final selectedFrom = _asLocalDateTime(selectedDate, _fromHour, _fromMinute, _fromAmPm);
+    if (DateUtils.isSameDay(selectedDate, now) && selectedFrom.isBefore(now)) {
+      // Auto-bump to the next 5-minute slot (local time), to avoid invalid schedules.
+      final bump = now.add(const Duration(minutes: 5));
+      final roundedMinute = ((bump.minute + 4) ~/ 5) * 5;
+      final normalized = DateTime(bump.year, bump.month, bump.day, bump.hour, roundedMinute % 60)
+          .add(Duration(hours: roundedMinute >= 60 ? 1 : 0));
+
+      final h24 = normalized.hour;
+      final amPm = h24 >= 12 ? 1 : 0;
+      final h12 = h24 > 12 ? h24 - 12 : (h24 == 0 ? 12 : h24);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() {
+          _selectedDayIndex = 0;
+          _fromAmPm = amPm;
+          _fromHour = h12;
+          _fromMinute = normalized.minute;
+        });
+      });
+    }
+
     final fromText = _formatTime(_fromHour, _fromMinute, _fromAmPm);
     final toText = _formatTime(_toHour, _toMinute, _toAmPm);
 
@@ -138,7 +180,17 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
               _DateChipRow(
                 dates: days,
                 selectedIndex: _selectedDayIndex,
-                onSelect: (i) => setState(() => _selectedDayIndex = i),
+                onSelect: (i) {
+                  setState(() => _selectedDayIndex = i);
+                  // If selecting today, ensure we don't keep a past time.
+                  if (i == 0) {
+                    final d = days[0];
+                    final from = _asLocalDateTime(d, _fromHour, _fromMinute, _fromAmPm);
+                    if (from.isBefore(DateTime.now())) {
+                      _showInvalidTimeSnack(context);
+                    }
+                  }
+                },
                 labelFor: (d, isSelected) => _dateLabel(d, isSelected),
               ),
               const SizedBox(height: 14),
@@ -172,6 +224,13 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                     color: Colors.transparent,
                     child: InkWell(
                       onTap: () async {
+                        // Validate schedule (local timezone): must not be in the past.
+                        final fromDt = _asLocalDateTime(selectedDate, _fromHour, _fromMinute, _fromAmPm);
+                        if (fromDt.isBefore(DateTime.now())) {
+                          _showInvalidTimeSnack(context);
+                          return;
+                        }
+
                         final dateLabel = '${_monthShort(selectedDate.month)} ${selectedDate.day}';
                         final timeLabel = _formatTime12h(_fromHour, _fromMinute, _fromAmPm);
 

@@ -54,7 +54,13 @@ class ProfileServiceErrorMessages {
     }
     
     if (error is Exception) {
-      final message = error.toString().toLowerCase();
+      final raw = error.toString();
+      final message = raw.toLowerCase();
+
+      // Pass through safe, user-facing validation messages.
+      if (message.contains('please select at least')) {
+        return raw;
+      }
       
       // Handle common exception messages
       if (message.contains('missing') || message.contains('invalid')) {

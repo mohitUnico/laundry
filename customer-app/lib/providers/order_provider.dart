@@ -117,7 +117,7 @@ class OrderProvider with ChangeNotifier {
       String placedTimeLabel = '';
       if (createdAt != null) {
         try {
-          placedAt = DateTime.parse(createdAt);
+          placedAt = DateTime.parse(createdAt).toLocal();
           placedDateLabel = _formatDateLabel(placedAt);
           placedTimeLabel = _formatTimeLabel(placedAt);
         } catch (_) {
@@ -136,7 +136,7 @@ class OrderProvider with ChangeNotifier {
       String timeLabel = '';
       if (pickupDate != null) {
         try {
-          final pickupDateTime = DateTime.parse(pickupDate);
+          final pickupDateTime = DateTime.parse(pickupDate).toLocal();
           dateLabel = _formatDateLabel(pickupDateTime);
           timeLabel = _formatTimeLabel(pickupDateTime);
         } catch (_) {
@@ -358,6 +358,7 @@ class OrderProvider with ChangeNotifier {
   }
 
   String _formatDateLabel(DateTime date) {
+    final d = date.toLocal();
     const months = [
       'Jan',
       'Feb',
@@ -372,13 +373,14 @@ class OrderProvider with ChangeNotifier {
       'Nov',
       'Dec'
     ];
-    return '${months[date.month - 1]} ${date.day}';
+    return '${months[d.month - 1]} ${d.day}';
   }
 
   String _formatTimeLabel(DateTime date) {
-    final hour = date.hour > 12 ? date.hour - 12 : (date.hour == 0 ? 12 : date.hour);
-    final minute = date.minute.toString().padLeft(2, '0');
-    final amPm = date.hour >= 12 ? 'PM' : 'AM';
+    final d = date.toLocal();
+    final hour = d.hour > 12 ? d.hour - 12 : (d.hour == 0 ? 12 : d.hour);
+    final minute = d.minute.toString().padLeft(2, '0');
+    final amPm = d.hour >= 12 ? 'PM' : 'AM';
     return '$hour:$minute $amPm';
   }
 }

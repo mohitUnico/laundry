@@ -6,6 +6,10 @@ import '../utils/auth_storage.dart';
 import '../utils/jwt_utils.dart';
 
 class ApiService {
+  // Keep a single Dio instance for the entire app to reuse sockets/HTTP keep-alive
+  // and reduce handshake latency across requests.
+  static final ApiService _instance = ApiService._internal();
+
   late Dio _dio;
   static Future<void>? _refreshInFlight;
 
@@ -25,7 +29,9 @@ class ApiService {
     return 'http://13.232.71.139:4000/api/v1';
   }
 
-  ApiService() {
+  factory ApiService() => _instance;
+
+  ApiService._internal() {
     // Use generous timeouts so OTP and other auth requests don't fail on slow networks.
     // If the server is actually down, the user will still get a proper error from Dio.
     _dio = Dio(

@@ -87,6 +87,7 @@ model CustomerAddress {
   pickup_orders   Order[]  @relation("PickupAddress")
 
   @@index([customer_id])
+  @@index([customer_id, is_default, updated_at])
   @@map("customer_addresses")
 }
 
@@ -174,6 +175,7 @@ model ServiceCategory {
   updated_at       DateTime  @updatedAt
   services         Service[]
 
+  @@index([is_active, display_order])
   @@map("service_categories")
 }
 
@@ -204,6 +206,7 @@ model Service {
   service_queue_items ServiceQueueItem[]
 
   @@index([category_id])
+  @@index([category_id, is_active, display_order])
   @@map("services")
 }
 
@@ -228,6 +231,7 @@ model ClothesItem {
 
   @@unique([service_id, item_name])
   @@index([service_id])
+  @@index([service_id, is_active, display_order])
   @@map("clothes_items")
 }
 
@@ -330,6 +334,8 @@ model Order {
   @@index([order_status])
   @@index([billing_status])
   @@index([created_at])
+  @@index([customer_id, created_at])
+  @@index([customer_id, order_status, created_at])
   @@index([received_by_collection_manager_id])
   @@index([dispatched_by_distribution_manager_id])
   @@map("orders")

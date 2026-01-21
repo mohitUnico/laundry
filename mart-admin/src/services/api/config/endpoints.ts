@@ -25,6 +25,20 @@ export const API_ENDPOINTS = {
     LIST: '/services',
     GET: (id: string) => `/services/${id}`,
   },
+  CLOTHES: {
+    SERVICE_CATEGORIES: {
+      LIST: '/clothes/service-categories',
+      CREATE: '/clothes/service-categories',
+      UPDATE: (id: string) => `/clothes/service-categories/${id}`,
+      DELETE: (id: string) => `/clothes/service-categories/${id}`,
+    },
+    SERVICES: {
+      LIST: '/clothes/services',
+      CREATE: '/clothes/services',
+      UPDATE: (id: string) => `/clothes/services/${id}`,
+      DELETE: (id: string) => `/clothes/services/${id}`,
+    },
+  },
   DASHBOARD: {
     // Mart dashboard (mart scoped)
     MONTHLY_OVERVIEW: '/dashboard/monthly-overview',

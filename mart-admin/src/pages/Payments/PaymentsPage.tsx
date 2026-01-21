@@ -156,8 +156,8 @@ export const PaymentsPage: React.FC = () => {
   });
 
   return (
-    <div className="min-h-screen bg-[#F9FAFB]">
-      <div className="max-w-[1280px] mx-auto px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10 py-4 sm:py-5 md:py-6 space-y-4 sm:space-y-5 md:space-y-6 lg:space-y-8">
+    <div className="w-full">
+      <div className="mx-auto mt-1 sm:mt-2 w-full max-w-[1320px] rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 md:p-7 shadow-sm space-y-4 sm:space-y-5 md:space-y-6 lg:space-y-8">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
           <div>

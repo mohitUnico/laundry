@@ -5,3 +5,4 @@ export * from './ticketsApi';
 export * from './settingsApi';
 export * from './dashboardApi';
 export * from './adminManagementApi';
+export * from './clothesApi';

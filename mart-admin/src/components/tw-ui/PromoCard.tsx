@@ -47,7 +47,7 @@ export const PromoCard: React.FC<PromoCardProps> = ({ title, subtitle, discountP
 
       {discountPercent && (
         <div className="mt-6 mb-2 text-center">
-          <div className="text-white/80 text-[14px] font-medium">Discount</div>
+          <div className="text-white/80 text-[14px] font-medium">Offer</div>
           <div className="text-[42px] font-bold tracking-tight mt-1">{discountPercent}</div>
         </div>
       )}
@@ -62,12 +62,12 @@ export const PromoCard: React.FC<PromoCardProps> = ({ title, subtitle, discountP
               <span className="font-semibold">{details.discount}</span>
             </div>
             <div className="flex items-center mt-1">
-              <span className="text-white/80">Min. Order</span>
+              <span className="text-white/80">Minimum order</span>
               <span className="flex-1 mx-2 border-b border-dotted border-white/60" />
               <span className="font-semibold">{details.minOrder}</span>
             </div>
             <div className="flex items-center mt-1">
-              <span className="text-white/80">Valid Until</span>
+              <span className="text-white/80">Expires</span>
               <span className="flex-1 mx-2 border-b border-dotted border-white/60" />
               <span className="font-semibold">{details.validUntil}</span>
             </div>
@@ -81,6 +81,7 @@ export const PromoCard: React.FC<PromoCardProps> = ({ title, subtitle, discountP
 
       {/* Code */}
       <div className="mt-4">
+        <div className="text-[11px] text-white/75 text-center mb-2 tracking-wide">USE CODE</div>
         <div className="border border-dashed border-white/80 rounded-lg py-3 text-center font-semibold uppercase tracking-[0.12em] text-[14px]">
           {code}
         </div>

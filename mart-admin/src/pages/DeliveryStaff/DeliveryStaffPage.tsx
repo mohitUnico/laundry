@@ -192,63 +192,67 @@ export const DeliveryStaffPage: React.FC = () => {
 
     return (
         <div className="w-full">
-            {/* Header row with title and CTA */}
-            <div className="mb-3 sm:mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-                <div>
-                    <h1 className="text-lg sm:text-xl md:text-[22px] font-semibold text-slate-900">Delivery Staff Management</h1>
-                    <p className="mt-1 text-xs sm:text-sm text-slate-500">Track and manage delivery personnel in real-time.</p>
-                </div>
-                <button className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#2A52F2] px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white shadow-sm transition duration-150 ease-in-out hover:brightness-110 w-full sm:w-auto">
-                    <span className="text-base sm:text-lg leading-none">+</span>
-                    <span>Add Delivery Staff</span>
-                </button>
-            </div>
-
-            {/* Stats cards */}
-            <div className="mb-4 sm:mb-5 grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <div
-                    onClick={() => handleStatCardClick('all')}
-                    className={`cursor-pointer transition-transform duration-150 hover:-translate-y-0.5 ${
-                        statusFilter === 'all' ? 'ring-2 ring-indigo-500 rounded-xl' : ''
-                    }`}
-                >
-                    <StatCard title="Total Staff" value={stats.totalStaff} right={<UserOutlineIcon className="h-4 w-4 sm:h-5 sm:w-5 text-slate-400" />} />
-                </div>
-                <div
-                    onClick={() => handleStatCardClick('available')}
-                    className={`cursor-pointer transition-transform duration-150 hover:-translate-y-0.5 ${
-                        statusFilter === 'available' ? 'ring-2 ring-indigo-500 rounded-xl' : ''
-                    }`}
-                >
-                    <StatCard title="Available" value={stats.available} right={<span className="inline-flex h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full bg-emerald-500" />} />
-                </div>
-                <div
-                    onClick={() => handleStatCardClick('onDelivery')}
-                    className={`cursor-pointer transition-transform duration-150 hover:-translate-y-0.5 ${
-                        statusFilter === 'onDelivery' ? 'ring-2 ring-indigo-500 rounded-xl' : ''
-                    }`}
-                >
-                    <StatCard title="On Delivery" value={stats.onDelivery} right={<span className="inline-flex h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full bg-indigo-500" />} />
-                </div>
-                <div className="cursor-default">
-                    <StatCard title="Avg. Rating" value={stats.avgRating} right={<StarSolidIcon className="h-4 w-4 sm:h-5 sm:w-5 text-amber-400" />} />
-                </div>
-            </div>
-
-            {/* Map + Staff details layout */}
-            <div className="grid grid-cols-1 gap-4 sm:gap-5 xl:grid-cols-12">
-                <div className="xl:col-span-7 2xl:col-span-7 order-2 xl:order-1">
-                    <MapWithMarkers staff={staff} />
-                </div>
-                <div className="xl:col-span-5 2xl:col-span-5 order-1 xl:order-2">
-                    <div className="rounded-xl sm:rounded-2xl border border-slate-200 bg-white shadow-sm">
-                        <div className="flex items-center justify-between px-4 sm:px-5 py-2.5 sm:py-3">
-                            <div className="text-sm sm:text-[15px] font-semibold text-slate-900">Staff Details</div>
+            <div className="mx-auto mt-1 sm:mt-2 w-full max-w-[1320px] rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 md:p-7 shadow-sm">
+                <div className="w-full">
+                    {/* Header row with title and CTA */}
+                    <div className="mb-3 sm:mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+                        <div>
+                            <h1 className="text-lg sm:text-xl md:text-[22px] font-semibold text-slate-900">Delivery Staff Management</h1>
+                            <p className="mt-1 text-xs sm:text-sm text-slate-500">Track and manage delivery personnel in real-time.</p>
                         </div>
-                        <div className="max-h-[400px] sm:max-h-[500px] md:max-h-[560px] overflow-auto">
-                            {staff.map((s) => (
-                                <StaffRow key={s.id} staff={s} expanded={expandedId === s.id} onToggle={() => setExpandedId((e) => (e === s.id ? '' : s.id))} />
-                            ))}
+                        <button className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#2A52F2] px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white shadow-sm transition duration-150 ease-in-out hover:brightness-110 w-full sm:w-auto">
+                            <span className="text-base sm:text-lg leading-none">+</span>
+                            <span>Add Delivery Staff</span>
+                        </button>
+                    </div>
+
+                    {/* Stats cards */}
+                    <div className="mb-4 sm:mb-5 grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        <div
+                            onClick={() => handleStatCardClick('all')}
+                            className={`cursor-pointer transition-transform duration-150 hover:-translate-y-0.5 ${
+                                statusFilter === 'all' ? 'ring-2 ring-indigo-500 rounded-xl' : ''
+                            }`}
+                        >
+                            <StatCard title="Total Staff" value={stats.totalStaff} right={<UserOutlineIcon className="h-4 w-4 sm:h-5 sm:w-5 text-slate-400" />} />
+                        </div>
+                        <div
+                            onClick={() => handleStatCardClick('available')}
+                            className={`cursor-pointer transition-transform duration-150 hover:-translate-y-0.5 ${
+                                statusFilter === 'available' ? 'ring-2 ring-indigo-500 rounded-xl' : ''
+                            }`}
+                        >
+                            <StatCard title="Available" value={stats.available} right={<span className="inline-flex h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full bg-emerald-500" />} />
+                        </div>
+                        <div
+                            onClick={() => handleStatCardClick('onDelivery')}
+                            className={`cursor-pointer transition-transform duration-150 hover:-translate-y-0.5 ${
+                                statusFilter === 'onDelivery' ? 'ring-2 ring-indigo-500 rounded-xl' : ''
+                            }`}
+                        >
+                            <StatCard title="On Delivery" value={stats.onDelivery} right={<span className="inline-flex h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full bg-indigo-500" />} />
+                        </div>
+                        <div className="cursor-default">
+                            <StatCard title="Avg. Rating" value={stats.avgRating} right={<StarSolidIcon className="h-4 w-4 sm:h-5 sm:w-5 text-amber-400" />} />
+                        </div>
+                    </div>
+
+                    {/* Map + Staff details layout */}
+                    <div className="grid grid-cols-1 gap-4 sm:gap-5 xl:grid-cols-12">
+                        <div className="xl:col-span-7 2xl:col-span-7 order-2 xl:order-1">
+                            <MapWithMarkers staff={staff} />
+                        </div>
+                        <div className="xl:col-span-5 2xl:col-span-5 order-1 xl:order-2">
+                            <div className="rounded-xl sm:rounded-2xl border border-slate-200 bg-white shadow-sm">
+                                <div className="flex items-center justify-between px-4 sm:px-5 py-2.5 sm:py-3">
+                                    <div className="text-sm sm:text-[15px] font-semibold text-slate-900">Staff Details</div>
+                                </div>
+                                <div className="max-h-[400px] sm:max-h-[500px] md:max-h-[560px] overflow-auto">
+                                    {staff.map((s) => (
+                                        <StaffRow key={s.id} staff={s} expanded={expandedId === s.id} onToggle={() => setExpandedId((e) => (e === s.id ? '' : s.id))} />
+                                    ))}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { SummaryCard } from '@/components/orders/SummaryCard';
 import { FilterBar } from '@/components/orders/FilterBar';
 import { OrderTable } from '@/components/orders/OrderTable';
@@ -9,7 +10,13 @@ import type { AdminOrdersListItem, AdminOrdersSummary } from '@/services/api/mod
 import { Modal } from '@/components/common';
 
 export const OrdersPage: React.FC = () => {
-  const [search, setSearch] = useState('');
+  const location = useLocation();
+  const initialSearch = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get('search') || '';
+  }, [location.search]);
+
+  const [search, setSearch] = useState(initialSearch);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<string | null>(null);
 
@@ -215,8 +222,8 @@ export const OrdersPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-3 sm:p-4 md:p-5 lg:p-6">
-      <div className="mx-auto max-w-[1200px]">
+    <div className="w-full">
+      <div className="mx-auto w-full max-w-[1240px] rounded-2xl border border-slate-100 bg-white p-4 shadow-soft sm:p-6 md:p-7 lg:p-8">
         <div className="mb-4 sm:mb-5 md:mb-6">
           <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Order Management</h1>
           <p className="mt-1 text-xs sm:text-sm text-slate-500">Track and manage all customer orders.</p>
@@ -227,9 +234,9 @@ export const OrdersPage: React.FC = () => {
             const isSelected = statusFilter === k.status;
             return (
               <div key={k.label}>
-                <SummaryCard 
-                  title={k.label} 
-                  value={k.value} 
+                <SummaryCard
+                  title={k.label}
+                  value={k.value}
                   onClick={() => handleKpiClick(isSelected ? 'all' : k.status)}
                   isSelected={isSelected}
                 />
@@ -257,9 +264,7 @@ export const OrdersPage: React.FC = () => {
           ) : (
             <OrderTable rows={rows} onView={onView} onEdit={onEdit} />
           )}
-          {isLoading ? (
-            <p className="mt-3 text-xs sm:text-sm text-slate-500">Loading orders…</p>
-          ) : null}
+          {isLoading ? <p className="mt-3 text-xs sm:text-sm text-slate-500">Loading orders…</p> : null}
         </div>
       </div>
 

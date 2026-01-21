@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Modal, Button } from '@/components/common';
 import styles from './EditServiceModal.module.scss';
 
@@ -8,19 +8,21 @@ interface ServiceFormData {
   pricePerKg: string;
   durationHours: number;
   status: 'Active' | 'Inactive';
-  category: string;
+  categoryId: string;
 }
 
 interface AddServiceModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (data: ServiceFormData) => void;
+  categories: Array<{ id: string; name: string }>;
 }
 
 export const AddServiceModal: React.FC<AddServiceModalProps> = ({
   isOpen,
   onClose,
   onSave,
+  categories,
 }) => {
   const [formData, setFormData] = useState<ServiceFormData>({
     name: '',
@@ -28,8 +30,15 @@ export const AddServiceModal: React.FC<AddServiceModalProps> = ({
     pricePerKg: '',
     durationHours: 0,
     status: 'Active',
-    category: 'Quick Wash',
+    categoryId: categories[0]?.id || '',
   });
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (formData.categoryId) return;
+    if (categories.length === 0) return;
+    setFormData((prev) => ({ ...prev, categoryId: categories[0].id }));
+  }, [categories, formData.categoryId, isOpen]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,7 +50,7 @@ export const AddServiceModal: React.FC<AddServiceModalProps> = ({
       pricePerKg: '',
       durationHours: 0,
       status: 'Active',
-      category: 'Quick Wash',
+      categoryId: categories[0]?.id || '',
     });
     onClose();
   };
@@ -61,7 +70,7 @@ export const AddServiceModal: React.FC<AddServiceModalProps> = ({
       pricePerKg: '',
       durationHours: 0,
       status: 'Active',
-      category: 'Quick Wash',
+      categoryId: categories[0]?.id || '',
     });
     onClose();
   };
@@ -128,19 +137,20 @@ export const AddServiceModal: React.FC<AddServiceModalProps> = ({
         </div>
 
         <div className={styles.formGroup}>
-          <label htmlFor="category" className={styles.label}>
+          <label htmlFor="categoryId" className={styles.label}>
             Category
           </label>
           <select
-            id="category"
+            id="categoryId"
             className={styles.select}
-            value={formData.category}
-            onChange={(e) => handleChange('category', e.target.value)}
+            value={formData.categoryId}
+            onChange={(e) => handleChange('categoryId', e.target.value)}
           >
-            <option value="Quick Wash">Quick Wash</option>
-            <option value="Pro Clean">Pro Clean</option>
-            <option value="Steam Press">Steam Press</option>
-            <option value="Luxury Care">Luxury Care</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
           </select>
         </div>
 

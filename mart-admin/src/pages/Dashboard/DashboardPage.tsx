@@ -29,9 +29,10 @@ import { useDashboard } from '@/hooks/api';
 import { formatCompactCurrency } from '@/utils/formatters';
 import { dashboardApi } from '@/services/api/modules/dashboardApi';
 import { useEffect, useCallback } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Download, Loader2, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ROUTES } from '@/routes';
+import { ExportDropdown } from '@/components/layout/Header/ExportDropdown';
 
 export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
@@ -49,6 +50,7 @@ export const DashboardPage: React.FC = () => {
   const [showFilteredOrdersModal, setShowFilteredOrdersModal] = useState(false);
   const [showAllRecentOrdersModal, setShowAllRecentOrdersModal] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<string>('');
+  const [exportOpen, setExportOpen] = useState(false);
   const [revenueLoading, setRevenueLoading] = useState(false);
   const [revenueError, setRevenueError] = useState<string | null>(null);
   const [revenueData, setRevenueData] = useState<{
@@ -242,130 +244,163 @@ export const DashboardPage: React.FC = () => {
     await refresh();
   };
 
+  const handleExportSelect = (fmt: 'PDF' | 'Excel' | 'CSV') => {
+    setExportOpen(false);
+    showToast(`Dashboard exported as ${fmt}!`, 'success');
+  };
+
   return (
-    <div className="space-y-3 sm:space-y-4 md:space-y-5 lg:space-y-6">
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-3 sm:p-4 flex items-center justify-between gap-3">
-          <div className="text-sm">
-            <span className="font-semibold">Dashboard error:</span> {error}
+    <div className="w-full">
+      <div className="mx-auto w-full max-w-[1240px] rounded-2xl border border-slate-100 bg-white p-4 shadow-soft sm:p-6 md:p-7 lg:p-8">
+        <div className="space-y-4 sm:space-y-5 md:space-y-6 lg:space-y-7">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-semibold text-[#0F172A]">Dashboard</h1>
+              <p className="mt-1 text-sm text-[#64748B]">Welcome back! Here’s your business overview.</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowReportModal(true)}
+                className="inline-flex items-center gap-2 rounded-full bg-[#2F47FF] px-4 py-2 text-sm font-medium text-white hover:bg-[#263BE6] transition-colors"
+              >
+                <Plus size={16} />
+                Add Report
+              </button>
+              <div className="relative">
+                <button
+                  onClick={() => setExportOpen((v) => !v)}
+                  className="inline-flex items-center gap-2 rounded-full border border-[#2F47FF] px-4 py-2 text-sm font-medium text-[#2F47FF] hover:bg-[#EEF2FF] transition-colors"
+                >
+                  <Download size={16} />
+                  Export Report
+                </button>
+                <ExportDropdown open={exportOpen} onClose={() => setExportOpen(false)} onSelect={handleExportSelect} />
+              </div>
+            </div>
           </div>
-          <button
-            onClick={handleRetry}
-            className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700"
-          >
-            Retry
-          </button>
-        </div>
-      )}
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
-        <div
-          onClick={() => setShowRevenueModal(true)}
-          className="cursor-pointer transform transition-all hover:scale-[1.02] active:scale-[0.98] hover:shadow-lg"
-        >
-          <SummaryCard
-            title="Total Revenue"
-            value={summaryTotalRevenue}
-            growth={summaryRevenueGrowth}
-            isPrimary
-          />
-        </div>
-        <div
-          onClick={() => setShowActiveOrdersModal(true)}
-          className="cursor-pointer transform transition-all hover:scale-[1.02] active:scale-[0.98] hover:shadow-lg"
-        >
-          <SummaryCard title="Total Orders" value={summaryTotalOrders ?? '—'} growth={summaryOrdersGrowth} />
-        </div>
-        <div
-          onClick={() => setShowNewCustomersModal(true)}
-          className="cursor-pointer transform transition-all hover:scale-[1.02] active:scale-[0.98] hover:shadow-lg"
-        >
-          <SummaryCard title="New Customers" value={summaryNewCustomers ?? '—'} growth={summaryCustomersGrowth} />
-        </div>
-        <div
-          onClick={() => setShowDeliveryAnalyticsModal(true)}
-          className="cursor-pointer transform transition-all hover:scale-[1.02] active:scale-[0.98] hover:shadow-lg"
-        >
-          <SummaryCard title="Avg. Delivery Time" value={summaryAvgDelivery} growth={summaryDeliveryGrowth} />
-        </div>
-      </div>
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-3 sm:p-4 flex items-center justify-between gap-3">
+              <div className="text-sm">
+                <span className="font-semibold">Dashboard error:</span> {error}
+              </div>
+              <button
+                onClick={handleRetry}
+                className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700"
+              >
+                Retry
+              </button>
+            </div>
+          )}
 
-      {/* Order Status + Alert */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
-        <div className="lg:col-span-2 order-1 lg:order-1">
-          <OrderStatusWidget items={statusItems} loading={loading} onStatusClick={handleStatusClick} />
-        </div>
-        <div className="order-2 lg:order-2">
-          <AlertCard onCta={() => setShowLateDeliveryModal(true)} />
-        </div>
-      </div>
-
-      {/* Revenue Chart + Top Performers */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
-        <div className="xl:col-span-2 order-1">
-          <RevenueChart
-            range={range}
-            onRangeChange={handleRangeChange}
-            points={chartPoints}
-            totalRevenue={trendTotals.totalRevenue}
-            totalOrders={trendTotals.totalOrders}
-          />
-        </div>
-        <div className="order-2">
-          <TopPerformers items={topPerformersItems} />
-        </div>
-      </div>
-
-      {/* Recent Orders + Customer Satisfaction + Quick Actions */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
-        <div className="xl:col-span-2 order-1">
-          <RecentOrders items={recentOrdersItems} onViewAll={() => navigate(ROUTES.ORDERS)} />
-        </div>
-        <div className="xl:col-span-1 order-2">
-          <div className="space-y-3 sm:space-y-4 md:space-y-5 lg:space-y-6">
-            <CustomerSatisfaction
-              value={satisfaction?.overall ?? 0}
-              fiveStars={satisfaction?.five_stars ?? 0}
-              fourStars={satisfaction?.four_stars ?? 0}
-              lessThanThree={satisfaction?.less_than_three ?? 0}
-            />
-            <QuickActions
-              onCreateOrder={() => setShowCreateOrderModal(true)}
-              onAddCustomer={() => setShowAddCustomerModal(true)}
-              onAddStaff={() => setShowAddStaffModal(true)}
-              onSendNotification={() => setShowNotificationModal(true)}
-            />
+          {/* Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
+            <div
+              onClick={() => setShowRevenueModal(true)}
+              className="cursor-pointer transform transition-all hover:scale-[1.02] active:scale-[0.98] hover:shadow-lg"
+            >
+              <SummaryCard
+                title="Total Revenue"
+                value={summaryTotalRevenue}
+                growth={summaryRevenueGrowth}
+                isPrimary
+              />
+            </div>
+            <div
+              onClick={() => setShowActiveOrdersModal(true)}
+              className="cursor-pointer transform transition-all hover:scale-[1.02] active:scale-[0.98] hover:shadow-lg"
+            >
+              <SummaryCard title="Total Orders" value={summaryTotalOrders ?? '—'} growth={summaryOrdersGrowth} />
+            </div>
+            <div
+              onClick={() => setShowNewCustomersModal(true)}
+              className="cursor-pointer transform transition-all hover:scale-[1.02] active:scale-[0.98] hover:shadow-lg"
+            >
+              <SummaryCard title="New Customers" value={summaryNewCustomers ?? '—'} growth={summaryCustomersGrowth} />
+            </div>
+            <div
+              onClick={() => setShowDeliveryAnalyticsModal(true)}
+              className="cursor-pointer transform transition-all hover:scale-[1.02] active:scale-[0.98] hover:shadow-lg"
+            >
+              <SummaryCard title="Avg. Delivery Time" value={summaryAvgDelivery} growth={summaryDeliveryGrowth} />
+            </div>
           </div>
-        </div>
-      </div>
 
-      {/* Modals */}
-      <ReportModal
-        isOpen={showReportModal}
-        onClose={() => setShowReportModal(false)}
-        onSuccess={handleReportSuccess}
-      />
-      <CreateOrderModal
-        isOpen={showCreateOrderModal}
-        onClose={() => setShowCreateOrderModal(false)}
-        onSuccess={handleCreateOrderSuccess}
-      />
-      <AddCustomerModal
-        isOpen={showAddCustomerModal}
-        onClose={() => setShowAddCustomerModal(false)}
-        onSuccess={handleAddCustomerSuccess}
-      />
-      <AddStaffModal
-        isOpen={showAddStaffModal}
-        onClose={() => setShowAddStaffModal(false)}
-        onSuccess={handleAddStaffSuccess}
-      />
-      <SendNotificationModal
-        isOpen={showNotificationModal}
-        onClose={() => setShowNotificationModal(false)}
-        onSuccess={handleNotificationSuccess}
-      />
+          {/* Order Status + Alert */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
+            <div className="lg:col-span-2 order-1 lg:order-1">
+              <OrderStatusWidget items={statusItems} loading={loading} onStatusClick={handleStatusClick} />
+            </div>
+            <div className="order-2 lg:order-2">
+              <AlertCard onCta={() => setShowLateDeliveryModal(true)} />
+            </div>
+          </div>
+
+          {/* Revenue Chart + Top Performers */}
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
+            <div className="xl:col-span-2 order-1">
+              <RevenueChart
+                range={range}
+                onRangeChange={handleRangeChange}
+                points={chartPoints}
+                totalRevenue={trendTotals.totalRevenue}
+                totalOrders={trendTotals.totalOrders}
+              />
+            </div>
+            <div className="order-2">
+              <TopPerformers items={topPerformersItems} />
+            </div>
+          </div>
+
+          {/* Recent Orders + Customer Satisfaction + Quick Actions */}
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
+            <div className="xl:col-span-2 order-1">
+              <RecentOrders items={recentOrdersItems} onViewAll={() => navigate(ROUTES.ORDERS)} />
+            </div>
+            <div className="xl:col-span-1 order-2">
+              <div className="space-y-3 sm:space-y-4 md:space-y-5 lg:space-y-6">
+                <CustomerSatisfaction
+                  value={satisfaction?.overall ?? 0}
+                  fiveStars={satisfaction?.five_stars ?? 0}
+                  fourStars={satisfaction?.four_stars ?? 0}
+                  lessThanThree={satisfaction?.less_than_three ?? 0}
+                />
+                <QuickActions
+                  onCreateOrder={() => setShowCreateOrderModal(true)}
+                  onAddCustomer={() => setShowAddCustomerModal(true)}
+                  onAddStaff={() => setShowAddStaffModal(true)}
+                  onSendNotification={() => setShowNotificationModal(true)}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Modals */}
+          <ReportModal
+            isOpen={showReportModal}
+            onClose={() => setShowReportModal(false)}
+            onSuccess={handleReportSuccess}
+          />
+          <CreateOrderModal
+            isOpen={showCreateOrderModal}
+            onClose={() => setShowCreateOrderModal(false)}
+            onSuccess={handleCreateOrderSuccess}
+          />
+          <AddCustomerModal
+            isOpen={showAddCustomerModal}
+            onClose={() => setShowAddCustomerModal(false)}
+            onSuccess={handleAddCustomerSuccess}
+          />
+          <AddStaffModal
+            isOpen={showAddStaffModal}
+            onClose={() => setShowAddStaffModal(false)}
+            onSuccess={handleAddStaffSuccess}
+          />
+          <SendNotificationModal
+            isOpen={showNotificationModal}
+            onClose={() => setShowNotificationModal(false)}
+            onSuccess={handleNotificationSuccess}
+          />
 
       {/* Revenue Breakdown Modal */}
       <Modal
@@ -486,6 +521,8 @@ export const DashboardPage: React.FC = () => {
         isVisible={toast.isVisible}
         onClose={hideToast}
       />
+        </div>
+      </div>
     </div>
   );
 };

@@ -280,23 +280,6 @@ class AuthProvider with ChangeNotifier {
       // Ensure token is in storage (repository should have done this, but double-check)
       await AuthStorage.setAuthToken(result.token);
       await AuthStorage.setRefreshToken(result.refreshToken);
-
-      // Create a default address for testing the entire flow
-      // Using Mumbai, India coordinates as default location
-      try {
-        await _customerInfoRepository.createAddress(
-          addressLabel: 'Home',
-          fullAddress: '123, Test Street, Mumbai, Maharashtra 400001, India',
-          latitude: 19.0760, // Mumbai latitude
-          longitude: 72.8777, // Mumbai longitude
-          isDefault: true,
-          deliveryNote: 'Default test address',
-        );
-      } catch (e) {
-        // Silently fail if address creation fails - don't block registration
-        // Address can be added later by the user
-        debugPrint('Failed to create default address: $e');
-      }
     } catch (e) {
       _error = e.toString();
       rethrow;

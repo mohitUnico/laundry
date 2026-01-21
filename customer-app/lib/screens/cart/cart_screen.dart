@@ -118,10 +118,7 @@ class _CartScreenState extends State<CartScreen> {
                               onTap: () => Navigator.of(context).maybePop(),
                             )
                           : const SizedBox(width: 44, height: 44),
-                      _IconButtonSquare(
-                        icon: Icons.tune_rounded,
-                        onTap: () {},
-                      ),
+                      const SizedBox(width: 44, height: 44),
                     ],
                   ),
                   Center(

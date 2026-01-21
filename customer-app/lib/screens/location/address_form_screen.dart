@@ -204,11 +204,9 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
                             Expanded(
                               child: Text(
                                 _isEditMode ? 'Edit Address' : 'Add Address',
-                                style: const TextStyle(
-                                  fontSize: 30,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.black,
-                                  height: 1.05,
+                                // Match header sizing used across screens like Orders/Cart.
+                                style: AppTextStyles.header(color: Colors.black).copyWith(
+                                  fontSize: 20,
                                 ),
                                 textAlign: TextAlign.left,
                               ),

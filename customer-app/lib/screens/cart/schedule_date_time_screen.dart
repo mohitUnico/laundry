@@ -55,10 +55,155 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
     return DateTime(dateOnly.year, dateOnly.month, dateOnly.day, h24, minute);
   }
 
+  int _roundUpToStep(int value, int step) {
+    if (step <= 1) return value;
+    return ((value + (step - 1)) ~/ step) * step;
+  }
+
+  int _minuteStep() => 5;
+
+  int _minMinutesForSelectedDay(DateTime selectedDate) {
+    final now = DateTime.now(); // local
+    if (!DateUtils.isSameDay(selectedDate, now)) return 0;
+
+    final next = now.add(const Duration(minutes: 1));
+    final roundedMinute = _roundUpToStep(next.minute, _minuteStep());
+    final carryHour = roundedMinute >= 60 ? 1 : 0;
+    final minute = roundedMinute % 60;
+    final hour = (next.hour + carryHour).clamp(0, 23);
+    return hour * 60 + minute;
+  }
+
+  int _toMinutesSinceMidnight(int hour12, int minute, int amPm) {
+    return _to24Hour(hour12, amPm) * 60 + minute;
+  }
+
   void _showInvalidTimeSnack(BuildContext context) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Please select a future time')),
+      const SnackBar(content: Text('Please select a valid future time')),
     );
+  }
+
+  List<String> _allowedAmPmValues(int minMinutes) {
+    // If min time is already in PM range, hide AM to avoid confusion.
+    if (minMinutes >= 12 * 60) return const ['PM'];
+    return const ['AM', 'PM'];
+  }
+
+  List<String> _allowedHourValues({
+    required int minMinutes,
+    required String selectedAmPm, // "AM"/"PM"
+  }) {
+    final periodStart = selectedAmPm == 'AM' ? 0 : 12;
+    final periodEnd = selectedAmPm == 'AM' ? 11 : 23;
+
+    final minHour = (minMinutes ~/ 60).clamp(0, 23);
+    final startHour = (minHour > periodEnd) ? periodStart : (minHour < periodStart ? periodStart : minHour);
+
+    final hours = <String>[];
+    for (int h24 = startHour; h24 <= periodEnd; h24++) {
+      // If we are on the min hour, ensure there is at least one valid minute.
+      if (h24 == minHour) {
+        final minMinute = (minMinutes % 60).clamp(0, 59);
+        final rounded = _roundUpToStep(minMinute, _minuteStep());
+        if (rounded >= 60) continue; // no valid minute left in this hour
+      }
+
+      final h12 = h24 == 0 ? 12 : (h24 > 12 ? h24 - 12 : h24);
+      hours.add(h12.toString().padLeft(2, '0'));
+    }
+    return hours.isEmpty ? const ['12'] : hours;
+  }
+
+  List<String> _allowedMinuteValues({
+    required int minMinutes,
+    required int selectedHour12,
+    required int selectedAmPm, // 0/1
+  }) {
+    final minHour24 = (minMinutes ~/ 60).clamp(0, 23);
+    final minMinute = (minMinutes % 60).clamp(0, 59);
+
+    final selectedHour24 = _to24Hour(selectedHour12, selectedAmPm);
+    final startMinute = (selectedHour24 == minHour24) ? _roundUpToStep(minMinute, _minuteStep()) : 0;
+
+    final values = <String>[];
+    for (int m = startMinute; m < 60; m += _minuteStep()) {
+      values.add(m.toString().padLeft(2, '0'));
+    }
+    return values.isEmpty ? const ['00'] : values;
+  }
+
+  void _ensureValidSelections({
+    required DateTime selectedDate,
+  }) {
+    final minFrom = _minMinutesForSelectedDay(selectedDate);
+
+    // Ensure FROM is not before minFrom (and its wheels are within allowed values).
+    final allowedFromAmPm = _allowedAmPmValues(minFrom);
+    int fromAmPm = _fromAmPm;
+    if (!allowedFromAmPm.contains(fromAmPm == 0 ? 'AM' : 'PM')) {
+      fromAmPm = allowedFromAmPm.first == 'AM' ? 0 : 1;
+    }
+
+    final allowedFromHours =
+        _allowedHourValues(minMinutes: minFrom, selectedAmPm: fromAmPm == 0 ? 'AM' : 'PM');
+    int fromHour = _fromHour;
+    if (!allowedFromHours.contains(fromHour.toString().padLeft(2, '0'))) {
+      fromHour = int.tryParse(allowedFromHours.first) ?? fromHour;
+    }
+
+    final allowedFromMinutes =
+        _allowedMinuteValues(minMinutes: minFrom, selectedHour12: fromHour, selectedAmPm: fromAmPm);
+    int fromMinute = _fromMinute;
+    if (!allowedFromMinutes.contains(fromMinute.toString().padLeft(2, '0'))) {
+      fromMinute = int.tryParse(allowedFromMinutes.first) ?? fromMinute;
+    }
+
+    final fromMinutes = _toMinutesSinceMidnight(fromHour, fromMinute, fromAmPm);
+
+    // Ensure TO is after FROM (minimum + 5 minutes), and not before minFrom as well.
+    final minTo = (fromMinutes + _minuteStep()).clamp(0, 24 * 60 - 1);
+    final effectiveMinTo = (minTo > minFrom) ? minTo : minFrom;
+
+    final allowedToAmPm = _allowedAmPmValues(effectiveMinTo);
+    int toAmPm = _toAmPm;
+    if (!allowedToAmPm.contains(toAmPm == 0 ? 'AM' : 'PM')) {
+      toAmPm = allowedToAmPm.first == 'AM' ? 0 : 1;
+    }
+
+    final allowedToHours =
+        _allowedHourValues(minMinutes: effectiveMinTo, selectedAmPm: toAmPm == 0 ? 'AM' : 'PM');
+    int toHour = _toHour;
+    if (!allowedToHours.contains(toHour.toString().padLeft(2, '0'))) {
+      toHour = int.tryParse(allowedToHours.first) ?? toHour;
+    }
+
+    final allowedToMinutes =
+        _allowedMinuteValues(minMinutes: effectiveMinTo, selectedHour12: toHour, selectedAmPm: toAmPm);
+    int toMinute = _toMinute;
+    if (!allowedToMinutes.contains(toMinute.toString().padLeft(2, '0'))) {
+      toMinute = int.tryParse(allowedToMinutes.first) ?? toMinute;
+    }
+
+    // If any correction is needed, apply it after build.
+    if (fromAmPm != _fromAmPm ||
+        fromHour != _fromHour ||
+        fromMinute != _fromMinute ||
+        toAmPm != _toAmPm ||
+        toHour != _toHour ||
+        toMinute != _toMinute) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() {
+          _fromAmPm = fromAmPm;
+          _fromHour = fromHour;
+          _fromMinute = fromMinute;
+          _toAmPm = toAmPm;
+          _toHour = toHour;
+          _toMinute = toMinute;
+        });
+      });
+    }
   }
 
   String _formatTime(int hour, int minute, int amPm) {
@@ -110,32 +255,37 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
     final now = DateTime.now();
     final days = List.generate(5, (i) => DateTime(now.year, now.month, now.day + i));
     final selectedDate = days[_selectedDayIndex.clamp(0, days.length - 1)];
-
-    // If user selects "Today", ensure the selected FROM time is not in the past.
-    final selectedFrom = _asLocalDateTime(selectedDate, _fromHour, _fromMinute, _fromAmPm);
-    if (DateUtils.isSameDay(selectedDate, now) && selectedFrom.isBefore(now)) {
-      // Auto-bump to the next 5-minute slot (local time), to avoid invalid schedules.
-      final bump = now.add(const Duration(minutes: 5));
-      final roundedMinute = ((bump.minute + 4) ~/ 5) * 5;
-      final normalized = DateTime(bump.year, bump.month, bump.day, bump.hour, roundedMinute % 60)
-          .add(Duration(hours: roundedMinute >= 60 ? 1 : 0));
-
-      final h24 = normalized.hour;
-      final amPm = h24 >= 12 ? 1 : 0;
-      final h12 = h24 > 12 ? h24 - 12 : (h24 == 0 ? 12 : h24);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        setState(() {
-          _selectedDayIndex = 0;
-          _fromAmPm = amPm;
-          _fromHour = h12;
-          _fromMinute = normalized.minute;
-        });
-      });
-    }
+    _ensureValidSelections(selectedDate: selectedDate);
 
     final fromText = _formatTime(_fromHour, _fromMinute, _fromAmPm);
     final toText = _formatTime(_toHour, _toMinute, _toAmPm);
+
+    final minFromMinutes = _minMinutesForSelectedDay(selectedDate);
+    final fromAmPmValues = _allowedAmPmValues(minFromMinutes);
+    final fromHourValues = _allowedHourValues(
+      minMinutes: minFromMinutes,
+      selectedAmPm: _fromAmPm == 0 ? 'AM' : 'PM',
+    );
+    final fromMinuteValues = _allowedMinuteValues(
+      minMinutes: minFromMinutes,
+      selectedHour12: _fromHour,
+      selectedAmPm: _fromAmPm,
+    );
+
+    final fromMinutes = _toMinutesSinceMidnight(_fromHour, _fromMinute, _fromAmPm);
+    final minToMinutes = (fromMinutes + _minuteStep()).clamp(0, 24 * 60 - 1);
+    final effectiveMinTo = (minToMinutes > minFromMinutes) ? minToMinutes : minFromMinutes;
+
+    final toAmPmValues = _allowedAmPmValues(effectiveMinTo);
+    final toHourValues = _allowedHourValues(
+      minMinutes: effectiveMinTo,
+      selectedAmPm: _toAmPm == 0 ? 'AM' : 'PM',
+    );
+    final toMinuteValues = _allowedMinuteValues(
+      minMinutes: effectiveMinTo,
+      selectedHour12: _toHour,
+      selectedAmPm: _toAmPm,
+    );
 
     return Scaffold(
       backgroundColor: HomeColors.background,
@@ -180,17 +330,7 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
               _DateChipRow(
                 dates: days,
                 selectedIndex: _selectedDayIndex,
-                onSelect: (i) {
-                  setState(() => _selectedDayIndex = i);
-                  // If selecting today, ensure we don't keep a past time.
-                  if (i == 0) {
-                    final d = days[0];
-                    final from = _asLocalDateTime(d, _fromHour, _fromMinute, _fromAmPm);
-                    if (from.isBefore(DateTime.now())) {
-                      _showInvalidTimeSnack(context);
-                    }
-                  }
-                },
+                onSelect: (i) => setState(() => _selectedDayIndex = i),
                 labelFor: (d, isSelected) => _dateLabel(d, isSelected),
               ),
               const SizedBox(height: 14),
@@ -198,20 +338,30 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                 fromText: fromText,
                 toText: toText,
                 fromPicker: _TimePickerRow(
-                  amPmIndex: _fromAmPm,
-                  hour: _fromHour,
-                  minute: _fromMinute,
-                  onAmPmChanged: (v) => setState(() => _fromAmPm = v),
-                  onHourChanged: (v) => setState(() => _fromHour = v),
-                  onMinuteChanged: (v) => setState(() => _fromMinute = v),
+                  amPmValues: fromAmPmValues,
+                  hourValues: fromHourValues,
+                  minuteValues: fromMinuteValues,
+                  amPmIndex: (_fromAmPm == 0 ? 'AM' : 'PM') == 'AM'
+                      ? fromAmPmValues.indexOf('AM').clamp(0, fromAmPmValues.length - 1)
+                      : fromAmPmValues.indexOf('PM').clamp(0, fromAmPmValues.length - 1),
+                  hourIndex: fromHourValues.indexOf(_fromHour.toString().padLeft(2, '0')).clamp(0, fromHourValues.length - 1),
+                  minuteIndex: fromMinuteValues.indexOf(_fromMinute.toString().padLeft(2, '0')).clamp(0, fromMinuteValues.length - 1),
+                  onAmPmChanged: (label) => setState(() => _fromAmPm = label == 'AM' ? 0 : 1),
+                  onHourChanged: (label) => setState(() => _fromHour = int.tryParse(label) ?? _fromHour),
+                  onMinuteChanged: (label) => setState(() => _fromMinute = int.tryParse(label) ?? _fromMinute),
                 ),
                 toPicker: _TimePickerRow(
-                  amPmIndex: _toAmPm,
-                  hour: _toHour,
-                  minute: _toMinute,
-                  onAmPmChanged: (v) => setState(() => _toAmPm = v),
-                  onHourChanged: (v) => setState(() => _toHour = v),
-                  onMinuteChanged: (v) => setState(() => _toMinute = v),
+                  amPmValues: toAmPmValues,
+                  hourValues: toHourValues,
+                  minuteValues: toMinuteValues,
+                  amPmIndex: (_toAmPm == 0 ? 'AM' : 'PM') == 'AM'
+                      ? toAmPmValues.indexOf('AM').clamp(0, toAmPmValues.length - 1)
+                      : toAmPmValues.indexOf('PM').clamp(0, toAmPmValues.length - 1),
+                  hourIndex: toHourValues.indexOf(_toHour.toString().padLeft(2, '0')).clamp(0, toHourValues.length - 1),
+                  minuteIndex: toMinuteValues.indexOf(_toMinute.toString().padLeft(2, '0')).clamp(0, toMinuteValues.length - 1),
+                  onAmPmChanged: (label) => setState(() => _toAmPm = label == 'AM' ? 0 : 1),
+                  onHourChanged: (label) => setState(() => _toHour = int.tryParse(label) ?? _toHour),
+                  onMinuteChanged: (label) => setState(() => _toMinute = int.tryParse(label) ?? _toMinute),
                 ),
               ),
               const Spacer(),
@@ -226,8 +376,15 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                       onTap: () async {
                         // Validate schedule (local timezone): must not be in the past.
                         final fromDt = _asLocalDateTime(selectedDate, _fromHour, _fromMinute, _fromAmPm);
+                        final toDt = _asLocalDateTime(selectedDate, _toHour, _toMinute, _toAmPm);
                         if (fromDt.isBefore(DateTime.now())) {
                           _showInvalidTimeSnack(context);
+                          return;
+                        }
+                        if (!toDt.isAfter(fromDt)) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('To time must be after From time')),
+                          );
                           return;
                         }
 
@@ -497,17 +654,23 @@ class _FromToLabel extends StatelessWidget {
 }
 
 class _TimePickerRow extends StatelessWidget {
+  final List<String> amPmValues;
+  final List<String> hourValues;
+  final List<String> minuteValues;
   final int amPmIndex;
-  final int hour;
-  final int minute;
-  final ValueChanged<int> onAmPmChanged;
-  final ValueChanged<int> onHourChanged;
-  final ValueChanged<int> onMinuteChanged;
+  final int hourIndex;
+  final int minuteIndex;
+  final ValueChanged<String> onAmPmChanged;
+  final ValueChanged<String> onHourChanged;
+  final ValueChanged<String> onMinuteChanged;
 
   const _TimePickerRow({
+    required this.amPmValues,
+    required this.hourValues,
+    required this.minuteValues,
     required this.amPmIndex,
-    required this.hour,
-    required this.minute,
+    required this.hourIndex,
+    required this.minuteIndex,
     required this.onAmPmChanged,
     required this.onHourChanged,
     required this.onMinuteChanged,
@@ -527,27 +690,36 @@ class _TimePickerRow extends StatelessWidget {
           Expanded(
             flex: 2,
             child: _WheelPicker(
-              values: const ['AM', 'PM'],
+              values: amPmValues,
               selectedIndex: amPmIndex,
-              onSelectedIndexChanged: onAmPmChanged,
+              onSelectedIndexChanged: (i) {
+                final v = amPmValues[i.clamp(0, amPmValues.length - 1)];
+                onAmPmChanged(v);
+              },
             ),
           ),
           const _VLine(),
           Expanded(
             flex: 2,
             child: _WheelPicker(
-              values: List.generate(12, (i) => (i + 1).toString().padLeft(2, '0')),
-              selectedIndex: (hour - 1).clamp(0, 11),
-              onSelectedIndexChanged: (i) => onHourChanged(i + 1),
+              values: hourValues,
+              selectedIndex: hourIndex,
+              onSelectedIndexChanged: (i) {
+                final v = hourValues[i.clamp(0, hourValues.length - 1)];
+                onHourChanged(v);
+              },
             ),
           ),
           const _VLine(),
           Expanded(
             flex: 2,
             child: _WheelPicker(
-              values: List.generate(60, (i) => i.toString().padLeft(2, '0')),
-              selectedIndex: minute.clamp(0, 59),
-              onSelectedIndexChanged: onMinuteChanged,
+              values: minuteValues,
+              selectedIndex: minuteIndex,
+              onSelectedIndexChanged: (i) {
+                final v = minuteValues[i.clamp(0, minuteValues.length - 1)];
+                onMinuteChanged(v);
+              },
             ),
           ),
         ],

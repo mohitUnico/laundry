@@ -6,6 +6,7 @@ import '../../providers/cart_provider.dart';
 import '../../routes/app_routes.dart';
 import '../../theme/app_text_styles.dart';
 import '../../utils/pricing.dart';
+import '../../utils/cart_error_messages.dart';
 import '../../models/cart_item.dart';
 import '../../services/customer_info_service.dart';
 
@@ -117,10 +118,7 @@ class _CartScreenState extends State<CartScreen> {
                               onTap: () => Navigator.of(context).maybePop(),
                             )
                           : const SizedBox(width: 44, height: 44),
-                      _IconButtonSquare(
-                        icon: Icons.tune_rounded,
-                        onTap: () {},
-                      ),
+                      const SizedBox(width: 44, height: 44),
                     ],
                   ),
                   Center(
@@ -241,8 +239,12 @@ class _CartScreenState extends State<CartScreen> {
                                 await context.read<CartProvider>().remove(itemId);
                               } catch (e) {
                                 if (mounted) {
+                                  final message = CartErrorMessages.getCartErrorMessage(
+                                    e,
+                                    operation: 'delete item',
+                                  );
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('Failed to delete item: ${e.toString()}')),
+                                    SnackBar(content: Text(message)),
                                   );
                                 }
                               }
@@ -313,8 +315,12 @@ class _CartScreenState extends State<CartScreen> {
                                 await context.read<CartProvider>().remove(itemId);
                               } catch (e) {
                                 if (mounted) {
+                                  final message = CartErrorMessages.getCartErrorMessage(
+                                    e,
+                                    operation: 'delete item',
+                                  );
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('Failed to delete item: ${e.toString()}')),
+                                    SnackBar(content: Text(message)),
                                   );
                                 }
                               }

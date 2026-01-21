@@ -25,6 +25,15 @@ class ServiceCatalogProvider with ChangeNotifier {
   bool _isLoading = false;
   String? _error;
 
+  Future<void>? _categoriesFetchInFlight;
+  final Map<String, Future<void>> _servicesFetchInFlight = {};
+  final Map<String, Future<void>> _clothesFetchInFlight = {};
+  int _lastRefreshMs = 0;
+
+  // If callers "force" refresh too frequently (e.g., HomeScreen on every resume),
+  // we still want to avoid hammering the backend and slowing the UI.
+  static const Duration _forceRefreshCooldown = Duration(seconds: 30);
+
   List<ServiceCategory> get categories => _categories;
   List<ServiceItem> servicesForCategory(String categoryId) =>
       _servicesByCategoryId[categoryId] ?? const [];
@@ -38,6 +47,7 @@ class ServiceCatalogProvider with ChangeNotifier {
   Future<void> _hydrateFromCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      _lastRefreshMs = prefs.getInt(PrefsKeys.catalogLastRefreshMs) ?? 0;
       final categoriesJson = prefs.getString(PrefsKeys.catalogCategoriesJson);
       if (categoriesJson != null && categoriesJson.isNotEmpty) {
         final decoded = jsonDecode(categoriesJson);
@@ -75,6 +85,7 @@ class ServiceCatalogProvider with ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final payload = jsonEncode(_categories.map((c) => c.toJson()).toList());
       await prefs.setString(PrefsKeys.catalogCategoriesJson, payload);
+      await prefs.setInt(PrefsKeys.catalogLastRefreshMs, _lastRefreshMs);
     } catch (_) {
       // ignore
     }
@@ -88,28 +99,48 @@ class ServiceCatalogProvider with ChangeNotifier {
         payload[categoryId] = services.map((s) => s.toJson()).toList();
       });
       await prefs.setString(PrefsKeys.catalogServicesByCategoryJson, jsonEncode(payload));
+      await prefs.setInt(PrefsKeys.catalogLastRefreshMs, _lastRefreshMs);
     } catch (_) {
       // ignore
     }
   }
 
   Future<void> fetchServiceCategories({bool isActive = true, bool force = false}) async {
-    if (!force && _categories.isNotEmpty) return;
+    // De-dupe concurrent fetches.
+    if (_categoriesFetchInFlight != null) return _categoriesFetchInFlight!;
 
-    _isLoading = true;
-    _error = null;
-    notifyListeners();
+    // If force is requested too frequently, treat it as non-force to reduce latency spikes.
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final isWithinCooldown =
+        _lastRefreshMs > 0 && (now - _lastRefreshMs) < _forceRefreshCooldown.inMilliseconds;
+    final effectiveForce = force && !isWithinCooldown;
 
-    try {
-      _categories = await _repo.listServiceCategories(isActive: isActive);
-      // Keep stable ordering for UI mapping.
-      _categories.sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
-      await _persistCategoriesToCache();
-    } catch (e) {
-      _error = e.toString();
-    } finally {
-      _isLoading = false;
+    if (!effectiveForce && _categories.isNotEmpty) return;
+
+    final future = () async {
+      _isLoading = true;
+      _error = null;
       notifyListeners();
+
+      try {
+        _categories = await _repo.listServiceCategories(isActive: isActive);
+        // Keep stable ordering for UI mapping.
+        _categories.sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
+        _lastRefreshMs = DateTime.now().millisecondsSinceEpoch;
+        await _persistCategoriesToCache();
+      } catch (e) {
+        _error = e.toString();
+      } finally {
+        _isLoading = false;
+        notifyListeners();
+      }
+    }();
+
+    _categoriesFetchInFlight = future;
+    try {
+      await future;
+    } finally {
+      _categoriesFetchInFlight = null;
     }
   }
 
@@ -118,24 +149,36 @@ class ServiceCatalogProvider with ChangeNotifier {
     bool isActive = true,
     bool force = false,
   }) async {
+    final inFlight = _servicesFetchInFlight[categoryId];
+    if (inFlight != null) return inFlight;
     if (!force && _servicesByCategoryId.containsKey(categoryId)) return;
 
-    _isLoading = true;
-    _loadingCategoryIds.add(categoryId);
-    _error = null;
-    notifyListeners();
-
-    try {
-      final services = await _repo.listServices(categoryId: categoryId, isActive: isActive);
-      final sorted = [...services]..sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
-      _servicesByCategoryId[categoryId] = sorted;
-      await _persistServicesToCache();
-    } catch (e) {
-      _error = e.toString();
-    } finally {
-      _isLoading = false;
-      _loadingCategoryIds.remove(categoryId);
+    final future = () async {
+      _isLoading = true;
+      _loadingCategoryIds.add(categoryId);
+      _error = null;
       notifyListeners();
+
+      try {
+        final services = await _repo.listServices(categoryId: categoryId, isActive: isActive);
+        final sorted = [...services]..sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
+        _servicesByCategoryId[categoryId] = sorted;
+        _lastRefreshMs = DateTime.now().millisecondsSinceEpoch;
+        await _persistServicesToCache();
+      } catch (e) {
+        _error = e.toString();
+      } finally {
+        _isLoading = false;
+        _loadingCategoryIds.remove(categoryId);
+        notifyListeners();
+      }
+    }();
+
+    _servicesFetchInFlight[categoryId] = future;
+    try {
+      await future;
+    } finally {
+      _servicesFetchInFlight.remove(categoryId);
     }
   }
 
@@ -144,22 +187,33 @@ class ServiceCatalogProvider with ChangeNotifier {
     bool isActive = true,
     bool force = false,
   }) async {
+    final inFlight = _clothesFetchInFlight[serviceId];
+    if (inFlight != null) return inFlight;
     if (!force && _clothesItemsByServiceId.containsKey(serviceId)) return;
 
-    _isLoading = true;
-    _loadingServiceIds.add(serviceId);
-    _error = null;
-    notifyListeners();
-
-    try {
-      final items = await _repo.listClothesItems(serviceId: serviceId, isActive: isActive);
-      _clothesItemsByServiceId[serviceId] = items;
-    } catch (e) {
-      _error = e.toString();
-    } finally {
-      _isLoading = false;
-      _loadingServiceIds.remove(serviceId);
+    final future = () async {
+      _isLoading = true;
+      _loadingServiceIds.add(serviceId);
+      _error = null;
       notifyListeners();
+
+      try {
+        final items = await _repo.listClothesItems(serviceId: serviceId, isActive: isActive);
+        _clothesItemsByServiceId[serviceId] = items;
+      } catch (e) {
+        _error = e.toString();
+      } finally {
+        _isLoading = false;
+        _loadingServiceIds.remove(serviceId);
+        notifyListeners();
+      }
+    }();
+
+    _clothesFetchInFlight[serviceId] = future;
+    try {
+      await future;
+    } finally {
+      _clothesFetchInFlight.remove(serviceId);
     }
   }
 }

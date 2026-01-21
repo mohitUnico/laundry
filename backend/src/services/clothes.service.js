@@ -167,11 +167,21 @@ class ClothesService {
             return await prisma.service.findMany({
                 where,
                 orderBy: [{ display_order: 'asc' }, { created_at: 'desc' }],
-                include: {
-                    // List endpoint should not include category details in each service
-                    clothes_items: {
-                        orderBy: [{ display_order: 'asc' }, { created_at: 'desc' }],
-                    },
+                // Keep list payload small for performance. The app fetches clothes items
+                // via /clothes/clothes-items?serviceId=... when needed.
+                select: {
+                    service_id: true,
+                    category_id: true,
+                    service_name: true,
+                    description: true,
+                    base_price: true,
+                    per_kg_price: true,
+                    estimated_hours: true,
+                    icon_url: true,
+                    is_active: true,
+                    display_order: true,
+                    created_at: true,
+                    updated_at: true,
                 },
             });
         } catch (error) {

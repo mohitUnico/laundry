@@ -569,18 +569,6 @@ exports.getCustomerOrders = async (customerId, query = {}) => {
                                         cloth_id: true,
                                         item_name: true,
                                         per_unit_price: true,
-                                        service: {
-                                            select: {
-                                                service_id: true,
-                                                service_name: true,
-                                                category: {
-                                                    select: {
-                                                        category_id: true,
-                                                        category_name: true,
-                                                    },
-                                                },
-                                            },
-                                        },
                                     },
                                 },
                             },

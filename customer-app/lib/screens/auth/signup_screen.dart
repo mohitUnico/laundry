@@ -6,6 +6,7 @@ import '../../providers/auth_provider.dart';
 import '../../routes/app_routes.dart';
 import '../../routes/route_args.dart';
 import '../../utils/validators.dart';
+import '../../utils/auth_error_messages.dart';
 import '../../widgets/phone_field_with_country_picker.dart';
 import 'widgets/auth_colors.dart';
 import 'widgets/auth_illustration.dart';
@@ -105,8 +106,9 @@ class _SignupScreenState extends State<SignupScreen> {
         Navigator.of(context).pushNamed(AppRoutes.profilePhoto);
       } catch (e) {
         if (!mounted) return;
+        final message = AuthErrorMessages.getAuthErrorMessage(e, operation: 'register');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Registration failed: ${e.toString()}')),
+          SnackBar(content: Text(message)),
         );
       } finally {
         if (mounted) setState(() => _isSubmitting = false);

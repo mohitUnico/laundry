@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../home/widgets/home_colors.dart';
 import '../../theme/app_text_styles.dart';
+import '../../utils/profile_service_error_messages.dart';
 
 class FAQItem {
   final String question;
@@ -90,9 +91,13 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final message = ProfileServiceErrorMessages.getExternalAppErrorMessage(
+          e,
+          appName: 'WhatsApp',
+        );
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error opening WhatsApp: ${e.toString()}'),
+            content: Text(message),
             duration: const Duration(seconds: 2),
           ),
         );
@@ -122,9 +127,13 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final message = ProfileServiceErrorMessages.getExternalAppErrorMessage(
+          e,
+          appName: 'Email',
+        );
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error opening email: ${e.toString()}'),
+            content: Text(message),
             duration: const Duration(seconds: 2),
           ),
         );

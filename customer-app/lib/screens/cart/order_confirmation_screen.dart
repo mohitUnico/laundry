@@ -10,6 +10,7 @@ import '../../models/order_record.dart';
 import '../../models/cart_item.dart';
 import '../../repositories/order_repository.dart';
 import '../../repositories/customer_info_repository.dart';
+import '../../utils/cart_error_messages.dart';
 import 'delivery_options_screen.dart';
 import 'schedule_date_time_screen.dart';
 
@@ -211,9 +212,13 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isCreatingOrder = false);
+      final message = CartErrorMessages.getOrderErrorMessage(
+        e,
+        operation: 'create order',
+      );
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to create order: ${e.toString()}'),
+          content: Text(message),
           duration: const Duration(seconds: 4),
         ),
       );

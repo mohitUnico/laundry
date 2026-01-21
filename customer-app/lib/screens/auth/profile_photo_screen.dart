@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../../routes/app_routes.dart';
 import '../../providers/auth_provider.dart';
+import '../../utils/auth_error_messages.dart';
 import 'widgets/auth_colors.dart';
 import 'widgets/auth_illustration.dart';
 import 'widgets/primary_button.dart';
@@ -77,10 +78,9 @@ class _ProfilePhotoScreenState extends State<ProfilePhotoScreen> {
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
+        final message = AuthErrorMessages.getImagePickerErrorMessage(e);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error picking image: ${e.toString()}'),
-          ),
+          SnackBar(content: Text(message)),
         );
       }
     }
@@ -293,10 +293,12 @@ class _ProfilePhotoScreenState extends State<ProfilePhotoScreen> {
                                               .uploadProfileImage(_selectedImage!);
                                         } catch (e) {
                                           if (mounted) {
+                                            final message = AuthErrorMessages.getAuthErrorMessage(
+                                              e,
+                                              operation: 'upload profile photo',
+                                            );
                                             ScaffoldMessenger.of(context).showSnackBar(
-                                              SnackBar(
-                                                content: Text('Profile image upload failed: $e'),
-                                              ),
+                                              SnackBar(content: Text(message)),
                                             );
                                           }
                                         } finally {

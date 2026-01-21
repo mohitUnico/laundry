@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:dio/dio.dart';
 import 'dart:async';
 
 import '../../providers/auth_provider.dart';
 import '../../routes/route_args.dart';
 import '../../routes/app_routes.dart';
 import '../../utils/validators.dart';
+import '../../utils/auth_error_messages.dart';
 import 'widgets/auth_colors.dart';
 import 'widgets/auth_illustration.dart';
 import 'widgets/labeled_divider.dart';
@@ -122,9 +122,9 @@ class _LoginScreenState extends State<LoginScreen> {
       _maybeAutoSubmitOtp();
     } catch (e) {
       if (!mounted) return;
-      final details = (e is DioException) ? ' (url: ${e.requestOptions.uri})' : '';
+      final message = AuthErrorMessages.getAuthErrorMessage(e, operation: 'send OTP');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to send OTP$details: ${e.toString()}')),
+        SnackBar(content: Text(message)),
       );
     } finally {
       if (mounted) {
@@ -160,9 +160,9 @@ class _LoginScreenState extends State<LoginScreen> {
       _otpInputKey.currentState?.focusFirst();
     } catch (e) {
       if (!mounted) return;
-      final details = (e is DioException) ? ' (url: ${e.requestOptions.uri})' : '';
+      final message = AuthErrorMessages.getAuthErrorMessage(e, operation: 'resend OTP');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to resend OTP$details: ${e.toString()}')),
+        SnackBar(content: Text(message)),
       );
     } finally {
       if (mounted) setState(() => _isResendingOtp = false);
@@ -228,8 +228,9 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } catch (e) {
       if (!mounted) return;
+      final message = AuthErrorMessages.getAuthErrorMessage(e, operation: 'verify OTP');
       setState(() {
-        _otpError = e.toString();
+        _otpError = message;
         _otpAutoSubmitting = false;
       });
     } finally {

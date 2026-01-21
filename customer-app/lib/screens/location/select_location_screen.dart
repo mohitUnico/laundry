@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_text_styles.dart';
 import '../../routes/app_routes.dart';
 import '../../services/customer_info_service.dart';
+import '../../utils/location_error_messages.dart';
 
 class SelectLocationScreen extends StatefulWidget {
   const SelectLocationScreen({super.key});
@@ -38,8 +39,12 @@ class _SelectLocationScreenState extends State<SelectLocationScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final message = LocationErrorMessages.getAddressErrorMessage(
+          e,
+          operation: 'load addresses',
+        );
         setState(() {
-          _error = e.toString();
+          _error = message;
           _isLoading = false;
         });
       }
@@ -137,8 +142,12 @@ class _SelectLocationScreenState extends State<SelectLocationScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final message = LocationErrorMessages.getAddressErrorMessage(
+          e,
+          operation: 'delete address',
+        );
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete address: ${e.toString()}')),
+          SnackBar(content: Text(message)),
         );
       }
     }

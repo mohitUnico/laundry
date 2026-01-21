@@ -26,12 +26,15 @@ class ApiService {
   }
 
   ApiService() {
+    // Use generous timeouts so OTP and other auth requests don't fail on slow networks.
+    // If the server is actually down, the user will still get a proper error from Dio.
     _dio = Dio(
       BaseOptions(
         baseUrl: resolveBaseUrl(),
-        connectTimeout: const Duration(seconds: 5), // Reduced from 10s to 5s
-        receiveTimeout: const Duration(seconds: 5), // Reduced from 10s to 5s
-        sendTimeout: const Duration(seconds: 5), // Added send timeout
+        // Increased from 5s → 30s for all timeouts
+        connectTimeout: const Duration(seconds: 30),
+        receiveTimeout: const Duration(seconds: 30),
+        sendTimeout: const Duration(seconds: 30),
         headers: {'Content-Type': 'application/json'},
       ),
     );

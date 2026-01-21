@@ -4,6 +4,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import '../../theme/app_text_styles.dart';
 import '../../routes/app_routes.dart';
+import '../../utils/location_error_messages.dart';
 
 class MapPickerScreen extends StatefulWidget {
   final double? initialLatitude;
@@ -93,8 +94,9 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
     } catch (e) {
       debugPrint('Error getting current location: $e');
       if (mounted) {
+        final message = LocationErrorMessages.getLocationErrorMessage(e);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error getting location: ${e.toString()}')),
+          SnackBar(content: Text(message)),
         );
       }
     }
@@ -150,8 +152,9 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
     } catch (e) {
       debugPrint('Error reverse geocoding: $e');
       if (mounted) {
+        final message = LocationErrorMessages.getLocationErrorMessage(e);
         setState(() {
-          _selectedAddress = 'Error loading address';
+          _selectedAddress = message;
           _isLoadingAddress = false;
         });
       }

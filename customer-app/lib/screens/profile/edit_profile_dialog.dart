@@ -8,6 +8,7 @@ import 'package:country_picker/country_picker.dart';
 
 import '../../providers/auth_provider.dart';
 import '../../widgets/phone_field_with_country_picker.dart';
+import '../../utils/profile_service_error_messages.dart';
 import '../home/widgets/home_colors.dart';
 import '../../theme/app_text_styles.dart';
 
@@ -122,8 +123,12 @@ class _EditProfileDialogState extends State<EditProfileDialog> {
       Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;
+      final message = ProfileServiceErrorMessages.getProfileErrorMessage(
+        e,
+        operation: 'update profile',
+      );
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to update profile: $e')),
+        SnackBar(content: Text(message)),
       );
     } finally {
       if (mounted) setState(() => _saving = false);

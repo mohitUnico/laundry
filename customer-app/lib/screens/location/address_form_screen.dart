@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_text_styles.dart';
 import '../../services/customer_info_service.dart';
 import '../../routes/app_routes.dart';
+import '../../utils/location_error_messages.dart';
 import '../auth/widgets/auth_colors.dart';
 import '../auth/widgets/labeled_divider.dart';
 import '../auth/widgets/pill_text_field.dart';
@@ -156,8 +157,12 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final message = LocationErrorMessages.getAddressErrorMessage(
+          e,
+          operation: _isEditMode ? 'update address' : 'save address',
+        );
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to ${_isEditMode ? 'update' : 'save'} address: ${e.toString()}')),
+          SnackBar(content: Text(message)),
         );
       }
     } finally {

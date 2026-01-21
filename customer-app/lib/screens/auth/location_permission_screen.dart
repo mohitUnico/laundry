@@ -3,6 +3,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../routes/app_routes.dart';
+import '../../utils/auth_error_messages.dart';
 import 'widgets/auth_colors.dart';
 import 'widgets/auth_illustration.dart';
 import 'widgets/primary_button.dart';
@@ -133,10 +134,9 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen> {
         } catch (e) {
           setState(() => _isLoading = false);
           if (mounted) {
+            final message = AuthErrorMessages.getLocationErrorMessage(e);
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Error getting location: ${e.toString()}'),
-              ),
+              SnackBar(content: Text(message)),
             );
           }
         }
@@ -154,10 +154,9 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen> {
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
+        final message = AuthErrorMessages.getLocationErrorMessage(e);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error requesting permission: ${e.toString()}'),
-          ),
+          SnackBar(content: Text(message)),
         );
       }
     }

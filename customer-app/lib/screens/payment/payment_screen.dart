@@ -9,6 +9,7 @@ import '../../models/order_record.dart';
 import '../../models/cart_item.dart';
 import '../../routes/app_routes.dart';
 import '../../utils/pricing.dart';
+import '../../utils/order_payment_error_messages.dart';
 import '../../models/promo_code_model.dart';
 import '../../repositories/order_repository.dart';
 import '../../repositories/customer_info_repository.dart';
@@ -421,9 +422,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
                         } catch (e) {
                           if (!mounted) return;
                           Navigator.of(context).pop(); // Close loading
+                          final message = OrderPaymentErrorMessages.getOrderErrorMessage(
+                            e,
+                            operation: 'create order',
+                          );
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('Failed to create order: ${e.toString()}'),
+                              content: Text(message),
                               duration: const Duration(seconds: 4),
                             ),
                           );

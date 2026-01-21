@@ -5,6 +5,7 @@ import '../home/widgets/home_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../routes/app_routes.dart';
 import '../../providers/service_catalog_provider.dart';
+import '../../utils/profile_service_error_messages.dart';
 import '../home/widgets/pro_clean_bottom_sheet.dart';
 import '../home/widgets/regular_wash_bottom_sheet.dart';
 import '../../models/service_item.dart';
@@ -254,9 +255,13 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       }
     } catch (e) {
       if (context.mounted) {
+        final message = ProfileServiceErrorMessages.getServiceErrorMessage(
+          e,
+          operation: 'load service',
+        );
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to load service: ${e.toString()}'),
+            content: Text(message),
             duration: const Duration(seconds: 2),
           ),
         );

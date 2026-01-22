@@ -31,24 +31,32 @@ exports.createAssignmentRequest = async (req, res, next) => {
         res.status(201).json({
             success: true,
             data: {
-                requestId: created.request_id,
-                orderId: created.order_id,
-                deliveryId: created.delivery_id,
-                staffId: created.staff_id,
-                deliveryType: created.delivery_type,
-                status: created.status,
-                offeredAt: created.offered_at,
-                expiresAt: created.expires_at,
-                pickup: {
-                    address: created.pickup_address,
-                    latitude: created.pickup_lat,
-                    longitude: created.pickup_lng,
-                },
-                drop: {
-                    address: created.drop_address,
-                    latitude: created.drop_lat,
-                    longitude: created.drop_lng,
-                },
+                requestId: created.request?.request_id,
+                orderId: created.request?.order_id,
+                deliveryId: created.delivery?.delivery_id,
+                deliveryType: created.request?.delivery_type,
+                status: created.request?.status,
+                offeredAt: created.request?.offered_at,
+                expiresAt: created.request?.expires_at,
+                pickup: created.request
+                    ? {
+                        address: created.request.pickup_address,
+                        latitude: created.request.pickup_lat,
+                        longitude: created.request.pickup_lng,
+                    }
+                    : null,
+                drop: created.request
+                    ? {
+                        address: created.request.drop_address,
+                        latitude: created.request.drop_lat,
+                        longitude: created.request.drop_lng,
+                    }
+                    : null,
+                recipients: (created.recipients || []).map((r) => ({
+                    recipientId: r.recipient_id,
+                    staffId: r.staff_id,
+                    status: r.status,
+                })),
             },
             message: 'Assignment request created successfully',
         });

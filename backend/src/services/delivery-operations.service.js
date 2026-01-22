@@ -361,13 +361,13 @@ exports.createAssignmentRequest = async ({
             });
         }
 
-        let selectedStaffId = staffId;
+        let targetStaffIds = [];
 
-        if (!selectedStaffId) {
-            // For pickup: search using pickup_for_delivery (as requested)
-            // For drop: search using the pickup leg (laundry coordinates)
-            // Use pickup_for_delivery as the origin for nearby search (pickup coords for the leg),
-            // independent of deliveryType.
+        if (staffId) {
+            targetStaffIds = [staffId];
+        } else {
+            // Fan-out: send the request to top-N nearby staff.
+            // Use pickup_for_delivery as origin (pickup leg coordinate) as requested.
             const origin = await _getPickupOriginFromPickupForDelivery(tx, delivery.delivery_id);
 
             const candidates = await exports.searchNearbyDeliveryStaff({
@@ -376,17 +376,43 @@ exports.createAssignmentRequest = async ({
                 radiusKm,
                 limit,
             });
+
             if (candidates.length === 0) {
                 throw new NotFoundError('Nearby DeliveryStaff');
             }
-            selectedStaffId = candidates[0].staffId;
+
+            targetStaffIds = candidates.map((c) => c.staffId);
         }
 
+        // Prevent duplicate pending recipient rows for same staff on an active (pending) request.
+        // If there's an existing pending request for this delivery, cancel it before creating a new one.
+        const existingRequest = await tx.deliveryAssignmentRequest.findFirst({
+            where: {
+                delivery_id: delivery.delivery_id,
+                status: 'pending',
+                expires_at: { gt: nowUtc() },
+            },
+            orderBy: { offered_at: 'desc' },
+            select: { request_id: true },
+        });
+
+        if (existingRequest) {
+            await tx.deliveryAssignmentRequest.update({
+                where: { request_id: existingRequest.request_id },
+                data: { status: 'cancelled', responded_at: nowUtc() },
+            });
+            await tx.deliveryAssignmentRecipient.updateMany({
+                where: { request_id: existingRequest.request_id, status: 'pending' },
+                data: { status: 'cancelled', responded_at: nowUtc(), rejection_note: 'Superseded by a new request' },
+            });
+        }
+
+        // Create ONE master request (staff_id NULL) and many recipients
         const request = await tx.deliveryAssignmentRequest.create({
             data: {
                 order_id: orderId,
                 delivery_id: delivery.delivery_id,
-                staff_id: selectedStaffId,
+                staff_id: null,
                 delivery_type: deliveryType,
                 status: 'pending',
                 expires_at: expiresAt,
@@ -399,48 +425,72 @@ exports.createAssignmentRequest = async ({
             },
         });
 
-        return { delivery, request, selectedStaffId };
+        const recipients = await Promise.all(
+            targetStaffIds.map((sid) =>
+                tx.deliveryAssignmentRecipient.create({
+                    data: {
+                        request_id: request.request_id,
+                        staff_id: sid,
+                        status: 'pending',
+                    },
+                })
+            )
+        );
+
+        const notifications = await Promise.all(
+            recipients.map((rec) =>
+                tx.deliveryStaffNotification.create({
+                    data: {
+                        staff_id: rec.staff_id,
+                        type: 'assignment_request',
+                        title: 'New delivery request',
+                        body: `You have a new ${deliveryType} request for order ${orderId}`,
+                        payload: {
+                            requestId: request.request_id,
+                            recipientId: rec.recipient_id,
+                            orderId,
+                            deliveryId: delivery.delivery_id,
+                            deliveryType,
+                            pickup: leg.pickup,
+                            drop: leg.drop,
+                            expiresAt: request.expires_at,
+                        },
+                    },
+                })
+            )
+        );
+
+        return { delivery, request, recipients, notifications, targetStaffIds };
     });
 
-    const { delivery, request, selectedStaffId } = created;
+    const { delivery, request, recipients, notifications, targetStaffIds } = created;
 
-    const notification = await prisma.deliveryStaffNotification.create({
-        data: {
-            staff_id: selectedStaffId,
-            type: 'assignment_request',
-            title: 'New delivery request',
-            body: `You have a new ${deliveryType} request for order ${orderId}`,
-            payload: {
-                requestId: request.request_id,
-                orderId,
-                deliveryId: delivery.delivery_id,
-                deliveryType,
-                pickup: leg.pickup,
-                drop: leg.drop,
-                expiresAt: request.expires_at,
-            },
-        },
-    });
-
-    await _notifyDeliveryStaff(selectedStaffId, {
-        notificationId: notification.notification_id,
-        type: notification.type,
-        title: notification.title,
-        body: notification.body,
-        payload: notification.payload,
-        createdAt: notification.created_at,
-    });
+    // Emit SSE notifications after transaction commits
+    for (const n of notifications) {
+        await _notifyDeliveryStaff(n.staff_id, {
+            notificationId: n.notification_id,
+            type: n.type,
+            title: n.title,
+            body: n.body,
+            payload: n.payload,
+            createdAt: n.created_at,
+        });
+    }
 
     logger.info('Delivery assignment request created', {
         orderId,
         deliveryId: delivery.delivery_id,
         requestId: request.request_id,
-        staffId: selectedStaffId,
+        staffIds: targetStaffIds,
         deliveryType,
         expiresAt,
     });
 
-    return request;
+    return {
+        request,
+        recipients,
+        delivery,
+    };
 };
 
 exports.cancelAssignmentRequest = async ({ requestId }) => {
@@ -486,18 +536,48 @@ exports.cancelAssignmentRequest = async ({ requestId }) => {
 };
 
 exports.listStaffAssignmentRequests = async ({ staffId, status = 'pending' }) => {
-    const where = {
-        staff_id: staffId,
-        ...(status ? { status } : {}),
-    };
+    // New flow: master request + recipients
+    const recs = await prisma.deliveryAssignmentRecipient.findMany({
+        where: {
+            staff_id: staffId,
+            ...(status ? { status } : {}),
+        },
+        orderBy: { created_at: 'desc' },
+        take: 50,
+        include: {
+            request: true,
+        },
+    });
 
-    const rows = await prisma.deliveryAssignmentRequest.findMany({
-        where,
+    // Backward compatibility: if there are legacy rows where staff_id is set directly on request
+    const legacy = await prisma.deliveryAssignmentRequest.findMany({
+        where: {
+            staff_id: staffId,
+            ...(status ? { status } : {}),
+        },
         orderBy: { offered_at: 'desc' },
         take: 50,
     });
 
-    return rows;
+    const mappedFromRecipients = recs.map((r) => ({
+        request_id: r.request.request_id,
+        order_id: r.request.order_id,
+        delivery_id: r.request.delivery_id,
+        staff_id: r.staff_id,
+        delivery_type: r.request.delivery_type,
+        status: r.status,
+        offered_at: r.request.offered_at,
+        expires_at: r.request.expires_at,
+        pickup_address: r.request.pickup_address,
+        pickup_lat: r.request.pickup_lat,
+        pickup_lng: r.request.pickup_lng,
+        drop_address: r.request.drop_address,
+        drop_lat: r.request.drop_lat,
+        drop_lng: r.request.drop_lng,
+        rejection_note: r.rejection_note,
+    }));
+
+    return [...mappedFromRecipients, ...legacy].slice(0, 50);
 };
 
 exports.respondToAssignmentRequest = async ({ staffId, requestId, action, rejectionNote = null }) => {
@@ -507,20 +587,28 @@ exports.respondToAssignmentRequest = async ({ staffId, requestId, action, reject
     const when = nowUtc();
 
     if (action === 'reject') {
-        const updated = await prisma.deliveryAssignmentRequest.updateMany({
-            where: {
-                request_id: requestId,
-                staff_id: staffId,
-                status: 'pending',
-            },
-            data: {
-                status: 'rejected',
-                responded_at: when,
-                rejection_note: rejectionNote || null,
-            },
+        // Prefer recipient-based rejection
+        const updatedRec = await prisma.deliveryAssignmentRecipient.updateMany({
+            where: { request_id: requestId, staff_id: staffId, status: 'pending' },
+            data: { status: 'rejected', responded_at: when, rejection_note: rejectionNote || null },
         });
 
-        if (updated.count === 0) throw new NotFoundError('Pending DeliveryAssignmentRequest');
+        // Backward compatibility: legacy per-staff requests
+        if (updatedRec.count === 0) {
+            const updatedLegacy = await prisma.deliveryAssignmentRequest.updateMany({
+                where: {
+                    request_id: requestId,
+                    staff_id: staffId,
+                    status: 'pending',
+                },
+                data: {
+                    status: 'rejected',
+                    responded_at: when,
+                    rejection_note: rejectionNote || null,
+                },
+            });
+            if (updatedLegacy.count === 0) throw new NotFoundError('Pending DeliveryAssignmentRequest');
+        }
 
         await prisma.deliveryStaffNotification.create({
             data: {
@@ -528,21 +616,24 @@ exports.respondToAssignmentRequest = async ({ staffId, requestId, action, reject
                 type: 'assignment_rejected',
                 title: 'Request rejected',
                 body: 'You rejected a delivery request.',
-                payload: { requestId },
+                payload: { requestId, rejectionNote: rejectionNote || null },
             },
         });
 
+        realtimeService.emitToDeliveryStaff(staffId, 'assignment_rejected', { requestId });
         return { requestId, status: 'rejected' };
     }
 
-    // accept
+    // accept (one master request + many recipients: first-accept wins; cancel other recipients)
     return prisma.$transaction(async (tx) => {
         const reqRow = await tx.deliveryAssignmentRequest.findUnique({
             where: { request_id: requestId },
         });
 
         if (!reqRow || reqRow.staff_id !== staffId) {
-            throw new NotFoundError('DeliveryAssignmentRequest');
+            // For master request, staff_id can be null; validate via recipient row
+            if (!reqRow) throw new NotFoundError('DeliveryAssignmentRequest');
+            if (reqRow.staff_id) throw new NotFoundError('DeliveryAssignmentRequest');
         }
         if (reqRow.status !== 'pending') {
             throw new ConflictError('Assignment request is not pending');
@@ -555,10 +646,42 @@ exports.respondToAssignmentRequest = async ({ staffId, requestId, action, reject
             throw new ConflictError('Assignment request expired');
         }
 
-        const delivery = await tx.delivery.update({
-            where: { delivery_id: reqRow.delivery_id },
+        // Ensure this staff is an invited recipient (pending)
+        const recipient = await tx.deliveryAssignmentRecipient.findUnique({
+            where: { request_id_staff_id: { request_id: requestId, staff_id: staffId } },
+        });
+        if (!recipient || recipient.status !== 'pending') {
+            // Legacy request (single staff) can still be accepted if it matches staff_id
+            if (reqRow.staff_id && reqRow.staff_id === staffId) {
+                // continue as legacy
+            } else {
+                throw new NotFoundError('Pending DeliveryAssignmentRecipient');
+            }
+        }
+
+        // Atomically lock the delivery for the first accepter.
+        const lock = await tx.delivery.updateMany({
+            where: {
+                delivery_id: reqRow.delivery_id,
+                staff_id: null,
+                delivery_status: 'unassigned',
+            },
             data: { staff_id: staffId, delivery_status: 'assigned' },
         });
+
+        if (lock.count === 0) {
+            // Someone else already accepted.
+            // Cancel this recipient so it disappears from this staff's device
+            if (recipient) {
+                await tx.deliveryAssignmentRecipient.update({
+                    where: { recipient_id: recipient.recipient_id },
+                    data: { status: 'cancelled', responded_at: when, rejection_note: 'Taken by another delivery staff' },
+                });
+            }
+            throw new ConflictError('This delivery has already been accepted by another delivery staff');
+        }
+
+        const delivery = await tx.delivery.findUnique({ where: { delivery_id: reqRow.delivery_id } });
 
         if (reqRow.delivery_type === 'pickup') {
             await tx.pickupForDelivery.update({
@@ -584,6 +707,45 @@ exports.respondToAssignmentRequest = async ({ staffId, requestId, action, reject
             where: { request_id: requestId },
             data: { status: 'accepted', responded_at: when },
         });
+
+        if (recipient) {
+            await tx.deliveryAssignmentRecipient.update({
+                where: { recipient_id: recipient.recipient_id },
+                data: { status: 'accepted', responded_at: when },
+            });
+        }
+
+        // Cancel all other pending recipients for this request (so it disappears on their devices)
+        const pendingOthers = await tx.deliveryAssignmentRecipient.findMany({
+            where: {
+                request_id: requestId,
+                status: 'pending',
+                staff_id: { not: staffId },
+            },
+            select: { recipient_id: true, staff_id: true },
+        });
+
+        if (pendingOthers.length > 0) {
+            await tx.deliveryAssignmentRecipient.updateMany({
+                where: { request_id: requestId, status: 'pending', staff_id: { not: staffId } },
+                data: { status: 'cancelled', responded_at: when, rejection_note: 'Taken by another delivery staff' },
+            });
+
+            await tx.deliveryStaffNotification.createMany({
+                data: pendingOthers.map((p) => ({
+                    staff_id: p.staff_id,
+                    type: 'assignment_cancelled',
+                    title: 'Delivery request closed',
+                    body: 'Another delivery staff accepted this request.',
+                    payload: {
+                        requestId,
+                        deliveryId: reqRow.delivery_id,
+                        orderId: reqRow.order_id,
+                        reason: 'taken',
+                    },
+                })),
+            });
+        }
 
         const notification = await tx.deliveryStaffNotification.create({
             data: {
@@ -614,6 +776,16 @@ exports.respondToAssignmentRequest = async ({ staffId, requestId, action, reject
             deliveryId: delivery.delivery_id,
             orderId: reqRow.order_id,
         });
+
+        // Emit cancellation SSE for others
+        for (const p of pendingOthers) {
+            realtimeService.emitToDeliveryStaff(p.staff_id, 'assignment_cancelled', {
+                requestId,
+                deliveryId: reqRow.delivery_id,
+                orderId: reqRow.order_id,
+                reason: 'taken',
+            });
+        }
 
         return {
             requestId,

@@ -93,33 +93,34 @@ model CustomerAddress {
 
 // Delivery Partner/Staff
 model DeliveryStaff {
-  staff_id                   String                      @id @default(uuid())
-  full_name                  String                      @db.VarChar(255)
-  phone                      String?                     @db.VarChar(20)
-  email                      String                      @unique @db.VarChar(255)
+  staff_id                     String                        @id @default(uuid())
+  full_name                    String                        @db.VarChar(255)
+  phone                        String?                       @db.VarChar(20)
+  email                        String                        @unique @db.VarChar(255)
   // Delivery partner current address & location (captured during registration)
-  address                    String?                     @db.VarChar(500)
-  current_latitude           Decimal?                    @db.Decimal(10, 8)
-  current_longitude          Decimal?                    @db.Decimal(11, 8)
-  vehicle_type               String                      @db.VarChar(50)
-  vehicle_number             String                      @db.VarChar(50)
-  profile_image_url          String?                     @db.VarChar(500) // Partner profile/selfie image URL
-  id_proof_type              String?                     @db.VarChar(50) // Aadhaar, etc.
-  id_proof_url               String?                     @db.VarChar(500)
-  driving_license_url        String?                     @db.VarChar(500) // Driving license file URL
-  bank_account_details       Json?
-  verification_status        VerificationStatus          @default(pending)
-  is_verified_by_admin       Boolean                     @default(false)
-  is_active                  Boolean                     @default(true)
-  average_rating             Decimal?                    @db.Decimal(3, 2)
-  total_deliveries           Int                         @default(0)
-  created_at                 DateTime                    @default(now())
-  updated_at                 DateTime                    @updatedAt
-  deliveries                 Delivery[]
-  deliveryStaffShifts        DeliveryStaffShift[]
-  deliveryStaffLocations     DeliveryStaffLocation[]
-  deliveryAssignmentRequests DeliveryAssignmentRequest[]
-  deliveryStaffNotifications DeliveryStaffNotification[]
+  address                      String?                       @db.VarChar(500)
+  current_latitude             Decimal?                      @db.Decimal(10, 8)
+  current_longitude            Decimal?                      @db.Decimal(11, 8)
+  vehicle_type                 String                        @db.VarChar(50)
+  vehicle_number               String                        @db.VarChar(50)
+  profile_image_url            String?                       @db.VarChar(500) // Partner profile/selfie image URL
+  id_proof_type                String?                       @db.VarChar(50) // Aadhaar, etc.
+  id_proof_url                 String?                       @db.VarChar(500)
+  driving_license_url          String?                       @db.VarChar(500) // Driving license file URL
+  bank_account_details         Json?
+  verification_status          VerificationStatus            @default(pending)
+  is_verified_by_admin         Boolean                       @default(false)
+  is_active                    Boolean                       @default(true)
+  average_rating               Decimal?                      @db.Decimal(3, 2)
+  total_deliveries             Int                           @default(0)
+  created_at                   DateTime                      @default(now())
+  updated_at                   DateTime                      @updatedAt
+  deliveries                   Delivery[]
+  deliveryStaffShifts          DeliveryStaffShift[]
+  deliveryStaffLocations       DeliveryStaffLocation[]
+  deliveryAssignmentRequests   DeliveryAssignmentRequest[]
+  deliveryStaffNotifications   DeliveryStaffNotification[]
+  deliveryAssignmentRecipients DeliveryAssignmentRecipient[]
 
   @@index([verification_status])
   @@index([is_verified_by_admin])
@@ -626,11 +627,19 @@ enum DeliveryAssignmentStatus {
   cancelled
 }
 
+enum DeliveryAssignmentRecipientStatus {
+  pending
+  accepted
+  rejected
+  expired
+  cancelled
+}
+
 model DeliveryAssignmentRequest {
   request_id     String                   @id @default(uuid())
   order_id       String
   delivery_id    String
-  staff_id       String
+  staff_id       String?
   delivery_type  DeliveryType
   status         DeliveryAssignmentStatus @default(pending)
   offered_at     DateTime                 @default(now())
@@ -646,9 +655,10 @@ model DeliveryAssignmentRequest {
   created_at     DateTime                 @default(now())
   updated_at     DateTime                 @updatedAt
 
-  order    Order         @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
-  delivery Delivery      @relation(fields: [delivery_id], references: [delivery_id], onDelete: Cascade)
-  staff    DeliveryStaff @relation(fields: [staff_id], references: [staff_id], onDelete: Cascade)
+  order      Order                         @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
+  delivery   Delivery                      @relation(fields: [delivery_id], references: [delivery_id], onDelete: Cascade)
+  staff      DeliveryStaff?                @relation(fields: [staff_id], references: [staff_id], onDelete: SetNull)
+  recipients DeliveryAssignmentRecipient[]
 
   @@index([order_id])
   @@index([delivery_id])
@@ -657,6 +667,25 @@ model DeliveryAssignmentRequest {
   @@index([delivery_type])
   @@index([expires_at])
   @@map("delivery_assignment_requests")
+}
+
+model DeliveryAssignmentRecipient {
+  recipient_id   String                            @id @default(uuid())
+  request_id     String
+  staff_id       String
+  status         DeliveryAssignmentRecipientStatus @default(pending)
+  responded_at   DateTime?
+  rejection_note String?
+  created_at     DateTime                          @default(now())
+  updated_at     DateTime                          @updatedAt
+
+  request DeliveryAssignmentRequest @relation(fields: [request_id], references: [request_id], onDelete: Cascade)
+  staff   DeliveryStaff             @relation(fields: [staff_id], references: [staff_id], onDelete: Cascade)
+
+  @@unique([request_id, staff_id])
+  @@index([staff_id, status])
+  @@index([request_id, status])
+  @@map("delivery_assignment_recipients")
 }
 
 model DeliveryStaffNotification {

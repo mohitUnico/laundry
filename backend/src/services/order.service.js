@@ -286,35 +286,6 @@ exports.createOrder = async (customerId, payload) => {
                 deliveryDateValue = parsed;
             }
 
-<<<<<<< HEAD
-        // Create order (placed)
-        const order = await tx.order.create({
-            data: {
-                customer_id: customerId,
-                cart_id: cart.cart_id,
-                order_status: OrderStatus.placed,
-                pricing_model: pricingModel,
-                order_type: order_type,
-                pickup_address_id,
-                delivery_address_id,
-                pickup_date: pickupDate,
-                delivery_date: deliveryDateValue,
-                special_instructions: special_instructions || null,
-                // For per_kg orders, total_amount must be filled only after bill creation.
-                total_amount: pricingModel === 'per_kg' ? new Decimal(0) : totalAmount,
-                billing_status: pricingModel === 'per_unit' ? 'generated' : 'pending',
-            },
-            select: {
-                order_id: true,
-                pickup_address_id: true,
-                delivery_address_id: true,
-                pricing_model: true,
-                order_type: true,
-                total_amount: true,
-                billing_status: true,
-            },
-        });
-=======
             const parseOptionalDate = (label, v) => {
                 if (!v) return null;
                 const parsed = new Date(v);
@@ -323,7 +294,6 @@ exports.createOrder = async (customerId, payload) => {
                 }
                 return parsed;
             };
->>>>>>> 30cacf296d11b7b9e1e063098dca8bde470f7c3f
 
             pickupTimeFrom = parseOptionalDate('pickup_time_from', pickup_time_from);
             pickupTimeTo = parseOptionalDate('pickup_time_to', pickup_time_to);

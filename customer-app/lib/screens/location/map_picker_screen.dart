@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
@@ -5,6 +8,7 @@ import 'package:geocoding/geocoding.dart';
 import '../../theme/app_text_styles.dart';
 import '../../routes/app_routes.dart';
 import '../../utils/location_error_messages.dart';
+import '../../services/google_places_service.dart';
 
 class MapPickerScreen extends StatefulWidget {
   final double? initialLatitude;
@@ -28,10 +32,18 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
   String _selectedAddress = 'Loading address...';
   bool _isLoadingAddress = false;
   final Set<Marker> _markers = {};
+  final _searchController = TextEditingController();
+  final _searchFocusNode = FocusNode();
+  final _places = GooglePlacesService();
+  Timer? _searchDebounce;
+  String? _placesSessionToken;
+  bool _isLoadingPredictions = false;
+  List<PlacePrediction> _predictions = const [];
 
   @override
   void initState() {
     super.initState();
+    _searchController.addListener(_onSearchChanged);
     if (widget.initialLatitude != null && widget.initialLongitude != null) {
       _selectedLocation = LatLng(widget.initialLatitude!, widget.initialLongitude!);
       _selectedAddress = widget.initialAddress ?? 'Loading address...';
@@ -121,6 +133,103 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
     });
   }
 
+  String _newPlacesSessionToken() {
+    final r = Random.secure();
+    final a = r.nextInt(1 << 32).toRadixString(16);
+    final b = r.nextInt(1 << 32).toRadixString(16);
+    return '${DateTime.now().millisecondsSinceEpoch}-$a$b';
+  }
+
+  void _onSearchChanged() {
+    final q = _searchController.text.trim();
+    if (!_searchFocusNode.hasFocus || q.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _predictions = const [];
+          _isLoadingPredictions = false;
+        });
+      }
+      return;
+    }
+
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () async {
+      await _fetchPredictions(q);
+    });
+  }
+
+  Future<void> _fetchPredictions(String query) async {
+    try {
+      final q = query.trim();
+      if (q.isEmpty) return;
+
+      _placesSessionToken ??= _newPlacesSessionToken();
+      setState(() => _isLoadingPredictions = true);
+
+      final results = await _places.autocomplete(
+        input: q,
+        sessionToken: _placesSessionToken!,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _predictions = results;
+        _isLoadingPredictions = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _predictions = const [];
+        _isLoadingPredictions = false;
+      });
+    }
+  }
+
+  Future<void> _handlePredictionTap(PlacePrediction p) async {
+    try {
+      _placesSessionToken ??= _newPlacesSessionToken();
+      setState(() {
+        _isLoadingPredictions = true;
+        _isLoadingAddress = true;
+      });
+
+      final details = await _places.getPlaceDetails(
+        placeId: p.placeId,
+        sessionToken: _placesSessionToken!,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _selectedLocation = details.location;
+        _selectedAddress = details.formattedAddress;
+        _isLoadingPredictions = false;
+        _isLoadingAddress = false;
+        _predictions = const [];
+      });
+
+      _updateMarker();
+      _mapController?.animateCamera(CameraUpdate.newLatLngZoom(details.location, 15.0));
+
+      // Put the chosen address in the search box for clarity.
+      _searchController.text = details.formattedAddress;
+      _searchController.selection = TextSelection.fromPosition(
+        TextPosition(offset: _searchController.text.length),
+      );
+      _searchFocusNode.unfocus();
+
+      // Close the billing session once a place is chosen.
+      _placesSessionToken = null;
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingPredictions = false;
+        _isLoadingAddress = false;
+      });
+      final msg = LocationErrorMessages.getLocationErrorMessage(e);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    }
+  }
+
   Future<void> _reverseGeocode(LatLng position) async {
     setState(() {
       _isLoadingAddress = true;
@@ -185,6 +294,10 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
   }
 
   void _onMapTap(LatLng location) {
+    _searchFocusNode.unfocus();
+    setState(() {
+      _predictions = const [];
+    });
     setState(() {
       _selectedLocation = location;
     });
@@ -254,6 +367,91 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                     myLocationEnabled: true,
                     myLocationButtonEnabled: false,
                     mapType: MapType.normal,
+                  ),
+                  // Place search (Google Places autocomplete)
+                  Positioned(
+                    top: 16,
+                    left: 16,
+                    right: 16,
+                    child: Column(
+                      children: [
+                        Material(
+                          elevation: 6,
+                          borderRadius: BorderRadius.circular(12),
+                          child: TextField(
+                            controller: _searchController,
+                            focusNode: _searchFocusNode,
+                            textInputAction: TextInputAction.search,
+                            decoration: InputDecoration(
+                              hintText: 'Search a place',
+                              prefixIcon: const Icon(Icons.search),
+                              suffixIcon: _searchController.text.isEmpty
+                                  ? null
+                                  : IconButton(
+                                      icon: const Icon(Icons.close),
+                                      onPressed: () {
+                                        _searchController.clear();
+                                        setState(() => _predictions = const []);
+                                      },
+                                    ),
+                              filled: true,
+                              fillColor: Colors.white,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide.none,
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (_searchFocusNode.hasFocus &&
+                            (_isLoadingPredictions || _predictions.isNotEmpty))
+                          const SizedBox(height: 8),
+                        if (_searchFocusNode.hasFocus &&
+                            (_isLoadingPredictions || _predictions.isNotEmpty))
+                          Material(
+                            elevation: 6,
+                            borderRadius: BorderRadius.circular(12),
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxHeight: 260),
+                              child: _isLoadingPredictions
+                                  ? const Padding(
+                                      padding: EdgeInsets.all(14),
+                                      child: Row(
+                                        children: [
+                                          SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(strokeWidth: 2),
+                                          ),
+                                          SizedBox(width: 10),
+                                          Text('Searching...'),
+                                        ],
+                                      ),
+                                    )
+                                  : ListView.separated(
+                                      shrinkWrap: true,
+                                      padding: EdgeInsets.zero,
+                                      itemCount: _predictions.length,
+                                      separatorBuilder: (_, __) => const Divider(height: 1),
+                                      itemBuilder: (context, index) {
+                                        final p = _predictions[index];
+                                        return ListTile(
+                                          dense: true,
+                                          leading: const Icon(Icons.place_outlined),
+                                          title: Text(
+                                            p.description,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          onTap: () => _handlePredictionTap(p),
+                                        );
+                                      },
+                                    ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                   // Center pin indicator
                   Center(
@@ -348,6 +546,9 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
   @override
   void dispose() {
     _mapController?.dispose();
+    _searchDebounce?.cancel();
+    _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 }

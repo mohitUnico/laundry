@@ -66,7 +66,9 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
     final now = DateTime.now(); // local
     if (!DateUtils.isSameDay(selectedDate, now)) return 0;
 
-    final next = now.add(const Duration(minutes: 1));
+    // Keep an operational buffer so pickup scheduling is realistic.
+    // User can only select a time >= current time + 1.5 hours.
+    final next = now.add(const Duration(minutes: 90));
     final roundedMinute = _roundUpToStep(next.minute, _minuteStep());
     final carryHour = roundedMinute >= 60 ? 1 : 0;
     final minute = roundedMinute % 60;
@@ -80,7 +82,7 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
 
   void _showInvalidTimeSnack(BuildContext context) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Please select a valid future time')),
+      const SnackBar(content: Text('Please select a time at least 1.5 hours from now')),
     );
   }
 
@@ -254,7 +256,19 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
 
     final now = DateTime.now();
     final days = List.generate(5, (i) => DateTime(now.year, now.month, now.day + i));
-    final selectedDate = days[_selectedDayIndex.clamp(0, days.length - 1)];
+    var selectedDate = days[_selectedDayIndex.clamp(0, days.length - 1)];
+    // If today has no valid time slots left after the 1.5hr buffer, force tomorrow.
+    final minForSelected = _minMinutesForSelectedDay(selectedDate);
+    if (DateUtils.isSameDay(selectedDate, now) && minForSelected >= 24 * 60 && days.length > 1) {
+      selectedDate = days[1];
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No slots available today. Please select tomorrow.')),
+        );
+        setState(() => _selectedDayIndex = 1);
+      });
+    }
     _ensureValidSelections(selectedDate: selectedDate);
 
     final fromText = _formatTime(_fromHour, _fromMinute, _fromAmPm);
@@ -374,10 +388,15 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                     color: Colors.transparent,
                     child: InkWell(
                       onTap: () async {
-                        // Validate schedule (local timezone): must not be in the past.
+                        // Validate schedule (local timezone):
+                        // - must be >= now + 1.5 hours (for today)
+                        // - To time must be after From time
                         final fromDt = _asLocalDateTime(selectedDate, _fromHour, _fromMinute, _fromAmPm);
                         final toDt = _asLocalDateTime(selectedDate, _toHour, _toMinute, _toAmPm);
-                        if (fromDt.isBefore(DateTime.now())) {
+                        final minAllowed = DateUtils.isSameDay(selectedDate, DateTime.now())
+                            ? DateTime.now().add(const Duration(minutes: 90))
+                            : DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
+                        if (fromDt.isBefore(minAllowed)) {
                           _showInvalidTimeSnack(context);
                           return;
                         }

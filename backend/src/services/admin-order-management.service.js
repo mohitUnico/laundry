@@ -140,7 +140,15 @@ const getAdminOrdersRaw = async ({ statusList, from, to, skip, take }) => {
         JOIN customers c ON c.customer_id = o.customer_id
         LEFT JOIN customer_addresses a ON a.address_id = o.delivery_address_id
         LEFT JOIN bills b ON b.order_id = o.order_id
-        LEFT JOIN delivery d ON d.order_id = o.order_id
+        -- If there are multiple deliveries per order (pickup + drop or reassignments),
+        -- pick the latest assignment to keep admin list behavior stable.
+        LEFT JOIN LATERAL (
+            SELECT *
+            FROM delivery d0
+            WHERE d0.order_id = o.order_id
+            ORDER BY d0.assigned_at DESC
+            LIMIT 1
+        ) d ON TRUE
         LEFT JOIN delivery_staffs ds ON ds.staff_id = d.staff_id
         LEFT JOIN order_items oi ON oi.order_id = o.order_id
         LEFT JOIN clothes_items ci ON ci.cloth_id = oi.clothes_id
@@ -266,7 +274,9 @@ const fetchOrdersWithFallback = async ({ where, skip, take }) => {
                         payment_status: true,
                     },
                 },
-                delivery: {
+                deliveries: {
+                    orderBy: { assigned_at: 'desc' },
+                    take: 1,
                     select: {
                         delivery_id: true,
                         delivery_status: true,
@@ -334,7 +344,9 @@ const fetchOrdersWithFallback = async ({ where, skip, take }) => {
                                 payment_status: true,
                             },
                         },
-                        delivery: {
+                        deliveries: {
+                            orderBy: { assigned_at: 'desc' },
+                            take: 1,
                             select: {
                                 delivery_id: true,
                                 delivery_status: true,
@@ -394,7 +406,9 @@ const fetchOrdersWithFallback = async ({ where, skip, take }) => {
                             payment_status: true,
                         },
                     },
-                    delivery: {
+                    deliveries: {
+                        orderBy: { assigned_at: 'desc' },
+                        take: 1,
                         select: {
                             delivery_id: true,
                             delivery_status: true,
@@ -548,16 +562,16 @@ exports.getAdminOrders = async (query = {}) => {
             services,
             amount: (o.bill?.final_amount ?? o.total_amount)?.toString?.() ?? o.total_amount,
             status: o.order_status,
-            delivery_boy: o.delivery?.staff
+            delivery_boy: o.deliveries?.[0]?.staff
                 ? {
-                    staff_id: o.delivery.staff.staff_id,
-                    name: o.delivery.staff.full_name,
-                    phone: o.delivery.staff.phone || null,
+                    staff_id: o.deliveries[0].staff.staff_id,
+                    name: o.deliveries[0].staff.full_name,
+                    phone: o.deliveries[0].staff.phone || null,
                 }
                 : null,
             estimated_delivery_time: {
                 delivery_date: o.delivery_date ? o.delivery_date.toISOString() : null,
-                estimated_duration_minutes: o.delivery?.estimated_duration ?? null,
+                estimated_duration_minutes: o.deliveries?.[0]?.estimated_duration ?? null,
             },
             actions: {
                 can_view: true,

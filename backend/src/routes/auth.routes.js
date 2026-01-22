@@ -9,6 +9,7 @@
 
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const authController = require('../controllers/auth.controller');
 const { validate } = require('../middleware/validation.middleware');
 const { authenticateJWT, authorize } = require('../middleware/auth.middleware');
@@ -28,6 +29,62 @@ const {
   resendOtpSchema,
   refreshTokenSchema
 } = require('../validators/auth.validator');
+
+// ============================================================================
+// FILE UPLOAD (DELIVERY STAFF REGISTRATION)
+// ============================================================================
+
+const deliveryRegistrationUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB per file
+  },
+});
+
+/**
+ * Normalize delivery complete-registration payload so both JSON and multipart/form-data are supported.
+ *
+ * - JSON clients can keep sending:
+ *   { sessionToken, deliveryData: { ... } }
+ *
+ * - Multipart clients should send flat fields:
+ *   sessionToken, fullName, phone, vehicleType, vehicleNumber, address, latitude, longitude, idProofType?
+ *   plus files (multipart):
+ *   - profileImage
+ *   - idProofDocument
+ *   - drivingLicenseFile
+ */
+const normalizeDeliveryCompleteRegistrationBody = (req, res, next) => {
+  const hasNested = req.body?.deliveryData && typeof req.body.deliveryData === 'object';
+  if (hasNested) return next();
+
+  const {
+    sessionToken,
+    fullName,
+    phone,
+    vehicleType,
+    vehicleNumber,
+    address,
+    latitude,
+    longitude,
+    idProofType,
+  } = req.body || {};
+
+  req.body = {
+    sessionToken,
+    deliveryData: {
+      fullName,
+      phone,
+      vehicleType,
+      vehicleNumber,
+      address,
+      currentCoordinates: { latitude, longitude },
+      idProofType,
+    },
+  };
+
+  next();
+};
 
 // ============================================================================
 // HELPERS (BACKWARD COMPATIBILITY)
@@ -410,11 +467,17 @@ router.post(
  * @access  Public (requires sessionToken)
  * @body    {
  *            sessionToken: "abc123...",
- *            deliveryData: { fullName, phone, vehicleType, vehicleNumber, licenseNumber }
+ *            deliveryData: { fullName, phone, vehicleType, vehicleNumber, address, currentCoordinates, ... }
  *          }
  */
 router.post(
   '/delivery/complete-registration',
+  deliveryRegistrationUpload.fields([
+    { name: 'profileImage', maxCount: 1 },
+    { name: 'idProofDocument', maxCount: 1 },
+    { name: 'drivingLicenseFile', maxCount: 1 },
+  ]),
+  normalizeDeliveryCompleteRegistrationBody,
   validate(completeDeliveryRegistrationSchema),
   authController.completeDeliveryRegistration
 );

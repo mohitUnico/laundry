@@ -24,10 +24,11 @@ const createOrderSchema = Joi.object({
         'any.required': 'delivery_address_id is required',
     }),
     order_type: Joi.string()
-        .valid('pickup_only', 'drop_only', 'both', 'express_delivery')
+        // NOTE: allow `delivery_only` as an alias for `drop_only` (API-friendly naming)
+        .valid('pickup_only', 'drop_only', 'delivery_only', 'both', 'express_delivery')
         .required()
         .messages({
-            'any.only': 'order_type must be one of: pickup_only, drop_only, both, express_delivery',
+            'any.only': 'order_type must be one of: pickup_only, drop_only, delivery_only, both, express_delivery',
             'any.required': 'order_type is required',
         }),
     pickup_date: Joi.date().iso().optional().messages({
@@ -36,6 +37,16 @@ const createOrderSchema = Joi.object({
     delivery_date: Joi.date().iso().optional().messages({
         'date.format': 'delivery_date must be a valid ISO date string',
     }),
+    // Preferred time windows (optional)
+    pickup_time_from: Joi.date().iso().optional(),
+    pickup_time_to: Joi.date().iso().optional(),
+    delivery_time_from: Joi.date().iso().optional(),
+    delivery_time_to: Joi.date().iso().optional(),
+    // Backward-compatible aliases (older payloads)
+    preferred_pickup_slot_from: Joi.date().iso().optional(),
+    preferred_pickup_slot_to: Joi.date().iso().optional(),
+    preferred_delivery_slot_from: Joi.date().iso().optional(),
+    preferred_delivery_slot_to: Joi.date().iso().optional(),
     special_instructions: Joi.string().allow('', null).optional().messages({
         'string.base': 'special_instructions must be a string',
     }),
@@ -54,6 +65,25 @@ exports.validateCreateOrder = (req, res, next) => {
                 error.details.map((d) => d.message)
             )
         );
+    }
+
+    // Normalize alias
+    if (value.order_type === 'delivery_only') {
+        value.order_type = 'drop_only';
+    }
+
+    // Normalize preferred slot aliases into the canonical window fields
+    if (!value.pickup_time_from && value.preferred_pickup_slot_from) {
+        value.pickup_time_from = value.preferred_pickup_slot_from;
+    }
+    if (!value.pickup_time_to && value.preferred_pickup_slot_to) {
+        value.pickup_time_to = value.preferred_pickup_slot_to;
+    }
+    if (!value.delivery_time_from && value.preferred_delivery_slot_from) {
+        value.delivery_time_from = value.preferred_delivery_slot_from;
+    }
+    if (!value.delivery_time_to && value.preferred_delivery_slot_to) {
+        value.delivery_time_to = value.preferred_delivery_slot_to;
     }
 
     req.body = value;

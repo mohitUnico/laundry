@@ -351,10 +351,37 @@ const completeDeliveryRegistrationSchema = Joi.object({
       'string.max': 'Vehicle number must not exceed 50 characters',
       'any.required': 'Vehicle number is required'
     }),
-    licenseNumber: Joi.string().min(5).max(50).required().messages({
-      'string.min': 'License number must be at least 5 characters',
-      'string.max': 'License number must not exceed 50 characters',
-      'any.required': 'License number is required'
+    address: Joi.string().min(5).max(500).required().messages({
+      'string.min': 'Address must be at least 5 characters',
+      'string.max': 'Address must not exceed 500 characters',
+      'any.required': 'Address is required'
+    }),
+    currentCoordinates: Joi.object({
+      latitude: Joi.number().min(-90).max(90).required().messages({
+        'number.min': 'Latitude must be between -90 and 90',
+        'number.max': 'Latitude must be between -90 and 90',
+        'any.required': 'Latitude is required'
+      }),
+      longitude: Joi.number().min(-180).max(180).required().messages({
+        'number.min': 'Longitude must be between -180 and 180',
+        'number.max': 'Longitude must be between -180 and 180',
+        'any.required': 'Longitude is required'
+      })
+    }).required(),
+    idProofType: Joi.string().min(2).max(50).optional().allow(null, '').messages({
+      'string.min': 'ID proof type must be at least 2 characters',
+      'string.max': 'ID proof type must not exceed 50 characters'
+    }),
+
+    // Optional URLs for backward compatibility (if client uploads separately)
+    profileImageUrl: Joi.string().uri().optional().allow(null, '').messages({
+      'string.uri': 'Profile image URL must be a valid URL'
+    }),
+    idProofUrl: Joi.string().uri().optional().allow(null, '').messages({
+      'string.uri': 'ID proof URL must be a valid URL'
+    }),
+    drivingLicenseUrl: Joi.string().uri().optional().allow(null, '').messages({
+      'string.uri': 'Driving license URL must be a valid URL'
     })
   }).required()
 });

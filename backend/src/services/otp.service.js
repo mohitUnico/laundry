@@ -328,7 +328,17 @@ const verifyOtp = async (email, otp, userType, options = {}) => {
                 // NOTE: DeliveryStaff model in current Prisma schema does not define a `mart` relation,
                 // so we must not use `include: { mart: ... }` here (it causes PrismaClientValidationError).
                 existingUser = await prisma.deliveryStaff.findUnique({
-                    where: { email }
+                    where: { email },
+                    // Select minimal fields so OTP verification isn't coupled to optional profile/document columns.
+                    // (DB still must be migrated for the full registration flow.)
+                    select: {
+                        staff_id: true,
+                        email: true,
+                        full_name: true,
+                        phone: true,
+                        verification_status: true,
+                        is_verified_by_admin: true,
+                    },
                 });
                 break;
         }
@@ -365,13 +375,21 @@ const verifyOtp = async (email, otp, userType, options = {}) => {
                     email: existingUser.email,
                     fullName: existingUser.full_name,
                     role: existingUser.role || userType,
-                    martId: null,
-                    mart: null,
                     ...(userType === USER_TYPES.SERVICE_MAN
                         ? {
-                              serviceId: existingUser.service_id || null,
-                              serviceName: existingUser.service?.service_name || null
-                          }
+                            serviceId: existingUser.service_id || null,
+                            serviceName: existingUser.service?.service_name || null
+                        }
+                        : {})
+                    ,
+                    ...(userType === USER_TYPES.DELIVERY_STAFF
+                        ? {
+                            verificationStatus: existingUser.verification_status || null,
+                            isVerifiedByAdmin:
+                                typeof existingUser.is_verified_by_admin === 'boolean'
+                                    ? existingUser.is_verified_by_admin
+                                    : null,
+                        }
                         : {})
                 }
             };
@@ -1357,9 +1375,15 @@ const completeDeliveryRegistration = async (sessionToken, deliveryData) => {
                     full_name: deliveryData.fullName,
                     email: session.email,
                     phone: deliveryData.phone,
+                    address: deliveryData.address || null,
+                    current_latitude: deliveryData.currentCoordinates?.latitude ?? null,
+                    current_longitude: deliveryData.currentCoordinates?.longitude ?? null,
                     vehicle_type: deliveryData.vehicleType,
                     vehicle_number: deliveryData.vehicleNumber,
-                    license_number: deliveryData.licenseNumber,
+                    profile_image_url: deliveryData.profileImageUrl || null,
+                    id_proof_type: deliveryData.idProofType || null,
+                    id_proof_url: deliveryData.idProofUrl || null,
+                    driving_license_url: deliveryData.drivingLicenseUrl || null,
                     verification_status: 'pending',
                     is_active: true
                 }

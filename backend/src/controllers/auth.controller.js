@@ -9,7 +9,10 @@
 
 const otpService = require('../services/otp.service');
 const portalAuthService = require('../services/portal-auth.service');
+const deliveryStaffMediaService = require('../services/delivery-staff-media.service');
 const logger = require('../utils/logger');
+const crypto = require('crypto');
+const { ValidationError } = require('../utils/errors');
 
 // ============================================================================
 // PORTAL AUTHENTICATION (EMAIL/PHONE OTP)
@@ -681,9 +684,57 @@ const completeDeliveryRegistration = async (req, res, next) => {
   try {
     const { sessionToken, deliveryData } = req.body;
 
+    // If request is multipart, files are available on req.files (multer).
+    // We upload them to Supabase Storage and persist the resulting public URLs.
+    const registrationKey = crypto.createHash('sha256').update(String(sessionToken || '')).digest('hex');
+    const files = req.files || {};
+
+    const profileImageFile = Array.isArray(files.profileImage) ? files.profileImage[0] : null;
+    const idProofDocumentFile = Array.isArray(files.idProofDocument) ? files.idProofDocument[0] : null;
+    const drivingLicenseFile = Array.isArray(files.drivingLicenseFile) ? files.drivingLicenseFile[0] : null;
+
+    // For the new flow, expect these files. (URLs are still accepted for backward compatibility.)
+    if (!deliveryData?.profileImageUrl && !profileImageFile) {
+      throw new ValidationError('Profile image file is required');
+    }
+    if (!deliveryData?.idProofUrl && !idProofDocumentFile) {
+      throw new ValidationError('ID proof document file is required');
+    }
+    if (!deliveryData?.drivingLicenseUrl && !drivingLicenseFile) {
+      throw new ValidationError('Driving license file is required');
+    }
+
+    const [profileImageUrl, idProofUrl, drivingLicenseUrl] = await Promise.all([
+      deliveryData?.profileImageUrl
+        ? deliveryData.profileImageUrl
+        : deliveryStaffMediaService.uploadDeliveryStaffProfileImage({
+          registrationKey,
+          file: profileImageFile,
+        }),
+      deliveryData?.idProofUrl
+        ? deliveryData.idProofUrl
+        : deliveryStaffMediaService.uploadDeliveryStaffDocument({
+          registrationKey,
+          kind: 'id-proof',
+          file: idProofDocumentFile,
+        }),
+      deliveryData?.drivingLicenseUrl
+        ? deliveryData.drivingLicenseUrl
+        : deliveryStaffMediaService.uploadDeliveryStaffDocument({
+          registrationKey,
+          kind: 'driving-license',
+          file: drivingLicenseFile,
+        }),
+    ]);
+
     const result = await otpService.completeDeliveryRegistration(
       sessionToken,
-      deliveryData
+      {
+        ...deliveryData,
+        profileImageUrl,
+        idProofUrl,
+        drivingLicenseUrl,
+      }
     );
 
     res.status(201).json({

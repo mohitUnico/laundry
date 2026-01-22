@@ -273,12 +273,12 @@ exports.createOrder = async (customerId, payload) => {
             deliveryDateValue = parsed;
         }
 
-        // Create order draft
+        // Create order (placed)
         const order = await tx.order.create({
             data: {
                 customer_id: customerId,
                 cart_id: cart.cart_id,
-                order_status: OrderStatus.draft,
+                order_status: OrderStatus.placed,
                 pricing_model: pricingModel,
                 order_type: order_type,
                 pickup_address_id,

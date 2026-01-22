@@ -377,7 +377,7 @@ Content-Type: application/json
 Similar flow as Customer, with additional fields:
 
 - **Manager**: Requires `martId` during registration
-- **Delivery Staff**: Requires `martId`, `vehicleType`, `vehicleNumber`, `licenseNumber`
+- **Delivery Staff**: Requires `vehicleType`, `vehicleNumber`, `address`, `currentCoordinates` and files (profile image, ID-proof doc, driving license doc)
 
 Additional staff roles (Owner/Admin-created on first registration):
 

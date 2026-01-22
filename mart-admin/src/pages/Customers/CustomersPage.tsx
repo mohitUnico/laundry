@@ -1,9 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Download, Search, UserRound, CalendarDays, Star, Eye, Mail, X, Loader2 } from 'lucide-react';
+import { Download, Search, CalendarDays, Star, Eye, Mail, X, Loader2, Plus, TrendingUp, Award } from 'lucide-react';
 import { customersApi, AdminCustomer } from '../../services/api/modules/customersApi';
 import { AddCustomerModal } from '@/components/dashboard/modals';
+import { ViewCustomerModal, type ViewCustomerModalCustomer } from '@/components/customers/modals/ViewCustomerModal';
+import { useNavigate } from 'react-router-dom';
 
 type CustomerRow = {
+  customerId: string;
   name: string;
   avatar?: string;
   email: string;
@@ -18,6 +21,7 @@ type CustomerRow = {
 // NOTE: Header and Sidebar are provided by the app's MainLayout.
 
 export const CustomersPage: React.FC = () => {
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [dateFilter, setDateFilter] = useState<string | null>(null);
@@ -35,6 +39,8 @@ export const CustomersPage: React.FC = () => {
     thisMonthGrowth: 0, // Mock value for now
   });
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+  const [isViewCustomerOpen, setIsViewCustomerOpen] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<ViewCustomerModalCustomer | undefined>(undefined);
   // Pagination state (currently not displayed in UI, but available for future use)
   const [, setPagination] = useState({
     page: 1,
@@ -182,6 +188,7 @@ export const CustomersPage: React.FC = () => {
   const filteredRows = useMemo(() => {
     return customers.map((customer): CustomerRow => {
       return {
+        customerId: customer.customerId,
         name: customer.name,
         email: customer.contact.email,
         phone: customer.contact.phone || 'N/A',
@@ -193,6 +200,36 @@ export const CustomersPage: React.FC = () => {
       };
     });
   }, [customers, formatJoinedDate]);
+
+  const openCustomerProfile = useCallback(
+    (customerId: string) => {
+      const c = customers.find((x) => x.customerId === customerId);
+      if (!c) return;
+      setSelectedCustomer({
+        customerId: c.customerId,
+        name: c.name,
+        email: c.contact.email,
+        phone: c.contact.phone,
+        address: c.primaryAddress?.fullAddress || null,
+        totalOrders: c.totalOrdersCount,
+        rating: c.rating,
+        joinedText: formatJoinedDate(c.createdAt),
+      });
+      setIsViewCustomerOpen(true);
+    },
+    [customers, formatJoinedDate]
+  );
+
+  const closeCustomerProfile = () => {
+    setIsViewCustomerOpen(false);
+    setSelectedCustomer(undefined);
+  };
+
+  const handleViewOrders = (c: ViewCustomerModalCustomer) => {
+    const q = encodeURIComponent(c.name);
+    navigate(`/orders?search=${q}`);
+    closeCustomerProfile();
+  };
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -231,55 +268,61 @@ export const CustomersPage: React.FC = () => {
     : formatDisplayDate(new Date());
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto max-w-[1200px] px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-5 md:py-6">
+    <div className="w-full">
+      <div className="mx-auto mt-1 sm:mt-2 w-full max-w-[1320px] rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 md:p-7 shadow-sm">
         <main className="space-y-4 sm:space-y-5 md:space-y-6">
+          {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
             <div>
               <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Customer Management</h1>
               <p className="mt-1 text-xs sm:text-sm text-slate-500">Manage and view all customer information</p>
             </div>
-            <button 
+            <button
               onClick={() => setShowAddCustomerModal(true)}
-              className="inline-flex items-center justify-center gap-2 rounded-lg sm:rounded-xl bg-indigo-600 px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-white shadow-md hover:bg-indigo-700 transition-colors w-full sm:w-auto"
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-indigo-700 px-4 sm:px-5 py-2.5 text-xs sm:text-sm font-medium text-white shadow-sm hover:bg-indigo-600 transition-colors w-full sm:w-auto"
             >
-              <UserRound size={16} /> <span>Add Customer</span>
+              <Plus size={18} /> <span>Add Customer</span>
             </button>
           </div>
 
           {/* KPI Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
-            <div>
-              <div className="rounded-xl sm:rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 md:p-6 shadow-md">
-                <div className="flex items-center justify-between text-xs sm:text-sm text-slate-700">Total Customers <span className="text-slate-400"/></div>
-                <div className="mt-2 flex items-end justify-between">
-                  <div className="text-2xl sm:text-3xl font-bold text-slate-900">
-                    {loading ? <Loader2 className="animate-spin h-6 w-6" /> : kpis.totalCustomers}
-                  </div>
-                  <div className="text-xs text-indigo-600 font-medium">+{kpis.thisMonthGrowth}% this month</div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between text-sm text-slate-800 font-medium">
+                <span>Total Customers</span>
+                <TrendingUp className="h-4 w-4 text-indigo-700" />
+              </div>
+              <div className="mt-2 flex items-end justify-between">
+                <div className="text-3xl font-bold text-slate-900">
+                  {loading ? <Loader2 className="animate-spin h-6 w-6" /> : kpis.totalCustomers}
                 </div>
+                <div className="text-xs text-indigo-700 font-medium">+{kpis.thisMonthGrowth}% this month</div>
               </div>
             </div>
-            <div>
-              <div className="rounded-xl sm:rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 md:p-6 shadow-md">
-                <div className="flex items-center justify-between text-xs sm:text-sm text-slate-700">Active Customers <span className="h-2 w-2 rounded-full bg-emerald-500"/></div>
-                <div className="mt-2 text-2xl sm:text-3xl font-bold text-slate-900">
-                  {loading ? <Loader2 className="animate-spin h-6 w-6" /> : kpis.activeCustomers}
-                </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between text-sm text-slate-800 font-medium">
+                <span>Active Customers</span>
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              </div>
+              <div className="mt-2 text-3xl font-bold text-slate-900">
+                {loading ? <Loader2 className="animate-spin h-6 w-6" /> : kpis.activeCustomers}
               </div>
             </div>
-            <div>
-              <div className="rounded-xl sm:rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 md:p-6 shadow-md">
-                <div className="flex items-center justify-between text-xs sm:text-sm text-slate-700">Avg. Orders <span className="text-slate-400"/></div>
-                <div className="mt-2 text-2xl sm:text-3xl font-bold text-slate-900">
-                  {loading ? <Loader2 className="animate-spin h-6 w-6" /> : kpis.avgOrders}
-                </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between text-sm text-slate-800 font-medium">
+                <span>Avg. Orders</span>
+                <Award className="h-4 w-4 text-indigo-700" />
+              </div>
+              <div className="mt-2 text-3xl font-bold text-slate-900">
+                {loading ? <Loader2 className="animate-spin h-6 w-6" /> : kpis.avgOrders}
               </div>
             </div>
           </div>
 
           {/* Toolbar */}
-          <div className="rounded-xl sm:rounded-2xl border border-slate-200 bg-white p-3 sm:p-4 shadow-md">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
               <div className="relative flex-1 sm:max-w-md">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -287,21 +330,20 @@ export const CustomersPage: React.FC = () => {
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="w-full rounded-lg sm:rounded-xl border border-slate-200 bg-white h-9 sm:h-10 pl-9 pr-3 text-xs sm:text-sm placeholder:text-slate-400 focus:border-slate-300 focus:outline-none" 
-                  placeholder="Search customers..."
+                  className="w-full rounded-xl border border-slate-200 bg-white h-10 pl-9 pr-3 text-sm placeholder:text-slate-400 focus:border-slate-300 focus:outline-none" 
+                  placeholder="Search by order number or customer name..."
                 />
               </div>
               <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
                 <div className="relative inline-flex">
                   {/* Visual button - for display only */}
                   <div
-                    className={`inline-flex items-center gap-1.5 sm:gap-2 rounded-lg sm:rounded-xl border bg-white px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-slate-700 transition-colors pointer-events-none ${
+                    className={`inline-flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm text-slate-700 transition-colors pointer-events-none ${
                       dateFilter ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200'
                     }`}
                   >
                     <CalendarDays size={14} className="sm:w-4 sm:h-4 text-slate-500" />
-                    <span className="hidden sm:inline">{displayDate}</span>
-                    <span className="sm:hidden text-xs">{new Date(displayDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                    <span>{displayDate}</span>
                     {dateFilter && (
                       <X size={12} className="sm:w-3.5 sm:h-3.5 text-slate-400" />
                     )}
@@ -379,14 +421,14 @@ export const CustomersPage: React.FC = () => {
                 <select 
                   value={statusFilter}
                   onChange={handleStatusFilterChange}
-                  className="rounded-lg sm:rounded-xl border border-slate-200 bg-white px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="all">All Customers</option>
                   <option value="active">Active Customers</option>
                   <option value="inactive">Inactive Customers</option>
                 </select>
-                <button className="inline-flex items-center gap-1.5 sm:gap-2 rounded-lg sm:rounded-xl border border-slate-200 bg-white px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-slate-700 hover:bg-slate-50 transition-colors">
-                  <Download size={14} className="sm:w-4 sm:h-4 text-slate-500"/> <span className="hidden sm:inline">Export</span>
+                <button className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
+                  <Download size={16} className="text-slate-500"/> <span>Export</span>
                 </button>
               </div>
             </div>
@@ -480,18 +522,18 @@ export const CustomersPage: React.FC = () => {
             )}
           </div>
 
-          {/* Desktop Table View */}
-          <div className="hidden sm:block rounded-xl sm:rounded-2xl border border-slate-200 bg-white shadow-md overflow-hidden">
+          {/* Desktop Table View (Figma layout) */}
+          <div className="hidden sm:block rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[800px]">
+              <table className="w-full min-w-[900px]">
                 <thead>
-                  <tr className="text-left text-slate-600 text-xs sm:text-sm bg-slate-50">
-                    <th className="px-3 sm:px-4 md:px-6 py-2 sm:py-3 min-w-[180px] sm:min-w-[260px]">Customer</th>
-                    <th className="px-3 sm:px-4 md:px-6 py-2 sm:py-3 min-w-[180px] sm:min-w-[260px]">Contact</th>
-                    <th className="px-3 sm:px-4 md:px-6 py-2 sm:py-3 min-w-[200px] sm:min-w-[300px] hidden md:table-cell">Address</th>
-                    <th className="px-3 sm:px-4 md:px-6 py-2 sm:py-3 min-w-[80px]">Orders</th>
-                    <th className="px-3 sm:px-4 md:px-6 py-2 sm:py-3 min-w-[80px]">Rating</th>
-                    <th className="px-3 sm:px-4 md:px-6 py-2 sm:py-3 min-w-[80px]">Actions</th>
+                  <tr className="text-left text-slate-900 text-sm bg-white border-b border-slate-200">
+                    <th className="px-6 py-4">Customer</th>
+                    <th className="px-6 py-4">Contact</th>
+                    <th className="px-6 py-4">Address</th>
+                    <th className="px-6 py-4 text-center">Total Orders</th>
+                    <th className="px-6 py-4 text-center">Rating</th>
+                    <th className="px-6 py-4 text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -511,40 +553,51 @@ export const CustomersPage: React.FC = () => {
                     </tr>
                   ) : (
                     filteredRows.map((r, index) => (
-                      <tr key={`${r.email}-${index}`} className="border-t border-slate-200 hover:bg-slate-50/60 transition-colors">
-                      <td className="px-3 sm:px-4 md:px-6 py-3 sm:py-4">
-                        <div className="flex items-center gap-2 sm:gap-3">
-                          <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-full bg-slate-300 flex-shrink-0" />
-                          <div className="min-w-0">
-                            <div className="font-medium text-xs sm:text-sm text-slate-900 truncate">{r.name}</div>
-                            <div className="text-[10px] sm:text-xs text-slate-500">{r.joined}</div>
+                      <tr key={`${r.email}-${index}`} className="border-b border-slate-200">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-full bg-slate-200 overflow-hidden flex-shrink-0" />
+                            <div className="min-w-0">
+                              <div className="font-medium text-sm text-slate-900 truncate">{r.name}</div>
+                              <div className="text-xs text-slate-500">{r.joined}</div>
+                            </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-3 sm:px-4 md:px-6 py-3 sm:py-4">
-                        <div className="text-xs sm:text-sm text-slate-700 truncate">{r.email}</div>
-                        <div className="text-[10px] sm:text-xs text-slate-500">{r.phone}</div>
-                      </td>
-                      <td className="px-3 sm:px-4 md:px-6 py-3 sm:py-4 text-xs sm:text-sm text-slate-600 hidden md:table-cell">
-                        <div className="truncate max-w-[300px]">{r.address}</div>
-                      </td>
-                      <td className="px-3 sm:px-4 md:px-6 py-3 sm:py-4 text-xs sm:text-sm text-slate-700">{r.orders}</td>
-                      <td className="px-3 sm:px-4 md:px-6 py-3 sm:py-4">
-                        <div className="inline-flex items-center gap-1 text-slate-700 text-xs sm:text-sm">
-                          <Star size={12} className="sm:w-3.5 sm:h-3.5 text-amber-400 fill-amber-400"/> {r.rating ?? 'N/A'}
-                        </div>
-                      </td>
-                      <td className="px-3 sm:px-4 md:px-6 py-3 sm:py-4">
-                        <div className="flex items-center gap-2 sm:gap-3">
-                          <button className="text-slate-400 hover:text-blue-600 transition-colors" aria-label="View customer">
-                            <Eye size={16} className="sm:w-[18px] sm:h-[18px]"/>
-                          </button>
-                          <button className="text-slate-400 hover:text-blue-600 transition-colors" aria-label="Email customer">
-                            <Mail size={16} className="sm:w-[18px] sm:h-[18px]"/>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-slate-900 truncate">{r.email}</div>
+                          <div className="text-xs text-slate-500">{r.phone}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-slate-600 truncate max-w-[360px]">{r.address}</div>
+                        </td>
+                        <td className="px-6 py-4 text-center text-sm text-slate-900">{r.orders}</td>
+                        <td className="px-6 py-4 text-center">
+                          <div className="inline-flex items-center gap-1 text-sm text-slate-900">
+                            <Star size={14} className="text-amber-400 fill-amber-400" />
+                            <span>{r.rating ?? 'N/A'}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center justify-center gap-4">
+                            <button
+                              className="text-slate-900 hover:text-indigo-700 transition-colors"
+                              aria-label="View customer"
+                              onClick={() => openCustomerProfile(r.customerId)}
+                            >
+                              <Eye size={18} />
+                            </button>
+                            <button
+                              className="text-slate-900 hover:text-indigo-700 transition-colors"
+                              aria-label="Email customer"
+                              onClick={() => {
+                                window.location.href = `mailto:${r.email}`;
+                              }}
+                            >
+                              <Mail size={18} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
                     ))
                   )}
                 </tbody>
@@ -553,6 +606,13 @@ export const CustomersPage: React.FC = () => {
           </div>
         </main>
       </div>
+
+      <ViewCustomerModal
+        isOpen={isViewCustomerOpen}
+        onClose={closeCustomerProfile}
+        customer={selectedCustomer}
+        onViewOrders={handleViewOrders}
+      />
 
       <AddCustomerModal
         isOpen={showAddCustomerModal}

@@ -1,9 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { Bell, Menu, Plus, Download } from 'lucide-react';
+import { Bell, Menu } from 'lucide-react';
 import { ProfileDrawer } from './ProfileDrawer';
 import { EditProfileModal } from './EditProfileModal';
-import { AddReportModal } from './AddReportModal';
-import { ExportDropdown } from './ExportDropdown';
 import { NotificationDrawer, NotificationItem } from './NotificationDrawer';
 import { SearchBar } from './SearchBar';
 import { useToast } from '@/hooks/common';
@@ -46,9 +44,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
 
   // UI state
   const [isProfileOpen, setProfileOpen] = useState(false);
-  const [isReportOpen, setReportOpen] = useState(false);
   const [isEditProfileOpen, setEditProfileOpen] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([
     { id: '1', type: 'order', text: 'New Order #ORD-2025-006 created', time: '5 min ago', read: false },
@@ -71,15 +67,6 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
     window.location.href = href;
   };
 
-  const handleExportSelect = (fmt: 'PDF' | 'Excel' | 'CSV') => {
-    setExportOpen(false);
-    showToast(`Dashboard exported as ${fmt}!`, 'success');
-  };
-
-  const handleReportSuccess = () => {
-    showToast('Report successfully generated!', 'success');
-  };
-
   const handleMarkAllRead = () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   };
@@ -96,80 +83,61 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm">
-      <div className="flex items-center justify-between px-3 sm:px-4 md:px-5 lg:px-6 py-2.5 sm:py-3 md:py-3.5 lg:py-4 gap-2 sm:gap-3 md:gap-4">
-        {/* Search Bar */}
-        <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg relative">
-          <SearchBar data={searchData} onNavigate={handleNavigate} />
-          <button
-            onClick={onMenuClick}
-            className="lg:hidden absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-600 rounded-md hover:bg-slate-100 transition-colors"
-            aria-label="Toggle menu"
-          >
-            <Menu size={20} />
-          </button>
-        </div>
-
-        {/* Right Section */}
-        <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 lg:gap-4">
-          {/* Notification Bell */}
-          <button
-            className="relative p-1.5 sm:p-2 text-slate-600 hover:text-slate-800 transition-colors rounded-md hover:bg-slate-100"
-            onClick={() => setNotifOpen(true)}
-            aria-label="Open notifications"
-          >
-            <Bell size={18} className="sm:w-5 sm:h-5 md:w-6 md:h-6" />
-            {hasUnread && (
-              <span className="absolute top-0.5 right-0.5 sm:top-1 sm:right-1 h-2 w-2 bg-red-500 rounded-full ring-2 ring-white"></span>
-            )}
-          </button>
-
-          {/* User Info */}
-          <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3">
+    <header className="sticky top-0 z-40">
+      <div className="bg-white border border-[#E2E8F0] rounded-[24px] shadow-[0_1px_2px_rgba(15,23,42,0.06)] px-3 sm:px-4 md:px-5 lg:px-6 py-3 sm:py-3.5 md:py-4">
+        <div className="flex items-center justify-between gap-2 sm:gap-3 md:gap-4">
+          {/* Search Bar */}
+          <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg relative">
+            <SearchBar data={searchData} onNavigate={handleNavigate} />
             <button
-              onClick={() => setProfileOpen(true)}
-              className="relative group"
-              aria-label="View Profile"
+              onClick={onMenuClick}
+              className="lg:hidden absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-[#64748B] hover:text-[#0F172A] rounded-md hover:bg-[#F7F7F7] transition-colors"
+              aria-label="Toggle menu"
             >
-              <img
-                src="https://i.pravatar.cc/40?img=67"
-                alt="User"
-                className="w-7 h-7 sm:w-8 sm:h-8 md:w-9 md:h-9 lg:w-10 lg:h-10 rounded-full border-2 border-transparent group-hover:border-blue-500 transition-colors cursor-pointer"
-              />
-              <div className="absolute inset-0 rounded-full bg-blue-500 opacity-0 group-hover:opacity-10 transition-opacity"></div>
+              <Menu size={20} />
             </button>
-            <div className="hidden sm:block">
-              <button
-                title="View Profile"
-                onClick={() => setProfileOpen(true)}
-                className="text-left group"
-              >
-                <p className="text-xs sm:text-sm font-medium text-slate-900 group-hover:text-blue-600 transition-colors truncate max-w-[120px] md:max-w-none">
-                  {displayFirstName} {displayLastName}
-                </p>
-                <p className="text-[10px] sm:text-xs text-slate-500 truncate max-w-[120px] md:max-w-none">{user?.email || 'Admin'}</p>
-              </button>
-            </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="hidden lg:flex items-center gap-2">
-            <button 
-              onClick={() => setReportOpen(true)}
-              className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 md:px-4 py-1.5 sm:py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full text-xs sm:text-sm font-medium transition-colors"
+          {/* Right Section */}
+          <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 lg:gap-4">
+            {/* Notification Bell */}
+            <button
+              className="relative p-2 text-[#64748B] hover:text-[#0F172A] transition-colors rounded-full hover:bg-[#F7F7F7]"
+              onClick={() => setNotifOpen(true)}
+              aria-label="Open notifications"
             >
-              <Plus size={14} className="sm:w-4 sm:h-4" />
-              <span className="hidden xl:inline">Add Report</span>
+              <Bell size={18} className="sm:w-5 sm:h-5 md:w-6 md:h-6" />
+              {hasUnread && (
+                <span className="absolute top-0.5 right-0.5 sm:top-1 sm:right-1 h-2 w-2 bg-red-500 rounded-full ring-2 ring-white"></span>
+              )}
             </button>
-            <div className="relative">
-              <button 
-                onClick={() => setExportOpen((v) => !v)}
-                className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 md:px-4 py-1.5 sm:py-2 border border-blue-600 text-blue-600 hover:bg-blue-50 rounded-full text-xs sm:text-sm font-medium transition-colors"
+
+            {/* User Info */}
+            <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3">
+              <button
+                onClick={() => setProfileOpen(true)}
+                className="relative group"
+                aria-label="View Profile"
               >
-                <Download size={14} className="sm:w-4 sm:h-4" />
-                <span className="hidden xl:inline">Export</span>
+                <img
+                  src="https://i.pravatar.cc/40?img=67"
+                  alt="User"
+                  className="w-7 h-7 sm:w-8 sm:h-8 md:w-9 md:h-9 lg:w-10 lg:h-10 rounded-full border-2 border-transparent group-hover:border-[#2F47FF] transition-colors cursor-pointer"
+                />
+                <div className="absolute inset-0 rounded-full bg-[#2F47FF] opacity-0 group-hover:opacity-10 transition-opacity"></div>
               </button>
-              <ExportDropdown open={exportOpen} onClose={() => setExportOpen(false)} onSelect={handleExportSelect} />
+              <div className="hidden sm:block">
+                <button
+                  title="View Profile"
+                  onClick={() => setProfileOpen(true)}
+                  className="text-left group"
+                >
+                  <p className="text-[10px] sm:text-xs text-[#64748B] leading-none mb-1">Hey, Welcome!</p>
+                  <p className="text-xs sm:text-sm font-semibold text-[#0F172A] group-hover:text-[#2F47FF] transition-colors truncate max-w-[140px] md:max-w-none">
+                    {displayFirstName} {displayLastName}
+                  </p>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -183,7 +151,6 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
         onEditProfile={() => setEditProfileOpen(true)}
         onLogout={handleLogout}
       />
-      <AddReportModal isOpen={isReportOpen} onClose={() => setReportOpen(false)} onSuccess={handleReportSuccess} />
       <NotificationDrawer isOpen={notifOpen} onClose={() => setNotifOpen(false)} items={notifications} onMarkAllRead={handleMarkAllRead} />
       <EditProfileModal
         isOpen={isEditProfileOpen}

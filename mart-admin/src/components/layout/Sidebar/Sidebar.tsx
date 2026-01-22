@@ -41,40 +41,58 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   return (
     <aside
-      className={`fixed left-0 top-0 h-screen w-64 bg-white border-r border-slate-200 flex flex-col z-50 transition-transform duration-300 ease-in-out ${
-        isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      className={`fixed left-0 top-0 h-screen w-[288px] z-50 transition-transform duration-300 ease-in-out px-3 sm:px-4 py-3 sm:py-4 lg:static lg:h-full lg:w-[288px] lg:translate-x-0 lg:px-0 lg:py-0 ${
+        isOpen ? 'translate-x-0' : '-translate-x-full'
       }`}
       aria-label="Main navigation"
     >
-      <div className="p-4 sm:p-5 lg:p-6 border-b border-slate-200 flex-shrink-0">
-        <h2 className="text-base sm:text-lg font-semibold text-slate-800">Laundry Mart</h2>
-      </div>
-      <nav className="flex-1 p-3 sm:p-4 overflow-y-auto">
-        <div className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2 sm:mb-3 px-3 sm:px-4">
-          MENU
+      <div className="h-full w-full rounded-[24px] bg-white border border-[#E2E8F0] shadow-[0_1px_2px_rgba(15,23,42,0.06)] overflow-hidden flex flex-col">
+        <div className="px-5 py-5 flex-shrink-0">
+          <div className="text-[11px] font-medium text-[#64748B] uppercase tracking-wider mb-4">
+            MENU
+          </div>
+          <div className="flex flex-col gap-1">
+            {sidebarConfig.map((item) => (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                onClick={() => {
+                  if (window.innerWidth < 1024) {
+                    onClose();
+                  }
+                }}
+                className={({ isActive }) =>
+                  `relative flex items-center gap-3 px-4 py-3 rounded-[16px] transition-colors ${
+                    isActive
+                      ? 'bg-[#EEF2FF] text-[#2F47FF]'
+                      : 'text-[#64748B] hover:bg-white/70'
+                  }`
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    {isActive && (
+                      <span
+                        aria-hidden="true"
+                        className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-1.5 rounded-full bg-[#2F47FF]"
+                      />
+                    )}
+                    <span
+                      className={`flex-shrink-0 ${
+                        isActive ? 'text-[#2F47FF]' : 'text-[#94A3B8]'
+                      }`}
+                    >
+                      {item.icon}
+                    </span>
+                    <span className="text-sm font-medium truncate">{item.label}</span>
+                  </>
+                )}
+              </NavLink>
+            ))}
+          </div>
         </div>
-        {sidebarConfig.map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            onClick={() => {
-              if (window.innerWidth < 1024) {
-                onClose();
-              }
-            }}
-            className={({ isActive }) =>
-              `flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-3 rounded-lg sm:rounded-xl mb-1 transition-colors ${
-                isActive
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-slate-600 hover:bg-slate-100'
-              }`
-            }
-          >
-            <span className="flex-shrink-0">{item.icon}</span>
-            <span className="text-xs sm:text-sm font-medium truncate">{item.label}</span>
-          </NavLink>
-        ))}
-      </nav>
+        <div className="flex-1" />
+      </div>
     </aside>
   );
 };

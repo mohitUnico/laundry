@@ -14,11 +14,14 @@ export const AlertCard: React.FC<AlertCardProps> = ({
   ctaText = 'View Details',
   onCta,
 }) => {
+  const isUrgent = title.toLowerCase().includes('late') || title.toLowerCase().includes('urgent');
   return (
-    <div className="bg-blue-600 rounded-2xl p-4 sm:p-6 text-white relative overflow-hidden min-h-[200px]">
+    <div className="bg-[#2F47FF] rounded-[24px] p-4 sm:p-6 text-white relative overflow-hidden min-h-[200px] shadow-[0_10px_30px_rgba(47,71,255,0.18)]">
       <div className="absolute top-3 right-3 sm:top-4 sm:right-4">
-        <div className="bg-blue-800 rounded-full px-2 sm:px-3 py-1 text-[10px] sm:text-xs font-medium text-white">
-          {title.toLowerCase().includes('late') || title.toLowerCase().includes('urgent') ? 'Urgent' : 'Info'}
+        <div className={`rounded-full px-2 sm:px-3 py-1 text-[10px] sm:text-xs font-medium ${
+          isUrgent ? 'bg-white/20 text-white' : 'bg-white/20 text-white'
+        }`}>
+          {isUrgent ? 'Urgent' : 'Info'}
         </div>
       </div>
       <div className="absolute top-3 left-3 sm:top-4 sm:left-4 w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-white/20 flex items-center justify-center">
@@ -30,7 +33,7 @@ export const AlertCard: React.FC<AlertCardProps> = ({
         {onCta ? (
           <button
             onClick={onCta}
-            className="bg-blue-800 hover:bg-blue-900 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-medium transition-colors"
+            className="bg-white hover:bg-white/90 text-[#2F47FF] px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition-colors"
           >
             {ctaText}
           </button>

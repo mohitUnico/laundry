@@ -93,26 +93,34 @@ model CustomerAddress {
 
 // Delivery Partner/Staff
 model DeliveryStaff {
-  staff_id             String             @id @default(uuid())
-  full_name            String             @db.VarChar(255)
-  phone                String?            @db.VarChar(20)
-  email                String             @unique @db.VarChar(255)
-  password             String?            @db.VarChar(255)
-  vehicle_type         String             @db.VarChar(50)
-  vehicle_number       String             @db.VarChar(50)
-  license_number       String             @db.VarChar(50)
-  id_proof_type        String?            @db.VarChar(50) // Aadhaar, etc.
-  id_proof_url         String?            @db.VarChar(500)
-  document_url         String?            @db.VarChar(500)
-  bank_account_details Json?
-  verification_status  VerificationStatus @default(pending)
-  is_verified_by_admin Boolean            @default(false)
-  is_active            Boolean            @default(true)
-  average_rating       Decimal?           @db.Decimal(3, 2)
-  total_deliveries     Int                @default(0)
-  created_at           DateTime           @default(now())
-  updated_at           DateTime           @updatedAt
-  deliveries           Delivery[]
+  staff_id                     String                        @id @default(uuid())
+  full_name                    String                        @db.VarChar(255)
+  phone                        String?                       @db.VarChar(20)
+  email                        String                        @unique @db.VarChar(255)
+  // Delivery partner current address & location (captured during registration)
+  address                      String?                       @db.VarChar(500)
+  current_latitude             Decimal?                      @db.Decimal(10, 8)
+  current_longitude            Decimal?                      @db.Decimal(11, 8)
+  vehicle_type                 String                        @db.VarChar(50)
+  vehicle_number               String                        @db.VarChar(50)
+  profile_image_url            String?                       @db.VarChar(500) // Partner profile/selfie image URL
+  id_proof_type                String?                       @db.VarChar(50) // Aadhaar, etc.
+  id_proof_url                 String?                       @db.VarChar(500)
+  driving_license_url          String?                       @db.VarChar(500) // Driving license file URL
+  bank_account_details         Json?
+  verification_status          VerificationStatus            @default(pending)
+  is_verified_by_admin         Boolean                       @default(false)
+  is_active                    Boolean                       @default(true)
+  average_rating               Decimal?                      @db.Decimal(3, 2)
+  total_deliveries             Int                           @default(0)
+  created_at                   DateTime                      @default(now())
+  updated_at                   DateTime                      @updatedAt
+  deliveries                   Delivery[]
+  deliveryStaffShifts          DeliveryStaffShift[]
+  deliveryStaffLocations       DeliveryStaffLocation[]
+  deliveryAssignmentRequests   DeliveryAssignmentRequest[]
+  deliveryStaffNotifications   DeliveryStaffNotification[]
+  deliveryAssignmentRecipients DeliveryAssignmentRecipient[]
 
   @@index([verification_status])
   @@index([is_verified_by_admin])
@@ -300,6 +308,11 @@ model Order {
   delivery_address_id                   String
   pickup_date                           DateTime?
   delivery_date                         DateTime?
+  // Preferred time windows (optional; used for scheduling pickup/drop)
+  pickup_time_from                      DateTime?
+  pickup_time_to                        DateTime?
+  delivery_time_from                    DateTime?
+  delivery_time_to                      DateTime?
   special_instructions                  String?
   customer_rating                       Decimal?        @db.Decimal(3, 2)
   customer_review                       String?
@@ -314,7 +327,7 @@ model Order {
   created_at                            DateTime        @default(now())
   updated_at                            DateTime        @updatedAt
   bill                                  Bill?
-  delivery                              Delivery?
+  deliveries                            Delivery[]
   order_items                           OrderItem[]
   cart                                  Cart?           @relation(fields: [cart_id], references: [cart_id])
   customer                              Customer        @relation(fields: [customer_id], references: [customer_id])
@@ -328,7 +341,8 @@ model Order {
   dispatched_by_manager Staff? @relation("DispatchedByStaff", fields: [dispatched_by_distribution_manager_id], references: [staff_id])
 
   // Service queue items for this order
-  service_queue_items ServiceQueueItem[]
+  service_queue_items        ServiceQueueItem[]
+  deliveryAssignmentRequests DeliveryAssignmentRequest[]
 
   @@index([customer_id])
   @@index([order_status])
@@ -495,30 +509,32 @@ enum PaymentStatus {
 // ==================== DELIVERY MANAGEMENT ====================
 
 model Delivery {
-  delivery_id          String             @id @default(uuid())
-  order_id             String             @unique
-  staff_id             String
+  delivery_id          String                      @id @default(uuid())
+  order_id             String
+  staff_id             String?
   delivery_type        DeliveryType // pickup or drop
-  delivery_status      String             @db.VarChar(50)
-  assigned_at          DateTime           @default(now())
+  delivery_status      String                      @db.VarChar(50)
+  assigned_at          DateTime                    @default(now())
   completed_at         DateTime?
-  delivery_rating      Decimal?           @db.Decimal(3, 2)
+  delivery_rating      Decimal?                    @db.Decimal(3, 2)
   delivery_review      String?
-  delivery_fee         Decimal            @db.Decimal(10, 2)
-  distance_km          Decimal?           @db.Decimal(10, 2)
+  delivery_fee         Decimal                     @db.Decimal(10, 2)
+  distance_km          Decimal?                    @db.Decimal(10, 2)
   estimated_duration   Int?
   actual_duration      Int?
-  needs_weight_machine Boolean            @default(false) // If order has per_kg items
-  created_at           DateTime           @default(now())
-  updated_at           DateTime           @updatedAt
-  order                Order              @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
-  staff                DeliveryStaff      @relation(fields: [staff_id], references: [staff_id])
+  needs_weight_machine Boolean                     @default(false) // If order has per_kg items
+  created_at           DateTime                    @default(now())
+  updated_at           DateTime                    @updatedAt
+  order                Order                       @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
+  staff                DeliveryStaff?              @relation(fields: [staff_id], references: [staff_id])
   drop                 DropForDelivery?
   pickup               PickupForDelivery?
+  assignment_requests  DeliveryAssignmentRequest[]
 
   @@index([staff_id])
   @@index([delivery_status])
   @@index([delivery_type])
+  @@index([order_id])
   @@map("delivery")
 }
 
@@ -528,37 +544,165 @@ enum DeliveryType {
 }
 
 model PickupForDelivery {
-  pickup_id      String    @id @default(uuid())
-  delivery_id    String    @unique
-  pickup_address String
-  pickup_lat     Decimal   @db.Decimal(10, 8)
-  pickup_lng     Decimal   @db.Decimal(11, 8)
-  pickup_status  String    @db.VarChar(50)
-  pickup_time    DateTime?
-  pickup_proof   String?   @db.VarChar(500) // Photo proof URL
-  created_at     DateTime  @default(now())
-  updated_at     DateTime  @updatedAt
-  delivery       Delivery  @relation(fields: [delivery_id], references: [delivery_id], onDelete: Cascade)
+  pickup_id             String    @id @default(uuid())
+  delivery_id           String    @unique
+  pickup_address        String
+  pickup_lat            Decimal   @db.Decimal(10, 8)
+  pickup_lng            Decimal   @db.Decimal(11, 8)
+  pickup_status         String    @db.VarChar(50)
+  // Customer preferred pickup window (optional)
+  preferred_pickup_from DateTime?
+  preferred_pickup_to   DateTime?
+  pickup_time           DateTime?
+  pickup_proof          String?   @db.VarChar(500) // Photo proof URL
+  created_at            DateTime  @default(now())
+  updated_at            DateTime  @updatedAt
+  delivery              Delivery  @relation(fields: [delivery_id], references: [delivery_id], onDelete: Cascade)
 
   @@index([pickup_status])
   @@map("pickup_for_delivery")
 }
 
 model DropForDelivery {
-  drop_id      String    @id @default(uuid())
-  delivery_id  String    @unique
-  drop_address String
-  drop_lat     Decimal   @db.Decimal(10, 8)
-  drop_lng     Decimal   @db.Decimal(11, 8)
-  drop_status  String    @db.VarChar(50)
-  drop_time    DateTime?
-  drop_proof   String?   @db.VarChar(500) // Photo proof URL
-  created_at   DateTime  @default(now())
-  updated_at   DateTime  @updatedAt
-  delivery     Delivery  @relation(fields: [delivery_id], references: [delivery_id], onDelete: Cascade)
+  drop_id             String    @id @default(uuid())
+  delivery_id         String    @unique
+  drop_address        String
+  drop_lat            Decimal   @db.Decimal(10, 8)
+  drop_lng            Decimal   @db.Decimal(11, 8)
+  drop_status         String    @db.VarChar(50)
+  // Customer preferred delivery window (optional)
+  preferred_drop_from DateTime?
+  preferred_drop_to   DateTime?
+  drop_time           DateTime?
+  drop_proof          String?   @db.VarChar(500) // Photo proof URL
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+  delivery            Delivery  @relation(fields: [delivery_id], references: [delivery_id], onDelete: Cascade)
 
   @@index([drop_status])
   @@map("drop_for_delivery")
+}
+
+// ==================== DELIVERY OPS (SHIFT, LIVE LOCATION, ASSIGNMENT REQUESTS) ====================
+
+model DeliveryStaffShift {
+  shift_id         String                  @id @default(uuid())
+  staff_id         String
+  started_at       DateTime                @default(now())
+  ended_at         DateTime?
+  is_active        Boolean                 @default(true)
+  last_latitude    Decimal?                @db.Decimal(10, 8)
+  last_longitude   Decimal?                @db.Decimal(11, 8)
+  last_location_at DateTime?
+  created_at       DateTime                @default(now())
+  updated_at       DateTime                @updatedAt
+  staff            DeliveryStaff           @relation(fields: [staff_id], references: [staff_id], onDelete: Cascade)
+  locations        DeliveryStaffLocation[]
+
+  @@index([staff_id])
+  @@index([is_active])
+  @@map("delivery_staff_shifts")
+}
+
+model DeliveryStaffLocation {
+  location_id String              @id @default(uuid())
+  staff_id    String
+  shift_id    String?
+  latitude    Decimal             @db.Decimal(10, 8)
+  longitude   Decimal             @db.Decimal(11, 8)
+  recorded_at DateTime            @default(now())
+  staff       DeliveryStaff       @relation(fields: [staff_id], references: [staff_id], onDelete: Cascade)
+  shift       DeliveryStaffShift? @relation(fields: [shift_id], references: [shift_id], onDelete: SetNull)
+
+  @@index([staff_id, recorded_at])
+  @@index([shift_id])
+  @@map("delivery_staff_locations")
+}
+
+enum DeliveryAssignmentStatus {
+  pending
+  accepted
+  rejected
+  expired
+  cancelled
+}
+
+enum DeliveryAssignmentRecipientStatus {
+  pending
+  accepted
+  rejected
+  expired
+  cancelled
+}
+
+model DeliveryAssignmentRequest {
+  request_id     String                   @id @default(uuid())
+  order_id       String
+  delivery_id    String
+  staff_id       String?
+  delivery_type  DeliveryType
+  status         DeliveryAssignmentStatus @default(pending)
+  offered_at     DateTime                 @default(now())
+  responded_at   DateTime?
+  expires_at     DateTime
+  pickup_address String
+  pickup_lat     Decimal                  @db.Decimal(10, 8)
+  pickup_lng     Decimal                  @db.Decimal(11, 8)
+  drop_address   String
+  drop_lat       Decimal                  @db.Decimal(10, 8)
+  drop_lng       Decimal                  @db.Decimal(11, 8)
+  rejection_note String?
+  created_at     DateTime                 @default(now())
+  updated_at     DateTime                 @updatedAt
+
+  order      Order                         @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
+  delivery   Delivery                      @relation(fields: [delivery_id], references: [delivery_id], onDelete: Cascade)
+  staff      DeliveryStaff?                @relation(fields: [staff_id], references: [staff_id], onDelete: SetNull)
+  recipients DeliveryAssignmentRecipient[]
+
+  @@index([order_id])
+  @@index([delivery_id])
+  @@index([staff_id])
+  @@index([status])
+  @@index([delivery_type])
+  @@index([expires_at])
+  @@map("delivery_assignment_requests")
+}
+
+model DeliveryAssignmentRecipient {
+  recipient_id   String                            @id @default(uuid())
+  request_id     String
+  staff_id       String
+  status         DeliveryAssignmentRecipientStatus @default(pending)
+  responded_at   DateTime?
+  rejection_note String?
+  created_at     DateTime                          @default(now())
+  updated_at     DateTime                          @updatedAt
+
+  request DeliveryAssignmentRequest @relation(fields: [request_id], references: [request_id], onDelete: Cascade)
+  staff   DeliveryStaff             @relation(fields: [staff_id], references: [staff_id], onDelete: Cascade)
+
+  @@unique([request_id, staff_id])
+  @@index([staff_id, status])
+  @@index([request_id, status])
+  @@map("delivery_assignment_recipients")
+}
+
+model DeliveryStaffNotification {
+  notification_id String   @id @default(uuid())
+  staff_id        String
+  type            String   @db.VarChar(50)
+  title           String   @db.VarChar(255)
+  body            String?
+  payload         Json?
+  is_read         Boolean  @default(false)
+  created_at      DateTime @default(now())
+
+  staff DeliveryStaff @relation(fields: [staff_id], references: [staff_id], onDelete: Cascade)
+
+  @@index([staff_id, created_at])
+  @@index([is_read])
+  @@map("delivery_staff_notifications")
 }
 
 // ==================== ANALYTICS ====================

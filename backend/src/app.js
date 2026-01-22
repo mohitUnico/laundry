@@ -63,20 +63,32 @@ const limiter = rateLimit({
 app.use('/api', limiter);
 
 // Body parsing middleware - optimize for faster parsing
-app.use(express.json({ 
+app.use(express.json({
     limit: '10mb',
     // Reduce JSON parsing overhead
     strict: false,
 }));
-app.use(express.urlencoded({ 
-    extended: true, 
+app.use(express.urlencoded({
+    extended: true,
     limit: '10mb',
     // Optimize parameter parsing
     parameterLimit: 1000,
 }));
 
 // Compression middleware
-app.use(compression());
+// IMPORTANT: Disable compression for SSE endpoints, otherwise event-stream output can get buffered
+// and clients (especially Postman) won't receive events in real-time.
+app.use(
+    compression({
+        filter: (req, res) => {
+            const url = req.originalUrl || req.url || '';
+            if (url.includes('/api/v1/delivery-staff/events')) {
+                return false;
+            }
+            return compression.filter(req, res);
+        },
+    })
+);
 
 // Request logging
 app.use(requestLogger);

@@ -9,7 +9,11 @@ const clothesRoutes = require('./clothes.routes');
 const customerInfoRoutes = require('./customer-info.routes');
 const adminOrderManagementRoutes = require('./admin-order-management.routes');
 const adminCustomerManagementRoutes = require('./admin-customer-management.routes');
+const adminDeliveryStaffManagementRoutes = require('./admin-delivery-staff-management.routes');
+const adminDeliveryOperationsRoutes = require('./delivery-operations.routes');
 const paymentRoutes = require('./payment.routes');
+const deliveryStaffOperationsRoutes = require('./delivery-staff-operations.routes');
+const deliveryStaffAppRoutes = require('./delivery-staff-app.routes');
 
 const router = express.Router();
 
@@ -76,7 +80,11 @@ router.use('/clothes', clothesRoutes);
 router.use('/customer-info', customerInfoRoutes);
 router.use('/admin/orders', adminOrderManagementRoutes);
 router.use('/admin/customers', adminCustomerManagementRoutes);
+router.use('/admin/delivery-staff', adminDeliveryStaffManagementRoutes);
+router.use('/admin/delivery-ops', adminDeliveryOperationsRoutes);
 router.use('/payments', paymentRoutes);
+router.use('/delivery-staff', deliveryStaffOperationsRoutes);
+router.use('/delivery-staff-app', deliveryStaffAppRoutes);
 
 module.exports = router;
 

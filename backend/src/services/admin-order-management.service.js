@@ -140,7 +140,15 @@ const getAdminOrdersRaw = async ({ statusList, from, to, skip, take }) => {
         JOIN customers c ON c.customer_id = o.customer_id
         LEFT JOIN customer_addresses a ON a.address_id = o.delivery_address_id
         LEFT JOIN bills b ON b.order_id = o.order_id
-        LEFT JOIN delivery d ON d.order_id = o.order_id
+        -- If there are multiple deliveries per order (pickup + drop or reassignments),
+        -- pick the latest assignment to keep admin list behavior stable.
+        LEFT JOIN LATERAL (
+            SELECT *
+            FROM delivery d0
+            WHERE d0.order_id = o.order_id
+            ORDER BY d0.assigned_at DESC
+            LIMIT 1
+        ) d ON TRUE
         LEFT JOIN delivery_staffs ds ON ds.staff_id = d.staff_id
         LEFT JOIN order_items oi ON oi.order_id = o.order_id
         LEFT JOIN clothes_items ci ON ci.cloth_id = oi.clothes_id
@@ -210,34 +218,62 @@ const getAdminOrdersRaw = async ({ statusList, from, to, skip, take }) => {
 };
 
 const fetchOrdersWithFallback = async ({ where, skip, take }) => {
-    // First attempt: include richer relations (may fail if DB schema is behind)
-    try {
-        return await prisma.order.findMany({
-            where,
-            orderBy: { created_at: 'desc' },
-            skip,
-            take,
+    const isUnknownSelectFieldError = (err, fieldName) => {
+        const msg = err?.message || '';
+        // PrismaClientValidationError string varies a bit by version; this is stable.
+        return msg.includes(`Unknown field \`${fieldName}\``);
+    };
+
+    const buildDeliverySelect = ({ relationName, isMany }) => {
+        const base = {
             select: {
-                order_id: true,
-                order_status: true,
-                total_amount: true,
-                created_at: true,
-                delivery_date: true,
-                customer: {
+                delivery_id: true,
+                delivery_status: true,
+                estimated_duration: true,
+                staff: {
                     select: {
-                        customer_id: true,
+                        staff_id: true,
                         full_name: true,
+                        phone: true,
                     },
                 },
-                delivery_address: {
-                    select: {
-                        address_id: true,
-                        address_label: true,
-                        full_address: true,
-                        latitude: true,
-                        longitude: true,
-                    },
-                },
+            },
+        };
+
+        if (!isMany) return { [relationName]: base };
+
+        return {
+            [relationName]: {
+                orderBy: { assigned_at: 'desc' },
+                take: 1,
+                ...base,
+            },
+        };
+    };
+
+    const buildBaseSelect = ({ includeOrderItems, includeServiceQueueItems, relationName, isMany }) => ({
+        order_id: true,
+        order_status: true,
+        total_amount: true,
+        created_at: true,
+        delivery_date: true,
+        customer: {
+            select: {
+                customer_id: true,
+                full_name: true,
+            },
+        },
+        delivery_address: {
+            select: {
+                address_id: true,
+                address_label: true,
+                full_address: true,
+                latitude: true,
+                longitude: true,
+            },
+        },
+        ...(includeOrderItems
+            ? {
                 // For both per_unit and per_kg orders, services can be derived via service relation
                 order_items: {
                     select: {
@@ -250,6 +286,10 @@ const fetchOrdersWithFallback = async ({ where, skip, take }) => {
                         pricing_type: true, // To identify per_unit vs per_kg
                     },
                 },
+            }
+            : {}),
+        ...(includeServiceQueueItems
+            ? {
                 service_queue_items: {
                     select: {
                         service: {
@@ -260,160 +300,90 @@ const fetchOrdersWithFallback = async ({ where, skip, take }) => {
                         },
                     },
                 },
-                bill: {
-                    select: {
-                        final_amount: true,
-                        payment_status: true,
-                    },
-                },
-                delivery: {
-                    select: {
-                        delivery_id: true,
-                        delivery_status: true,
-                        estimated_duration: true,
-                        staff: {
-                            select: {
-                                staff_id: true,
-                                full_name: true,
-                                phone: true,
-                            },
-                        },
-                    },
-                },
-            },
-        });
-    } catch (error) {
-        let err = error;
-
-        // Tier 2: If the DB is missing optional tables, retry without them.
-        if (err?.code === 'P2021') {
-            logger.warn('Admin orders query fallback due to missing table', { message: err.message });
-
-            try {
-                return await prisma.order.findMany({
-                    where,
-                    orderBy: { created_at: 'desc' },
-                    skip,
-                    take,
-                    select: {
-                        order_id: true,
-                        order_status: true,
-                        total_amount: true,
-                        created_at: true,
-                        delivery_date: true,
-                        customer: {
-                            select: {
-                                customer_id: true,
-                                full_name: true,
-                            },
-                        },
-                        delivery_address: {
-                            select: {
-                                address_id: true,
-                                address_label: true,
-                                full_address: true,
-                                latitude: true,
-                                longitude: true,
-                            },
-                        },
-                        // Get services from order_items (works for both per_unit and per_kg)
-                        order_items: {
-                            select: {
-                                service: {
-                                    select: {
-                                        service_id: true,
-                                        service_name: true,
-                                    },
-                                },
-                                pricing_type: true,
-                            },
-                        },
-                        bill: {
-                            select: {
-                                final_amount: true,
-                                payment_status: true,
-                            },
-                        },
-                        delivery: {
-                            select: {
-                                delivery_id: true,
-                                delivery_status: true,
-                                estimated_duration: true,
-                                staff: {
-                                    select: {
-                                        staff_id: true,
-                                        full_name: true,
-                                        phone: true,
-                                    },
-                                },
-                            },
-                        },
-                    },
-                });
-            } catch (innerError) {
-                err = innerError;
             }
-        }
+            : {}),
+        bill: {
+            select: {
+                final_amount: true,
+                payment_status: true,
+            },
+        },
+        ...buildDeliverySelect({ relationName, isMany }),
+    });
 
-        // Tier 3: P2032 indicates DB contains NULL in a non-nullable Prisma field.
-        // Retry without selecting relations that can trigger that conversion (e.g., order_items).
-        if (err?.code === 'P2032') {
-            logger.warn('Admin orders query fallback due to type conversion error', {
-                message: err.message,
+    const queryWithTier = async ({ includeOrderItems, includeServiceQueueItems, relationName, isMany }) => {
+        return await prisma.order.findMany({
+            where,
+            orderBy: { created_at: 'desc' },
+            skip,
+            take,
+            select: buildBaseSelect({ includeOrderItems, includeServiceQueueItems, relationName, isMany }),
+        });
+    };
+
+    // The codebase has evolved between:
+    // - Order.deliveries (newer, 1:N)
+    // - Order.delivery (older, 1:1)
+    // We try both to be backward compatible with older deployments.
+    const deliveryRelationCandidates = [
+        { relationName: 'deliveries', isMany: true },
+        { relationName: 'delivery', isMany: false },
+    ];
+
+    let lastErr;
+
+    for (const candidate of deliveryRelationCandidates) {
+        try {
+            // Tier 1: include richer relations
+            return await queryWithTier({
+                includeOrderItems: true,
+                includeServiceQueueItems: true,
+                ...candidate,
             });
+        } catch (error) {
+            lastErr = error;
 
-            return await prisma.order.findMany({
-                where,
-                orderBy: { created_at: 'desc' },
-                skip,
-                take,
-                select: {
-                    order_id: true,
-                    order_status: true,
-                    total_amount: true,
-                    created_at: true,
-                    delivery_date: true,
-                    customer: {
-                        select: {
-                            customer_id: true,
-                            full_name: true,
-                        },
-                    },
-                    delivery_address: {
-                        select: {
-                            address_id: true,
-                            address_label: true,
-                            full_address: true,
-                            latitude: true,
-                            longitude: true,
-                        },
-                    },
-                    bill: {
-                        select: {
-                            final_amount: true,
-                            payment_status: true,
-                        },
-                    },
-                    delivery: {
-                        select: {
-                            delivery_id: true,
-                            delivery_status: true,
-                            estimated_duration: true,
-                            staff: {
-                                select: {
-                                    staff_id: true,
-                                    full_name: true,
-                                    phone: true,
-                                },
-                            },
-                        },
-                    },
-                },
-            });
+            // If the selected delivery relation doesn't exist in this Prisma client, try the next one.
+            if (isUnknownSelectFieldError(error, candidate.relationName)) {
+                continue;
+            }
+
+            let err = error;
+
+            // Tier 2: If the DB is missing optional tables, retry without them.
+            if (err?.code === 'P2021') {
+                logger.warn('Admin orders query fallback due to missing table', { message: err.message });
+
+                try {
+                    return await queryWithTier({
+                        includeOrderItems: true,
+                        includeServiceQueueItems: false,
+                        ...candidate,
+                    });
+                } catch (innerError) {
+                    err = innerError;
+                }
+            }
+
+            // Tier 3: P2032 indicates DB contains NULL in a non-nullable Prisma field.
+            // Retry without selecting relations that can trigger that conversion (e.g., order_items).
+            if (err?.code === 'P2032') {
+                logger.warn('Admin orders query fallback due to type conversion error', {
+                    message: err.message,
+                });
+
+                return await queryWithTier({
+                    includeOrderItems: false,
+                    includeServiceQueueItems: false,
+                    ...candidate,
+                });
+            }
+
+            throw err;
         }
-
-        throw err;
     }
+
+    throw lastErr;
 };
 
 exports.getAdminOrderSummary = async ({ from, to, completedDate } = {}) => {
@@ -530,6 +500,8 @@ exports.getAdminOrders = async (query = {}) => {
         ];
         const services = Array.from(new Set(serviceNames));
 
+        const latestDelivery = Array.isArray(o.deliveries) ? o.deliveries?.[0] : o.delivery;
+
         return {
             order_number: o.order_id,
             customer: {
@@ -548,16 +520,16 @@ exports.getAdminOrders = async (query = {}) => {
             services,
             amount: (o.bill?.final_amount ?? o.total_amount)?.toString?.() ?? o.total_amount,
             status: o.order_status,
-            delivery_boy: o.delivery?.staff
+            delivery_boy: latestDelivery?.staff
                 ? {
-                    staff_id: o.delivery.staff.staff_id,
-                    name: o.delivery.staff.full_name,
-                    phone: o.delivery.staff.phone || null,
+                    staff_id: latestDelivery.staff.staff_id,
+                    name: latestDelivery.staff.full_name,
+                    phone: latestDelivery.staff.phone || null,
                 }
                 : null,
             estimated_delivery_time: {
                 delivery_date: o.delivery_date ? o.delivery_date.toISOString() : null,
-                estimated_duration_minutes: o.delivery?.estimated_duration ?? null,
+                estimated_duration_minutes: latestDelivery?.estimated_duration ?? null,
             },
             actions: {
                 can_view: true,

@@ -25,12 +25,17 @@ class RealtimeService {
         const set = this._getOrCreateSet(staffId);
         set.add(res);
 
+        // Avoid timeouts for long-lived SSE connections
+        res.setTimeout?.(0);
+        res.socket?.setTimeout?.(0);
+
         res.writeHead(200, {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache, no-transform',
             Connection: 'keep-alive',
             'X-Accel-Buffering': 'no',
         });
+        res.flushHeaders?.();
 
         // initial event
         this._write(res, 'connected', { staffId: String(staffId) });
@@ -58,6 +63,8 @@ class RealtimeService {
         try {
             res.write(`event: ${event}\n`);
             res.write(`data: ${JSON.stringify(payload ?? {})}\n\n`);
+            // If compression/proxy middleware is present, flush helps deliver chunks immediately.
+            res.flush?.();
         } catch (error) {
             // ignore individual stream failures
         }

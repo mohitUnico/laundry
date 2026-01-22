@@ -233,6 +233,13 @@ exports.searchNearbyDeliveryStaff = async ({ latitude, longitude, radiusKm = 5, 
           AND ds.is_verified_by_admin = TRUE
           AND ds.current_latitude IS NOT NULL
           AND ds.current_longitude IS NOT NULL
+          AND EXISTS (
+              SELECT 1
+              FROM delivery_staff_shifts s
+              WHERE s.staff_id = ds.staff_id
+                AND s.is_active = TRUE
+                AND s.ended_at IS NULL
+          )
           AND (
               6371::float8 * 2::float8 * asin(
                   sqrt(

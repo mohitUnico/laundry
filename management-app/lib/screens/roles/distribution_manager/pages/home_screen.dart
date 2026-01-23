@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../../../../theme/app_colors.dart';
 import '../../../../theme/app_text_styles.dart';
 import '../../../../routes/app_routes.dart';
+import '../../../../utils/auth_storage.dart';
 import '../../../../utils/role_manager.dart';
+import '../../../../services/distribution_manager_orders_service.dart';
 import 'delivery_partners_screen.dart';
 import 'history_screen.dart';
 
@@ -16,6 +18,227 @@ class DistributionManagerHomeScreen extends StatefulWidget {
 
 class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeScreen> {
   int _selectedTabIndex = 0; // 0: Home, 1: Dispatch
+
+  final DistributionManagerOrdersService _ordersService = DistributionManagerOrdersService();
+
+  Future<List<_DmOrderUi>> _readyFuture = Future.value(const <_DmOrderUi>[]);
+  Future<List<_DmOrderUi>> _verifiedFuture = Future.value(const <_DmOrderUi>[]);
+  Future<Map<String, dynamic>?> _userFuture = AuthStorage.getCurrentUser();
+
+  @override
+  void initState() {
+    super.initState();
+    _readyFuture = _fetchReadyToVerify(page: 1, limit: 20);
+    _verifiedFuture = _fetchVerified(page: 1, limit: 20);
+    _userFuture = AuthStorage.getCurrentUser();
+  }
+
+  Future<void> _refreshReady() async {
+    setState(() {
+      _readyFuture = _fetchReadyToVerify(page: 1, limit: 20);
+      _userFuture = AuthStorage.getCurrentUser();
+    });
+    await _readyFuture;
+  }
+
+  Future<void> _refreshVerified() async {
+    setState(() {
+      _verifiedFuture = _fetchVerified(page: 1, limit: 20);
+      _userFuture = AuthStorage.getCurrentUser();
+    });
+    await _verifiedFuture;
+  }
+
+  Future<List<_DmOrderUi>> _fetchReadyToVerify({required int page, required int limit}) async {
+    final body = await _ordersService.listReadyToVerify(page: page, limit: limit);
+    final data = body['data'];
+    if (data is! List) throw Exception('Invalid response: missing data list');
+
+    final orders = data.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList()
+      ..sort((a, b) {
+        final adt = _parseDate(a['createdAt']);
+        final bdt = _parseDate(b['createdAt']);
+        if (adt == null && bdt == null) return 0;
+        if (adt == null) return 1;
+        if (bdt == null) return -1;
+        return bdt.compareTo(adt);
+      });
+
+    Future<_DmOrderUi> mapOne(Map<String, dynamic> o) async {
+      final orderId = (o['orderId'] ?? '').toString();
+      final createdAt = _parseDate(o['createdAt']);
+      final customer = o['customer'];
+      final customerName = (customer is Map ? customer['fullName'] : null)?.toString() ?? 'Customer';
+
+      final itemsMapped = await _safeFetchItems(orderId);
+
+      return _DmOrderUi(
+        backendOrderId: orderId,
+        orderIdDisplay: _formatOrderId(orderId),
+        customerName: customerName,
+        date: _formatDate(createdAt),
+        time: _formatTime(createdAt),
+        itemCount: itemsMapped.totalCount,
+        items: itemsMapped.items,
+        buttonText: 'Mark as Verified',
+        isVerifyButton: true,
+      );
+    }
+
+    return Future.wait(orders.map(mapOne));
+  }
+
+  Future<List<_DmOrderUi>> _fetchVerified({required int page, required int limit}) async {
+    final body = await _ordersService.listVerified(page: page, limit: limit);
+    final data = body['data'];
+    if (data is! List) throw Exception('Invalid response: missing data list');
+
+    final orders = data.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList()
+      ..sort((a, b) {
+        final adt = _parseDate(a['verifiedAt']) ?? _parseDate(a['createdAt']);
+        final bdt = _parseDate(b['verifiedAt']) ?? _parseDate(b['createdAt']);
+        if (adt == null && bdt == null) return 0;
+        if (adt == null) return 1;
+        if (bdt == null) return -1;
+        return bdt.compareTo(adt);
+      });
+
+    Future<_DmOrderUi> mapOne(Map<String, dynamic> o) async {
+      final orderId = (o['orderId'] ?? '').toString();
+      final createdAt = _parseDate(o['createdAt']);
+      final customer = o['customer'];
+      final customerName = (customer is Map ? customer['fullName'] : null)?.toString() ?? 'Customer';
+
+      final itemsMapped = await _safeFetchItems(orderId);
+
+      return _DmOrderUi(
+        backendOrderId: orderId,
+        orderIdDisplay: _formatOrderId(orderId),
+        customerName: customerName,
+        date: _formatDate(createdAt),
+        time: _formatTime(createdAt),
+        itemCount: itemsMapped.totalCount,
+        items: itemsMapped.items,
+        buttonText: 'Assign Delivery Partner',
+        isVerifyButton: false,
+      );
+    }
+
+    return Future.wait(orders.map(mapOne));
+  }
+
+  Future<_ItemsUiMapping> _safeFetchItems(String orderId) async {
+    if (orderId.isEmpty) return const _ItemsUiMapping(items: <_OrderItem>[], totalCount: 0);
+    try {
+      final body = await _ordersService.getOrderItems(orderId: orderId);
+      final data = body['data'];
+      return _mapItemsForUi(data);
+    } catch (_) {
+      return const _ItemsUiMapping(items: <_OrderItem>[], totalCount: 0);
+    }
+  }
+
+  Future<void> _verifyAndRefresh(String orderId) async {
+    try {
+      await _ordersService.verifyOrder(orderId: orderId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Order verified')),
+      );
+      // Refresh both lists so the order moves to dispatch tab.
+      await Future.wait([_refreshReady(), _refreshVerified()]);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', '').trim())),
+      );
+    }
+  }
+
+  static DateTime? _parseDate(Object? raw) {
+    if (raw is DateTime) return raw;
+    if (raw is String && raw.isNotEmpty) return DateTime.tryParse(raw);
+    return null;
+  }
+
+  static String _formatOrderId(String orderId) {
+    final normalized = orderId.replaceAll('-', '').toUpperCase();
+    if (normalized.length >= 6) return 'ORD${normalized.substring(0, 6)}';
+    if (normalized.isNotEmpty) return 'ORD$normalized';
+    return 'ORDER';
+  }
+
+  static String _formatDate(DateTime? dt) {
+    if (dt == null) return '--';
+    final dd = dt.day.toString().padLeft(2, '0');
+    final mm = dt.month.toString().padLeft(2, '0');
+    final yyyy = dt.year.toString();
+    return '$dd-$mm-$yyyy';
+  }
+
+  static String _formatTime(DateTime? dt) {
+    if (dt == null) return '--';
+    int hour = dt.hour;
+    final minute = dt.minute.toString().padLeft(2, '0');
+    final suffix = hour >= 12 ? 'PM' : 'AM';
+    hour = hour % 12;
+    if (hour == 0) hour = 12;
+    return '${hour.toString().padLeft(2, '0')}:$minute $suffix';
+  }
+
+  static _ItemsUiMapping _mapItemsForUi(Object? itemsData) {
+    final items = <_OrderItem>[];
+    final aggregated = <String, int>{};
+
+    if (itemsData is Map) {
+      final map = itemsData.cast<String, dynamic>();
+      final list = map['items'];
+      if (list is List) {
+        for (final rawItem in list) {
+          if (rawItem is! Map) continue;
+          final item = rawItem.cast<String, dynamic>();
+          final serviceName = (item['serviceName'] ?? '').toString().trim();
+          final categoryName = (item['categoryName'] ?? '').toString().trim();
+          final key = _formatServiceKey(categoryName, serviceName);
+
+          int qty = 0;
+          final selections = item['selections'];
+          if (selections is List && selections.isNotEmpty) {
+            for (final rawSel in selections) {
+              if (rawSel is! Map) continue;
+              final sel = rawSel.cast<String, dynamic>();
+              final qtyNum = sel['quantity'];
+              final q = (qtyNum is num) ? qtyNum.toInt() : int.tryParse(qtyNum?.toString() ?? '') ?? 0;
+              if (q > 0) qty += q;
+            }
+          } else {
+            final qtyNum = item['quantity'];
+            qty = (qtyNum is num) ? qtyNum.toInt() : int.tryParse(qtyNum?.toString() ?? '') ?? 0;
+          }
+
+          if (key.isEmpty || qty <= 0) continue;
+          aggregated[key] = (aggregated[key] ?? 0) + qty;
+        }
+      }
+    }
+
+    final entries = aggregated.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    int total = 0;
+    for (final e in entries) {
+      total += e.value;
+      items.add(_OrderItem(name: e.key, quantity: e.value));
+    }
+
+    return _ItemsUiMapping(items: items, totalCount: total);
+  }
+
+  static String _formatServiceKey(String categoryName, String serviceName) {
+    final c = categoryName.trim();
+    final s = serviceName.trim();
+    if (c.isNotEmpty && s.isNotEmpty) return '$c • $s';
+    if (s.isNotEmpty) return s;
+    return c;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,54 +253,95 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
               child: Row(
                 children: [
                   // Profile Section
-                  Row(
-                    children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Colors.white,
-                            width: 2,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.06),
-                              blurRadius: 6,
-                              offset: const Offset(0, 3),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white,
+                              width: 2,
                             ),
-                          ],
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.06),
+                                blurRadius: 6,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: ClipOval(
+                            child: Image.asset(
+                              'assets/icons/profile_pic_demo.png',
+                              fit: BoxFit.cover,
+                            ),
+                          ),
                         ),
-                        child: ClipOval(
-                          child: Image.asset(
-                            'assets/icons/profile_pic_demo.png',
-                            fit: BoxFit.cover,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FutureBuilder<Map<String, dynamic>?>(
+                            future: _userFuture,
+                            builder: (context, snapshot) {
+                              final user = snapshot.data;
+                              final fullName = (user?['fullName'] ?? '').toString().trim();
+                              final firstName = fullName.isNotEmpty
+                                  ? fullName.split(RegExp(r'\s+')).first.trim()
+                                  : '';
+                              final userId = (user?['userId'] ?? '').toString().trim();
+
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    firstName.isNotEmpty ? 'Hi, $firstName' : 'Hi',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTextStyles.title(
+                                      color: AppColors.primary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Row(
+                                    children: [
+                                      Text(
+                                        'ID: ',
+                                        style: AppTextStyles.subtitle(
+                                          color: AppColors.textSecondary,
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: userId.isNotEmpty
+                                            ? SingleChildScrollView(
+                                                scrollDirection: Axis.horizontal,
+                                                child: Text(
+                                                  userId,
+                                                  maxLines: 1,
+                                                  softWrap: false,
+                                                  style: AppTextStyles.subtitle(
+                                                    color: AppColors.textSecondary,
+                                                  ),
+                                                ),
+                                              )
+                                            : Text(
+                                                '—',
+                                                style: AppTextStyles.subtitle(
+                                                  color: AppColors.textSecondary,
+                                                ),
+                                              ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              );
+                            },
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Hi, Demogorgon',
-                            style: AppTextStyles.title(
-                              color: AppColors.primary,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'ID: AB1234',
-                            style: AppTextStyles.subtitle(
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                  const Spacer(),
                   // History Icon
                   IconButton(
                     onPressed: () {
@@ -230,54 +494,66 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       children: [
-        _OrderCard(
-          orderId: 'ORD035',
-          customerName: 'Mike Wheelers',
-          date: '10-04-2025',
-          time: '10:16 AM',
-          itemCount: 12,
-          assignedTo: 'Eddie Munson',
-          buttonText: 'Mark as Verified',
-          items: const [
-            _OrderItem(name: 'Top Wear', quantity: 5),
-            _OrderItem(name: 'Bottom Wear', quantity: 5),
-            _OrderItem(name: 'Kurta', quantity: 2),
-          ],
+        FutureBuilder<List<_DmOrderUi>>(
+          future: _readyFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
+                ),
+              );
+            }
+
+            if (snapshot.hasError) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Center(
+                  child: Text(
+                    snapshot.error.toString().replaceFirst('Exception: ', ''),
+                    style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              );
+            }
+
+            final list = snapshot.data ?? const <_DmOrderUi>[];
+            if (list.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 18),
+                child: Center(
+                  child: Text(
+                    'No orders to verify',
+                    style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                  ),
+                ),
+              );
+            }
+
+            return Column(
+              children: [
+                for (final o in list) ...[
+                  _OrderCard(
+                    backendOrderId: o.backendOrderId,
+                    orderId: o.orderIdDisplay,
+                    customerName: o.customerName,
+                    date: o.date,
+                    time: o.time,
+                    itemCount: o.itemCount,
+                    assignedTo: '—',
+                    buttonText: o.buttonText,
+                    items: o.items,
+                    isVerifyButton: o.isVerifyButton,
+                    onVerify: _verifyAndRefresh,
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ],
+            );
+          },
         ),
-        const SizedBox(height: 12),
-        _OrderCard(
-          orderId: 'ORD033',
-          customerName: 'Jim Hopper',
-          date: '10-04-2025',
-          time: '09:15 AM',
-          itemCount: 15,
-          assignedTo: 'Robin Buckley',
-          buttonText: 'Mark as Verified',
-          items: const [
-            _OrderItem(name: 'Top Wear', quantity: 5),
-            _OrderItem(name: 'Bottom Wear', quantity: 6),
-            _OrderItem(name: 'Kurta', quantity: 2),
-            _OrderItem(name: 'Saree', quantity: 2),
-          ],
-        ),
-        const SizedBox(height: 12),
-        _OrderCard(
-          orderId: 'ORD035',
-          customerName: 'Joyce Byers',
-          date: '09-04-2025',
-          time: '04:20 PM',
-          itemCount: 21,
-          assignedTo: 'Jonathan Byers',
-          buttonText: 'Mark as Verified',
-          items: const [
-            _OrderItem(name: 'Top Wear', quantity: 5),
-            _OrderItem(name: 'Bottom Wear', quantity: 5),
-            _OrderItem(name: 'Kurta', quantity: 2),
-            _OrderItem(name: 'Saree', quantity: 3),
-          ],
-          isExpanded: true,
-        ),
-        const SizedBox(height: 12),
       ],
     );
   }
@@ -286,54 +562,66 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       children: [
-        _OrderCard(
-          orderId: 'ORD035',
-          customerName: 'Mike Wheelers',
-          date: '10-04-2025',
-          time: '10:16 AM',
-          itemCount: 12,
-          assignedTo: 'Eddie Munson',
-          buttonText: 'Assign Delivery Partner',
-          items: const [
-            _OrderItem(name: 'Top Wear', quantity: 5),
-            _OrderItem(name: 'Bottom Wear', quantity: 5),
-            _OrderItem(name: 'Kurta', quantity: 2),
-          ],
+        FutureBuilder<List<_DmOrderUi>>(
+          future: _verifiedFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
+                ),
+              );
+            }
+
+            if (snapshot.hasError) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Center(
+                  child: Text(
+                    snapshot.error.toString().replaceFirst('Exception: ', ''),
+                    style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              );
+            }
+
+            final list = snapshot.data ?? const <_DmOrderUi>[];
+            if (list.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 18),
+                child: Center(
+                  child: Text(
+                    'No verified orders',
+                    style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                  ),
+                ),
+              );
+            }
+
+            return Column(
+              children: [
+                for (final o in list) ...[
+                  _OrderCard(
+                    backendOrderId: o.backendOrderId,
+                    orderId: o.orderIdDisplay,
+                    customerName: o.customerName,
+                    date: o.date,
+                    time: o.time,
+                    itemCount: o.itemCount,
+                    assignedTo: '—',
+                    buttonText: o.buttonText,
+                    items: o.items,
+                    isVerifyButton: o.isVerifyButton,
+                    onVerify: _verifyAndRefresh,
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ],
+            );
+          },
         ),
-        const SizedBox(height: 12),
-        _OrderCard(
-          orderId: 'ORD033',
-          customerName: 'Jim Hopper',
-          date: '10-04-2025',
-          time: '09:15 AM',
-          itemCount: 15,
-          assignedTo: 'Robin Buckley',
-          buttonText: 'Assign Delivery Partner',
-          items: const [
-            _OrderItem(name: 'Top Wear', quantity: 5),
-            _OrderItem(name: 'Bottom Wear', quantity: 6),
-            _OrderItem(name: 'Kurta', quantity: 2),
-            _OrderItem(name: 'Saree', quantity: 2),
-          ],
-        ),
-        const SizedBox(height: 12),
-        _OrderCard(
-          orderId: 'ORD035',
-          customerName: 'Joyce Byers',
-          date: '09-04-2025',
-          time: '04:20 PM',
-          itemCount: 21,
-          assignedTo: 'Jonathan Byers',
-          buttonText: 'Assign Delivery Partner',
-          items: const [
-            _OrderItem(name: 'Top Wear', quantity: 5),
-            _OrderItem(name: 'Bottom Wear', quantity: 5),
-            _OrderItem(name: 'Kurta', quantity: 2),
-            _OrderItem(name: 'Saree', quantity: 3),
-          ],
-          isExpanded: true,
-        ),
-        const SizedBox(height: 12),
       ],
     );
   }
@@ -346,7 +634,39 @@ class _OrderItem {
   const _OrderItem({required this.name, required this.quantity});
 }
 
+class _ItemsUiMapping {
+  final List<_OrderItem> items;
+  final int totalCount;
+
+  const _ItemsUiMapping({required this.items, required this.totalCount});
+}
+
+class _DmOrderUi {
+  final String backendOrderId;
+  final String orderIdDisplay;
+  final String customerName;
+  final String date;
+  final String time;
+  final int itemCount;
+  final List<_OrderItem> items;
+  final String buttonText;
+  final bool isVerifyButton;
+
+  const _DmOrderUi({
+    required this.backendOrderId,
+    required this.orderIdDisplay,
+    required this.customerName,
+    required this.date,
+    required this.time,
+    required this.itemCount,
+    required this.items,
+    required this.buttonText,
+    required this.isVerifyButton,
+  });
+}
+
 class _OrderCard extends StatefulWidget {
+  final String backendOrderId;
   final String orderId;
   final String customerName;
   final String date;
@@ -356,8 +676,11 @@ class _OrderCard extends StatefulWidget {
   final String buttonText;
   final List<_OrderItem> items;
   final bool isExpanded;
+  final bool isVerifyButton;
+  final Future<void> Function(String orderId)? onVerify;
 
   const _OrderCard({
+    required this.backendOrderId,
     required this.orderId,
     required this.customerName,
     required this.date,
@@ -367,6 +690,8 @@ class _OrderCard extends StatefulWidget {
     required this.buttonText,
     required this.items,
     this.isExpanded = false,
+    required this.isVerifyButton,
+    this.onVerify,
   });
 
   @override
@@ -375,6 +700,7 @@ class _OrderCard extends StatefulWidget {
 
 class _OrderCardState extends State<_OrderCard> {
   late bool _isExpanded;
+  bool _isVerifying = false;
 
   @override
   void initState() {
@@ -503,26 +829,47 @@ class _OrderCardState extends State<_OrderCard> {
                   ),
                 ),
                 onPressed: () {
-                  if (widget.buttonText == 'Assign Delivery Partner') {
+                  if (!widget.isVerifyButton) {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => const DistributionDeliveryPartnersScreen(),
+                        builder: (context) => DistributionDeliveryPartnersScreen(orderId: widget.backendOrderId),
                       ),
                     );
                   } else {
-                    // Handle mark as verified action
+                    final handler = widget.onVerify;
+                    if (handler == null) return;
+                    if (_isVerifying) return;
+                    setState(() {
+                      _isVerifying = true;
+                    });
+                    handler(widget.backendOrderId).whenComplete(() {
+                      if (mounted) {
+                        setState(() {
+                          _isVerifying = false;
+                        });
+                      }
+                    });
                   }
                 },
-                child: Text(
-                  widget.buttonText,
-                  style: AppTextStyles.button(
-                    color: Colors.white,
-                  ).copyWith(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                child: _isVerifying
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : Text(
+                        widget.buttonText,
+                        style: AppTextStyles.button(
+                          color: Colors.white,
+                        ).copyWith(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
               ),
             ),
           ),

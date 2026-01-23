@@ -41,6 +41,25 @@ exports.verifyOrder = async (req, res, next) => {
     }
 };
 
+exports.getOrderItems = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'distribution_manager') {
+            throw new AuthorizationError('Only distribution managers can access this endpoint');
+        }
+
+        const { orderId } = req.params;
+        const data = await distributionManagerAppService.getOrderItems({ orderId });
+
+        res.status(200).json({
+            success: true,
+            data,
+            message: 'Order items fetched successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 exports.listVerifiedOrders = async (req, res, next) => {
     try {
         if (req.user.role !== 'distribution_manager') {

@@ -2,9 +2,184 @@ import 'package:flutter/material.dart';
 
 import '../../../../theme/app_colors.dart';
 import '../../../../theme/app_text_styles.dart';
+import '../../../../services/distribution_manager_orders_service.dart';
 
-class DistributionHistoryScreen extends StatelessWidget {
+class DistributionHistoryScreen extends StatefulWidget {
   const DistributionHistoryScreen({super.key});
+
+  @override
+  State<DistributionHistoryScreen> createState() => _DistributionHistoryScreenState();
+}
+
+class _DistributionHistoryScreenState extends State<DistributionHistoryScreen> {
+  final DistributionManagerOrdersService _ordersService = DistributionManagerOrdersService();
+
+  late Future<List<_HistoryOrderUi>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load(page: 1, limit: 20);
+  }
+
+  Future<List<_HistoryOrderUi>> _load({required int page, required int limit}) async {
+    final body = await _ordersService.listDispatchHistory(page: page, limit: limit);
+    final data = body['data'];
+    if (data is! List) throw Exception('Invalid response: missing data list');
+
+    final rows = data.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList()
+      ..sort((a, b) {
+        final adt = _parseDate(a['dispatchedAt']) ?? _parseDate(a['createdAt']);
+        final bdt = _parseDate(b['dispatchedAt']) ?? _parseDate(b['createdAt']);
+        if (adt == null && bdt == null) return 0;
+        if (adt == null) return 1;
+        if (bdt == null) return -1;
+        return bdt.compareTo(adt);
+      });
+
+    Future<_HistoryOrderUi> mapOne(Map<String, dynamic> o) async {
+      final orderId = (o['orderId'] ?? '').toString();
+      final customer = o['customer'];
+      final customerName = (customer is Map ? customer['fullName'] : null)?.toString() ?? 'Customer';
+
+      final dispatchedAt = _parseDate(o['dispatchedAt']) ?? _parseDate(o['createdAt']);
+
+      String dispatchedByName = '—';
+      final dispatchedBy = o['dispatchedBy'];
+      if (dispatchedBy is Map) {
+        final name = (dispatchedBy['fullName'] ?? '').toString().trim();
+        if (name.isNotEmpty) dispatchedByName = name;
+      }
+
+      String deliveryBoyName = 'Not assigned';
+      String deliveryBoyId = '—';
+      final dropDelivery = o['dropDelivery'];
+      if (dropDelivery is Map) {
+        final staff = dropDelivery['deliveryStaff'];
+        if (staff is Map) {
+          final name = (staff['fullName'] ?? '').toString().trim();
+          final id = (staff['staffId'] ?? '').toString().trim();
+          if (name.isNotEmpty) deliveryBoyName = name;
+          if (id.isNotEmpty) deliveryBoyId = id;
+        }
+      }
+
+      List<_OrderItem> items = const [];
+      int itemCount = 0;
+      if (orderId.isNotEmpty) {
+        try {
+          final itemsBody = await _ordersService.getOrderItems(orderId: orderId);
+          final itemsData = itemsBody['data'];
+          final mapped = _mapItemsForUi(itemsData);
+          items = mapped.items;
+          itemCount = mapped.totalCount;
+        } catch (_) {
+          // keep empty items
+        }
+      }
+
+      return _HistoryOrderUi(
+        backendOrderId: orderId,
+        orderIdDisplay: _formatOrderId(orderId),
+        customerName: customerName,
+        date: _formatDate(dispatchedAt),
+        time: _formatTime(dispatchedAt),
+        itemCount: itemCount,
+        dispatchedBy: dispatchedByName,
+        deliveryBoy: deliveryBoyName,
+        deliveryBoyId: deliveryBoyId,
+        items: items,
+      );
+    }
+
+    return Future.wait(rows.map(mapOne));
+  }
+
+  static DateTime? _parseDate(Object? raw) {
+    if (raw is DateTime) return raw;
+    if (raw is String && raw.isNotEmpty) return DateTime.tryParse(raw);
+    return null;
+  }
+
+  static String _formatOrderId(String orderId) {
+    final normalized = orderId.replaceAll('-', '').toUpperCase();
+    if (normalized.length >= 6) return 'ORD${normalized.substring(0, 6)}';
+    if (normalized.isNotEmpty) return 'ORD$normalized';
+    return 'ORDER';
+  }
+
+  static String _formatDate(DateTime? dt) {
+    if (dt == null) return '--';
+    final dd = dt.day.toString().padLeft(2, '0');
+    final mm = dt.month.toString().padLeft(2, '0');
+    final yyyy = dt.year.toString();
+    return '$dd-$mm-$yyyy';
+  }
+
+  static String _formatTime(DateTime? dt) {
+    if (dt == null) return '--';
+    int hour = dt.hour;
+    final minute = dt.minute.toString().padLeft(2, '0');
+    final suffix = hour >= 12 ? 'PM' : 'AM';
+    hour = hour % 12;
+    if (hour == 0) hour = 12;
+    return '${hour.toString().padLeft(2, '0')}:$minute $suffix';
+  }
+
+  static _ItemsUiMapping _mapItemsForUi(Object? itemsData) {
+    final items = <_OrderItem>[];
+    final aggregated = <String, int>{};
+
+    if (itemsData is Map) {
+      final map = itemsData.cast<String, dynamic>();
+      final list = map['items'];
+      if (list is List) {
+        for (final rawItem in list) {
+          if (rawItem is! Map) continue;
+          final item = rawItem.cast<String, dynamic>();
+
+          final serviceName = (item['serviceName'] ?? '').toString().trim();
+          final categoryName = (item['categoryName'] ?? '').toString().trim();
+          final key = _formatServiceKey(categoryName, serviceName);
+
+          int qty = 0;
+          final selections = item['selections'];
+          if (selections is List && selections.isNotEmpty) {
+            for (final rawSel in selections) {
+              if (rawSel is! Map) continue;
+              final sel = rawSel.cast<String, dynamic>();
+              final qtyNum = sel['quantity'];
+              final q = (qtyNum is num) ? qtyNum.toInt() : int.tryParse(qtyNum?.toString() ?? '') ?? 0;
+              if (q > 0) qty += q;
+            }
+          } else {
+            final qtyNum = item['quantity'];
+            qty = (qtyNum is num) ? qtyNum.toInt() : int.tryParse(qtyNum?.toString() ?? '') ?? 0;
+          }
+
+          if (key.isEmpty || qty <= 0) continue;
+          aggregated[key] = (aggregated[key] ?? 0) + qty;
+        }
+      }
+    }
+
+    final entries = aggregated.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    int total = 0;
+    for (final e in entries) {
+      total += e.value;
+      items.add(_OrderItem(name: e.key, quantity: e.value));
+    }
+
+    return _ItemsUiMapping(items: items, totalCount: total);
+  }
+
+  static String _formatServiceKey(String categoryName, String serviceName) {
+    final c = categoryName.trim();
+    final s = serviceName.trim();
+    if (c.isNotEmpty && s.isNotEmpty) return '$c • $s';
+    if (s.isNotEmpty) return s;
+    return c;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -45,61 +220,79 @@ class DistributionHistoryScreen extends StatelessWidget {
             ),
             // History Orders List
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  _HistoryOrderCard(
-                    orderId: 'ORD035',
-                    customerName: 'Mike Wheelers',
-                    date: '10-04-2025',
-                    time: '10:16 AM',
-                    itemCount: 12,
-                    assignedTo: 'Eddie Munson',
-                    deliveryBoy: 'Lucas Sinclair',
-                    deliveryBoyId: 'EM045',
-                    items: const [
-                      _OrderItem(name: 'Top Wear', quantity: 5),
-                      _OrderItem(name: 'Bottom Wear', quantity: 5),
-                      _OrderItem(name: 'Kurta', quantity: 2),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  _HistoryOrderCard(
-                    orderId: 'ORD033',
-                    customerName: 'Jim Hopper',
-                    date: '10-04-2025',
-                    time: '09:15 AM',
-                    itemCount: 15,
-                    assignedTo: 'Robin Buckley',
-                    deliveryBoy: 'Dustin Henderson',
-                    deliveryBoyId: 'EM056',
-                    items: const [
-                      _OrderItem(name: 'Top Wear', quantity: 5),
-                      _OrderItem(name: 'Bottom Wear', quantity: 6),
-                      _OrderItem(name: 'Kurta', quantity: 2),
-                      _OrderItem(name: 'Saree', quantity: 2),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  _HistoryOrderCard(
-                    orderId: 'ORD035',
-                    customerName: 'Joyce Byers',
-                    date: '09-04-2025',
-                    time: '04:20 PM',
-                    itemCount: 21,
-                    assignedTo: 'Jonathan Byers',
-                    deliveryBoy: 'Will Byers',
-                    deliveryBoyId: 'EM072',
-                    items: const [
-                      _OrderItem(name: 'Top Wear', quantity: 5),
-                      _OrderItem(name: 'Bottom Wear', quantity: 5),
-                      _OrderItem(name: 'Kurta', quantity: 2),
-                      _OrderItem(name: 'Saree', quantity: 3),
-                    ],
-                    isExpanded: true,
-                  ),
-                  const SizedBox(height: 12),
-                ],
+              child: FutureBuilder<List<_HistoryOrderUi>>(
+                future: _future,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
+                    );
+                  }
+
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.error_outline, color: AppColors.error),
+                            const SizedBox(height: 10),
+                            Text(
+                              snapshot.error.toString().replaceFirst('Exception: ', ''),
+                              textAlign: TextAlign.center,
+                              style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                            ),
+                            const SizedBox(height: 10),
+                            TextButton(
+                              onPressed: () {
+                                setState(() {
+                                  _future = _load(page: 1, limit: 20);
+                                });
+                              },
+                              child: Text(
+                                'Retry',
+                                style: AppTextStyles.subtitle(color: AppColors.primary).copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+
+                  final list = snapshot.data ?? const <_HistoryOrderUi>[];
+                  if (list.isEmpty) {
+                    return Center(
+                      child: Text(
+                        'No history found',
+                        style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                      ),
+                    );
+                  }
+
+                  return ListView.separated(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: list.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final o = list[index];
+                      return _HistoryOrderCard(
+                        orderId: o.orderIdDisplay,
+                        customerName: o.customerName,
+                        date: o.date,
+                        time: o.time,
+                        itemCount: o.itemCount,
+                        assignedTo: o.dispatchedBy,
+                        deliveryBoy: o.deliveryBoy,
+                        deliveryBoyId: o.deliveryBoyId,
+                        items: o.items,
+                      );
+                    },
+                  );
+                },
               ),
             ),
           ],
@@ -114,6 +307,39 @@ class _OrderItem {
   final int quantity;
 
   const _OrderItem({required this.name, required this.quantity});
+}
+
+class _ItemsUiMapping {
+  final List<_OrderItem> items;
+  final int totalCount;
+
+  const _ItemsUiMapping({required this.items, required this.totalCount});
+}
+
+class _HistoryOrderUi {
+  final String backendOrderId;
+  final String orderIdDisplay;
+  final String customerName;
+  final String date;
+  final String time;
+  final int itemCount;
+  final String dispatchedBy;
+  final String deliveryBoy;
+  final String deliveryBoyId;
+  final List<_OrderItem> items;
+
+  const _HistoryOrderUi({
+    required this.backendOrderId,
+    required this.orderIdDisplay,
+    required this.customerName,
+    required this.date,
+    required this.time,
+    required this.itemCount,
+    required this.dispatchedBy,
+    required this.deliveryBoy,
+    required this.deliveryBoyId,
+    required this.items,
+  });
 }
 
 class _HistoryOrderCard extends StatefulWidget {

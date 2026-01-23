@@ -26,6 +26,15 @@ router.post(
     distributionManagerAppController.verifyOrder
 );
 
+// GET order items (for staff app UI)
+router.get(
+    '/orders/:orderId/items',
+    authenticateJWT,
+    authorize('distribution_manager'),
+    validateUuidParam('orderId'),
+    distributionManagerAppController.getOrderItems
+);
+
 // GET verified orders (services_completed & verified & not dispatched)
 router.get(
     '/orders/verified',

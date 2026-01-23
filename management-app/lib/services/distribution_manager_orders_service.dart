@@ -2,7 +2,7 @@ import 'package:dio/dio.dart';
 
 import '../services/api_service.dart';
 
-class CollectionManagerOrdersService {
+class DistributionManagerOrdersService {
   final ApiService _api = ApiService();
 
   String _extractErrorMessage(Object error, {String fallback = 'Request failed'}) {
@@ -38,43 +38,37 @@ class CollectionManagerOrdersService {
     return fallback;
   }
 
-  Future<Map<String, dynamic>> listIncomingOrders({
-    int page = 1,
-    int limit = 20,
-  }) async {
+  Future<Map<String, dynamic>> listReadyToVerify({int page = 1, int limit = 20}) async {
     try {
       final res = await _api.get(
-        '/staff-app/collection-manager/orders/incoming',
+        '/staff-app/distribution-manager/orders/ready-to-verify',
         queryParameters: {'page': page, 'limit': limit},
       );
       final body = res.data;
       if (body is Map<String, dynamic>) return body;
       throw Exception('Unexpected response format');
     } catch (e) {
-      throw Exception(_extractErrorMessage(e, fallback: 'Failed to fetch incoming orders'));
+      throw Exception(_extractErrorMessage(e, fallback: 'Failed to fetch orders'));
     }
   }
 
-  Future<Map<String, dynamic>> listReceivedOrders({
-    int page = 1,
-    int limit = 20,
-  }) async {
+  Future<Map<String, dynamic>> listVerified({int page = 1, int limit = 20}) async {
     try {
       final res = await _api.get(
-        '/staff-app/collection-manager/orders/received',
+        '/staff-app/distribution-manager/orders/verified',
         queryParameters: {'page': page, 'limit': limit},
       );
       final body = res.data;
       if (body is Map<String, dynamic>) return body;
       throw Exception('Unexpected response format');
     } catch (e) {
-      throw Exception(_extractErrorMessage(e, fallback: 'Failed to fetch received orders'));
+      throw Exception(_extractErrorMessage(e, fallback: 'Failed to fetch verified orders'));
     }
   }
 
   Future<Map<String, dynamic>> getOrderItems({required String orderId}) async {
     try {
-      final res = await _api.get('/staff-app/collection-manager/orders/$orderId/items');
+      final res = await _api.get('/staff-app/distribution-manager/orders/$orderId/items');
       final body = res.data;
       if (body is Map<String, dynamic>) return body;
       throw Exception('Unexpected response format');
@@ -83,42 +77,14 @@ class CollectionManagerOrdersService {
     }
   }
 
-  Future<Map<String, dynamic>> markOrderReceived({required String orderId}) async {
+  Future<Map<String, dynamic>> verifyOrder({required String orderId}) async {
     try {
-      final res = await _api.post('/staff-app/collection-manager/orders/$orderId/receive');
+      final res = await _api.post('/staff-app/distribution-manager/orders/$orderId/verify');
       final body = res.data;
       if (body is Map<String, dynamic>) return body;
       throw Exception('Unexpected response format');
     } catch (e) {
-      throw Exception(_extractErrorMessage(e, fallback: 'Failed to mark order as received'));
-    }
-  }
-
-  Future<Map<String, dynamic>> submitToServices({required String orderId}) async {
-    try {
-      final res = await _api.post('/staff-app/collection-manager/orders/$orderId/submit-to-services');
-      final body = res.data;
-      if (body is Map<String, dynamic>) return body;
-      throw Exception('Unexpected response format');
-    } catch (e) {
-      throw Exception(_extractErrorMessage(e, fallback: 'Failed to submit order to services'));
-    }
-  }
-
-  Future<Map<String, dynamic>> listSubmissionHistory({
-    int page = 1,
-    int limit = 20,
-  }) async {
-    try {
-      final res = await _api.get(
-        '/staff-app/collection-manager/orders/history',
-        queryParameters: {'page': page, 'limit': limit},
-      );
-      final body = res.data;
-      if (body is Map<String, dynamic>) return body;
-      throw Exception('Unexpected response format');
-    } catch (e) {
-      throw Exception(_extractErrorMessage(e, fallback: 'Failed to fetch history'));
+      throw Exception(_extractErrorMessage(e, fallback: 'Failed to verify order'));
     }
   }
 }

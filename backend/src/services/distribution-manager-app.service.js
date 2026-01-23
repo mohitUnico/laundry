@@ -66,6 +66,112 @@ exports.listReadyToVerify = async ({ page, limit } = {}) => {
     };
 };
 
+exports.getOrderItems = async ({ orderId }) => {
+    if (!orderId) throw new ValidationError('orderId is required');
+
+    const order = await prisma.order.findUnique({
+        where: { order_id: orderId },
+        select: {
+            order_id: true,
+            pricing_model: true,
+            order_type: true,
+            order_status: true,
+            created_at: true,
+            delivery_address: {
+                select: {
+                    address_id: true,
+                    address_line1: true,
+                    address_line2: true,
+                    city: true,
+                    state: true,
+                    pincode: true,
+                    latitude: true,
+                    longitude: true,
+                    label: true,
+                },
+            },
+            order_items: {
+                select: {
+                    item_id: true,
+                    pricing_type: true,
+                    quantity: true,
+                    weight_kg: true,
+                    service: {
+                        select: {
+                            service_id: true,
+                            service_name: true,
+                            category: { select: { category_id: true, category_name: true } },
+                        },
+                    },
+                    item_selections: {
+                        select: {
+                            selection_id: true,
+                            quantity: true,
+                            cloth_item: {
+                                select: {
+                                    cloth_id: true,
+                                    item_name: true,
+                                    per_unit_price: true,
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    });
+
+    if (!order) throw new NotFoundError('Order');
+
+    const items = (order.order_items || []).map((item) => {
+        const serviceName = item.service?.service_name || '';
+        const categoryName = item.service?.category?.category_name || '';
+
+        const selections = (item.item_selections || [])
+            .map((sel) => ({
+                selectionId: sel.selection_id,
+                quantity: sel.quantity,
+                clothId: sel.cloth_item?.cloth_id || null,
+                clothName: sel.cloth_item?.item_name || '',
+                perUnitPrice: sel.cloth_item?.per_unit_price ? sel.cloth_item.per_unit_price.toString() : null,
+            }))
+            .filter((s) => s.quantity != null && (s.quantity > 0));
+
+        return {
+            itemId: item.item_id,
+            pricingType: item.pricing_type,
+            quantity: item.quantity ?? null,
+            weightKg: item.weight_kg != null ? item.weight_kg.toString() : null,
+            serviceName,
+            categoryName,
+            selections,
+        };
+    });
+
+    return {
+        orderId: order.order_id,
+        orderStatus: order.order_status,
+        orderType: order.order_type,
+        pricingModel: order.pricing_model,
+        createdAt: order.created_at,
+        deliveryAddress: order.delivery_address
+            ? {
+                  addressId: order.delivery_address.address_id,
+                  addressLine1: order.delivery_address.address_line1,
+                  addressLine2: order.delivery_address.address_line2,
+                  city: order.delivery_address.city,
+                  state: order.delivery_address.state,
+                  pincode: order.delivery_address.pincode,
+                  latitude: order.delivery_address.latitude ? order.delivery_address.latitude.toString() : null,
+                  longitude: order.delivery_address.longitude ? order.delivery_address.longitude.toString() : null,
+                  label: order.delivery_address.label,
+              }
+            : null,
+        itemsCount: items.length,
+        items,
+    };
+};
+
 exports.verifyOrder = async ({ staffId, orderId }) => {
     if (!orderId) throw new ValidationError('orderId is required');
     const now = new Date();

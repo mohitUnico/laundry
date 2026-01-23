@@ -129,6 +129,22 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
     }
   }
 
+  Future<void> _submitToServicesAndRefresh(String orderId) async {
+    try {
+      await _ordersService.submitToServices(orderId: orderId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Order submitted to service men')),
+      );
+      await _refreshReceived();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', '').trim())),
+      );
+    }
+  }
+
   Future<List<_IncomingOrderUi>> _fetchIncomingOrdersWithItems({
     required int page,
     required int limit,
@@ -239,26 +255,29 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
         for (final rawItem in list) {
           if (rawItem is! Map) continue;
           final item = rawItem.cast<String, dynamic>();
+          final serviceName = (item['serviceName'] ?? '').toString().trim();
+          final categoryName = (item['categoryName'] ?? '').toString().trim();
+          final key = _formatServiceKey(categoryName, serviceName);
+
+          int qty = 0;
           final selections = item['selections'];
           if (selections is List && selections.isNotEmpty) {
+            // For per_piece orders we still aggregate by service, but count total pieces in that service.
             for (final rawSel in selections) {
               if (rawSel is! Map) continue;
               final sel = rawSel.cast<String, dynamic>();
-              final name = (sel['clothName'] ?? '').toString().trim();
               final qtyNum = sel['quantity'];
-              final qty = (qtyNum is num) ? qtyNum.toInt() : int.tryParse(qtyNum?.toString() ?? '') ?? 0;
-              if (name.isEmpty || qty <= 0) continue;
-              aggregated[name] = (aggregated[name] ?? 0) + qty;
+              final q = (qtyNum is num) ? qtyNum.toInt() : int.tryParse(qtyNum?.toString() ?? '') ?? 0;
+              if (q > 0) qty += q;
             }
           } else {
             // Fallback for per_kg / service-level items
-            final serviceName = (item['serviceName'] ?? '').toString().trim();
             final qtyNum = item['quantity'];
-            final qty = (qtyNum is num) ? qtyNum.toInt() : int.tryParse(qtyNum?.toString() ?? '') ?? 0;
-            if (serviceName.isNotEmpty && qty > 0) {
-              aggregated[serviceName] = (aggregated[serviceName] ?? 0) + qty;
-            }
+            qty = (qtyNum is num) ? qtyNum.toInt() : int.tryParse(qtyNum?.toString() ?? '') ?? 0;
           }
+
+          if (key.isEmpty || qty <= 0) continue;
+          aggregated[key] = (aggregated[key] ?? 0) + qty;
         }
       }
     }
@@ -273,6 +292,14 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
     }
 
     return _ItemsUiMapping(items: items, totalCount: total);
+  }
+
+  static String _formatServiceKey(String categoryName, String serviceName) {
+    final c = categoryName.trim();
+    final s = serviceName.trim();
+    if (c.isNotEmpty && s.isNotEmpty) return '$c • $s';
+    if (s.isNotEmpty) return s;
+    return c;
   }
 
   @override
@@ -694,6 +721,7 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
               children: [
                 for (final o in list) ...[
                   _ReceivedOrderCard(
+                    backendOrderId: o.backendOrderId,
                     orderId: o.orderIdDisplay,
                     customerName: o.customerName,
                     date: o.date,
@@ -702,6 +730,7 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
                     deliveryPerson: '—',
                     deliveryPersonId: '',
                     items: o.items,
+                    onSubmitToServices: _submitToServicesAndRefresh,
                   ),
                   const SizedBox(height: 12),
                 ],
@@ -1174,6 +1203,7 @@ class _NewOrderCardState extends State<_NewOrderCard> {
 }
 
 class _ReceivedOrderCard extends StatefulWidget {
+  final String backendOrderId;
   final String orderId;
   final String customerName;
   final String date;
@@ -1183,8 +1213,10 @@ class _ReceivedOrderCard extends StatefulWidget {
   final String deliveryPersonId;
   final List<_OrderItem> items;
   final bool isExpanded;
+  final Future<void> Function(String orderId)? onSubmitToServices;
 
   const _ReceivedOrderCard({
+    required this.backendOrderId,
     required this.orderId,
     required this.customerName,
     required this.date,
@@ -1194,6 +1226,7 @@ class _ReceivedOrderCard extends StatefulWidget {
     required this.deliveryPersonId,
     required this.items,
     this.isExpanded = false,
+    this.onSubmitToServices,
   });
 
   @override
@@ -1202,6 +1235,7 @@ class _ReceivedOrderCard extends StatefulWidget {
 
 class _ReceivedOrderCardState extends State<_ReceivedOrderCard> {
   late bool _isExpanded;
+  bool _isSubmittingToServices = false;
 
   @override
   void initState() {
@@ -1337,18 +1371,42 @@ class _ReceivedOrderCardState extends State<_ReceivedOrderCard> {
                     borderRadius: BorderRadius.circular(18),
                   ),
                 ),
-                onPressed: () {
-                  // Handle assign to service man action
-                },
-                child: Text(
-                  'Assign to Service Man',
-                  style: AppTextStyles.button(
-                    color: Colors.white,
-                  ).copyWith(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                onPressed: _isSubmittingToServices
+                    ? null
+                    : () async {
+                        final handler = widget.onSubmitToServices;
+                        if (handler == null) return;
+                        setState(() {
+                          _isSubmittingToServices = true;
+                        });
+                        try {
+                          await handler(widget.backendOrderId);
+                        } finally {
+                          if (mounted) {
+                            setState(() {
+                              _isSubmittingToServices = false;
+                            });
+                          }
+                        }
+                      },
+                child: _isSubmittingToServices
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : Text(
+                        'Assign to Service Man',
+                        style: AppTextStyles.button(
+                          color: Colors.white,
+                        ).copyWith(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
               ),
             ),
           ),

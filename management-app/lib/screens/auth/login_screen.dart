@@ -183,7 +183,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       if (isNewUser) {
         if (role == RoleConstants.deliveryPartner) {
-          Navigator.of(context).pushReplacementNamed(AppRoutes.userDetails);
+        Navigator.of(context).pushReplacementNamed(AppRoutes.userDetails);
         } else if (role == RoleConstants.collectionManager ||
             role == RoleConstants.distributionManager) {
           await _showNewUserDialog();

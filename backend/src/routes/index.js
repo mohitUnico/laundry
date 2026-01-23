@@ -18,6 +18,7 @@ const collectionManagerAppRoutes = require('./collection-manager-app.routes');
 const distributionManagerAppRoutes = require('./distribution-manager-app.routes');
 const serviceManAppRoutes = require('./service-man-app.routes');
 const couponsRoutes = require('./coupons.routes');
+const adminSettingsRoutes = require('./admin-settings.routes');
 
 const router = express.Router();
 
@@ -87,6 +88,7 @@ router.use('/admin/orders', adminOrderManagementRoutes);
 router.use('/admin/customers', adminCustomerManagementRoutes);
 router.use('/admin/delivery-staff', adminDeliveryStaffManagementRoutes);
 router.use('/admin/delivery-ops', adminDeliveryOperationsRoutes);
+router.use('/admin/settings', adminSettingsRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/coupons', couponsRoutes);
 router.use('/delivery-staff', deliveryStaffOperationsRoutes);

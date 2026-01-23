@@ -71,6 +71,9 @@ class CouponsProvider with ChangeNotifier {
   }
 
   Future<void> fetchApplicableCoupons({bool force = false}) async {
+    if (kDebugMode) {
+      debugPrint('[CouponsProvider] fetchApplicableCoupons: start force=$force cached=${_coupons.length}');
+    }
     if (_fetchInFlight != null) return _fetchInFlight!;
 
     final nowMs = DateTime.now().millisecondsSinceEpoch;
@@ -88,11 +91,20 @@ class CouponsProvider with ChangeNotifier {
 
       try {
         final fresh = await _repo.listApplicableCoupons();
+        if (kDebugMode) {
+          debugPrint('[CouponsProvider] fetchApplicableCoupons: backend returned=${fresh.length}');
+        }
         _coupons = fresh.where(_isApplicableNow).toList();
+        if (kDebugMode) {
+          debugPrint('[CouponsProvider] fetchApplicableCoupons: applicableNow=${_coupons.length}');
+        }
         _lastRefreshMs = DateTime.now().millisecondsSinceEpoch;
         await _persistToCache();
       } catch (e) {
         _error = e.toString();
+        if (kDebugMode) {
+          debugPrint('[CouponsProvider] fetchApplicableCoupons: error=$_error');
+        }
       } finally {
         _isLoading = false;
         notifyListeners();
@@ -114,6 +126,12 @@ class CouponsProvider with ChangeNotifier {
     required Map<String, dynamic>? newRow,
     required Map<String, dynamic>? oldRow,
   }) {
+    if (kDebugMode) {
+      debugPrint(
+        '[CouponsProvider] realtime: event=$eventType '
+        'newId=${newRow?['id']} oldId=${oldRow?['id']}',
+      );
+    }
     final type = eventType.toLowerCase();
 
     if (type == 'delete') {
@@ -166,6 +184,9 @@ class CouponsProvider with ChangeNotifier {
   void _scheduleReconcile() {
     _reconcileDebounce?.cancel();
     _reconcileDebounce = Timer(_reconcileDebounceWindow, () {
+      if (kDebugMode) {
+        debugPrint('[CouponsProvider] reconcile: debounced fetch(force=true)');
+      }
       fetchApplicableCoupons(force: true);
     });
   }

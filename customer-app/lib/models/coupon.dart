@@ -38,14 +38,28 @@ class Coupon {
       return null;
     }
 
+    num parseNum(dynamic v, {num fallback = 0}) {
+      if (v == null) return fallback;
+      if (v is num) return v;
+      if (v is String) return num.tryParse(v) ?? fallback;
+      return fallback;
+    }
+
+    num? parseNullableNum(dynamic v) {
+      if (v == null) return null;
+      if (v is num) return v;
+      if (v is String) return num.tryParse(v);
+      return null;
+    }
+
     return Coupon(
       id: (json['id'] as num).toInt(),
       code: (json['code'] ?? '').toString(),
       description: json['description']?.toString(),
       discountType: (json['discount_type'] ?? '').toString(),
-      discountValue: json['discount_value'] as num? ?? 0,
-      maxDiscount: json['max_discount'] as num?,
-      minOrderValue: json['min_order_value'] as num?,
+      discountValue: parseNum(json['discount_value']),
+      maxDiscount: parseNullableNum(json['max_discount']),
+      minOrderValue: parseNullableNum(json['min_order_value']),
       usageLimit: (json['usage_limit'] as num?)?.toInt(),
       usagePerUser: (json['usage_per_user'] as num?)?.toInt(),
       validFrom: parseDate(json['valid_from']),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../routes/app_routes.dart';
 import '../../providers/auth_provider.dart';
@@ -101,6 +102,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     try {
       final client = Supabase.instance.client;
+      if (kDebugMode) {
+        debugPrint('[HomeScreen] Subscribing to coupons realtime...');
+      }
       _couponsChannel = client
           .channel('public:coupons')
           .onPostgresChanges(
@@ -109,6 +113,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             table: 'coupons',
             callback: (payload) {
               if (!mounted) return;
+              if (kDebugMode) {
+                debugPrint('[HomeScreen] coupons realtime payload event=${payload.eventType}');
+              }
               final eventType = payload.eventType.name;
               final newRow = (payload.newRecord as Map?)?.cast<String, dynamic>();
               final oldRow = (payload.oldRecord as Map?)?.cast<String, dynamic>();
@@ -272,6 +279,12 @@ class _HomeContent extends StatelessWidget {
           Consumer<CouponsProvider>(
             builder: (context, couponsProvider, _) {
               final coupons = couponsProvider.coupons;
+              if (kDebugMode) {
+                debugPrint(
+                  '[HomeScreen] coupons state: loading=${couponsProvider.isLoading} '
+                  'count=${coupons.length} error=${couponsProvider.error}',
+                );
+              }
               if (couponsProvider.isLoading && coupons.isEmpty) {
                 return Container(
                   height: 200,

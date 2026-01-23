@@ -792,7 +792,7 @@ const verifyCollectionManagerOtp = async (req, res, next) => {
     if (result.isNewUser) {
       res.status(200).json({
         success: true,
-        message: 'Email verified. Awaiting owner approval to complete your profile.',
+        message: 'Email verified. Awaiting admin approval to complete your profile.',
         data: {
           isNewUser: true,
           sessionToken: result.sessionToken,
@@ -887,7 +887,7 @@ const verifyDistributionManagerOtp = async (req, res, next) => {
     if (result.isNewUser) {
       res.status(200).json({
         success: true,
-        message: 'Email verified. Awaiting owner approval to complete your profile.',
+        message: 'Email verified. Awaiting admin approval to complete your profile.',
         data: {
           isNewUser: true,
           sessionToken: result.sessionToken,
@@ -979,14 +979,14 @@ const sendServiceManOtp = async (req, res, next) => {
  */
 const verifyServiceManOtp = async (req, res, next) => {
   try {
-    const { email, otp } = req.body;
+    const { email, otp, serviceId } = req.body;
 
-    const result = await otpService.verifyOtp(email, otp, otpService.USER_TYPES.SERVICE_MAN);
+    const result = await otpService.verifyOtp(email, otp, otpService.USER_TYPES.SERVICE_MAN, { serviceId });
 
     if (result.isNewUser) {
       res.status(200).json({
         success: true,
-        message: 'Email verified. Awaiting owner approval to complete your profile.',
+        message: 'Email verified. Awaiting admin approval to complete your profile.',
         data: {
           isNewUser: true,
           sessionToken: result.sessionToken,

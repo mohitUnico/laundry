@@ -24,6 +24,40 @@ exports.listDeliveryStaffs = async (req, res, next) => {
     }
 };
 
+exports.getDeliveryStaffSummary = async (req, res, next) => {
+    try {
+        const userId = req.user?.user_id;
+        logger.info('Admin delivery staff summary request', { userId });
+
+        const summary = await adminDeliveryStaffManagementService.getAdminDeliveryStaffSummary();
+
+        res.status(200).json({
+            success: true,
+            data: summary,
+            message: 'Delivery staff summary fetched successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.listPendingVerifications = async (req, res, next) => {
+    try {
+        const userId = req.user?.user_id;
+        logger.info('Admin delivery staff pending verifications request', { userId, query: req.query });
+
+        const data = await adminDeliveryStaffManagementService.getAdminPendingDeliveryStaffVerifications(req.query);
+
+        res.status(200).json({
+            success: true,
+            data,
+            message: 'Pending delivery staff verifications fetched successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 exports.verifyDeliveryStaff = async (req, res, next) => {
     try {
         const userId = req.user?.user_id;
@@ -45,6 +79,23 @@ exports.verifyDeliveryStaff = async (req, res, next) => {
                 updatedAt: updated.updated_at,
             },
             message: 'Delivery staff verified successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.listOnlineDeliveryStaffs = async (req, res, next) => {
+    try {
+        const userId = req.user?.user_id;
+        logger.info('Admin delivery staff online list request', { userId, query: req.query });
+
+        const data = await adminDeliveryStaffManagementService.getAdminOnlineDeliveryStaffs(req.query);
+
+        res.status(200).json({
+            success: true,
+            data,
+            message: 'Online delivery staffs fetched successfully',
         });
     } catch (error) {
         next(error);

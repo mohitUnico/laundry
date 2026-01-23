@@ -14,6 +14,9 @@ const adminDeliveryOperationsRoutes = require('./delivery-operations.routes');
 const paymentRoutes = require('./payment.routes');
 const deliveryStaffOperationsRoutes = require('./delivery-staff-operations.routes');
 const deliveryStaffAppRoutes = require('./delivery-staff-app.routes');
+const collectionManagerAppRoutes = require('./collection-manager-app.routes');
+const distributionManagerAppRoutes = require('./distribution-manager-app.routes');
+const serviceManAppRoutes = require('./service-man-app.routes');
 
 const router = express.Router();
 
@@ -85,6 +88,9 @@ router.use('/admin/delivery-ops', adminDeliveryOperationsRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/delivery-staff', deliveryStaffOperationsRoutes);
 router.use('/delivery-staff-app', deliveryStaffAppRoutes);
+router.use('/staff-app/collection-manager', collectionManagerAppRoutes);
+router.use('/staff-app/distribution-manager', distributionManagerAppRoutes);
+router.use('/staff-app/service-man', serviceManAppRoutes);
 
 module.exports = router;
 

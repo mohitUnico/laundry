@@ -1,9 +1,12 @@
 import 'package:dio/dio.dart';
 
+import '../utils/api_config.dart';
+import '../utils/auth_storage.dart';
+
 class ApiService {
   late Dio _dio;
 
-  static const String baseUrl = 'http://localhost:5000/api/v1';
+  static const String baseUrl = '${ApiConfig.backendBaseUrl}/api/v1';
 
   ApiService() {
     _dio = Dio(
@@ -19,11 +22,10 @@ class ApiService {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
-          // TODO: Add auth token from storage
-          // final token = await storage.getAuthToken();
-          // if (token != null) {
-          //   options.headers['Authorization'] = 'Bearer $token';
-          // }
+          final token = await AuthStorage.getToken();
+          if (token != null && token.isNotEmpty) {
+            options.headers['Authorization'] = 'Bearer $token';
+          }
           return handler.next(options);
         },
         onError: (error, handler) {
@@ -40,6 +42,14 @@ class ApiService {
 
   Future<Response> post(String path, {dynamic data}) {
     return _dio.post(path, data: data);
+  }
+
+  Future<Response> postFormData(String path, {required FormData data}) {
+    return _dio.post(
+      path,
+      data: data,
+      options: Options(contentType: 'multipart/form-data'),
+    );
   }
 
   Future<Response> put(String path, {dynamic data}) {

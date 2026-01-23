@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../routes/app_routes.dart';
 import 'widgets/pill_text_field.dart';
+import '../../providers/auth_provider.dart';
 
 class UserDetailsScreen extends StatefulWidget {
   const UserDetailsScreen({super.key});
@@ -16,6 +18,7 @@ class _UserDetailsScreenState extends State<UserDetailsScreen> {
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
   final _phoneController = TextEditingController();
+  String? _nameError;
 
   @override
   void dispose() {
@@ -26,6 +29,21 @@ class _UserDetailsScreenState extends State<UserDetailsScreen> {
   }
 
   void _handleNext() {
+    final first = _firstNameController.text.trim();
+    final last = _lastNameController.text.trim();
+    final fullName = '$first $last'.trim();
+
+    final hasName = fullName.replaceAll(' ', '').length >= 2;
+    setState(() {
+      _nameError = hasName ? null : 'Please enter your name';
+    });
+    if (!hasName) return;
+
+    context.read<AuthProvider>().updateDeliveryUserDetails(
+          fullName: fullName,
+          phone: _phoneController.text.trim(),
+        );
+
     Navigator.of(context).pushNamed(AppRoutes.address);
   }
 
@@ -76,6 +94,17 @@ class _UserDetailsScreenState extends State<UserDetailsScreen> {
                         ),
                       ),
                       const SizedBox(height: 24),
+                      if (_nameError != null) ...[
+                        Text(
+                          _nameError!,
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
                       Text(
                         'First Name',
                         style: AppTextStyles.body(

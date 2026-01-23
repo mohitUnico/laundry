@@ -3,11 +3,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:provider/provider.dart';
 
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../routes/app_routes.dart';
 import '../../utils/role_manager.dart';
+import '../../providers/auth_provider.dart';
 
 class AddressAndIdScreen extends StatefulWidget {
   const AddressAndIdScreen({super.key});
@@ -21,6 +23,8 @@ class _AddressAndIdScreenState extends State<AddressAndIdScreen> {
   final ImagePicker _picker = ImagePicker();
   File? _idProofImage;
   bool _isLoading = false;
+  String? _addressError;
+  String? _idError;
 
   @override
   void dispose() {
@@ -140,6 +144,19 @@ class _AddressAndIdScreenState extends State<AddressAndIdScreen> {
                         ),
                       ),
                       const SizedBox(height: 24),
+                      if (_addressError != null) ...[
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Text(
+                            _addressError!,
+                            style: const TextStyle(
+                              color: Colors.red,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
                       Text(
                         'Submit ID Proof',
                         style: AppTextStyles.header(
@@ -249,18 +266,47 @@ class _AddressAndIdScreenState extends State<AddressAndIdScreen> {
                           ),
                         ],
                       ),
+                      if (_idError != null) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          _idError!,
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 24),
                       SizedBox(
                         width: double.infinity,
                         height: 52,
                         child: ElevatedButton(
                           onPressed: () async {
+                            final auth = context.read<AuthProvider>();
+                            final address = _addressController.text.trim();
+                            final idProof = _idProofImage;
+
+                            setState(() {
+                              _addressError =
+                                  address.isEmpty ? 'Address is required' : null;
+                              _idError =
+                                  idProof == null ? 'ID proof image is required' : null;
+                            });
+                            if (address.isEmpty || idProof == null) return;
+
+                            auth.updateDeliveryAddressAndId(
+                                  address: address,
+                                  idProofDocumentFile: idProof,
+                                );
+
                             // Check role and navigate accordingly
                             final isDelivery = await RoleManager.isDeliveryPartner();
+                            if (!context.mounted) return;
                             if (isDelivery) {
-                              // Delivery partners need driving license
+                              // Delivery partners need vehicle details before driving license
                               Navigator.of(context)
-                                  .pushNamed(AppRoutes.drivingLicense);
+                                  .pushNamed(AppRoutes.vehicleDetails);
                             } else {
                               // Other roles skip driving license and go to profile location
                               Navigator.of(context)

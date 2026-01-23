@@ -3,10 +3,12 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:provider/provider.dart';
 
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_text_styles.dart';
 import '../../../routes/app_routes.dart';
+import '../../../providers/auth_provider.dart';
 
 class DrivingLicenseScreen extends StatefulWidget {
   const DrivingLicenseScreen({super.key});
@@ -19,6 +21,7 @@ class _DrivingLicenseScreenState extends State<DrivingLicenseScreen> {
   final ImagePicker _picker = ImagePicker();
   File? _licenseImage;
   bool _isLoading = false;
+  String? _error;
 
   Future<void> _pickImage(ImageSource source) async {
     try {
@@ -81,6 +84,15 @@ class _DrivingLicenseScreenState extends State<DrivingLicenseScreen> {
   }
 
   void _handleNext() {
+    final file = _licenseImage;
+    setState(() {
+      _error = file == null ? 'Driving license image is required' : null;
+    });
+    if (file == null) return;
+
+    context.read<AuthProvider>().updateDeliveryDrivingLicenseFile(
+          drivingLicenseFile: file,
+        );
     Navigator.of(context).pushNamed(AppRoutes.profileLocation);
   }
 
@@ -241,6 +253,17 @@ class _DrivingLicenseScreenState extends State<DrivingLicenseScreen> {
                           ),
                         ],
                       ),
+                      if (_error != null) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          _error!,
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 24),
                       SizedBox(
                         width: double.infinity,

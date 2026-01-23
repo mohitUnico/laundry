@@ -1,0 +1,51 @@
+name: laundry_delivery_app
+description: Laundry App Delivery/Management Mobile Application
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI & Icons
+  cupertino_icons: ^1.0.6
+  google_fonts: ^6.1.0
+
+  # State Management
+  provider: ^6.1.1
+
+  # HTTP Client
+  dio: ^5.4.0
+
+  # Storage
+  shared_preferences: ^2.2.2
+
+  # Location
+  geolocator: ^10.1.0
+
+  # Image Handling
+  image_picker: ^1.0.5
+
+  # Permissions
+  permission_handler: ^11.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/images/auth/
+    - assets/icons/
+    - assets/icons/bottom_navbar/
+    - assets/icons/help_support/
+    - assets/icons/home_screen/
+
+

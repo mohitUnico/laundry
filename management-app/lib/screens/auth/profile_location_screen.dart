@@ -1,15 +1,15 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:provider/provider.dart';
 
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../routes/app_routes.dart';
-import 'verification_in_progress_screen.dart';
+import '../../providers/auth_provider.dart';
 
 class ProfileLocationScreen extends StatefulWidget {
   const ProfileLocationScreen({super.key});
@@ -24,6 +24,8 @@ class _ProfileLocationScreenState extends State<ProfileLocationScreen> {
   bool _isLoadingImage = false;
   bool _isLoadingLocation = false;
   bool _locationAllowed = false;
+  bool _isSubmitting = false;
+  String? _submitError;
 
   Future<void> _pickImage(ImageSource source) async {
     try {
@@ -108,7 +110,7 @@ class _ProfileLocationScreenState extends State<ProfileLocationScreen> {
       }
 
       // Request permission - this will show the system dialog if not granted
-      PermissionStatus status = await Permission.location.request();
+      await Permission.location.request();
 
       // Verify permission status after user interaction
       // Re-check status to ensure it's up to date
@@ -181,14 +183,55 @@ class _ProfileLocationScreenState extends State<ProfileLocationScreen> {
   }
 
   Future<void> _handleNext() async {
-    final result = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const VerificationInProgressDialog(),
-    );
-    if (!mounted) return;
-    if (result == true) {
+    final auth = context.read<AuthProvider>();
+    final profileImage = _profileImage;
+    if (profileImage == null) {
+      setState(() {
+        _submitError = 'Profile image is required';
+      });
+      return;
+    }
+
+    if (!_locationAllowed) {
+      setState(() {
+        _submitError = 'Location permission is required';
+      });
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+      _submitError = null;
+    });
+
+    try {
+      // Get current coordinates (required by backend)
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.low,
+        timeLimit: const Duration(seconds: 8),
+      );
+      if (!mounted) return;
+
+      auth.updateDeliveryProfileAndLocation(
+            profileImageFile: profileImage,
+            latitude: position.latitude,
+            longitude: position.longitude,
+          );
+
+      await auth.completeDeliveryRegistration();
+      if (!mounted) return;
       Navigator.of(context).pushReplacementNamed(AppRoutes.registerSuccess);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _submitError = e.toString().replaceFirst('Exception: ', '').trim();
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
     }
   }
 
@@ -434,7 +477,7 @@ class _ProfileLocationScreenState extends State<ProfileLocationScreen> {
                         width: double.infinity,
                         height: 52,
                         child: ElevatedButton(
-                          onPressed: _handleNext,
+                          onPressed: _isSubmitting ? null : _handleNext,
                           style: ElevatedButton.styleFrom(
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(30),
@@ -452,19 +495,38 @@ class _ProfileLocationScreenState extends State<ProfileLocationScreen> {
                               ),
                             ),
                             child: Center(
-                              child: Text(
-                                'Next',
-                                style: AppTextStyles.button(
-                                        color: Colors.white)
-                                    .copyWith(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
+                              child: _isSubmitting
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(Colors.white),
+                                      ),
+                                    )
+                                  : Text(
+                                      'Submit',
+                                      style: AppTextStyles.button(color: Colors.white).copyWith(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
                             ),
                           ),
                         ),
                       ),
+                      if (_submitError != null) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          _submitError!,
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

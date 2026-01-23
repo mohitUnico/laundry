@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../routes/app_routes.dart';
 import '../../utils/role_constants.dart';
+import '../../providers/auth_provider.dart';
 
 import 'widgets/otp_input_row.dart' show OtpInputRow, OtpInputRowState;
 import 'widgets/pill_text_field.dart';
@@ -30,6 +32,8 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _userIdError;
   String? _passwordError;
   bool _obscurePassword = true;
+  bool _isSendingOtp = false;
+  bool _isVerifyingOtp = false;
 
   @override
   void dispose() {
@@ -39,7 +43,7 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _handleGetOtp() {
+  Future<void> _handleGetOtp() async {
     final email = _emailController.text.trim();
     if (email.isEmpty || !email.contains('@')) {
       setState(() {
@@ -49,9 +53,30 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     setState(() {
-      _otpRequested = true;
+      _emailError = null;
       _otpError = null;
+      _isSendingOtp = true;
     });
+
+    try {
+      await context.read<AuthProvider>().sendDeliveryOtp(email: email);
+      if (!mounted) return;
+      setState(() {
+        _otpRequested = true;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _otpError = _friendlyError(e);
+      });
+      return;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSendingOtp = false;
+        });
+      }
+    }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _otpInputKey.currentState?.focusFirst();
@@ -60,7 +85,7 @@ class _LoginScreenState extends State<LoginScreen> {
     _maybeAutoSubmitOtp();
   }
 
-  void _maybeAutoSubmitOtp() {
+  Future<void> _maybeAutoSubmitOtp() async {
     if (!_otpRequested) return;
 
     if (_otp.length != 6) {
@@ -73,10 +98,44 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (_otpAutoSubmitting) return;
     _otpAutoSubmitting = true;
+    setState(() {
+      _isVerifyingOtp = true;
+      _otpError = null;
+    });
 
     FocusScope.of(context).unfocus();
-    // After OTP, go to user details screen.
-    Navigator.of(context).pushReplacementNamed(AppRoutes.userDetails);
+
+    try {
+      final email = _emailController.text.trim();
+      final isNewUser = await context.read<AuthProvider>().verifyDeliveryOtp(
+            email: email,
+            otp: _otp,
+          );
+      if (!mounted) return;
+      if (isNewUser) {
+        Navigator.of(context).pushReplacementNamed(AppRoutes.userDetails);
+      } else {
+        Navigator.of(context).pushNamedAndRemoveUntil(AppRoutes.home, (route) => false);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _otpError = _friendlyError(e);
+        _otpAutoSubmitting = false;
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isVerifyingOtp = false;
+        });
+      }
+    }
+  }
+
+  String _friendlyError(Object e) {
+    final text = e.toString();
+    // Dio errors often include "Exception:" prefix; keep message readable.
+    return text.replaceFirst('Exception: ', '').trim();
   }
 
   void _handleLogin() {
@@ -211,7 +270,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           width: double.infinity,
                           height: 52,
                           child: ElevatedButton(
-                            onPressed: _handleGetOtp,
+                            onPressed: (_isSendingOtp || _isVerifyingOtp) ? null : _handleGetOtp,
                             style: ElevatedButton.styleFrom(
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(30),
@@ -229,15 +288,23 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
                               child: Center(
-                                child: Text(
-                                  'Get OTP',
-                                  style: AppTextStyles.button(
-                                          color: Colors.white)
-                                      .copyWith(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
+                                child: _isSendingOtp
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(Colors.white),
+                                        ),
+                                      )
+                                    : Text(
+                                        'Get OTP',
+                                        style: AppTextStyles.button(color: Colors.white).copyWith(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
                               ),
                             ),
                           ),
@@ -275,6 +342,16 @@ class _LoginScreenState extends State<LoginScreen> {
                               _maybeAutoSubmitOtp();
                             },
                           ),
+                          if (_isVerifyingOtp) ...[
+                            const SizedBox(height: 10),
+                            const Center(
+                              child: SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                            ),
+                          ],
                           if (_otpError != null) ...[
                             const SizedBox(height: 6),
                             Padding(

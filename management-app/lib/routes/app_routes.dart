@@ -3,6 +3,7 @@ import '../screens/auth/login_screen.dart';
 import '../screens/auth/role_selection_screen.dart';
 import '../screens/auth/user_details_screen.dart';
 import '../screens/auth/address_and_id_screen.dart';
+import '../screens/auth/delivery/vehicle_details_screen.dart';
 import '../screens/auth/delivery/driving_license_screen.dart';
 import '../screens/auth/profile_location_screen.dart';
 import '../screens/auth/register_success_screen.dart';
@@ -25,6 +26,7 @@ class AppRoutes {
   static const String login = '/login';
   static const String userDetails = '/user-details';
   static const String address = '/address';
+  static const String vehicleDetails = '/vehicle-details';
   static const String drivingLicense = '/driving-license';
   static const String profileLocation = '/profile-location';
   static const String registerSuccess = '/register-success';
@@ -42,6 +44,7 @@ class AppRoutes {
       login: (context) => const LoginScreen(),
       userDetails: (context) => const UserDetailsScreen(),
       address: (context) => const AddressAndIdScreen(),
+      vehicleDetails: (context) => const VehicleDetailsScreen(),
       drivingLicense: (context) => const DrivingLicenseScreen(),
       profileLocation: (context) => const ProfileLocationScreen(),
       registerSuccess: (context) => const RegisterSuccessScreen(),

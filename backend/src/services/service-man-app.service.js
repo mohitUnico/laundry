@@ -221,6 +221,13 @@ exports.listCompleted = async ({ staffId, page, limit } = {}) => {
             skip,
             take: safeLimit,
             include: {
+                order: {
+                    select: {
+                        order_status: true,
+                        order_type: true,
+                        customer: { select: { customer_id: true, full_name: true, phone: true } },
+                    },
+                },
                 orderItem: {
                     select: {
                         item_id: true,
@@ -250,6 +257,19 @@ exports.listCompleted = async ({ staffId, page, limit } = {}) => {
             completedOn: q.completed_at,
             clothItemsCount: q.orderItem?.quantity ?? null,
             weightKg: q.orderItem?.weight_kg?.toString?.() ?? (q.orderItem?.weight_kg ?? null),
+            order: q.order
+                ? {
+                    orderStatus: q.order.order_status,
+                    orderType: q.order.order_type,
+                    customer: q.order.customer
+                        ? {
+                            customerId: q.order.customer.customer_id,
+                            fullName: q.order.customer.full_name,
+                            phone: q.order.customer.phone || null,
+                        }
+                        : null,
+                }
+                : null,
         })),
     };
 };

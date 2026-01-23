@@ -20,6 +20,7 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _serviceIdController = TextEditingController();
   final TextEditingController _userIdController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final GlobalKey<OtpInputRowState> _otpInputKey = GlobalKey<OtpInputRowState>();
@@ -28,6 +29,7 @@ class _LoginScreenState extends State<LoginScreen> {
   String _otp = '';
   bool _otpAutoSubmitting = false;
   String? _emailError;
+  String? _serviceIdError;
   String? _otpError;
   String? _userIdError;
   String? _passwordError;
@@ -38,6 +40,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void dispose() {
     _emailController.dispose();
+    _serviceIdController.dispose();
     _userIdController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -108,20 +111,41 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
+    final role =
+        (ModalRoute.of(context)?.settings.arguments as Map?)?['role'] as String?;
+    if (role == null) {
+      setState(() {
+        _otpError = 'Role not selected';
+      });
+      return;
+    }
+
+    String? serviceId;
+    if (role == RoleConstants.serviceMan) {
+      final raw = _serviceIdController.text.trim();
+      final uuid = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$');
+      if (raw.isEmpty || !uuid.hasMatch(raw)) {
+        setState(() {
+          _serviceIdError = 'Please enter a valid Service ID (UUID)';
+        });
+        return;
+      }
+      serviceId = raw;
+    }
+
     setState(() {
       _emailError = null;
+      _serviceIdError = null;
       _otpError = null;
       _isSendingOtp = true;
     });
 
     try {
-      final role =
-          (ModalRoute.of(context)?.settings.arguments as Map?)?['role'] as String?;
-      if (role == null) {
-        throw Exception('Role not selected');
-      }
-
-      await context.read<AuthProvider>().sendOtpForRole(role: role, email: email);
+      await context.read<AuthProvider>().sendOtpForRole(
+            role: role,
+            email: email,
+            serviceId: serviceId,
+          );
       if (!mounted) return;
       setState(() {
         _otpRequested = true;
@@ -179,13 +203,15 @@ class _LoginScreenState extends State<LoginScreen> {
             role: role,
             email: email,
             otp: _otp,
+            serviceId: role == RoleConstants.serviceMan ? _serviceIdController.text.trim() : null,
           );
       if (!mounted) return;
       if (isNewUser) {
         if (role == RoleConstants.deliveryPartner) {
         Navigator.of(context).pushReplacementNamed(AppRoutes.userDetails);
         } else if (role == RoleConstants.collectionManager ||
-            role == RoleConstants.distributionManager) {
+            role == RoleConstants.distributionManager ||
+            role == RoleConstants.serviceMan) {
           await _showNewUserDialog();
           if (!mounted) return;
           setState(() {
@@ -261,9 +287,10 @@ class _LoginScreenState extends State<LoginScreen> {
         (ModalRoute.of(context)?.settings.arguments as Map?)?['role'] as String?;
     
     final isDeliveryPartner = role == RoleConstants.deliveryPartner;
+    final isServiceMan = role == RoleConstants.serviceMan;
     final isCollectionManager = role == RoleConstants.collectionManager;
     final isDistributionManager = role == RoleConstants.distributionManager;
-    final usesOtpLogin = isDeliveryPartner || isCollectionManager || isDistributionManager;
+    final usesOtpLogin = isDeliveryPartner || isCollectionManager || isDistributionManager || isServiceMan;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -331,6 +358,26 @@ class _LoginScreenState extends State<LoginScreen> {
                       ],
                       // Delivery Partner / Collection Manager / Distribution Manager: OTP-based login
                       if (usesOtpLogin) ...[
+                        if (isServiceMan) ...[
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Service ID',
+                              style: AppTextStyles.body(color: AppColors.textPrimary).copyWith(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          PillTextField(
+                            controller: _serviceIdController,
+                            hintText: 'Enter Service ID (UUID)',
+                            keyboardType: TextInputType.text,
+                            errorText: _serviceIdError,
+                          ),
+                          const SizedBox(height: 18),
+                        ],
                         Align(
                           alignment: Alignment.centerLeft,
                           child: Text(

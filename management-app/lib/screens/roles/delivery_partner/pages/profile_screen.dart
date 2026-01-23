@@ -3,10 +3,25 @@ import 'package:flutter/material.dart';
 import '../../../../routes/app_routes.dart';
 import '../../../../theme/app_colors.dart';
 import '../../../../theme/app_text_styles.dart';
+import '../../../../utils/auth_storage.dart';
+import '../../../../utils/role_manager.dart';
 import '../../../common/widgets/bottom_nav_bar.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
+
+  Future<void> _logout(BuildContext context) async {
+    await Future.wait([
+      RoleManager.clearRole(),
+      AuthStorage.clearAll(),
+    ]);
+
+    if (!context.mounted) return;
+    Navigator.of(context).pushNamedAndRemoveUntil(
+      AppRoutes.login,
+      (route) => false,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,6 +37,46 @@ class ProfileScreen extends StatelessWidget {
                 children: [
                   const SizedBox(height: 16),
                   const _AccountSummaryCard(),
+                  const SizedBox(height: 16),
+                  // Logout button (moved here; Home screen End Shift no longer logs out)
+                  SizedBox(
+                    height: 52,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(26),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.08),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: TextButton(
+                        style: TextButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(26),
+                          ),
+                        ),
+                        onPressed: () => _logout(context),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.logout, color: AppColors.error, size: 18),
+                            const SizedBox(width: 10),
+                            Text(
+                              'Log Out',
+                              style: AppTextStyles.button(color: AppColors.error).copyWith(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 24),
                   const _SectionTitle('Account Details'),
                   const SizedBox(height: 16),
@@ -124,90 +179,137 @@ class _AccountSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          // Profile Picture
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: AppColors.primary.withOpacity(0.3),
-                width: 2,
-              ),
-            ),
-            child: ClipOval(
-              child: Image.asset(
-                'assets/images/profile_placeholder.png',
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    color: AppColors.primary.withOpacity(0.1),
-                    child: const Icon(
-                      Icons.person,
-                      size: 40,
-                      color: AppColors.primary,
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          // Name
-          Text(
-            'Nadaan Sharma',
-            style: AppTextStyles.title(
-              color: AppColors.textPrimary,
-            ).copyWith(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 4),
-          // ID
-          Text(
-            'ID: AB1234',
-            style: AppTextStyles.subtitle(
-              color: AppColors.textSecondary,
-            ).copyWith(fontSize: 13),
-          ),
-          const SizedBox(height: 20),
-          // Statistics
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _StatItem(
-                value: '156',
-                label: 'Total Deliveries',
-              ),
-              Container(
-                width: 1,
-                height: 40,
-                color: AppColors.divider.withOpacity(0.3),
-              ),
-              _StatItem(
-                value: '98%',
-                label: 'On-Time Rate',
+    return FutureBuilder<Map<String, dynamic>?>(
+      future: AuthStorage.getCurrentUser(),
+      builder: (context, snapshot) {
+        final user = snapshot.data;
+        final fullName = (user?['fullName'] ?? '').toString().trim();
+        final userId = (user?['userId'] ?? '').toString().trim();
+        final phone = (user?['phone'] ?? '').toString().trim();
+        final email = (user?['email'] ?? '').toString().trim();
+
+        return Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
-        ],
-      ),
+          child: Column(
+            children: [
+              // Profile Picture
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: AppColors.primary.withOpacity(0.3),
+                    width: 2,
+                  ),
+                ),
+                child: ClipOval(
+                  child: Image.asset(
+                    'assets/images/profile_placeholder.png',
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        color: AppColors.primary.withOpacity(0.1),
+                        child: const Icon(
+                          Icons.person,
+                          size: 40,
+                          color: AppColors.primary,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              // Name
+              Text(
+                fullName.isNotEmpty ? fullName : '—',
+                style: AppTextStyles.title(
+                  color: AppColors.textPrimary,
+                ).copyWith(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              // ID (scrollable)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'ID: ',
+                    style: AppTextStyles.subtitle(
+                      color: AppColors.textSecondary,
+                    ).copyWith(fontSize: 13),
+                  ),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 180),
+                    child: userId.isNotEmpty
+                        ? SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Text(
+                              userId,
+                              maxLines: 1,
+                              softWrap: false,
+                              style: AppTextStyles.subtitle(
+                                color: AppColors.textSecondary,
+                              ).copyWith(fontSize: 13),
+                            ),
+                          )
+                        : Text(
+                            '—',
+                            style: AppTextStyles.subtitle(
+                              color: AppColors.textSecondary,
+                            ).copyWith(fontSize: 13),
+                          ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (phone.isNotEmpty || email.isNotEmpty) ...[
+                Text(
+                  [if (phone.isNotEmpty) phone, if (email.isNotEmpty) email].join(' • '),
+                  textAlign: TextAlign.center,
+                  style: AppTextStyles.subtitle(color: AppColors.textSecondary).copyWith(fontSize: 12),
+                ),
+                const SizedBox(height: 12),
+              ] else ...[
+                const SizedBox(height: 12),
+              ],
+              // Statistics
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  const _StatItem(
+                    value: '156',
+                    label: 'Total Deliveries',
+                  ),
+                  Container(
+                    width: 1,
+                    height: 40,
+                    color: AppColors.divider.withOpacity(0.3),
+                  ),
+                  const _StatItem(
+                    value: '98%',
+                    label: 'On-Time Rate',
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

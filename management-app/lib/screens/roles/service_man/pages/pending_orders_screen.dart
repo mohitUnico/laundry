@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import '../../../../theme/app_colors.dart';
 import '../../../../theme/app_text_styles.dart';
 import '../../../../routes/app_routes.dart';
+import '../../../../utils/auth_storage.dart';
 import '../../../../utils/role_manager.dart';
+import '../../../../services/service_man_queue_service.dart';
 
 class PendingOrdersServicemenScreen extends StatefulWidget {
   const PendingOrdersServicemenScreen({super.key});
@@ -14,6 +16,269 @@ class PendingOrdersServicemenScreen extends StatefulWidget {
 class _PendingOrdersServicemenScreenState extends State<PendingOrdersServicemenScreen> {
   int _selectedTabIndex = 0; // 0: Pending, 1: Completed
 
+  final ServiceManQueueService _queueService = ServiceManQueueService();
+  Future<List<_QueueOrderUi>> _queueFuture = Future.value(const <_QueueOrderUi>[]);
+  Future<List<_CompletedOrderUi>> _completedFuture = Future.value(const <_CompletedOrderUi>[]);
+  Future<Map<String, dynamic>?> _userFuture = AuthStorage.getCurrentUser();
+
+  @override
+  void initState() {
+    super.initState();
+    _queueFuture = _loadQueue();
+    _completedFuture = _loadCompleted();
+    _userFuture = AuthStorage.getCurrentUser();
+  }
+
+  Future<void> _handleLogout() async {
+    await RoleManager.clearRole();
+    if (!mounted) return;
+    Navigator.of(context).pushNamedAndRemoveUntil(
+      AppRoutes.login,
+      (route) => false,
+    );
+  }
+
+  Future<void> _refreshQueue() async {
+    setState(() {
+      _queueFuture = _loadQueue();
+      _userFuture = AuthStorage.getCurrentUser();
+    });
+    await _queueFuture;
+  }
+
+  Future<void> _refreshCompleted() async {
+    setState(() {
+      _completedFuture = _loadCompleted();
+      _userFuture = AuthStorage.getCurrentUser();
+    });
+    await _completedFuture;
+  }
+
+  Future<List<_QueueOrderUi>> _loadQueue() async {
+    final body = await _queueService.listQueue(statusCsv: 'pending,in_progress', page: 1, limit: 20);
+    final data = body['data'];
+    if (data is! List) throw Exception('Invalid response: missing data list');
+
+    final items = data.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList();
+
+    // Group queue items by orderId (UI is order-card based).
+    final byOrder = <String, List<Map<String, dynamic>>>{};
+    for (final q in items) {
+      final orderId = (q['orderId'] ?? '').toString();
+      if (orderId.isEmpty) continue;
+      byOrder.putIfAbsent(orderId, () => []).add(q);
+    }
+
+    final result = <_QueueOrderUi>[];
+    for (final entry in byOrder.entries) {
+      final orderId = entry.key;
+      final rows = entry.value;
+
+      rows.sort((a, b) {
+        final adt = _parseDate(a['assignedAt']) ?? _parseDate(a['startedAt']);
+        final bdt = _parseDate(b['assignedAt']) ?? _parseDate(b['startedAt']);
+        if (adt == null && bdt == null) return 0;
+        if (adt == null) return 1;
+        if (bdt == null) return -1;
+        return adt.compareTo(bdt); // older first inside group
+      });
+
+      final first = rows.first;
+      final assignedAt = _parseDate(first['assignedAt']) ?? _parseDate(first['startedAt']);
+      final customer = (first['order'] is Map ? (first['order'] as Map)['customer'] : null);
+      final customerName = (customer is Map ? customer['fullName'] : null)?.toString() ?? 'Customer';
+
+      final queueIds = rows.map((r) => (r['queueId'] ?? '').toString()).where((s) => s.isNotEmpty).toList();
+
+      // Build item lines from queue items (itemName + quantity/weight)
+      final mappedItems = <_OrderItem>[];
+      int totalCount = 0;
+      for (final r in rows) {
+        final name = (r['itemName'] ?? '').toString().trim();
+        final qtyRaw = r['quantity'];
+        final qty = (qtyRaw is num) ? qtyRaw.toInt() : int.tryParse(qtyRaw?.toString() ?? '') ?? 0;
+        final weightRaw = r['weightKg'];
+        final weight = (weightRaw is num) ? weightRaw.toDouble() : double.tryParse(weightRaw?.toString() ?? '');
+
+        if (name.isEmpty) continue;
+
+        if (qty > 0) {
+          totalCount += qty;
+          mappedItems.add(_OrderItem(name: name, valueText: qty.toString().padLeft(2, '0')));
+        } else if (weight != null && weight > 0) {
+          totalCount += 1;
+          mappedItems.add(_OrderItem(name: name, valueText: '${weight.toStringAsFixed(1)} kg'));
+        } else {
+          totalCount += 1;
+          mappedItems.add(_OrderItem(name: name, valueText: '01'));
+        }
+      }
+
+      // Sort groups by assigned time (newest first)
+      result.add(
+        _QueueOrderUi(
+          backendOrderId: orderId,
+          orderIdDisplay: _formatOrderId(orderId),
+          customerName: customerName,
+          date: _formatDate(assignedAt),
+          time: _formatTime(assignedAt),
+          itemCount: totalCount,
+          items: mappedItems,
+          queueIds: queueIds,
+          sortAt: assignedAt,
+        ),
+      );
+    }
+
+    result.sort((a, b) {
+      final adt = a.sortAt;
+      final bdt = b.sortAt;
+      if (adt == null && bdt == null) return 0;
+      if (adt == null) return 1;
+      if (bdt == null) return -1;
+      return bdt.compareTo(adt); // newest first
+    });
+
+    return result;
+  }
+
+  Future<List<_CompletedOrderUi>> _loadCompleted() async {
+    final body = await _queueService.listCompleted(page: 1, limit: 20);
+    final data = body['data'];
+    if (data is! List) throw Exception('Invalid response: missing data list');
+
+    final rows = data.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList();
+
+    // Group completed items by orderId for UI cards
+    final byOrder = <String, List<Map<String, dynamic>>>{};
+    for (final r in rows) {
+      final orderId = (r['orderId'] ?? '').toString();
+      if (orderId.isEmpty) continue;
+      byOrder.putIfAbsent(orderId, () => []).add(r);
+    }
+
+    final out = <_CompletedOrderUi>[];
+    for (final e in byOrder.entries) {
+      final orderId = e.key;
+      final items = e.value;
+
+      items.sort((a, b) {
+        final adt = _parseDate(a['completedOn']);
+        final bdt = _parseDate(b['completedOn']);
+        if (adt == null && bdt == null) return 0;
+        if (adt == null) return 1;
+        if (bdt == null) return -1;
+        return bdt.compareTo(adt); // newest first
+      });
+
+      final first = items.first;
+      final addedOn = _parseDate(first['addedOn']);
+      final completedOn = _parseDate(first['completedOn']);
+      final order = first['order'];
+      final customer = (order is Map ? order['customer'] : null);
+      final customerName = (customer is Map ? customer['fullName'] : null)?.toString() ?? 'Customer';
+
+      int count = 0;
+      for (final r in items) {
+        final c = r['clothItemsCount'];
+        final q = (c is num) ? c.toInt() : int.tryParse(c?.toString() ?? '') ?? 0;
+        if (q > 0) {
+          count += q;
+        } else {
+          count += 1;
+        }
+      }
+
+      out.add(
+        _CompletedOrderUi(
+          backendOrderId: orderId,
+          orderIdDisplay: _formatOrderId(orderId),
+          customerName: customerName,
+          addedDate: _formatDate(addedOn),
+          addedTime: _formatTime(addedOn),
+          completedDate: _formatDate(completedOn),
+          completedTime: _formatTime(completedOn),
+          itemCount: count,
+        ),
+      );
+    }
+
+    return out;
+  }
+
+  Future<void> _bulkUpdateQueueItems({
+    required List<String> queueIds,
+    required String action,
+  }) async {
+    // Update each queue item; keep it simple and robust.
+    for (final qid in queueIds) {
+      await _queueService.updateQueueItem(queueId: qid, action: action);
+    }
+    // Refresh both tabs so completed moves across.
+    await Future.wait([_refreshQueue(), _refreshCompleted()]);
+  }
+
+  static DateTime? _parseDate(Object? raw) {
+    if (raw is DateTime) return raw;
+    if (raw is String && raw.isNotEmpty) return DateTime.tryParse(raw);
+    return null;
+  }
+
+  static String _formatOrderId(String orderId) {
+    final normalized = orderId.replaceAll('-', '').toUpperCase();
+    if (normalized.length >= 6) return 'ORD${normalized.substring(0, 6)}';
+    if (normalized.isNotEmpty) return 'ORD$normalized';
+    return 'ORDER';
+  }
+
+  static String _formatDate(DateTime? dt) {
+    if (dt == null) return '--';
+    final dd = dt.day.toString().padLeft(2, '0');
+    final mm = dt.month.toString().padLeft(2, '0');
+    final yyyy = dt.year.toString();
+    return '$dd-$mm-$yyyy';
+  }
+
+  static String _formatTime(DateTime? dt) {
+    if (dt == null) return '--';
+    int hour = dt.hour;
+    final minute = dt.minute.toString().padLeft(2, '0');
+    final suffix = hour >= 12 ? 'PM' : 'AM';
+    hour = hour % 12;
+    if (hour == 0) hour = 12;
+    return '${hour.toString().padLeft(2, '0')}:$minute $suffix';
+  }
+
+  Future<void> _markInProgress(List<String> queueIds) async {
+    try {
+      await _bulkUpdateQueueItems(queueIds: queueIds, action: 'in_progress');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Marked in progress')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', '').trim())),
+      );
+    }
+  }
+
+  Future<void> _markCompleted(List<String> queueIds) async {
+    try {
+      await _bulkUpdateQueueItems(queueIds: queueIds, action: 'completed');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Marked completed')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', '').trim())),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -22,8 +287,14 @@ class _PendingOrdersServicemenScreenState extends State<PendingOrdersServicemenS
         child: IndexedStack(
           index: _selectedTabIndex,
           children: [
-            _PendingOrdersView(),
-            _CompletedOrdersView(),
+            _PendingOrdersView(
+              queueFuture: _queueFuture,
+              userFuture: _userFuture,
+              onLogout: _handleLogout,
+              onInProgress: _markInProgress,
+              onMarkComplete: _markCompleted,
+            ),
+            _CompletedOrdersView(completedFuture: _completedFuture),
           ],
         ),
       ),
@@ -40,6 +311,20 @@ class _PendingOrdersServicemenScreenState extends State<PendingOrdersServicemenS
 }
 
 class _PendingOrdersView extends StatelessWidget {
+  final Future<List<_QueueOrderUi>> queueFuture;
+  final Future<Map<String, dynamic>?> userFuture;
+  final VoidCallback onLogout;
+  final Future<void> Function(List<String> queueIds) onInProgress;
+  final Future<void> Function(List<String> queueIds) onMarkComplete;
+
+  const _PendingOrdersView({
+    required this.queueFuture,
+    required this.userFuture,
+    required this.onLogout,
+    required this.onInProgress,
+    required this.onMarkComplete,
+  });
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -49,67 +334,108 @@ class _PendingOrdersView extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: Row(
             children: [
-              // Profile Section
-              Row(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Colors.white,
-                        width: 2,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.06),
-                          blurRadius: 6,
-                          offset: const Offset(0, 3),
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.white,
+                          width: 2,
                         ),
-                      ],
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.06),
+                            blurRadius: 6,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: ClipOval(
+                        child: Image.asset(
+                          'assets/icons/profile_pic_demo.png',
+                          fit: BoxFit.cover,
+                        ),
+                      ),
                     ),
-                    child: ClipOval(
-                      child: Image.asset(
-                        'assets/icons/profile_pic_demo.png',
-                        fit: BoxFit.cover,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FutureBuilder<Map<String, dynamic>?>(
+                        future: userFuture,
+                        builder: (context, snapshot) {
+                          final user = snapshot.data;
+                          final fullName = (user?['fullName'] ?? '').toString().trim();
+                          final firstName = fullName.isNotEmpty
+                              ? fullName.split(RegExp(r'\s+')).first.trim()
+                              : '';
+                          final userId = (user?['userId'] ?? '').toString().trim();
+                          final serviceName = (user?['serviceName'] ?? '').toString().trim();
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                firstName.isNotEmpty ? 'Hi, $firstName' : 'Hi',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTextStyles.title(
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Text(
+                                    'ID: ',
+                                    style: AppTextStyles.subtitle(
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: userId.isNotEmpty
+                                        ? SingleChildScrollView(
+                                            scrollDirection: Axis.horizontal,
+                                            child: Text(
+                                              userId,
+                                              maxLines: 1,
+                                              softWrap: false,
+                                              style: AppTextStyles.subtitle(
+                                                color: AppColors.textSecondary,
+                                              ),
+                                            ),
+                                          )
+                                        : Text(
+                                            '—',
+                                            style: AppTextStyles.subtitle(
+                                              color: AppColors.textSecondary,
+                                            ),
+                                          ),
+                                  ),
+                                ],
+                              ),
+                              if (serviceName.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Service: $serviceName',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyles.subtitle(color: AppColors.textSecondary).copyWith(fontSize: 12),
+                                ),
+                              ],
+                            ],
+                          );
+                        },
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Hi, Nadaan',
-                        style: AppTextStyles.title(
-                          color: AppColors.primary,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'ID: AB1234',
-                        style: AppTextStyles.subtitle(
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+                  ],
+                ),
               ),
-              const Spacer(),
               // Log Out Button
               InkWell(
-                onTap: () async {
-                  // Clear role and navigate to login
-                  await RoleManager.clearRole();
-                  if (context.mounted) {
-                    Navigator.of(context).pushNamedAndRemoveUntil(
-                      AppRoutes.login,
-                      (route) => false,
-                    );
-                  }
-                },
+                onTap: onLogout,
                 borderRadius: BorderRadius.circular(26),
                 splashColor: Colors.transparent,
                 highlightColor: Colors.transparent,
@@ -206,73 +532,66 @@ class _PendingOrdersView extends StatelessWidget {
   }
 
   Widget _buildPendingOrdersList() {
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 18),
-      children: [
-        _OrderCard(
-          orderId: 'ORD033',
-          customerName: 'Jim Hopper',
-          date: '10-04-2025',
-          time: '10:26 AM',
-          itemCount: 15,
-          items: const [
-            _OrderItem(name: 'Top Wear', quantity: 5),
-            _OrderItem(name: 'Bottom Wear', quantity: 6),
-            _OrderItem(name: 'Kurta', quantity: 2),
-            _OrderItem(name: 'Saree', quantity: 2),
-          ],
-          onInProgress: () {
-            // Handle in-progress action
+    return FutureBuilder<List<_QueueOrderUi>>(
+      future: queueFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                snapshot.error.toString().replaceFirst('Exception: ', ''),
+                style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          );
+        }
+
+        final list = snapshot.data ?? const <_QueueOrderUi>[];
+        if (list.isEmpty) {
+          return Center(
+            child: Text(
+              'No pending items',
+              style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+            ),
+          );
+        }
+
+        return ListView.separated(
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          itemCount: list.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          itemBuilder: (context, index) {
+            final o = list[index];
+            return _OrderCard(
+              orderId: o.orderIdDisplay,
+              customerName: o.customerName,
+              date: o.date,
+              time: o.time,
+              itemCount: o.itemCount,
+              items: o.items,
+              onInProgress: () => onInProgress(o.queueIds),
+              onMarkComplete: () => onMarkComplete(o.queueIds),
+            );
           },
-          onMarkComplete: () {
-            // Handle mark as complete action
-          },
-        ),
-        const SizedBox(height: 12),
-        _OrderCard(
-          orderId: 'ORD035',
-          customerName: 'Mike Wheelers',
-          date: '10-04-2025',
-          time: '11:16 AM',
-          itemCount: 12,
-          items: const [
-            _OrderItem(name: 'Top Wear', quantity: 5),
-            _OrderItem(name: 'Bottom Wear', quantity: 5),
-            _OrderItem(name: 'Kurta', quantity: 2),
-            _OrderItem(name: 'Saree', quantity: 3),
-          ],
-          onInProgress: () {
-            // Handle in-progress action
-          },
-          onMarkComplete: () {
-            // Handle mark as complete action
-          },
-        ),
-        const SizedBox(height: 12),
-        _OrderCard(
-          orderId: 'ORD039',
-          customerName: 'Joyce',
-          date: '09-04-2025',
-          time: '05:20 PM',
-          itemCount: 08,
-          items: const [
-            _OrderItem(name: 'Top Wear', quantity: 3),
-            _OrderItem(name: 'Bottom Wear', quantity: 3),
-            _OrderItem(name: 'Kurta', quantity: 2),
-          ],
-          onInProgress: () {
-            // Handle in-progress action
-          },
-          onMarkComplete: () {
-            // Handle mark as complete action
-          },
-        ),
-      ],
+        );
+      },
     );
   }
 }
 
 class _CompletedOrdersView extends StatelessWidget {
+  final Future<List<_CompletedOrderUi>> completedFuture;
+
+  const _CompletedOrdersView({required this.completedFuture});
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -301,58 +620,111 @@ class _CompletedOrdersView extends StatelessWidget {
   }
 
   Widget _buildCompletedOrdersList() {
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 18),
-      children: [
-        _CompletedOrderCard(
-          orderId: 'ORD033',
-          customerName: 'Jim Hopper',
-          addedDate: '10-04-2025',
-          addedTime: '05:26 PM',
-          completedDate: '11-04-2025',
-          completedTime: '12:20 PM',
-          itemCount: 15,
-        ),
-        const SizedBox(height: 12),
-        _CompletedOrderCard(
-          orderId: 'ORD026',
-          customerName: 'Mike Wheelers',
-          addedDate: '10-04-2025',
-          addedTime: '11:16 AM',
-          completedDate: '11-04-2025',
-          completedTime: '09:20 AM',
-          itemCount: 12,
-        ),
-        const SizedBox(height: 12),
-        _CompletedOrderCard(
-          orderId: 'ORD022',
-          customerName: 'Joyce',
-          addedDate: '09-04-2025',
-          addedTime: '05:20 PM',
-          completedDate: '10-04-2025',
-          completedTime: '12:20 PM',
-          itemCount: 08,
-        ),
-        const SizedBox(height: 12),
-        _CompletedOrderCard(
-          orderId: 'ORD020',
-          customerName: 'Eleven',
-          addedDate: '09-04-2025',
-          addedTime: '03:26 PM',
-          completedDate: '10-04-2025',
-          completedTime: '02:20 PM',
-          itemCount: 20,
-        ),
-      ],
+    return FutureBuilder<List<_CompletedOrderUi>>(
+      future: completedFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                snapshot.error.toString().replaceFirst('Exception: ', ''),
+                style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          );
+        }
+
+        final list = snapshot.data ?? const <_CompletedOrderUi>[];
+        if (list.isEmpty) {
+          return Center(
+            child: Text(
+              'No completed items',
+              style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+            ),
+          );
+        }
+
+        return ListView.separated(
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          itemCount: list.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          itemBuilder: (context, index) {
+            final o = list[index];
+            return _CompletedOrderCard(
+              orderId: o.orderIdDisplay,
+              customerName: o.customerName,
+              addedDate: o.addedDate,
+              addedTime: o.addedTime,
+              completedDate: o.completedDate,
+              completedTime: o.completedTime,
+              itemCount: o.itemCount,
+            );
+          },
+        );
+      },
     );
   }
 }
 
 class _OrderItem {
   final String name;
-  final int quantity;
+  final String valueText;
 
-  const _OrderItem({required this.name, required this.quantity});
+  const _OrderItem({required this.name, required this.valueText});
+}
+
+class _QueueOrderUi {
+  final String backendOrderId;
+  final String orderIdDisplay;
+  final String customerName;
+  final String date;
+  final String time;
+  final int itemCount;
+  final List<_OrderItem> items;
+  final List<String> queueIds;
+  final DateTime? sortAt;
+
+  _QueueOrderUi({
+    required this.backendOrderId,
+    required this.orderIdDisplay,
+    required this.customerName,
+    required this.date,
+    required this.time,
+    required this.itemCount,
+    required this.items,
+    required this.queueIds,
+    required this.sortAt,
+  });
+}
+
+class _CompletedOrderUi {
+  final String backendOrderId;
+  final String orderIdDisplay;
+  final String customerName;
+  final String addedDate;
+  final String addedTime;
+  final String completedDate;
+  final String completedTime;
+  final int itemCount;
+
+  const _CompletedOrderUi({
+    required this.backendOrderId,
+    required this.orderIdDisplay,
+    required this.customerName,
+    required this.addedDate,
+    required this.addedTime,
+    required this.completedDate,
+    required this.completedTime,
+    required this.itemCount,
+  });
 }
 
 class _OrderCard extends StatefulWidget {
@@ -553,7 +925,7 @@ class _OrderCardState extends State<_OrderCard> {
                       ),
                       // Quantity
                       Text(
-                        item.quantity.toString().padLeft(2, '0'),
+                        item.valueText,
                         style: AppTextStyles.subtitle(
                           color: AppColors.textPrimary,
                         ).copyWith(

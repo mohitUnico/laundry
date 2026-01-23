@@ -114,6 +114,48 @@ class StaffAuthService {
       throw Exception(_extractErrorMessage(e, fallback: 'Failed to verify OTP'));
     }
   }
+
+  Future<int?> sendServiceManOtp({
+    required String email,
+    required String serviceId,
+  }) async {
+    try {
+      final res = await _api.post(
+        '/auth/service-man/send-otp',
+        data: {'email': email, 'serviceId': serviceId},
+      );
+      final data = res.data;
+      if (data is Map<String, dynamic>) {
+        final payload = data['data'];
+        if (payload is Map<String, dynamic>) {
+          final expiresIn = payload['expiresIn'];
+          if (expiresIn is int) return expiresIn;
+          if (expiresIn is num) return expiresIn.toInt();
+        }
+      }
+      return null;
+    } catch (e) {
+      throw Exception(_extractErrorMessage(e, fallback: 'Failed to send OTP'));
+    }
+  }
+
+  Future<Map<String, dynamic>> verifyServiceManOtp({
+    required String email,
+    required String otp,
+    required String serviceId,
+  }) async {
+    try {
+      final res = await _api.post(
+        '/auth/service-man/verify-otp',
+        data: {'email': email, 'otp': otp, 'serviceId': serviceId},
+      );
+      final body = res.data;
+      if (body is Map<String, dynamic>) return body;
+      throw Exception('Unexpected response format');
+    } catch (e) {
+      throw Exception(_extractErrorMessage(e, fallback: 'Failed to verify OTP'));
+    }
+  }
 }
 
 

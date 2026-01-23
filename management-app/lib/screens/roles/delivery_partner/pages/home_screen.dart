@@ -6,6 +6,8 @@ import '../../../../theme/app_colors.dart';
 import '../../../../theme/app_text_styles.dart';
 import '../../../../routes/app_routes.dart';
 import '../../../../providers/delivery_provider.dart';
+import '../../../../services/delivery_shift_service.dart';
+import '../../../../utils/auth_storage.dart';
 import '../../../../utils/role_manager.dart';
 import '../../../common/widgets/order_summary_card.dart';
 import '../../../common/widgets/task_card.dart';
@@ -22,6 +24,59 @@ class _HomeScreenState extends State<HomeScreen> {
   int _selectedTabIndex = 0; // 0: Today's Tasks, 1: Completed
   int _bottomNavIndex = 0;
   final ImagePicker _imagePicker = ImagePicker();
+  final DeliveryShiftService _shiftService = DeliveryShiftService();
+
+  bool _isShiftActive = true;
+  bool _isShiftToggling = false;
+  Future<Map<String, dynamic>?> _userFuture = AuthStorage.getCurrentUser();
+
+  @override
+  void initState() {
+    super.initState();
+    _userFuture = AuthStorage.getCurrentUser();
+  }
+
+  Future<void> _toggleShift() async {
+    if (_isShiftToggling) return;
+    setState(() {
+      _isShiftToggling = true;
+    });
+
+    try {
+      if (_isShiftActive) {
+        final body = await _shiftService.stopShift();
+        final data = body['data'];
+        final isActive = (data is Map) ? data['isActive'] : null;
+        setState(() {
+          _isShiftActive = isActive is bool ? isActive : false;
+        });
+      } else {
+        final body = await _shiftService.startShift();
+        final data = body['data'];
+        final isActive = (data is Map) ? data['isActive'] : null;
+        setState(() {
+          _isShiftActive = isActive is bool ? isActive : true;
+        });
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_isShiftActive ? 'Shift started' : 'Shift stopped')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', '').trim())),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isShiftToggling = false;
+          _userFuture = AuthStorage.getCurrentUser();
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,68 +91,98 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Row(
                 children: [
                   // Profile Section
-                  Row(
-                    children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Colors.white,
-                            width: 2,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.06),
-                              blurRadius: 6,
-                              offset: const Offset(0, 3),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white,
+                              width: 2,
                             ),
-                          ],
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.06),
+                                blurRadius: 6,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: ClipOval(
+                            child: Image.asset(
+                              'assets/icons/profile_pic_demo.png',
+                              fit: BoxFit.cover,
+                            ),
+                          ),
                         ),
-                        child: ClipOval(
-                          child: Image.asset(
-                            'assets/icons/profile_pic_demo.png',
-                            fit: BoxFit.cover,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FutureBuilder<Map<String, dynamic>?>(
+                            future: _userFuture,
+                            builder: (context, snapshot) {
+                              final user = snapshot.data;
+                              final fullName = (user?['fullName'] ?? '').toString().trim();
+                              final firstName = fullName.isNotEmpty
+                                  ? fullName.split(RegExp(r'\s+')).first.trim()
+                                  : '';
+                              final userId = (user?['userId'] ?? '').toString().trim();
+
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    firstName.isNotEmpty ? 'Hi, $firstName' : 'Hi',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTextStyles.title(
+                                      color: AppColors.primary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Row(
+                                    children: [
+                                      Text(
+                                        'ID: ',
+                                        style: AppTextStyles.subtitle(
+                                          color: AppColors.textSecondary,
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: userId.isNotEmpty
+                                            ? SingleChildScrollView(
+                                                scrollDirection: Axis.horizontal,
+                                                child: Text(
+                                                  userId,
+                                                  maxLines: 1,
+                                                  softWrap: false,
+                                                  style: AppTextStyles.subtitle(
+                                                    color: AppColors.textSecondary,
+                                                  ),
+                                                ),
+                                              )
+                                            : Text(
+                                                '—',
+                                                style: AppTextStyles.subtitle(
+                                                  color: AppColors.textSecondary,
+                                                ),
+                                              ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              );
+                            },
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Hi, Nadaan',
-                            style: AppTextStyles.title(
-                              color: AppColors.primary,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'ID: AB1234',
-                            style: AppTextStyles.subtitle(
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                  const Spacer(),
                   // End Shift Button
                   InkWell(
-                    onTap: () async {
-                      // Get role before clearing, then navigate to login with role argument
-                      final role = await RoleManager.getRole();
-                      await RoleManager.clearRole();
-                      if (context.mounted) {
-                        Navigator.of(context).pushNamedAndRemoveUntil(
-                          AppRoutes.login,
-                          (route) => false,
-                          arguments: {'role': role},
-                        );
-                      }
-                    },
+                    onTap: _toggleShift,
                     borderRadius: BorderRadius.circular(26),
                     splashColor: Colors.transparent,
                     highlightColor: Colors.transparent,
@@ -130,15 +215,24 @@ class _HomeScreenState extends State<HomeScreen> {
                                   fit: BoxFit.contain,
                                 ),
                                 const SizedBox(width: 12),
-                                Text(
-                                  'End Shift',
-                                  style: AppTextStyles.button(
-                                    color: AppColors.error,
-                                  ).copyWith(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
+                                _isShiftToggling
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(AppColors.error),
+                                        ),
+                                      )
+                                    : Text(
+                                        _isShiftActive ? 'End Shift' : 'Start Shift',
+                                        style: AppTextStyles.button(
+                                          color: _isShiftActive ? AppColors.error : AppColors.primary,
+                                        ).copyWith(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
                               ],
                             ),
                           ),

@@ -2,6 +2,10 @@ const { Prisma } = require('@prisma/client');
 const prisma = require('../config/database');
 const { NotFoundError, ValidationError } = require('../utils/errors');
 
+function hasCouponModel() {
+    return prisma && prisma.coupon && typeof prisma.coupon.findMany === 'function';
+}
+
 function toDateOrNull(value, fieldName) {
     if (value === null || value === undefined) return value;
     if (value instanceof Date) return value;
@@ -33,6 +37,65 @@ exports.listCoupons = async (query = {}) => {
     const limitNum = Math.min(Math.max(Number(limit) || 20, 1), 100);
     const skip = (pageNum - 1) * limitNum;
     const take = limitNum;
+
+    // If Prisma client doesn't include Coupon model (e.g., server not regenerated yet),
+    // fall back to raw SQL so customers can still fetch coupons.
+    if (!hasCouponModel()) {
+        const filters = [];
+
+        if (typeof is_active === 'boolean') {
+            filters.push(Prisma.sql`is_active = ${is_active}`);
+        }
+
+        if (code) {
+            filters.push(Prisma.sql`code ILIKE ${`%${code}%`}`);
+        }
+
+        if (discount_type) {
+            filters.push(Prisma.sql`discount_type = ${discount_type}`);
+        }
+
+        if (valid_now === true) {
+            const now = new Date();
+            filters.push(Prisma.sql`is_active = true`);
+            filters.push(Prisma.sql`(valid_from IS NULL OR valid_from <= ${now})`);
+            filters.push(Prisma.sql`(valid_till IS NULL OR valid_till >= ${now})`);
+        }
+
+        const whereSql =
+            filters.length > 0 ? Prisma.sql`WHERE ${Prisma.join(filters, Prisma.sql` AND `)}` : Prisma.empty;
+
+        try {
+            const countRows = await prisma.$queryRaw`
+                SELECT COUNT(*)::int AS count
+                FROM coupons
+                ${whereSql}
+            `;
+            const total = Array.isArray(countRows) && countRows[0] ? Number(countRows[0].count || 0) : 0;
+
+            const coupons = await prisma.$queryRaw`
+                SELECT *
+                FROM coupons
+                ${whereSql}
+                ORDER BY id DESC
+                LIMIT ${take} OFFSET ${skip}
+            `;
+
+            return {
+                coupons: Array.isArray(coupons) ? coupons : [],
+                pagination: {
+                    page: pageNum,
+                    limit: limitNum,
+                    total,
+                    totalPages: Math.ceil(total / limitNum),
+                    hasNext: pageNum * limitNum < total,
+                    hasPrev: pageNum > 1,
+                },
+            };
+        } catch (e) {
+            throw new ValidationError(e?.message || 'Failed to fetch coupons');
+        }
+    }
 
     const where = {};
 

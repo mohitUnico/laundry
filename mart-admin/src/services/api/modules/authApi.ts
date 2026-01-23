@@ -131,4 +131,96 @@ export const authApi = {
     const response = await axiosInstance.post(API_ENDPOINTS.AUTH.LOGOUT);
     return response.data;
   },
+
+  // ============================================================================
+  // Staff registration (admin-created via OTP)
+  // ============================================================================
+
+  sendStaffOtp: async (payload: {
+    role: 'collection_manager' | 'distribution_manager' | 'service_man';
+    email: string;
+    serviceId?: string;
+  }) => {
+    const rolePath =
+      payload.role === 'collection_manager'
+        ? 'collection-manager'
+        : payload.role === 'distribution_manager'
+          ? 'distribution-manager'
+          : 'service-man';
+
+    const response = await axiosInstance.post(`/auth/${rolePath}/send-otp`, {
+      email: payload.email,
+      ...(payload.role === 'service_man' ? { serviceId: payload.serviceId } : {}),
+    });
+    return response.data as {
+      success: boolean;
+      message: string;
+      data: { email: string; expiresIn: number };
+    };
+  },
+
+  verifyStaffOtp: async (payload: {
+    role: 'collection_manager' | 'distribution_manager' | 'service_man';
+    email: string;
+    otp: string;
+    serviceId?: string;
+  }) => {
+    const rolePath =
+      payload.role === 'collection_manager'
+        ? 'collection-manager'
+        : payload.role === 'distribution_manager'
+          ? 'distribution-manager'
+          : 'service-man';
+
+    const response = await axiosInstance.post(`/auth/${rolePath}/verify-otp`, {
+      email: payload.email,
+      otp: payload.otp,
+      ...(payload.role === 'service_man' ? { serviceId: payload.serviceId } : {}),
+    });
+    return response.data as {
+      success: boolean;
+      message: string;
+      data:
+        | { isNewUser: true; sessionToken: string; expiresIn: number }
+        | { isNewUser: false; token: string; user: IUser };
+    };
+  },
+
+  completeStaffRegistration: async (payload: {
+    role: 'collection_manager' | 'distribution_manager' | 'service_man';
+    sessionToken: string;
+    fullName: string;
+    phone?: string | null;
+    serviceId?: string;
+  }) => {
+    const rolePath =
+      payload.role === 'collection_manager'
+        ? 'collection-manager'
+        : payload.role === 'distribution_manager'
+          ? 'distribution-manager'
+          : 'service-man';
+
+    const body =
+      payload.role === 'collection_manager'
+        ? {
+            sessionToken: payload.sessionToken,
+            collectionManagerData: { fullName: payload.fullName, phone: payload.phone || null },
+          }
+        : payload.role === 'distribution_manager'
+          ? {
+              sessionToken: payload.sessionToken,
+              distributionManagerData: { fullName: payload.fullName, phone: payload.phone || null },
+            }
+          : {
+              sessionToken: payload.sessionToken,
+              serviceManData: {
+                fullName: payload.fullName,
+                phone: payload.phone || null,
+                serviceId: payload.serviceId,
+              },
+            };
+
+    const response = await axiosInstance.post(`/auth/${rolePath}/complete-registration`, body);
+    return response.data as { success: boolean; message: string; data: any };
+  },
 };

@@ -5,7 +5,15 @@ import path from 'path';
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, process.cwd(), '');
-    const proxyTarget = env.VITE_API_PROXY_TARGET || 'http://localhost:4000';
+    let proxyTarget = env.VITE_API_PROXY_TARGET || 'http://localhost:4000';
+    // If no explicit proxy target is set, derive it from VITE_API_BASE_URL (e.g. http://host:4000/api/v1 -> http://host:4000)
+    if (!env.VITE_API_PROXY_TARGET && env.VITE_API_BASE_URL) {
+        try {
+            proxyTarget = new URL(env.VITE_API_BASE_URL).origin;
+        } catch {
+            // ignore invalid URL, keep default
+        }
+    }
 
     return {
         plugins: [react()],

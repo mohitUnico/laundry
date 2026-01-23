@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   dashboardApi,
   MartDashboardCustomerSatisfaction,
@@ -39,6 +39,7 @@ const EMPTY_STATE: DashboardState = {
 let inFlight: Promise<DashboardState> | null = null;
 let cache: { range: DashboardRange; at: number; data: DashboardState } | null = null;
 const CACHE_TTL_MS = 10_000;
+const MONTHLY_POLL_MS = 30_000;
 
 const fetchDashboard = async (range: DashboardRange): Promise<DashboardState> => {
   const [
@@ -72,6 +73,8 @@ export const useDashboard = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<DashboardState>(EMPTY_STATE);
+
+  const monthlyPollInFlightRef = useRef<Promise<void> | null>(null);
 
   const refresh = useCallback(async (opts?: { force?: boolean }) => {
     setLoading(true);
@@ -120,6 +123,45 @@ export const useDashboard = () => {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Poll only the monthly overview every 30 seconds (no backend changes required).
+  // We keep this "silent" (no loading spinner) and de-dupe overlapping polls.
+  useEffect(() => {
+    let cancelled = false;
+
+    const tick = async () => {
+      if (monthlyPollInFlightRef.current) return;
+
+      monthlyPollInFlightRef.current = dashboardApi
+        .getMonthlyOverview()
+        .then((res) => {
+          if (cancelled) return;
+          setData((prev) => ({
+            ...prev,
+            monthlyOverview: res.data,
+          }));
+        })
+        .catch(() => {
+          // Intentionally silent: keep last value, avoid UI flicker.
+        })
+        .finally(() => {
+          monthlyPollInFlightRef.current = null;
+        });
+
+      await monthlyPollInFlightRef.current;
+    };
+
+    // Run immediately and then every 30 seconds.
+    void tick();
+    const id = window.setInterval(() => {
+      void tick();
+    }, MONTHLY_POLL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
 
   const api = useMemo(
     () => ({

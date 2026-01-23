@@ -75,6 +75,35 @@ export const OrdersPage: React.FC = () => {
     }
   };
 
+  // Summary should not refetch on status changes (keeps the UI responsive).
+  useEffect(() => {
+    let isMounted = true;
+    const run = async () => {
+      try {
+        const from = monthRange?.from;
+        const to = monthRange?.to;
+
+        const summaryRes = await adminManagementApi.getAdminOrdersSummary({
+          from,
+          to,
+          completedDate: dateFilter || undefined,
+        });
+
+        if (!isMounted) return;
+        setSummary(summaryRes.data);
+      } catch {
+        // Non-blocking: orders list should still work even if summary fails.
+      }
+    };
+
+    run();
+    return () => {
+      isMounted = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monthRange, dateFilter]);
+
+  // Orders list fetch
   useEffect(() => {
     let isMounted = true;
     const run = async () => {
@@ -85,14 +114,6 @@ export const OrdersPage: React.FC = () => {
         const from = monthRange?.from;
         const to = monthRange?.to;
 
-        // Fetch summary (cards)
-        const summaryRes = await adminManagementApi.getAdminOrdersSummary({
-          from,
-          to,
-          completedDate: dateFilter || undefined,
-        });
-
-        // Fetch orders list (table)
         const statusParam =
           statusFilter === 'all' || statusFilter === 'completed_today'
             ? undefined
@@ -103,11 +124,11 @@ export const OrdersPage: React.FC = () => {
           from,
           to,
           page: 1,
-          limit: 50,
+          // Keep the list snappy; backend defaults to 20.
+          limit: 20,
         });
 
         if (!isMounted) return;
-        setSummary(summaryRes.data);
         setApiOrders(ordersRes.data.orders ?? []);
       } catch (e: any) {
         if (!isMounted) return;

@@ -70,6 +70,9 @@ export const API_ENDPOINTS = {
     ONLINE: '/admin/delivery-staff/online',
     VERIFY: (staffId: string) => `/admin/delivery-staff/${staffId}/verify`,
   },
+  ADMIN_SETTINGS: {
+    TEAM_MEMBERS_GROUPED: '/admin/settings/team-members',
+  },
   NOTIFICATIONS: {
     SEND: '/notifications/send',
   },

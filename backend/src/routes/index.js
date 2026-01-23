@@ -17,6 +17,7 @@ const deliveryStaffAppRoutes = require('./delivery-staff-app.routes');
 const collectionManagerAppRoutes = require('./collection-manager-app.routes');
 const distributionManagerAppRoutes = require('./distribution-manager-app.routes');
 const serviceManAppRoutes = require('./service-man-app.routes');
+const couponsRoutes = require('./coupons.routes');
 
 const router = express.Router();
 
@@ -36,6 +37,7 @@ router.get('/', (req, res) => {
             dashboard: '/api/v1/dashboard',
             services: '/api/v1/services',
             clothes: '/api/v1/clothes',
+            coupons: '/api/v1/coupons',
         },
         authentication: {
             type: 'OTP-based Passwordless',
@@ -86,6 +88,7 @@ router.use('/admin/customers', adminCustomerManagementRoutes);
 router.use('/admin/delivery-staff', adminDeliveryStaffManagementRoutes);
 router.use('/admin/delivery-ops', adminDeliveryOperationsRoutes);
 router.use('/payments', paymentRoutes);
+router.use('/coupons', couponsRoutes);
 router.use('/delivery-staff', deliveryStaffOperationsRoutes);
 router.use('/delivery-staff-app', deliveryStaffAppRoutes);
 router.use('/staff-app/collection-manager', collectionManagerAppRoutes);

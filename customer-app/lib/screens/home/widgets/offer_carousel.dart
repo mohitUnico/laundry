@@ -37,6 +37,7 @@ class _OfferCarouselState extends State<OfferCarousel> {
   @override
   void initState() {
     super.initState();
+    if (widget.banners.isEmpty) return;
     // < 1.0 so users can peek previous/next banner.
     final initial = (widget.banners.length * _loopMultiplier) ~/ 2;
     final alignedInitial = initial - (initial % widget.banners.length);
@@ -49,12 +50,15 @@ class _OfferCarouselState extends State<OfferCarousel> {
 
   @override
   void dispose() {
-    _controller.dispose();
+    if (widget.banners.isNotEmpty) {
+      _controller.dispose();
+    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (widget.banners.isEmpty) return const SizedBox.shrink();
     final textScale = MediaQuery.textScalerOf(context).scale(1);
     // Taller banners per design request.
     final bannerHeight = (160 * textScale).clamp(160.0, 210.0);

@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../routes/app_routes.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/coupons_provider.dart';
 import '../../providers/service_catalog_provider.dart';
 import '../../providers/order_provider.dart';
 import '../../models/order_record.dart';
@@ -27,6 +28,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   RealtimeChannel? _ordersChannel;
+  RealtimeChannel? _couponsChannel;
 
   @override
   void initState() {
@@ -36,9 +38,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       // Force refresh so newly added categories in Supabase show up even if we have cached data.
       context.read<ServiceCatalogProvider>().fetchServiceCategories(isActive: true, force: true);
+      // Fetch coupons for home screen offers
+      context.read<CouponsProvider>().fetchApplicableCoupons(force: true);
       // Fetch active orders for the home screen
       _refreshActiveOrders();
       _subscribeToOrdersRealtime();
+      _subscribeToCouponsRealtime();
     });
   }
 
@@ -46,6 +51,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _ordersChannel?.unsubscribe();
+    _couponsChannel?.unsubscribe();
     super.dispose();
   }
 
@@ -56,6 +62,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // This ensures delivered orders are removed from the active orders section
     if (state == AppLifecycleState.resumed && mounted) {
       _refreshActiveOrders();
+      // Refresh coupons so expired offers disappear without needing a restart.
+      context.read<CouponsProvider>().fetchApplicableCoupons(force: true);
     }
   }
 
@@ -85,6 +93,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           .subscribe();
     } catch (_) {
       // If Supabase isn't initialized or channel fails, ignore and rely on manual refresh.
+    }
+  }
+
+  void _subscribeToCouponsRealtime() {
+    if (!SupabaseConfig.isEnabled) return;
+
+    try {
+      final client = Supabase.instance.client;
+      _couponsChannel = client
+          .channel('public:coupons')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'coupons',
+            callback: (payload) {
+              if (!mounted) return;
+              final eventType = payload.eventType.name;
+              final newRow = (payload.newRecord as Map?)?.cast<String, dynamic>();
+              final oldRow = (payload.oldRecord as Map?)?.cast<String, dynamic>();
+              context.read<CouponsProvider>().applyRealtimeChange(
+                    eventType: eventType,
+                    newRow: newRow,
+                    oldRow: oldRow,
+                  );
+            },
+          )
+          .subscribe();
+    } catch (_) {
+      // ignore
     }
   }
 
@@ -232,24 +269,49 @@ class _HomeContent extends StatelessWidget {
       physics: const BouncingScrollPhysics(),
       child: Column(
         children: [
-          const OfferCarousel(
-            banners: [
-              OfferBannerData(
-                headline: '20% OFF',
-                subhead: 'Welcome Offer',
-                code: 'WELCOME20',
-              ),
-              OfferBannerData(
-                headline: '15% OFF',
-                subhead: 'Weekend Deal',
-                code: 'WEEKEND15',
-              ),
-              OfferBannerData(
-                headline: '₹50 OFF',
-                subhead: 'First Order',
-                code: 'FIRST50',
-              ),
-            ],
+          Consumer<CouponsProvider>(
+            builder: (context, couponsProvider, _) {
+              final coupons = couponsProvider.coupons;
+              if (couponsProvider.isLoading && coupons.isEmpty) {
+                return Container(
+                  height: 200,
+                  width: double.infinity,
+                  margin: const EdgeInsets.symmetric(horizontal: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: HomeColors.borderSoft),
+                  ),
+                  child: const Center(child: CircularProgressIndicator()),
+                );
+              }
+              if (coupons.isEmpty) return const SizedBox(height: 6);
+
+              String headlineFor(String discountType, num discountValue) {
+                final t = discountType.toLowerCase();
+                if (t.contains('percent')) {
+                  final pct = discountValue <= 1 ? (discountValue * 100) : discountValue;
+                  return '${pct.round()}% OFF';
+                }
+                final amount = discountValue.round();
+                return '₹$amount OFF';
+              }
+
+              final banners = coupons
+                  .take(8)
+                  .map(
+                    (c) => OfferBannerData(
+                      headline: headlineFor(c.discountType, c.discountValue),
+                      subhead: (c.description == null || c.description!.trim().isEmpty)
+                          ? 'Limited time offer'
+                          : c.description!.trim(),
+                      code: c.code,
+                    ),
+                  )
+                  .toList();
+
+              return OfferCarousel(banners: banners);
+            },
           ),
           Consumer<OrderProvider>(
             builder: (context, orderProvider, _) {

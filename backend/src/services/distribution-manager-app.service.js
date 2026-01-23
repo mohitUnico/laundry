@@ -26,6 +26,25 @@ const mapOrderRow = (o) => ({
             phone: o.customer.phone || null,
         }
         : null,
+    dispatchedBy: o.dispatched_by_manager
+        ? {
+            staffId: o.dispatched_by_manager.staff_id,
+            fullName: o.dispatched_by_manager.full_name,
+        }
+        : null,
+    dropDelivery:
+        Array.isArray(o.deliveries) && o.deliveries.length
+            ? {
+                deliveryId: o.deliveries[0].delivery_id,
+                deliveryStatus: o.deliveries[0].delivery_status,
+                deliveryStaff: o.deliveries[0].staff
+                    ? {
+                        staffId: o.deliveries[0].staff.staff_id,
+                        fullName: o.deliveries[0].staff.full_name,
+                    }
+                    : null,
+            }
+            : null,
     actions: {
         canVerify: o.order_status === 'services_completed' && !o.verified_at,
         canDispatch:
@@ -293,7 +312,20 @@ exports.listDispatchHistory = async ({ page, limit } = {}) => {
             orderBy: { dispatched_at: 'desc' },
             skip,
             take: safeLimit,
-            include: { customer: { select: { customer_id: true, full_name: true, phone: true } } },
+            include: {
+                customer: { select: { customer_id: true, full_name: true, phone: true } },
+                dispatched_by_manager: { select: { staff_id: true, full_name: true } },
+                deliveries: {
+                    where: { delivery_type: 'drop' },
+                    orderBy: { created_at: 'desc' },
+                    take: 1,
+                    select: {
+                        delivery_id: true,
+                        delivery_status: true,
+                        staff: { select: { staff_id: true, full_name: true } },
+                    },
+                },
+            },
         }),
     ]);
 

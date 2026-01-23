@@ -63,7 +63,7 @@ export const CustomersPage: React.FC = () => {
     return () => clearTimeout(timer);
   }, [search]);
 
-  // Convert date filter to ISO date range for backend
+  // Convert selected date (YYYY-MM-DD) to ISO date range for backend
   const getDateRange = useCallback((dateStr: string | null) => {
     if (!dateStr) return { from: undefined, to: undefined };
     
@@ -73,12 +73,14 @@ export const CustomersPage: React.FC = () => {
     
     const year = Number(dateParts[0]);
     const month = Number(dateParts[1]);
+    const day = Number(dateParts[2]);
     
-    if (isNaN(year) || isNaN(month)) return { from: undefined, to: undefined };
+    if (isNaN(year) || isNaN(month) || isNaN(day)) return { from: undefined, to: undefined };
+    if (month < 1 || month > 12 || day < 1 || day > 31) return { from: undefined, to: undefined };
     
-    // Create date range for the selected month
-    const fromDate = new Date(year, month - 1, 1);
-    const toDate = new Date(year, month, 0, 23, 59, 59, 999); // Last day of month
+    // Create date range for the selected day (local time)
+    const fromDate = new Date(year, month - 1, day, 0, 0, 0, 0);
+    const toDate = new Date(year, month - 1, day, 23, 59, 59, 999);
     
     return {
       from: fromDate.toISOString(),
@@ -186,7 +188,10 @@ export const CustomersPage: React.FC = () => {
 
   // Map API response to UI format
   const filteredRows = useMemo(() => {
-    return customers.map((customer): CustomerRow => {
+    const rows = customers.map((customer): CustomerRow => {
+      // Backend doesn't currently send a dedicated "isActive" flag in the list payload.
+      // Best-effort heuristic: customers with >= 1 order are considered active.
+      const isActive = (customer.totalOrdersCount ?? 0) > 0;
       return {
         customerId: customer.customerId,
         name: customer.name,
@@ -196,10 +201,35 @@ export const CustomersPage: React.FC = () => {
         orders: customer.totalOrdersCount,
         rating: customer.rating,
         joined: formatJoinedDate(customer.createdAt),
-        isActive: true, // Backend doesn't return isActive in current response, defaulting to true
+        isActive,
       };
     });
-  }, [customers, formatJoinedDate]);
+
+    // Frontend fallback search filter (in case backend doesn't support search yet).
+    // Note: Customers list doesn't contain order numbers, so we search customer fields only.
+    const q = debouncedSearch.trim().toLowerCase();
+    const searchedRows =
+      q.length === 0
+        ? rows
+        : rows.filter((r) => {
+            const haystack = [
+              r.customerId,
+              r.name,
+              r.email,
+              r.phone,
+              r.address,
+              String(r.orders),
+            ]
+              .join(' ')
+              .toLowerCase();
+            return haystack.includes(q);
+          });
+
+    // Apply client-side status filter to keep UI consistent even if backend filtering changes.
+    if (statusFilter === 'active') return searchedRows.filter((r) => r.isActive);
+    if (statusFilter === 'inactive') return searchedRows.filter((r) => !r.isActive);
+    return searchedRows;
+  }, [customers, formatJoinedDate, statusFilter, debouncedSearch]);
 
   const openCustomerProfile = useCallback(
     (customerId: string) => {
@@ -258,14 +288,68 @@ export const CustomersPage: React.FC = () => {
 
   const formatDisplayDate = (date: Date): string => {
     const day = date.getDate().toString().padStart(2, '0');
-    const month = date.toLocaleString('default', { month: 'short' });
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
     const year = date.getFullYear();
-    return `${day}-${month}-${year}`;
+    return `${day}-${month}-${year}`; // dd-mm-yyyy
   };
 
-  const displayDate = dateFilter 
-    ? formatDisplayDate(new Date(dateFilter))
-    : formatDisplayDate(new Date());
+  const displayDate = dateFilter ? formatDisplayDate(new Date(dateFilter)) : 'dd-mm-yyyy';
+
+  const exportCustomersToCsv = useCallback(
+    (rows: CustomerRow[]) => {
+      const sanitize = (value: unknown) => {
+        const s = String(value ?? '');
+        if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+        return s;
+      };
+
+      const header = [
+        'Customer ID',
+        'Name',
+        'Email',
+        'Phone',
+        'Address',
+        'Total Orders',
+        'Rating',
+        'Status',
+        'Joined',
+      ];
+
+      const lines = [
+        header.map(sanitize).join(','),
+        ...rows.map((r) =>
+          [
+            r.customerId,
+            r.name,
+            r.email,
+            r.phone,
+            r.address,
+            r.orders,
+            r.rating ?? 'N/A',
+            r.isActive ? 'Active' : 'Inactive',
+            r.joined,
+          ]
+            .map(sanitize)
+            .join(',')
+        ),
+      ];
+
+      const csv = lines.join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+
+      const fileDate = dateFilter ?? new Date().toISOString().slice(0, 10);
+      const fileStatus = statusFilter || 'all';
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `customers_${fileDate}_${fileStatus}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    },
+    [dateFilter, statusFilter]
+  );
 
   return (
     <div className="w-full">
@@ -427,7 +511,13 @@ export const CustomersPage: React.FC = () => {
                   <option value="active">Active Customers</option>
                   <option value="inactive">Inactive Customers</option>
                 </select>
-                <button className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
+                <button
+                  type="button"
+                  onClick={() => exportCustomersToCsv(filteredRows)}
+                  disabled={loading || filteredRows.length === 0}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label="Export customers as CSV"
+                >
                   <Download size={16} className="text-slate-500"/> <span>Export</span>
                 </button>
               </div>
@@ -460,8 +550,8 @@ export const CustomersPage: React.FC = () => {
                 <div className="text-xs text-slate-500 mt-1">Try adjusting your search or filters</div>
               </div>
             ) : (
-              filteredRows.map((r, index) => (
-                <div key={`${r.email}-${index}`} className="rounded-xl border border-slate-200 bg-white shadow-sm p-3 space-y-2 hover:bg-slate-50/50 transition-colors">
+              filteredRows.map((r) => (
+                <div key={r.customerId} className="rounded-xl border border-slate-200 bg-white shadow-sm p-3 space-y-2 hover:bg-slate-50/50 transition-colors">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-2.5 flex-1 min-w-0">
                     <div className="h-10 w-10 rounded-full bg-slate-300 flex-shrink-0" />
@@ -471,10 +561,22 @@ export const CustomersPage: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 ml-2">
-                    <button className="text-slate-400 hover:text-blue-600 transition-colors p-1" aria-label="View customer">
+                    <button
+                      type="button"
+                      className="text-slate-400 hover:text-blue-600 transition-colors p-1"
+                      aria-label="View customer"
+                      onClick={() => openCustomerProfile(r.customerId)}
+                    >
                       <Eye size={16} />
                     </button>
-                    <button className="text-slate-400 hover:text-blue-600 transition-colors p-1" aria-label="Email customer">
+                    <button
+                      type="button"
+                      className="text-slate-400 hover:text-blue-600 transition-colors p-1"
+                      aria-label="Email customer"
+                      onClick={() => {
+                        window.location.href = `mailto:${r.email}`;
+                      }}
+                    >
                       <Mail size={16} />
                     </button>
                   </div>
@@ -524,16 +626,16 @@ export const CustomersPage: React.FC = () => {
 
           {/* Desktop Table View (Figma layout) */}
           <div className="hidden sm:block rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px]">
+            <div className="overflow-x-hidden">
+              <table className="w-full table-fixed">
                 <thead>
                   <tr className="text-left text-slate-900 text-sm bg-white border-b border-slate-200">
-                    <th className="px-6 py-4">Customer</th>
-                    <th className="px-6 py-4">Contact</th>
+                    <th className="px-6 py-4 w-[240px]">Customer</th>
+                    <th className="px-6 py-4 w-[280px]">Contact</th>
                     <th className="px-6 py-4">Address</th>
-                    <th className="px-6 py-4 text-center">Total Orders</th>
-                    <th className="px-6 py-4 text-center">Rating</th>
-                    <th className="px-6 py-4 text-center">Actions</th>
+                    <th className="px-6 py-4 w-[120px] text-center">Total Orders</th>
+                    <th className="px-6 py-4 w-[110px] text-center">Rating</th>
+                    <th className="px-6 py-4 w-[110px] text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -552,10 +654,10 @@ export const CustomersPage: React.FC = () => {
                       </td>
                     </tr>
                   ) : (
-                    filteredRows.map((r, index) => (
-                      <tr key={`${r.email}-${index}`} className="border-b border-slate-200">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
+                    filteredRows.map((r) => (
+                      <tr key={r.customerId} className="border-b border-slate-200">
+                        <td className="px-6 py-4 min-w-0">
+                          <div className="flex items-center gap-3 min-w-0">
                             <div className="h-10 w-10 rounded-full bg-slate-200 overflow-hidden flex-shrink-0" />
                             <div className="min-w-0">
                               <div className="font-medium text-sm text-slate-900 truncate">{r.name}</div>
@@ -563,12 +665,14 @@ export const CustomersPage: React.FC = () => {
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm text-slate-900 truncate">{r.email}</div>
-                          <div className="text-xs text-slate-500">{r.phone}</div>
+                        <td className="px-6 py-4 min-w-0">
+                          <div className="min-w-0">
+                            <div className="text-sm text-slate-900 truncate">{r.email}</div>
+                            <div className="text-xs text-slate-500 truncate">{r.phone}</div>
+                          </div>
                         </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm text-slate-600 truncate max-w-[360px]">{r.address}</div>
+                        <td className="px-6 py-4 min-w-0">
+                          <div className="text-sm text-slate-600 truncate">{r.address}</div>
                         </td>
                         <td className="px-6 py-4 text-center text-sm text-slate-900">{r.orders}</td>
                         <td className="px-6 py-4 text-center">

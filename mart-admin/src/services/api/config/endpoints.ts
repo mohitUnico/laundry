@@ -63,6 +63,13 @@ export const API_ENDPOINTS = {
     SUMMARY: '/admin/customers/summary',
     CREATE: '/admin/customers',
   },
+  ADMIN_DELIVERY_STAFF: {
+    LIST: '/admin/delivery-staff',
+    SUMMARY: '/admin/delivery-staff/staff-summary',
+    PENDING_VERIFICATIONS: '/admin/delivery-staff/pending-verifications',
+    ONLINE: '/admin/delivery-staff/online',
+    VERIFY: (staffId: string) => `/admin/delivery-staff/${staffId}/verify`,
+  },
   NOTIFICATIONS: {
     SEND: '/notifications/send',
   },

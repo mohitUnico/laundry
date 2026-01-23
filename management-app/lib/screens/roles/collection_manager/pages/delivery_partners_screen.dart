@@ -1,10 +1,110 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 import '../../../../theme/app_colors.dart';
 import '../../../../theme/app_text_styles.dart';
+import '../../../../services/admin_delivery_staff_service.dart';
+import '../../../../services/collection_manager_orders_service.dart';
 
-class DeliveryPartnersScreen extends StatelessWidget {
-  const DeliveryPartnersScreen({super.key});
+class DeliveryPartnersScreen extends StatefulWidget {
+  final String orderId;
+
+  const DeliveryPartnersScreen({
+    super.key,
+    required this.orderId,
+  });
+
+  @override
+  State<DeliveryPartnersScreen> createState() => _DeliveryPartnersScreenState();
+}
+
+class _DeliveryPartnersScreenState extends State<DeliveryPartnersScreen> {
+  final AdminDeliveryStaffService _staffService = AdminDeliveryStaffService();
+  final CollectionManagerOrdersService _ordersService = CollectionManagerOrdersService();
+
+  late Future<List<_DeliveryPartnerUi>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  Future<List<_DeliveryPartnerUi>> _load() async {
+    // 1) Fetch pickup address for the order
+    final orderBody = await _ordersService.getOrderItems(orderId: widget.orderId);
+    final orderData = orderBody['data'];
+    final pickup = (orderData is Map ? orderData['pickupAddress'] : null);
+
+    final pickupLat = _toDouble(pickup is Map ? pickup['latitude'] : null);
+    final pickupLng = _toDouble(pickup is Map ? pickup['longitude'] : null);
+
+    // 2) Fetch verified, active delivery staff
+    final staffBody = await _staffService.listVerifiedActiveDeliveryStaffs(page: 1, limit: 20);
+    final data = staffBody['data'];
+    if (data is! Map<String, dynamic>) {
+      throw Exception('Invalid response: missing data');
+    }
+
+    final list = data['deliveryStaffs'];
+    if (list is! List) {
+      throw Exception('Invalid response: missing deliveryStaffs list');
+    }
+
+    final partners = list.whereType<Map>().map((m) => m.cast<String, dynamic>()).map((s) {
+      final coords = s['currentCoordinates'];
+      final lat = _toDouble(coords is Map ? coords['latitude'] : null);
+      final lng = _toDouble(coords is Map ? coords['longitude'] : null);
+
+      final km = (pickupLat != null && pickupLng != null && lat != null && lng != null)
+          ? _distanceKm(pickupLat, pickupLng, lat, lng)
+          : null;
+
+      return _DeliveryPartnerUi(
+        staffId: (s['staffId'] ?? '').toString(),
+        name: (s['fullName'] ?? 'Delivery Partner').toString(),
+        totalDeliveries: _toInt(s['totalDeliveries']),
+        rating: _toDouble(s['averageRating']) ?? 0,
+        distanceKm: km,
+        profileImageUrl: (s['documents'] is Map ? (s['documents']['profileImageUrl'] ?? '') : '').toString(),
+      );
+    }).toList();
+
+    partners.sort((a, b) {
+      final ad = a.distanceKm;
+      final bd = b.distanceKm;
+      if (ad == null && bd == null) return 0;
+      if (ad == null) return 1;
+      if (bd == null) return -1;
+      return ad.compareTo(bd); // nearest first
+    });
+
+    return partners;
+  }
+
+  static double? _toDouble(Object? v) {
+    if (v is num) return v.toDouble();
+    return double.tryParse(v?.toString() ?? '');
+  }
+
+  static int _toInt(Object? v) {
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse(v?.toString() ?? '') ?? 0;
+  }
+
+  static double _distanceKm(double lat1, double lon1, double lat2, double lon2) {
+    const earthRadiusKm = 6371.0;
+    final dLat = _degToRad(lat2 - lat1);
+    final dLon = _degToRad(lon2 - lon1);
+    final a = (sin(dLat / 2) * sin(dLat / 2)) +
+        cos(_degToRad(lat1)) * cos(_degToRad(lat2)) * (sin(dLon / 2) * sin(dLon / 2));
+    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return earthRadiusKm * c;
+  }
+
+  static double _degToRad(double deg) => deg * (3.141592653589793 / 180.0);
 
   @override
   Widget build(BuildContext context) {
@@ -54,57 +154,83 @@ class DeliveryPartnersScreen extends StatelessWidget {
             ),
             // Delivery Partners List
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  _DeliveryPartnerCard(
-                    name: 'Murray Bauman',
-                    rating: 4.9,
-                    totalDeliveries: 342,
-                    completedToday: 2,
-                    profileImagePath: 'assets/icons/profile_pic_demo.png',
-                    onAssign: () {
-                      // Handle assign action
-                      Navigator.pop(context);
+              child: FutureBuilder<List<_DeliveryPartnerUi>>(
+                future: _future,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    );
+                  }
+
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.error_outline, color: AppColors.error),
+                            const SizedBox(height: 10),
+                            Text(
+                              snapshot.error.toString().replaceFirst('Exception: ', ''),
+                              textAlign: TextAlign.center,
+                              style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                            ),
+                            const SizedBox(height: 10),
+                            TextButton(
+                              onPressed: () {
+                                setState(() {
+                                  _future = _load();
+                                });
+                              },
+                              child: Text(
+                                'Retry',
+                                style: AppTextStyles.subtitle(color: AppColors.primary).copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+
+                  final list = snapshot.data ?? const <_DeliveryPartnerUi>[];
+                  if (list.isEmpty) {
+                    return Center(
+                      child: Text(
+                        'No delivery partners found',
+                        style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                      ),
+                    );
+                  }
+
+                  return ListView.separated(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: list.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final p = list[index];
+                      return _DeliveryPartnerCard(
+                        name: p.name,
+                        rating: p.rating,
+                        totalDeliveries: p.totalDeliveries,
+                        distanceKm: p.distanceKm,
+                        profileImagePath: 'assets/icons/profile_pic_demo.png',
+                        onAssign: () {
+                          // TODO: call assign API if needed; for now just close
+                          Navigator.pop(context);
+                        },
+                      );
                     },
-                  ),
-                  const SizedBox(height: 12),
-                  _DeliveryPartnerCard(
-                    name: 'Max Mayfield',
-                    rating: 4.8,
-                    totalDeliveries: 303,
-                    completedToday: 3,
-                    profileImagePath: 'assets/icons/profile_pic_demo.png',
-                    onAssign: () {
-                      // Handle assign action
-                      Navigator.pop(context);
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  _DeliveryPartnerCard(
-                    name: 'Nancy Wheeler',
-                    rating: 4.5,
-                    totalDeliveries: 295,
-                    completedToday: 1,
-                    profileImagePath: 'assets/icons/profile_pic_demo.png',
-                    onAssign: () {
-                      // Handle assign action
-                      Navigator.pop(context);
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  _DeliveryPartnerCard(
-                    name: 'Steve Harrington',
-                    rating: 4.8,
-                    totalDeliveries: 308,
-                    completedToday: 2,
-                    profileImagePath: 'assets/icons/profile_pic_demo.png',
-                    onAssign: () {
-                      // Handle assign action
-                      Navigator.pop(context);
-                    },
-                  ),
-                ],
+                  );
+                },
               ),
             ),
           ],
@@ -118,7 +244,7 @@ class _DeliveryPartnerCard extends StatelessWidget {
   final String name;
   final double rating;
   final int totalDeliveries;
-  final int completedToday;
+  final double? distanceKm;
   final String profileImagePath;
   final VoidCallback onAssign;
 
@@ -126,7 +252,7 @@ class _DeliveryPartnerCard extends StatelessWidget {
     required this.name,
     required this.rating,
     required this.totalDeliveries,
-    required this.completedToday,
+    required this.distanceKm,
     required this.profileImagePath,
     required this.onAssign,
   });
@@ -241,7 +367,7 @@ class _DeliveryPartnerCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                completedToday.toString().padLeft(2, '0'),
+                distanceKm != null ? distanceKm!.toStringAsFixed(1) : '--',
                 style: AppTextStyles.largeNumber(
                   color: AppColors.primary,
                 ).copyWith(
@@ -251,7 +377,7 @@ class _DeliveryPartnerCard extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                'Completed Today',
+                'Distance (km)',
                 style: AppTextStyles.subtitle(
                   color: AppColors.textSecondary,
                 ).copyWith(
@@ -301,5 +427,23 @@ class _DeliveryPartnerCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _DeliveryPartnerUi {
+  final String staffId;
+  final String name;
+  final double rating;
+  final int totalDeliveries;
+  final double? distanceKm;
+  final String profileImageUrl;
+
+  const _DeliveryPartnerUi({
+    required this.staffId,
+    required this.name,
+    required this.rating,
+    required this.totalDeliveries,
+    required this.distanceKm,
+    required this.profileImageUrl,
+  });
 }
 

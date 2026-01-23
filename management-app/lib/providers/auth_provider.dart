@@ -12,6 +12,7 @@ import '../utils/role_constants.dart';
 class AuthProvider with ChangeNotifier {
   String? _token;
   Map<String, dynamic>? _partner;
+  Map<String, dynamic>? _currentUser;
   bool _isAuthenticated = false;
   bool _isVerified = false;
   bool _isLoading = false;
@@ -28,6 +29,7 @@ class AuthProvider with ChangeNotifier {
 
   String? get token => _token;
   Map<String, dynamic>? get partner => _partner;
+  Map<String, dynamic>? get currentUser => _currentUser;
   bool get isAuthenticated => _isAuthenticated;
   bool get isVerified => _isVerified;
   bool get isLoading => _isLoading;
@@ -40,6 +42,7 @@ class AuthProvider with ChangeNotifier {
       if (token == null || token.isEmpty) return;
 
       _token = token;
+      _currentUser = await AuthStorage.getCurrentUser();
       _partner = await AuthStorage.getDeliveryStaff();
       _isAuthenticated = true;
       _isVerified = true;
@@ -144,6 +147,8 @@ class AuthProvider with ChangeNotifier {
       if (user is Map<String, dynamic>) {
         _partner = user;
         await AuthStorage.saveDeliveryStaff(user);
+        _currentUser = user;
+        await AuthStorage.saveCurrentUser(user);
       }
 
       _token = token;
@@ -206,6 +211,12 @@ class AuthProvider with ChangeNotifier {
       final token = data['token'];
       if (token is! String || token.isEmpty) {
         throw Exception('Invalid response: missing token');
+      }
+
+      final user = data['user'];
+      if (user is Map<String, dynamic>) {
+        _currentUser = user;
+        await AuthStorage.saveCurrentUser(user);
       }
 
       _token = token;
@@ -375,6 +386,7 @@ class AuthProvider with ChangeNotifier {
   void logout() {
     _token = null;
     _partner = null;
+    _currentUser = null;
     _isAuthenticated = false;
     _isVerified = false;
     _deliveryDraft = null;

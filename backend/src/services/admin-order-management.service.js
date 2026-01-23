@@ -1,6 +1,6 @@
 const prisma = require('../config/database');
 const logger = require('../utils/logger');
-const { ValidationError } = require('../utils/errors');
+const { NotFoundError, ValidationError } = require('../utils/errors');
 const { Prisma } = require('@prisma/client');
 
 const ORDER_STATUSES = [
@@ -551,6 +551,51 @@ exports.getAdminOrders = async (query = {}) => {
             has_prev: safePage > 1,
         },
     };
+};
+
+exports.updateOrderStatus = async (orderId, status, actorUserId = null) => {
+    if (!orderId) {
+        throw new ValidationError('orderId is required');
+    }
+    if (!status) {
+        throw new ValidationError('status is required');
+    }
+    if (typeof status !== 'string') {
+        throw new ValidationError('status must be a string');
+    }
+    if (!ORDER_STATUSES.includes(status)) {
+        throw new ValidationError(`Invalid status: ${status}`);
+    }
+
+    try {
+        const updated = await prisma.order.update({
+            where: { order_id: orderId },
+            data: { order_status: status },
+            select: {
+                order_id: true,
+                order_status: true,
+                updated_at: true,
+            },
+        });
+
+        logger.info('Admin updated order status', {
+            actorUserId,
+            orderId,
+            status,
+        });
+
+        return {
+            order_id: updated.order_id,
+            order_status: updated.order_status,
+            updated_at: updated.updated_at,
+        };
+    } catch (error) {
+        // Prisma "Record to update not found."
+        if (error?.code === 'P2025') {
+            throw new NotFoundError('Order');
+        }
+        throw error;
+    }
 };
 
 module.exports = exports;

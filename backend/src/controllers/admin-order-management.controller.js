@@ -5,6 +5,7 @@ const logger = require('../utils/logger');
  * Admin Order Management Controller
  * - GET /api/v1/admin/orders/summary
  * - GET /api/v1/admin/orders
+ * - PATCH /api/v1/admin/orders/:orderId/status
  */
 
 exports.getOrderSummary = async (req, res, next) => {
@@ -35,6 +36,26 @@ exports.listOrders = async (req, res, next) => {
             success: true,
             data,
             message: 'Orders fetched successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.updateOrderStatus = async (req, res, next) => {
+    try {
+        const userId = req.user?.user_id;
+        const { orderId } = req.params;
+        const { status } = req.body;
+
+        logger.info('Admin update order status request', { userId, orderId, status });
+
+        const data = await adminOrderManagementService.updateOrderStatus(orderId, status, userId);
+
+        res.status(200).json({
+            success: true,
+            data,
+            message: 'Order status updated successfully',
         });
     } catch (error) {
         next(error);

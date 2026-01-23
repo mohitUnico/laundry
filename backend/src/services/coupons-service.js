@@ -63,7 +63,7 @@ exports.listCoupons = async (query = {}) => {
         }
 
         const whereSql =
-            filters.length > 0 ? Prisma.sql`WHERE ${Prisma.join(filters, Prisma.sql` AND `)}` : Prisma.empty;
+            filters.length > 0 ? Prisma.sql`WHERE ${Prisma.join(filters, Prisma.sql` AND `)}` : Prisma.sql``;
 
         try {
             const countRows = await prisma.$queryRaw`

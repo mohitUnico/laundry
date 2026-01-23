@@ -11,7 +11,7 @@ class LaundryDeliveryApp extends StatelessWidget {
       title: 'Laundry Delivery Partner',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      initialRoute: AppRoutes.roleSelection,
+      initialRoute: AppRoutes.bootstrap,
       routes: AppRoutes.routes,
     );
   }

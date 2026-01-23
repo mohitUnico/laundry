@@ -42,7 +42,11 @@ class _DrivingLicenseScreenState extends State<DrivingLicenseScreen> {
           return;
         }
       } else {
-        final status = await Permission.photos.request();
+        // iOS uses Photos permission; Android <= 12 needs Storage permission.
+        var status = await Permission.photos.request();
+        if (!status.isGranted && Platform.isAndroid) {
+          status = await Permission.storage.request();
+        }
         if (!status.isGranted) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(

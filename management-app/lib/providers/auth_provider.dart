@@ -4,7 +4,10 @@ import 'package:flutter/foundation.dart';
 
 import '../models/delivery_registration_draft.dart';
 import '../services/delivery_auth_service.dart';
+import '../services/staff_auth_service.dart';
 import '../utils/auth_storage.dart';
+import '../utils/role_manager.dart';
+import '../utils/role_constants.dart';
 
 class AuthProvider with ChangeNotifier {
   String? _token;
@@ -17,6 +20,11 @@ class AuthProvider with ChangeNotifier {
   DeliveryRegistrationDraft? _deliveryDraft;
 
   final DeliveryAuthService _deliveryAuthService = DeliveryAuthService();
+  final StaffAuthService _staffAuthService = StaffAuthService();
+
+  AuthProvider() {
+    _hydrateFromStorage();
+  }
 
   String? get token => _token;
   Map<String, dynamic>? get partner => _partner;
@@ -25,6 +33,21 @@ class AuthProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   DeliveryRegistrationDraft? get deliveryDraft => _deliveryDraft;
+
+  Future<void> _hydrateFromStorage() async {
+    try {
+      final token = await AuthStorage.getToken();
+      if (token == null || token.isEmpty) return;
+
+      _token = token;
+      _partner = await AuthStorage.getDeliveryStaff();
+      _isAuthenticated = true;
+      _isVerified = true;
+      notifyListeners();
+    } catch (_) {
+      // ignore: app can still proceed with manual login
+    }
+  }
 
   Future<void> login(String phone, String password) async {
     // TODO: Implement login logic
@@ -40,6 +63,34 @@ class AuthProvider with ChangeNotifier {
 
     try {
       await _deliveryAuthService.sendOtp(email: email);
+    } catch (e) {
+      _error = e.toString();
+      rethrow;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<void> sendOtpForRole({
+    required String role,
+    required String email,
+  }) async {
+    if (role == RoleConstants.deliveryPartner) {
+      return sendDeliveryOtp(email: email);
+    }
+
+    _setLoading(true);
+    _error = null;
+    notifyListeners();
+
+    try {
+      if (role == RoleConstants.collectionManager) {
+        await _staffAuthService.sendCollectionManagerOtp(email: email);
+      } else if (role == RoleConstants.distributionManager) {
+        await _staffAuthService.sendDistributionManagerOtp(email: email);
+      } else {
+        throw Exception('Unsupported role for OTP login');
+      }
     } catch (e) {
       _error = e.toString();
       rethrow;
@@ -101,6 +152,67 @@ class AuthProvider with ChangeNotifier {
       _isAuthenticated = true;
       _isVerified = true;
       _deliveryDraft = null;
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _error = e.toString();
+      rethrow;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  /// Returns:
+  /// - `isNewUser == true`: user exists in OTP system but profile is not created/approved yet (no JWT token returned)
+  /// - `isNewUser == false`: stores JWT token
+  Future<bool> verifyOtpForRole({
+    required String role,
+    required String email,
+    required String otp,
+  }) async {
+    if (role == RoleConstants.deliveryPartner) {
+      return verifyDeliveryOtp(email: email, otp: otp);
+    }
+
+    _setLoading(true);
+    _error = null;
+    notifyListeners();
+
+    try {
+      Map<String, dynamic> body;
+      if (role == RoleConstants.collectionManager) {
+        body = await _staffAuthService.verifyCollectionManagerOtp(email: email, otp: otp);
+      } else if (role == RoleConstants.distributionManager) {
+        body = await _staffAuthService.verifyDistributionManagerOtp(email: email, otp: otp);
+      } else {
+        throw Exception('Unsupported role for OTP login');
+      }
+
+      final data = body['data'];
+      if (data is! Map<String, dynamic>) {
+        throw Exception('Invalid response: missing data');
+      }
+
+      final isNewUser = data['isNewUser'];
+      if (isNewUser is! bool) {
+        throw Exception('Invalid response: missing isNewUser');
+      }
+
+      if (isNewUser) {
+        // Backend returns sessionToken/expiresIn for new user flows, but we don't allow self profile creation here.
+        return true;
+      }
+
+      final token = data['token'];
+      if (token is! String || token.isEmpty) {
+        throw Exception('Invalid response: missing token');
+      }
+
+      _token = token;
+      await AuthStorage.saveToken(token);
+
+      _isAuthenticated = true;
+      _isVerified = true;
       notifyListeners();
       return false;
     } catch (e) {
@@ -269,6 +381,7 @@ class AuthProvider with ChangeNotifier {
     _error = null;
     _isLoading = false;
     AuthStorage.clearAll();
+    RoleManager.clearRole();
     notifyListeners();
   }
 

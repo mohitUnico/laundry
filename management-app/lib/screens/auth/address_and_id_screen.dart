@@ -50,7 +50,11 @@ class _AddressAndIdScreenState extends State<AddressAndIdScreen> {
           return;
         }
       } else {
-        final status = await Permission.photos.request();
+        // iOS uses Photos permission; Android <= 12 needs Storage permission.
+        var status = await Permission.photos.request();
+        if (!status.isGranted && Platform.isAndroid) {
+          status = await Permission.storage.request();
+        }
         if (!status.isGranted) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -130,7 +134,9 @@ class _AddressAndIdScreenState extends State<AddressAndIdScreen> {
                       const SizedBox(height: 6),
                       TextField(
                         controller: _addressController,
-                        maxLines: 2,
+                        maxLines: 1,
+                        textInputAction: TextInputAction.next,
+                        keyboardType: TextInputType.streetAddress,
                         decoration: const InputDecoration(
                           hintText: 'Enter Your Address',
                           border: UnderlineInputBorder(

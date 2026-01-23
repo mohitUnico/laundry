@@ -13,7 +13,14 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const logger = require('../utils/logger');
 const { generateToken } = require('../utils/jwt');
-const { AppError, ValidationError, NotFoundError, AuthenticationError, AuthorizationError } = require('../utils/errors');
+const {
+    AppError,
+    ValidationError,
+    NotFoundError,
+    AuthenticationError,
+    AuthorizationError,
+    ConflictError,
+} = require('../utils/errors');
 const crypto = require('crypto');
 const emailService = require('./email.service');
 const serviceService = require('./service.service');
@@ -350,6 +357,18 @@ const verifyOtp = async (email, otp, userType, options = {}) => {
                 userType,
                 userId: existingUser.user_id || existingUser.customer_id || existingUser.staff_id
             });
+
+            // Service man login must include serviceId and must match the assigned service.
+            if (userType === USER_TYPES.SERVICE_MAN) {
+                const requestedServiceId = String(options?.serviceId || '').trim();
+                if (!requestedServiceId) {
+                    throw new ValidationError('Service ID is required');
+                }
+                const assignedServiceId = String(existingUser.service_id || '').trim();
+                if (!assignedServiceId || assignedServiceId !== requestedServiceId) {
+                    throw new AuthorizationError('Invalid service for this service man');
+                }
+            }
 
             const userId =
                 existingUser.user_id ||
@@ -1002,8 +1021,16 @@ const completeCollectionManagerRegistration = async (sessionToken, collectionMan
         if (new Date() > session.expires_at) throw new AuthenticationError('Session has expired. Please start over.');
         if (session.is_completed) throw new ValidationError('Registration already completed');
 
-        if (!owner?.role || !['owner', 'admin'].includes(owner.role)) {
-            throw new AuthorizationError('Only owner/admin can create a collection manager');
+        if (!owner?.role || owner.role !== 'admin') {
+            throw new AuthorizationError('Only admin can create a collection manager');
+        }
+
+        const existingManager = await prisma.staff.findFirst({
+            where: { role: 'collection_manager' },
+            select: { staff_id: true, email: true }
+        });
+        if (existingManager) {
+            throw new ConflictError('Collection manager already exists');
         }
 
         const manager = await prisma.$transaction(async (tx) => {
@@ -1075,8 +1102,16 @@ const completeDistributionManagerRegistration = async (sessionToken, distributio
         if (new Date() > session.expires_at) throw new AuthenticationError('Session has expired. Please start over.');
         if (session.is_completed) throw new ValidationError('Registration already completed');
 
-        if (!owner?.role || !['owner', 'admin'].includes(owner.role)) {
-            throw new AuthorizationError('Only owner/admin can create a distribution manager');
+        if (!owner?.role || owner.role !== 'admin') {
+            throw new AuthorizationError('Only admin can create a distribution manager');
+        }
+
+        const existingManager = await prisma.staff.findFirst({
+            where: { role: 'distribution_manager' },
+            select: { staff_id: true, email: true }
+        });
+        if (existingManager) {
+            throw new ConflictError('Distribution manager already exists');
         }
 
         const manager = await prisma.$transaction(async (tx) => {
@@ -1148,8 +1183,8 @@ const completeServiceManRegistration = async (sessionToken, serviceManData, owne
         if (new Date() > session.expires_at) throw new AuthenticationError('Session has expired. Please start over.');
         if (session.is_completed) throw new ValidationError('Registration already completed');
 
-        if (!owner?.role || !['owner', 'admin'].includes(owner.role)) {
-            throw new AuthorizationError('Only owner/admin can create a service man');
+        if (!owner?.role || owner.role !== 'admin') {
+            throw new AuthorizationError('Only admin can create a service man');
         }
 
         const resolvedServiceId = serviceManData.serviceId;

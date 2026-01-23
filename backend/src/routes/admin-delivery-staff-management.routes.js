@@ -7,6 +7,8 @@ const Joi = require('joi');
 
 const {
     adminDeliveryStaffListQuerySchema,
+    adminDeliveryStaffPendingVerificationsQuerySchema,
+    adminDeliveryStaffOnlineQuerySchema,
 } = require('../validators/admin-delivery-staff-management.validator');
 
 const router = express.Router();
@@ -16,6 +18,9 @@ const router = express.Router();
  *
  * Endpoints:
  * - GET   /api/v1/admin/delivery-staff
+ * - GET   /api/v1/admin/delivery-staff/staff-summary
+ * - GET   /api/v1/admin/delivery-staff/pending-verifications
+ * - GET   /api/v1/admin/delivery-staff/online
  * - PATCH /api/v1/admin/delivery-staff/:staffId/verify
  */
 
@@ -33,6 +38,29 @@ const validateUuidParam = (paramName) => {
         next();
     };
 };
+
+router.get(
+    '/staff-summary',
+    authenticateJWT,
+    authorize('super_admin', 'owner', 'admin', 'manager'),
+    adminDeliveryStaffManagementController.getDeliveryStaffSummary
+);
+
+router.get(
+    '/pending-verifications',
+    authenticateJWT,
+    authorize('super_admin', 'owner', 'admin', 'manager'),
+    validateQuery(adminDeliveryStaffPendingVerificationsQuerySchema),
+    adminDeliveryStaffManagementController.listPendingVerifications
+);
+
+router.get(
+    '/online',
+    authenticateJWT,
+    authorize('super_admin', 'owner', 'admin', 'manager'),
+    validateQuery(adminDeliveryStaffOnlineQuerySchema),
+    adminDeliveryStaffManagementController.listOnlineDeliveryStaffs
+);
 
 router.get(
     '/',

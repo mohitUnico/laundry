@@ -16,8 +16,10 @@ const { authenticateJWT, authorize } = require('../middleware/auth.middleware');
 const {
   sendOtpSchema,
   sendPortalOtpSchema,
+  sendServiceManOtpSchema,
   verifyOtpSchema,
   verifyPortalOtpSchema,
+  verifyServiceManOtpSchema,
   completeOwnerRegistrationSchema,
   completePortalRegistrationSchema,
   completeManagerRegistrationSchema,
@@ -352,7 +354,7 @@ router.post(
 router.post(
   '/collection-manager/complete-registration',
   authenticateJWT,
-  authorize('owner', 'admin'),
+  authorize('admin'),
   validate(completeCollectionManagerRegistrationSchema),
   authController.completeCollectionManagerRegistration
 );
@@ -376,7 +378,7 @@ router.post(
 router.post(
   '/distribution-manager/complete-registration',
   authenticateJWT,
-  authorize('owner', 'admin'),
+  authorize('admin'),
   validate(completeDistributionManagerRegistrationSchema),
   authController.completeDistributionManagerRegistration
 );
@@ -387,20 +389,20 @@ router.post(
 
 router.post(
   '/service-man/send-otp',
-  validate(sendOtpSchema),
+  validate(sendServiceManOtpSchema),
   authController.sendServiceManOtp
 );
 
 router.post(
   '/service-man/verify-otp',
-  validate(verifyOtpSchema),
+  validate(verifyServiceManOtpSchema),
   authController.verifyServiceManOtp
 );
 
 router.post(
   '/service-man/complete-registration',
   authenticateJWT,
-  authorize('owner', 'admin'),
+  authorize('admin'),
   validate(completeServiceManRegistrationSchema),
   authController.completeServiceManRegistration
 );

@@ -19,7 +19,6 @@ const collectionManagerAppRoutes = require('./collection-manager-app.routes');
 const distributionManagerAppRoutes = require('./distribution-manager-app.routes');
 const serviceManAppRoutes = require('./service-man-app.routes');
 const couponsRoutes = require('./coupons.routes');
-const adminSettingsRoutes = require('./admin-settings.routes');
 
 const router = express.Router();
 

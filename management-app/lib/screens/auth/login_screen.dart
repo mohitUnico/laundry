@@ -43,6 +43,62 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  Future<void> _showNewUserDialog() async {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.support_agent,
+                  color: AppColors.primary,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Profile Required',
+                style: AppTextStyles.header(color: AppColors.textPrimary).copyWith(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            'Please contact support team for profile creation',
+            style: AppTextStyles.body(color: AppColors.textSecondary).copyWith(
+              fontSize: 13,
+              height: 1.35,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'OK',
+                style: AppTextStyles.body(color: AppColors.primary).copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> _handleGetOtp() async {
     final email = _emailController.text.trim();
     if (email.isEmpty || !email.contains('@')) {
@@ -59,7 +115,13 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      await context.read<AuthProvider>().sendDeliveryOtp(email: email);
+      final role =
+          (ModalRoute.of(context)?.settings.arguments as Map?)?['role'] as String?;
+      if (role == null) {
+        throw Exception('Role not selected');
+      }
+
+      await context.read<AuthProvider>().sendOtpForRole(role: role, email: email);
       if (!mounted) return;
       setState(() {
         _otpRequested = true;
@@ -107,13 +169,33 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final email = _emailController.text.trim();
-      final isNewUser = await context.read<AuthProvider>().verifyDeliveryOtp(
+      final role =
+          (ModalRoute.of(context)?.settings.arguments as Map?)?['role'] as String?;
+      if (role == null) {
+        throw Exception('Role not selected');
+      }
+
+      final isNewUser = await context.read<AuthProvider>().verifyOtpForRole(
+            role: role,
             email: email,
             otp: _otp,
           );
       if (!mounted) return;
       if (isNewUser) {
-        Navigator.of(context).pushReplacementNamed(AppRoutes.userDetails);
+        if (role == RoleConstants.deliveryPartner) {
+          Navigator.of(context).pushReplacementNamed(AppRoutes.userDetails);
+        } else if (role == RoleConstants.collectionManager ||
+            role == RoleConstants.distributionManager) {
+          await _showNewUserDialog();
+          if (!mounted) return;
+          setState(() {
+            _otp = '';
+            _otpRequested = false;
+            _otpAutoSubmitting = false;
+          });
+        } else {
+          await _showNewUserDialog();
+        }
       } else {
         Navigator.of(context).pushNamedAndRemoveUntil(AppRoutes.home, (route) => false);
       }
@@ -179,6 +261,9 @@ class _LoginScreenState extends State<LoginScreen> {
         (ModalRoute.of(context)?.settings.arguments as Map?)?['role'] as String?;
     
     final isDeliveryPartner = role == RoleConstants.deliveryPartner;
+    final isCollectionManager = role == RoleConstants.collectionManager;
+    final isDistributionManager = role == RoleConstants.distributionManager;
+    final usesOtpLogin = isDeliveryPartner || isCollectionManager || isDistributionManager;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -244,8 +329,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 12),
                       ],
-                      // Delivery Partner: OTP-based login
-                      if (isDeliveryPartner) ...[
+                      // Delivery Partner / Collection Manager / Distribution Manager: OTP-based login
+                      if (usesOtpLogin) ...[
                         Align(
                           alignment: Alignment.centerLeft,
                           child: Text(

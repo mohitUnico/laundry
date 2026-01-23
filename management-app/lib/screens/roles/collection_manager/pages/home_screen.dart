@@ -4,6 +4,7 @@ import '../../../../theme/app_colors.dart';
 import '../../../../theme/app_text_styles.dart';
 import '../../../../routes/app_routes.dart';
 import '../../../../utils/role_manager.dart';
+import '../../../../services/collection_manager_orders_service.dart';
 import '../../../common/widgets/bottom_nav_bar.dart';
 import 'delivery_partners_screen.dart';
 import 'history_screen.dart';
@@ -17,6 +18,154 @@ class CollectionManagerHomeScreen extends StatefulWidget {
 
 class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScreen> {
   int _selectedTabIndex = 0; // 0: New Orders, 1: Received
+
+  final CollectionManagerOrdersService _ordersService = CollectionManagerOrdersService();
+  late Future<List<_IncomingOrderUi>> _incomingOrdersFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _incomingOrdersFuture = _fetchIncomingOrdersWithItems(page: 1, limit: 20);
+  }
+
+  Future<void> _refreshIncoming() async {
+    setState(() {
+      _incomingOrdersFuture = _fetchIncomingOrdersWithItems(page: 1, limit: 20);
+    });
+    await _incomingOrdersFuture;
+  }
+
+  Future<List<_IncomingOrderUi>> _fetchIncomingOrdersWithItems({
+    required int page,
+    required int limit,
+  }) async {
+    final body = await _ordersService.listIncomingOrders(page: page, limit: limit);
+    final data = body['data'];
+    if (data is! List) {
+      throw Exception('Invalid response: missing data list');
+    }
+
+    final orders = data.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList();
+
+    Future<_IncomingOrderUi> mapOne(Map<String, dynamic> o) async {
+      final orderId = (o['orderId'] ?? '').toString();
+      final createdAtRaw = o['createdAt'];
+      final createdAt = (createdAtRaw is String && createdAtRaw.isNotEmpty)
+          ? DateTime.tryParse(createdAtRaw)
+          : null;
+
+      final customer = o['customer'];
+      final customerName = (customer is Map ? customer['fullName'] : null)?.toString() ?? 'Customer';
+
+      final pickupDelivery = o['pickupDelivery'];
+      final deliveryStaff = (pickupDelivery is Map ? pickupDelivery['deliveryStaff'] : null);
+      final isAssigned = deliveryStaff is Map;
+      final deliveryPerson = isAssigned ? (deliveryStaff['fullName']?.toString() ?? 'Staff') : null;
+      final deliveryPersonId = isAssigned ? (deliveryStaff['staffId']?.toString() ?? '') : null;
+
+      List<_OrderItem> items = const [];
+      int itemCount = 0;
+
+      if (orderId.isNotEmpty) {
+        try {
+          final itemsBody = await _ordersService.getOrderItems(orderId: orderId);
+          final itemsData = itemsBody['data'];
+          final mapped = _mapItemsForUi(itemsData);
+          items = mapped.items;
+          itemCount = mapped.totalCount;
+        } catch (_) {
+          // keep empty items; list should still render
+        }
+      }
+
+      return _IncomingOrderUi(
+        backendOrderId: orderId,
+        orderIdDisplay: _formatOrderId(orderId),
+        customerName: customerName,
+        date: _formatDate(createdAt),
+        time: _formatTime(createdAt),
+        itemCount: itemCount,
+        isAssigned: isAssigned,
+        deliveryPerson: deliveryPerson,
+        deliveryPersonId: deliveryPersonId,
+        items: items,
+      );
+    }
+
+    return Future.wait(orders.map(mapOne));
+  }
+
+  static String _formatOrderId(String orderId) {
+    final normalized = orderId.replaceAll('-', '').toUpperCase();
+    if (normalized.length >= 6) return 'ORD${normalized.substring(0, 6)}';
+    if (normalized.isNotEmpty) return 'ORD$normalized';
+    return 'ORDER';
+  }
+
+  static String _formatDate(DateTime? dt) {
+    if (dt == null) return '--';
+    final dd = dt.day.toString().padLeft(2, '0');
+    final mm = dt.month.toString().padLeft(2, '0');
+    final yyyy = dt.year.toString();
+    return '$dd-$mm-$yyyy';
+  }
+
+  static String _formatTime(DateTime? dt) {
+    if (dt == null) return '--';
+    int hour = dt.hour;
+    final minute = dt.minute.toString().padLeft(2, '0');
+    final suffix = hour >= 12 ? 'PM' : 'AM';
+    hour = hour % 12;
+    if (hour == 0) hour = 12;
+    return '${hour.toString().padLeft(2, '0')}:$minute $suffix';
+  }
+
+  static _ItemsUiMapping _mapItemsForUi(Object? itemsData) {
+    final items = <_OrderItem>[];
+    final aggregated = <String, int>{};
+
+    if (itemsData is Map) {
+      final map = itemsData.cast<String, dynamic>();
+      final list = map['items'];
+      if (list is List) {
+        for (final rawItem in list) {
+          if (rawItem is! Map) continue;
+          final item = rawItem.cast<String, dynamic>();
+          final selections = item['selections'];
+          if (selections is List && selections.isNotEmpty) {
+            for (final rawSel in selections) {
+              if (rawSel is! Map) continue;
+              final sel = rawSel.cast<String, dynamic>();
+              final name = (sel['clothName'] ?? '').toString().trim();
+              final qtyNum = sel['quantity'];
+              final qty = (qtyNum is num) ? qtyNum.toInt() : int.tryParse(qtyNum?.toString() ?? '') ?? 0;
+              if (name.isEmpty || qty <= 0) continue;
+              aggregated[name] = (aggregated[name] ?? 0) + qty;
+            }
+          } else {
+            // Fallback for per_kg / service-level items
+            final serviceName = (item['serviceName'] ?? '').toString().trim();
+            final qtyNum = item['quantity'];
+            final qty = (qtyNum is num) ? qtyNum.toInt() : int.tryParse(qtyNum?.toString() ?? '') ?? 0;
+            if (serviceName.isNotEmpty && qty > 0) {
+              aggregated[serviceName] = (aggregated[serviceName] ?? 0) + qty;
+            }
+          }
+        }
+      }
+    }
+
+    final entries = aggregated.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    int total = 0;
+    for (final e in entries) {
+      total += e.value;
+      items.add(_OrderItem(name: e.key, quantity: e.value));
+    }
+
+    return _ItemsUiMapping(items: items, totalCount: total);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -215,6 +364,7 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       children: [
+        // Keep the first card (Assign button) as-is for now
         _NewOrderCard(
           orderId: 'ORD035',
           customerName: 'Mike Wheelers',
@@ -231,41 +381,101 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
           ],
         ),
         const SizedBox(height: 12),
-        _NewOrderCard(
-          orderId: 'ORD033',
-          customerName: 'Jim Hopper',
-          date: '10-04-2025',
-          time: '09:15 AM',
-          itemCount: 15,
-          isAssigned: true,
-          deliveryPerson: 'Dustin Henderson',
-          deliveryPersonId: 'EM056',
-          items: const [
-            _OrderItem(name: 'Top Wear', quantity: 5),
-            _OrderItem(name: 'Bottom Wear', quantity: 6),
-            _OrderItem(name: 'Kurta', quantity: 2),
-            _OrderItem(name: 'Saree', quantity: 2),
-          ],
+
+        // Incoming orders list from backend
+        FutureBuilder<List<_IncomingOrderUi>>(
+          future: _incomingOrdersFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: Column(
+                    children: [
+                      const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Loading incoming orders...',
+                        style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            if (snapshot.hasError) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.divider.withOpacity(0.4)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.error_outline, color: AppColors.error, size: 18),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          snapshot.error.toString().replaceFirst('Exception: ', ''),
+                          style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _refreshIncoming,
+                        child: Text(
+                          'Retry',
+                          style: AppTextStyles.subtitle(color: AppColors.primary).copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            final list = snapshot.data ?? const <_IncomingOrderUi>[];
+            if (list.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 18),
+                child: Center(
+                  child: Text(
+                    'No incoming orders',
+                    style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                  ),
+                ),
+              );
+            }
+
+            return Column(
+              children: [
+                for (final o in list) ...[
+                  _NewOrderCard(
+                    orderId: o.orderIdDisplay,
+                    customerName: o.customerName,
+                    date: o.date,
+                    time: o.time,
+                    itemCount: o.itemCount,
+                    isAssigned: o.isAssigned,
+                    deliveryPerson: o.deliveryPerson,
+                    deliveryPersonId: o.deliveryPersonId,
+                    items: o.items,
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ],
+            );
+          },
         ),
-        const SizedBox(height: 12),
-        _NewOrderCard(
-          orderId: 'ORD035',
-          customerName: 'Joyce Byers',
-          date: '09-04-2025',
-          time: '04:20 PM',
-          itemCount: 21,
-          isAssigned: true,
-          deliveryPerson: 'Will Byers',
-          deliveryPersonId: 'EM072',
-          items: const [
-            _OrderItem(name: 'Top Wear', quantity: 5),
-            _OrderItem(name: 'Bottom Wear', quantity: 5),
-            _OrderItem(name: 'Kurta', quantity: 2),
-            _OrderItem(name: 'Saree', quantity: 3),
-          ],
-          isExpanded: true,
-        ),
-        const SizedBox(height: 12),
       ],
     );
   }
@@ -332,6 +542,39 @@ class _OrderItem {
   final int quantity;
 
   const _OrderItem({required this.name, required this.quantity});
+}
+
+class _ItemsUiMapping {
+  final List<_OrderItem> items;
+  final int totalCount;
+
+  const _ItemsUiMapping({required this.items, required this.totalCount});
+}
+
+class _IncomingOrderUi {
+  final String backendOrderId;
+  final String orderIdDisplay;
+  final String customerName;
+  final String date;
+  final String time;
+  final int itemCount;
+  final bool isAssigned;
+  final String? deliveryPerson;
+  final String? deliveryPersonId;
+  final List<_OrderItem> items;
+
+  const _IncomingOrderUi({
+    required this.backendOrderId,
+    required this.orderIdDisplay,
+    required this.customerName,
+    required this.date,
+    required this.time,
+    required this.itemCount,
+    required this.isAssigned,
+    required this.deliveryPerson,
+    required this.deliveryPersonId,
+    required this.items,
+  });
 }
 
 class _NewOrderCard extends StatefulWidget {

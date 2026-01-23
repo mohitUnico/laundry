@@ -369,8 +369,8 @@ const completeDeliveryRegistrationSchema = Joi.object({
       'string.max': 'Vehicle number must not exceed 50 characters',
       'any.required': 'Vehicle number is required'
     }),
-    address: Joi.string().min(5).max(500).required().messages({
-      'string.min': 'Address must be at least 5 characters',
+    address: Joi.string().min(1).max(500).required().messages({
+      'string.min': 'Address is required',
       'string.max': 'Address must not exceed 500 characters',
       'any.required': 'Address is required'
     }),

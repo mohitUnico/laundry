@@ -5,9 +5,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'app.dart';
 import 'providers/auth_provider.dart';
 import 'providers/cart_provider.dart';
+import 'providers/coupons_provider.dart';
 import 'providers/order_provider.dart';
 import 'repositories/auth_repository.dart';
 import 'repositories/cart_repository.dart';
+import 'repositories/coupons_repository.dart';
 import 'repositories/customer_info_repository.dart';
 import 'repositories/service_catalog_repository.dart';
 import 'providers/service_catalog_provider.dart';
@@ -40,6 +42,7 @@ void main() async {
         Provider<AuthRepository>(create: (_) => AuthRepository()),
         Provider<CustomerInfoRepository>(create: (_) => CustomerInfoRepository()),
         Provider<ServiceCatalogRepository>(create: (_) => ServiceCatalogRepository()),
+        Provider<CouponsRepository>(create: (_) => CouponsRepository()),
         Provider<CartRepository>(
           lazy: false,
           create: (_) => CartRepository(),
@@ -53,6 +56,11 @@ void main() async {
         ChangeNotifierProvider(
           create: (context) => ServiceCatalogProvider(
             repo: context.read<ServiceCatalogRepository>(),
+          ),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => CouponsProvider(
+            repo: context.read<CouponsRepository>(),
           ),
         ),
         ChangeNotifierProvider(

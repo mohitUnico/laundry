@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../../../theme/app_colors.dart';
 import '../../../../theme/app_text_styles.dart';
 import '../../../../routes/app_routes.dart';
@@ -451,6 +452,17 @@ class _HomeScreenState extends State<HomeScreen> {
                     InkWell(
                       borderRadius: BorderRadius.circular(18),
                       onTap: () async {
+                        final status = await Permission.camera.request();
+                        if (!status.isGranted) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Camera permission is required to take photos'),
+                              ),
+                            );
+                          }
+                          return;
+                        }
                         final image = await _imagePicker.pickImage(
                           source: ImageSource.camera,
                           imageQuality: 80,

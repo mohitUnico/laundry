@@ -21,6 +21,25 @@ exports.listIncomingOrders = async (req, res, next) => {
     }
 };
 
+exports.getOrderItems = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'collection_manager') {
+            throw new AuthorizationError('Only collection managers can access this endpoint');
+        }
+
+        const { orderId } = req.params;
+        const data = await collectionManagerAppService.getOrderItems({ orderId });
+
+        res.status(200).json({
+            success: true,
+            data,
+            message: 'Order items fetched successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 exports.markOrderReceived = async (req, res, next) => {
     try {
         if (req.user.role !== 'collection_manager') {

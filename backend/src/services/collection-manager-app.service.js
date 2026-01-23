@@ -89,6 +89,86 @@ exports.listIncomingOrders = async ({ page, limit } = {}) => {
     };
 };
 
+exports.getOrderItems = async ({ orderId }) => {
+    if (!orderId) throw new ValidationError('orderId is required');
+
+    const order = await prisma.order.findUnique({
+        where: { order_id: orderId },
+        select: {
+            order_id: true,
+            pricing_model: true,
+            order_type: true,
+            order_status: true,
+            created_at: true,
+            order_items: {
+                select: {
+                    item_id: true,
+                    pricing_type: true,
+                    quantity: true,
+                    weight_kg: true,
+                    service: {
+                        select: {
+                            service_id: true,
+                            service_name: true,
+                            category: { select: { category_id: true, category_name: true } },
+                        },
+                    },
+                    item_selections: {
+                        select: {
+                            selection_id: true,
+                            quantity: true,
+                            cloth_item: {
+                                select: {
+                                    cloth_id: true,
+                                    item_name: true,
+                                    per_unit_price: true,
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    });
+
+    if (!order) throw new NotFoundError('Order');
+
+    const items = (order.order_items || []).map((item) => {
+        const serviceName = item.service?.service_name || '';
+        const categoryName = item.service?.category?.category_name || '';
+
+        const selections = (item.item_selections || [])
+            .map((sel) => ({
+                selectionId: sel.selection_id,
+                quantity: sel.quantity,
+                clothId: sel.cloth_item?.cloth_id || null,
+                clothName: sel.cloth_item?.item_name || '',
+                perUnitPrice: sel.cloth_item?.per_unit_price ? sel.cloth_item.per_unit_price.toString() : null,
+            }))
+            .filter((s) => s.quantity != null && (s.quantity > 0));
+
+        return {
+            itemId: item.item_id,
+            pricingType: item.pricing_type,
+            quantity: item.quantity ?? null,
+            weightKg: item.weight_kg != null ? item.weight_kg.toString() : null,
+            serviceName,
+            categoryName,
+            selections,
+        };
+    });
+
+    return {
+        orderId: order.order_id,
+        orderStatus: order.order_status,
+        orderType: order.order_type,
+        pricingModel: order.pricing_model,
+        createdAt: order.created_at,
+        itemsCount: items.length,
+        items,
+    };
+};
+
 exports.markOrderReceived = async ({ staffId, orderId }) => {
     if (!orderId) throw new ValidationError('orderId is required');
 

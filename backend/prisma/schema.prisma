@@ -797,3 +797,27 @@ model RefreshToken {
   @@index([revoked_at])
   @@map("refresh_tokens")
 }
+
+// ==================== COUPONS ====================
+// NOTE: This table lives in Supabase Postgres. We access it via Prisma to avoid
+// PostgREST/schema permission issues in some deployments.
+model Coupon {
+  id              Int      @id @default(autoincrement())
+  code            String   @db.VarChar(255)
+  description     String?  @db.Text
+  discount_type   String   @db.VarChar(50)
+  discount_value  Decimal  @db.Decimal(12, 2)
+  max_discount    Decimal? @db.Decimal(12, 2)
+  min_order_value Decimal? @db.Decimal(12, 2)
+  usage_limit     Int?
+  usage_per_user  Int?
+  valid_from      DateTime?
+  valid_till      DateTime?
+  is_active       Boolean  @default(true)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  @@index([code])
+  @@index([is_active])
+  @@map("coupons")
+}

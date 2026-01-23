@@ -7,6 +7,7 @@ import '../screens/auth/delivery/vehicle_details_screen.dart';
 import '../screens/auth/delivery/driving_license_screen.dart';
 import '../screens/auth/profile_location_screen.dart';
 import '../screens/auth/register_success_screen.dart';
+import '../screens/bootstrap/bootstrap_screen.dart';
 // Role-specific screens
 import '../screens/roles/delivery_partner/pages/home_screen.dart';
 import '../screens/roles/delivery_partner/pages/active_delivery_screen.dart';
@@ -22,6 +23,7 @@ import '../utils/role_manager.dart';
 import '../utils/role_constants.dart';
 
 class AppRoutes {
+  static const String bootstrap = '/';
   static const String roleSelection = '/role-selection';
   static const String login = '/login';
   static const String userDetails = '/user-details';
@@ -40,6 +42,7 @@ class AppRoutes {
 
   static Map<String, WidgetBuilder> get routes {
     return {
+      bootstrap: (context) => const BootstrapScreen(),
       roleSelection: (context) => const RoleSelectionScreen(),
       login: (context) => const LoginScreen(),
       userDetails: (context) => const UserDetailsScreen(),

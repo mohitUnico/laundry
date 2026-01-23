@@ -17,6 +17,15 @@ router.get(
     collectionManagerAppController.listIncomingOrders
 );
 
+// GET order items (for staff app UI)
+router.get(
+    '/orders/:orderId/items',
+    authenticateJWT,
+    authorize('collection_manager'),
+    validateUuidParam('orderId'),
+    collectionManagerAppController.getOrderItems
+);
+
 // POST create pickup assignment request (only pickup_only/both)
 router.post(
     '/orders/:orderId/assign-pickup',

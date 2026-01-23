@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme/app_colors.dart';
-import '../../../theme/app_text_styles.dart';
 
 /// Bottom navigation bar styled similar to the customer app's HomeBottomNav.
 /// Tabs: Home, Orders, Help (instead of Cart), Account.

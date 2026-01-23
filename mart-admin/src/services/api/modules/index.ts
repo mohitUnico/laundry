@@ -1,6 +1,7 @@
 export * from './authApi';
 export * from './ordersApi';
 export * from './customersApi';
+export * from './deliveryStaffManagementApi';
 export * from './ticketsApi';
 export * from './settingsApi';
 export * from './dashboardApi';

@@ -11,6 +11,10 @@ exports.assignDeliverySchema = Joi.object({
     expiresInSeconds: Joi.number().integer().min(30).max(600).default(120),
 });
 
+exports.directAssignDeliverySchema = Joi.object({
+    deliveryStaffId: Joi.string().uuid().required(),
+});
+
 exports.serviceManQueueQuerySchema = Joi.object({
     // comma separated statuses
     status: Joi.string()

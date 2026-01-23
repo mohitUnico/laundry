@@ -245,6 +245,35 @@ exports.createPickupAssignment = async ({ orderId, radiusKm, limit, expiresInSec
     });
 };
 
+exports.assignPickupDirect = async ({ staffId, orderId, deliveryStaffId }) => {
+    if (!orderId) throw new ValidationError('orderId is required');
+    if (!deliveryStaffId) throw new ValidationError('deliveryStaffId is required');
+
+    const order = await prisma.order.findUnique({
+        where: { order_id: orderId },
+        select: { order_id: true, order_type: true },
+    });
+    if (!order) throw new NotFoundError('Order');
+
+    if (!(order.order_type === 'pickup_only' || order.order_type === 'both')) {
+        throw new ValidationError('Pickup assignment is only allowed for pickup_only or both order types');
+    }
+
+    return deliveryOperationsService.directAssignDelivery({
+        orderId,
+        deliveryType: 'pickup',
+        deliveryStaffId,
+        orderUpdateData: {
+            // For pickup we only need status; no extra tracking fields exist
+            order_status: 'pickup_assigned',
+        },
+        assignedBy: {
+            role: 'collection_manager',
+            staffId,
+        },
+    });
+};
+
 exports.listReceivedOrders = async ({ page, limit } = {}) => {
     const { safePage, safeLimit, skip } = normalizePagination({ page, limit });
 

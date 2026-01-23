@@ -11,6 +11,7 @@ const adminOrderManagementRoutes = require('./admin-order-management.routes');
 const adminCustomerManagementRoutes = require('./admin-customer-management.routes');
 const adminDeliveryStaffManagementRoutes = require('./admin-delivery-staff-management.routes');
 const adminDeliveryOperationsRoutes = require('./delivery-operations.routes');
+const adminSettingsRoutes = require('./admin-settings.routes');
 const paymentRoutes = require('./payment.routes');
 const deliveryStaffOperationsRoutes = require('./delivery-staff-operations.routes');
 const deliveryStaffAppRoutes = require('./delivery-staff-app.routes');

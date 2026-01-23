@@ -8,7 +8,8 @@ const baseURL = import.meta.env.DEV ? defaultBaseUrl : import.meta.env.VITE_API_
 
 const axiosInstance: AxiosInstance = axios.create({
   baseURL,
-  timeout: parseInt(import.meta.env.VITE_API_TIMEOUT || '10000'),
+  // Default 30s to avoid dev DB timeouts; override via VITE_API_TIMEOUT if needed.
+  timeout: parseInt(import.meta.env.VITE_API_TIMEOUT || '30000'),
   headers: {
     'Content-Type': 'application/json',
   },

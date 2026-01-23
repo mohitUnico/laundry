@@ -87,14 +87,14 @@ export const OrderTable: React.FC<{
         <table className="w-full table-fixed">
           <thead>
             <tr className="text-left text-slate-600 text-xs sm:text-sm bg-slate-50">
-              <th className="px-3 sm:px-4 md:px-6 py-2 sm:py-3 w-[170px] whitespace-nowrap font-medium">Order #</th>
-              <th className="px-3 sm:px-4 md:px-6 py-2 sm:py-3 w-[240px] whitespace-nowrap font-medium">Customer</th>
-              <th className="px-3 sm:px-4 md:px-6 py-2 sm:py-3 whitespace-nowrap font-medium hidden md:table-cell">Services</th>
-              <th className="px-3 sm:px-4 md:px-6 py-2 sm:py-3 w-[110px] whitespace-nowrap font-medium">Amount</th>
-              <th className="px-3 sm:px-4 md:px-6 py-2 sm:py-3 w-[130px] whitespace-nowrap font-medium">Status</th>
-              <th className="px-3 sm:px-4 md:px-6 py-2 sm:py-3 w-[180px] whitespace-nowrap font-medium hidden lg:table-cell">Delivery Boy</th>
-              <th className="px-3 sm:px-4 md:px-6 py-2 sm:py-3 w-[140px] whitespace-nowrap font-medium hidden xl:table-cell">Est. Delivery</th>
-              <th className="px-3 sm:px-4 md:px-6 py-2 sm:py-3 w-[90px] whitespace-nowrap font-medium">Actions</th>
+              <th className="px-3 sm:px-4 md:px-4 py-2 sm:py-3 w-[140px] whitespace-nowrap font-medium">Order #</th>
+              <th className="px-3 sm:px-4 md:px-4 py-2 sm:py-3 whitespace-nowrap font-medium">Customer</th>
+              <th className="px-3 sm:px-4 md:px-4 py-2 sm:py-3 whitespace-nowrap font-medium hidden lg:table-cell">Services</th>
+              <th className="px-3 sm:px-4 md:px-4 py-2 sm:py-3 w-[120px] whitespace-nowrap font-medium text-right">Amount</th>
+              <th className="px-3 sm:px-4 md:px-4 py-2 sm:py-3 w-[140px] whitespace-nowrap font-medium">Status</th>
+              <th className="px-3 sm:px-4 md:px-4 py-2 sm:py-3 w-[180px] whitespace-nowrap font-medium hidden xl:table-cell">Delivery Boy</th>
+              <th className="px-3 sm:px-4 md:px-4 py-2 sm:py-3 w-[140px] whitespace-nowrap font-medium hidden 2xl:table-cell">Est. Delivery</th>
+              <th className="px-3 sm:px-4 md:px-4 py-2 sm:py-3 w-[112px] whitespace-nowrap font-medium text-center">Actions</th>
             </tr>
           </thead>
           <tbody>

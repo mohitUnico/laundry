@@ -32,8 +32,9 @@ const corsOptions = {
             return;
         }
 
-        // In development, allow any localhost origin (for web apps on any port)
-        if (isDevelopment && (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:'))) {
+        // In development, allow all origins
+        // NOTE: Using a function keeps `credentials: true` compatible (wildcard "*" is not allowed with credentials).
+        if (isDevelopment) {
             callback(null, true);
             return;
         }

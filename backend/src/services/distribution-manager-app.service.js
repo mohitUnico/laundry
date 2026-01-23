@@ -300,6 +300,38 @@ exports.dispatchOrder = async ({ staffId, orderId, radiusKm, limit, expiresInSec
     };
 };
 
+exports.assignDropDirect = async ({ staffId, orderId, deliveryStaffId }) => {
+    if (!orderId) throw new ValidationError('orderId is required');
+    if (!deliveryStaffId) throw new ValidationError('deliveryStaffId is required');
+
+    const order = await prisma.order.findUnique({
+        where: { order_id: orderId },
+        select: { order_id: true, order_status: true, order_type: true, verified_at: true, dispatched_at: true },
+    });
+    if (!order) throw new NotFoundError('Order');
+    if (order.order_status !== 'services_completed') throw new ConflictError('Order is not ready for delivery assignment');
+    if (!order.verified_at) throw new ConflictError('Order must be verified by distribution manager before delivery assignment');
+    if (order.dispatched_at) throw new ConflictError('Order is already dispatched');
+    if (!(order.order_type === 'drop_only' || order.order_type === 'both')) {
+        throw new ValidationError('Delivery assignment is only allowed for drop_only or both order types');
+    }
+
+    // Mark dispatch metadata + assign delivery in one atomic transaction inside delivery ops service
+    return deliveryOperationsService.directAssignDelivery({
+        orderId,
+        deliveryType: 'drop',
+        deliveryStaffId,
+        orderUpdateData: {
+            dispatched_by_distribution_manager_id: staffId,
+            order_status: 'dispatch_assigned',
+        },
+        assignedBy: {
+            role: 'distribution_manager',
+            staffId,
+        },
+    });
+};
+
 exports.listDispatchHistory = async ({ page, limit } = {}) => {
     const { safePage, safeLimit, skip } = normalizePagination({ page, limit });
 

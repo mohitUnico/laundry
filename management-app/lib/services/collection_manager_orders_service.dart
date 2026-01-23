@@ -55,6 +55,23 @@ class CollectionManagerOrdersService {
     }
   }
 
+  Future<Map<String, dynamic>> listReceivedOrders({
+    int page = 1,
+    int limit = 20,
+  }) async {
+    try {
+      final res = await _api.get(
+        '/staff-app/collection-manager/orders/received',
+        queryParameters: {'page': page, 'limit': limit},
+      );
+      final body = res.data;
+      if (body is Map<String, dynamic>) return body;
+      throw Exception('Unexpected response format');
+    } catch (e) {
+      throw Exception(_extractErrorMessage(e, fallback: 'Failed to fetch received orders'));
+    }
+  }
+
   Future<Map<String, dynamic>> getOrderItems({required String orderId}) async {
     try {
       final res = await _api.get('/staff-app/collection-manager/orders/$orderId/items');
@@ -63,6 +80,17 @@ class CollectionManagerOrdersService {
       throw Exception('Unexpected response format');
     } catch (e) {
       throw Exception(_extractErrorMessage(e, fallback: 'Failed to fetch order items'));
+    }
+  }
+
+  Future<Map<String, dynamic>> markOrderReceived({required String orderId}) async {
+    try {
+      final res = await _api.post('/staff-app/collection-manager/orders/$orderId/receive');
+      final body = res.data;
+      if (body is Map<String, dynamic>) return body;
+      throw Exception('Unexpected response format');
+    } catch (e) {
+      throw Exception(_extractErrorMessage(e, fallback: 'Failed to mark order as received'));
     }
   }
 }

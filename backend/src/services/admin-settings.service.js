@@ -1,14 +1,18 @@
 const prisma = require('../config/database');
 const logger = require('../utils/logger');
-const { ConflictError, NotFoundError, ValidationError } = require('../utils/errors');
-const { Prisma } = require('@prisma/client');
+const { ConflictError, ValidationError } = require('../utils/errors');
 
-const mapUserToTeamMember = (u) => ({
+/**
+ * Admin Settings Service
+ * - Team members (owner + staff roles)
+ */
+
+const mapOwnerToTeamMember = (u) => ({
     staffId: u.user_id,
     fullName: u.full_name,
     email: u.email,
-    phone: u.phone,
-    role: u.role, // 'owner' | 'admin'
+    phone: u.phone || null,
+    role: u.role,
     isActive: u.is_active,
     service: null,
     createdAt: u.created_at,
@@ -19,7 +23,7 @@ const mapStaffToTeamMember = (s) => ({
     staffId: s.staff_id,
     fullName: s.full_name,
     email: s.email,
-    phone: s.phone,
+    phone: s.phone || null,
     role: s.role,
     isActive: s.is_active,
     service: s.service
@@ -32,7 +36,7 @@ const mapStaffToTeamMember = (s) => ({
     updatedAt: s.updated_at,
 });
 
-exports.getTeamMembersGrouped = async () => {
+exports.getTeamMembers = async () => {
     const [owners, staffs] = await Promise.all([
         prisma.user.findMany({
             where: { role: 'owner' },
@@ -49,6 +53,7 @@ exports.getTeamMembersGrouped = async () => {
             },
         }),
         prisma.staff.findMany({
+            where: { role: { in: ['service_man', 'collection_manager', 'distribution_manager'] } },
             orderBy: { created_at: 'desc' },
             include: {
                 service: { select: { service_id: true, service_name: true } },
@@ -56,8 +61,8 @@ exports.getTeamMembersGrouped = async () => {
         }),
     ]);
 
-    const grouped = {
-        owner: owners.map(mapUserToTeamMember),
+    const result = {
+        owner: owners.map(mapOwnerToTeamMember),
         service_men: [],
         collection_managers: [],
         distribution_managers: [],
@@ -65,13 +70,23 @@ exports.getTeamMembersGrouped = async () => {
 
     for (const s of staffs) {
         const mapped = mapStaffToTeamMember(s);
-        if (s.role === 'service_man') grouped.service_men.push(mapped);
-        else if (s.role === 'collection_manager') grouped.collection_managers.push(mapped);
-        else if (s.role === 'distribution_manager') grouped.distribution_managers.push(mapped);
+        if (s.role === 'service_man') result.service_men.push(mapped);
+        else if (s.role === 'collection_manager') result.collection_managers.push(mapped);
+        else if (s.role === 'distribution_manager') result.distribution_managers.push(mapped);
     }
 
-    return grouped;
+    logger.info('Admin settings team members fetched', {
+        owners: result.owner.length,
+        serviceMen: result.service_men.length,
+        collectionManagers: result.collection_managers.length,
+        distributionManagers: result.distribution_managers.length,
+    });
+
+    return result;
 };
+
+// Backwards-compatible alias (older controller name)
+exports.getTeamMembersGrouped = exports.getTeamMembers;
 
 exports.createTeamMember = async ({ fullName, email, phone, role, serviceId, isActive }) => {
     if (!fullName || !email || !role) throw new ValidationError('fullName, email and role are required');
@@ -82,12 +97,15 @@ exports.createTeamMember = async ({ fullName, email, phone, role, serviceId, isA
     // Role: owner -> users table
     if (role === 'owner') {
         // prevent duplicates
-        const existing = await prisma.user.findUnique({ where: { email: normalizedEmail }, select: { user_id: true } });
+        const existing = await prisma.user.findUnique({
+            where: { email: normalizedEmail },
+            select: { user_id: true },
+        });
         if (existing) throw new ConflictError('Email already exists');
 
         const created = await prisma.user.create({
             data: {
-                full_name: fullName.trim(),
+                full_name: String(fullName).trim(),
                 email: normalizedEmail,
                 phone: phone || null,
                 role: 'owner',
@@ -105,7 +123,7 @@ exports.createTeamMember = async ({ fullName, email, phone, role, serviceId, isA
             },
         });
 
-        return mapUserToTeamMember(created);
+        return mapOwnerToTeamMember(created);
     }
 
     // Staff roles MUST be created via OTP registration flow (send-otp -> verify-otp -> complete-registration).
@@ -114,4 +132,6 @@ exports.createTeamMember = async ({ fullName, email, phone, role, serviceId, isA
         'Staff roles must be created via OTP flow. Use /api/v1/auth/{collection-manager|distribution-manager|service-man}/* endpoints.'
     );
 };
+
+module.exports = exports;
 

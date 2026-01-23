@@ -21,6 +21,14 @@ const mapOrderRow = (o) => {
         createdAt: o.created_at,
         pickupDate: o.pickup_date,
         deliveryDate: o.delivery_date,
+        pickupAddress: o.pickup_address
+            ? {
+                addressId: o.pickup_address.address_id,
+                fullAddress: o.pickup_address.full_address,
+                latitude: o.pickup_address.latitude?.toString?.() ?? o.pickup_address.latitude,
+                longitude: o.pickup_address.longitude?.toString?.() ?? o.pickup_address.longitude,
+            }
+            : null,
         customer: o.customer
             ? {
                 customerId: o.customer.customer_id,
@@ -66,6 +74,7 @@ exports.listIncomingOrders = async ({ page, limit } = {}) => {
             take: safeLimit,
             include: {
                 customer: { select: { customer_id: true, full_name: true, phone: true } },
+                pickup_address: { select: { address_id: true, full_address: true, latitude: true, longitude: true } },
                 deliveries: {
                     where: { delivery_type: 'pickup' },
                     orderBy: { created_at: 'desc' },
@@ -100,6 +109,9 @@ exports.getOrderItems = async ({ orderId }) => {
             order_type: true,
             order_status: true,
             created_at: true,
+            pickup_address: {
+                select: { address_id: true, full_address: true, latitude: true, longitude: true },
+            },
             order_items: {
                 select: {
                     item_id: true,
@@ -164,6 +176,14 @@ exports.getOrderItems = async ({ orderId }) => {
         orderType: order.order_type,
         pricingModel: order.pricing_model,
         createdAt: order.created_at,
+        pickupAddress: order.pickup_address
+            ? {
+                addressId: order.pickup_address.address_id,
+                fullAddress: order.pickup_address.full_address,
+                latitude: order.pickup_address.latitude?.toString?.() ?? order.pickup_address.latitude,
+                longitude: order.pickup_address.longitude?.toString?.() ?? order.pickup_address.longitude,
+            }
+            : null,
         itemsCount: items.length,
         items,
     };

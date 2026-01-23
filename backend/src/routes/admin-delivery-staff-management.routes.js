@@ -65,7 +65,8 @@ router.get(
 router.get(
     '/',
     authenticateJWT,
-    authorize('super_admin', 'owner', 'admin', 'manager'),
+    // Collection manager needs to view verified delivery partners for pickup assignment UI.
+    authorize('super_admin', 'owner', 'admin', 'manager', 'collection_manager'),
     validateQuery(adminDeliveryStaffListQuerySchema),
     adminDeliveryStaffManagementController.listDeliveryStaffs
 );

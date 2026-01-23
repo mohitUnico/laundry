@@ -33,6 +33,37 @@ exports.adminOrdersListQuerySchema = Joi.object({
     limit: Joi.number().integer().min(1).max(100).default(20),
 });
 
+// Admin updates an order status
+// Body: { status: "placed" | ... }
+const adminOrderStatusSchema = Joi.string()
+    .valid(
+        'draft',
+        'placed',
+        'pickup_assigned',
+        'picked_up',
+        'received_by_collection',
+        'submitted_to_services',
+        'services_in_progress',
+        'services_completed',
+        'dispatch_assigned',
+        'out_for_delivery',
+        'payment_pending',
+        'delivered',
+        'closed',
+        'cancelled'
+    )
+    .required()
+    .messages({
+        'any.only':
+            'status must be one of: draft, placed, pickup_assigned, picked_up, received_by_collection, submitted_to_services, services_in_progress, services_completed, dispatch_assigned, out_for_delivery, payment_pending, delivered, closed, cancelled',
+        'any.required': 'status is required',
+        'string.base': 'status must be a string',
+    });
+
+exports.adminUpdateOrderStatusSchema = Joi.object({
+    status: adminOrderStatusSchema,
+});
+
 module.exports = exports;
 
 

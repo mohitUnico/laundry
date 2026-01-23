@@ -6,12 +6,12 @@ const logger = require('../utils/logger');
  * - Team member management (owners + staff)
  */
 
-exports.getTeamMembersGrouped = async (req, res, next) => {
+exports.getTeamMembers = async (req, res, next) => {
     try {
         const userId = req.user?.user_id;
-        logger.info('Admin team members grouped request', { userId });
+        logger.info('Admin team members request', { userId });
 
-        const data = await adminSettingsService.getTeamMembersGrouped();
+        const data = await adminSettingsService.getTeamMembers();
 
         res.status(200).json({
             success: true,
@@ -22,6 +22,9 @@ exports.getTeamMembersGrouped = async (req, res, next) => {
         next(error);
     }
 };
+
+// Backwards-compatible alias (older route/controller name)
+exports.getTeamMembersGrouped = exports.getTeamMembers;
 
 exports.createTeamMember = async (req, res, next) => {
     try {

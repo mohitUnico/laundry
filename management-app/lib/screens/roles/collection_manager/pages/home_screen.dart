@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../theme/app_colors.dart';
 import '../../../../theme/app_text_styles.dart';
 import '../../../../routes/app_routes.dart';
+import '../../../../utils/auth_storage.dart';
 import '../../../../utils/role_manager.dart';
 import '../../../../services/collection_manager_orders_service.dart';
 import '../../../common/widgets/bottom_nav_bar.dart';
@@ -20,19 +21,112 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
   int _selectedTabIndex = 0; // 0: New Orders, 1: Received
 
   final CollectionManagerOrdersService _ordersService = CollectionManagerOrdersService();
-  late Future<List<_IncomingOrderUi>> _incomingOrdersFuture;
+  Future<List<_IncomingOrderUi>> _incomingOrdersFuture = Future.value(const <_IncomingOrderUi>[]);
+  Future<List<_ReceivedOrderUi>> _receivedOrdersFuture = Future.value(const <_ReceivedOrderUi>[]);
+  Future<Map<String, dynamic>?> _userFuture = AuthStorage.getCurrentUser();
 
   @override
   void initState() {
     super.initState();
     _incomingOrdersFuture = _fetchIncomingOrdersWithItems(page: 1, limit: 20);
+    _receivedOrdersFuture = _fetchReceivedOrdersWithItems(page: 1, limit: 20);
+    _userFuture = AuthStorage.getCurrentUser();
   }
 
   Future<void> _refreshIncoming() async {
     setState(() {
       _incomingOrdersFuture = _fetchIncomingOrdersWithItems(page: 1, limit: 20);
+      _userFuture = AuthStorage.getCurrentUser();
     });
     await _incomingOrdersFuture;
+  }
+
+  Future<void> _refreshReceived() async {
+    setState(() {
+      _receivedOrdersFuture = _fetchReceivedOrdersWithItems(page: 1, limit: 20);
+      _userFuture = AuthStorage.getCurrentUser();
+    });
+    await _receivedOrdersFuture;
+  }
+
+  Future<List<_ReceivedOrderUi>> _fetchReceivedOrdersWithItems({
+    required int page,
+    required int limit,
+  }) async {
+    final body = await _ordersService.listReceivedOrders(page: page, limit: limit);
+    final data = body['data'];
+    if (data is! List) {
+      throw Exception('Invalid response: missing data list');
+    }
+
+    // Safety: Received screen should only show "received_by_collection" status.
+    final orders = data
+        .whereType<Map>()
+        .map((m) => m.cast<String, dynamic>())
+        .where((o) => (o['orderStatus'] ?? '').toString() == 'received_by_collection')
+        .toList()
+      ..sort((a, b) {
+        final adt = _parseCreatedAt(a);
+        final bdt = _parseCreatedAt(b);
+        if (adt == null && bdt == null) return 0;
+        if (adt == null) return 1;
+        if (bdt == null) return -1;
+        return bdt.compareTo(adt);
+      });
+
+    Future<_ReceivedOrderUi> mapOne(Map<String, dynamic> o) async {
+      final orderId = (o['orderId'] ?? '').toString();
+      final createdAtRaw = o['createdAt'];
+      final createdAt = (createdAtRaw is String && createdAtRaw.isNotEmpty)
+          ? DateTime.tryParse(createdAtRaw)
+          : null;
+
+      final customer = o['customer'];
+      final customerName = (customer is Map ? customer['fullName'] : null)?.toString() ?? 'Customer';
+
+      List<_OrderItem> items = const [];
+      int itemCount = 0;
+
+      if (orderId.isNotEmpty) {
+        try {
+          final itemsBody = await _ordersService.getOrderItems(orderId: orderId);
+          final itemsData = itemsBody['data'];
+          final mapped = _mapItemsForUi(itemsData);
+          items = mapped.items;
+          itemCount = mapped.totalCount;
+        } catch (_) {
+          // keep empty items
+        }
+      }
+
+      return _ReceivedOrderUi(
+        backendOrderId: orderId,
+        orderIdDisplay: _formatOrderId(orderId),
+        customerName: customerName,
+        date: _formatDate(createdAt),
+        time: _formatTime(createdAt),
+        itemCount: itemCount,
+        items: items,
+      );
+    }
+
+    return Future.wait(orders.map(mapOne));
+  }
+
+  Future<void> _markReceivedAndRefresh(String orderId) async {
+    try {
+      await _ordersService.markOrderReceived(orderId: orderId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Order marked as received')),
+      );
+      await _refreshIncoming();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', '').trim())),
+      );
+    }
   }
 
   Future<List<_IncomingOrderUi>> _fetchIncomingOrdersWithItems({
@@ -45,7 +139,15 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
       throw Exception('Invalid response: missing data list');
     }
 
-    final orders = data.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList();
+    final orders = data.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList()
+      ..sort((a, b) {
+        final adt = _parseCreatedAt(a);
+        final bdt = _parseCreatedAt(b);
+        if (adt == null && bdt == null) return 0;
+        if (adt == null) return 1;
+        if (bdt == null) return -1;
+        return bdt.compareTo(adt); // descending time-wise
+      });
 
     Future<_IncomingOrderUi> mapOne(Map<String, dynamic> o) async {
       final orderId = (o['orderId'] ?? '').toString();
@@ -93,6 +195,12 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
     }
 
     return Future.wait(orders.map(mapOne));
+  }
+
+  static DateTime? _parseCreatedAt(Map<String, dynamic> o) {
+    final raw = o['createdAt'];
+    if (raw is String && raw.isNotEmpty) return DateTime.tryParse(raw);
+    return null;
   }
 
   static String _formatOrderId(String orderId) {
@@ -180,54 +288,95 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
               child: Row(
                 children: [
                   // Profile Section
-                  Row(
-                    children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Colors.white,
-                            width: 2,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.06),
-                              blurRadius: 6,
-                              offset: const Offset(0, 3),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white,
+                              width: 2,
                             ),
-                          ],
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.06),
+                                blurRadius: 6,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: ClipOval(
+                            child: Image.asset(
+                              'assets/icons/profile_pic_demo.png',
+                              fit: BoxFit.cover,
+                            ),
+                          ),
                         ),
-                        child: ClipOval(
-                          child: Image.asset(
-                            'assets/icons/profile_pic_demo.png',
-                            fit: BoxFit.cover,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FutureBuilder<Map<String, dynamic>?>(
+                            future: _userFuture,
+                            builder: (context, snapshot) {
+                              final user = snapshot.data;
+                              final fullName = (user?['fullName'] ?? '').toString().trim();
+                              final firstName = fullName.isNotEmpty
+                                  ? fullName.split(RegExp(r'\s+')).first.trim()
+                                  : '';
+                              final userId = (user?['userId'] ?? '').toString().trim();
+
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    firstName.isNotEmpty ? 'Hi, $firstName' : 'Hi',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTextStyles.title(
+                                      color: AppColors.primary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Row(
+                                    children: [
+                                      Text(
+                                        'ID: ',
+                                        style: AppTextStyles.subtitle(
+                                          color: AppColors.textSecondary,
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: userId.isNotEmpty
+                                            ? SingleChildScrollView(
+                                                scrollDirection: Axis.horizontal,
+                                                child: Text(
+                                                  userId,
+                                                  maxLines: 1,
+                                                  softWrap: false,
+                                                  style: AppTextStyles.subtitle(
+                                                    color: AppColors.textSecondary,
+                                                  ),
+                                                ),
+                                              )
+                                            : Text(
+                                                '—',
+                                                style: AppTextStyles.subtitle(
+                                                  color: AppColors.textSecondary,
+                                                ),
+                                              ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              );
+                            },
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Hi, Nadaan',
-                            style: AppTextStyles.title(
-                              color: AppColors.primary,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'ID: AB1234',
-                            style: AppTextStyles.subtitle(
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                  const Spacer(),
                   // History Icon
                   IconButton(
                     onPressed: () {
@@ -364,25 +513,7 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       children: [
-        // Keep the first card (Assign button) as-is for now
-        _NewOrderCard(
-          orderId: 'ORD035',
-          customerName: 'Mike Wheelers',
-          date: '10-04-2025',
-          time: '10:16 AM',
-          itemCount: 12,
-          isAssigned: false,
-          deliveryPerson: null,
-          deliveryPersonId: null,
-          items: const [
-            _OrderItem(name: 'Top Wear', quantity: 5),
-            _OrderItem(name: 'Bottom Wear', quantity: 5),
-            _OrderItem(name: 'Kurta', quantity: 2),
-          ],
-        ),
-        const SizedBox(height: 12),
-
-        // Incoming orders list from backend
+        // Incoming orders list from backend (sorted by createdAt desc)
         FutureBuilder<List<_IncomingOrderUi>>(
           future: _incomingOrdersFuture,
           builder: (context, snapshot) {
@@ -460,6 +591,7 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
               children: [
                 for (final o in list) ...[
                   _NewOrderCard(
+                    backendOrderId: o.backendOrderId,
                     orderId: o.orderIdDisplay,
                     customerName: o.customerName,
                     date: o.date,
@@ -469,6 +601,7 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
                     deliveryPerson: o.deliveryPerson,
                     deliveryPersonId: o.deliveryPersonId,
                     items: o.items,
+                    onMarkReceived: _markReceivedAndRefresh,
                   ),
                   const SizedBox(height: 12),
                 ],
@@ -484,54 +617,98 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       children: [
-        _ReceivedOrderCard(
-          orderId: 'ORD035',
-          customerName: 'Mike Wheelers',
-          date: '10-04-2025',
-          time: '10:16 AM',
-          itemCount: 12,
-          deliveryPerson: 'Lucas Sinclair',
-          deliveryPersonId: 'EM045',
-          items: const [
-            _OrderItem(name: 'Top Wear', quantity: 5),
-            _OrderItem(name: 'Bottom Wear', quantity: 5),
-            _OrderItem(name: 'Kurta', quantity: 2),
-          ],
+        FutureBuilder<List<_ReceivedOrderUi>>(
+          future: _receivedOrdersFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: Column(
+                    children: [
+                      const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Loading received orders...',
+                        style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            if (snapshot.hasError) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.divider.withOpacity(0.4)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.error_outline, color: AppColors.error, size: 18),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          snapshot.error.toString().replaceFirst('Exception: ', ''),
+                          style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _refreshReceived,
+                        child: Text(
+                          'Retry',
+                          style: AppTextStyles.subtitle(color: AppColors.primary).copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            final list = snapshot.data ?? const <_ReceivedOrderUi>[];
+            if (list.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 18),
+                child: Center(
+                  child: Text(
+                    'No received orders',
+                    style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                  ),
+                ),
+              );
+            }
+
+            return Column(
+              children: [
+                for (final o in list) ...[
+                  _ReceivedOrderCard(
+                    orderId: o.orderIdDisplay,
+                    customerName: o.customerName,
+                    date: o.date,
+                    time: o.time,
+                    itemCount: o.itemCount,
+                    deliveryPerson: '—',
+                    deliveryPersonId: '',
+                    items: o.items,
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ],
+            );
+          },
         ),
-        const SizedBox(height: 12),
-        _ReceivedOrderCard(
-          orderId: 'ORD033',
-          customerName: 'Jim Hopper',
-          date: '10-04-2025',
-          time: '09:15 AM',
-          itemCount: 15,
-          deliveryPerson: 'Dustin Henderson',
-          deliveryPersonId: 'EM056',
-          items: const [
-            _OrderItem(name: 'Top Wear', quantity: 5),
-            _OrderItem(name: 'Bottom Wear', quantity: 6),
-            _OrderItem(name: 'Kurta', quantity: 2),
-            _OrderItem(name: 'Saree', quantity: 2),
-          ],
-        ),
-        const SizedBox(height: 12),
-        _ReceivedOrderCard(
-          orderId: 'ORD035',
-          customerName: 'Joyce Byers',
-          date: '09-04-2025',
-          time: '04:20 PM',
-          itemCount: 21,
-          deliveryPerson: 'Will Byers',
-          deliveryPersonId: 'EM072',
-          items: const [
-            _OrderItem(name: 'Top Wear', quantity: 5),
-            _OrderItem(name: 'Bottom Wear', quantity: 5),
-            _OrderItem(name: 'Kurta', quantity: 2),
-            _OrderItem(name: 'Saree', quantity: 3),
-          ],
-          isExpanded: true,
-        ),
-        const SizedBox(height: 12),
       ],
     );
   }
@@ -577,7 +754,28 @@ class _IncomingOrderUi {
   });
 }
 
+class _ReceivedOrderUi {
+  final String backendOrderId;
+  final String orderIdDisplay;
+  final String customerName;
+  final String date;
+  final String time;
+  final int itemCount;
+  final List<_OrderItem> items;
+
+  const _ReceivedOrderUi({
+    required this.backendOrderId,
+    required this.orderIdDisplay,
+    required this.customerName,
+    required this.date,
+    required this.time,
+    required this.itemCount,
+    required this.items,
+  });
+}
+
 class _NewOrderCard extends StatefulWidget {
+  final String backendOrderId;
   final String orderId;
   final String customerName;
   final String date;
@@ -588,8 +786,10 @@ class _NewOrderCard extends StatefulWidget {
   final String? deliveryPersonId;
   final List<_OrderItem> items;
   final bool isExpanded;
+  final Future<void> Function(String orderId)? onMarkReceived;
 
   const _NewOrderCard({
+    required this.backendOrderId,
     required this.orderId,
     required this.customerName,
     required this.date,
@@ -600,6 +800,7 @@ class _NewOrderCard extends StatefulWidget {
     this.deliveryPersonId,
     required this.items,
     this.isExpanded = false,
+    this.onMarkReceived,
   });
 
   @override
@@ -608,6 +809,7 @@ class _NewOrderCard extends StatefulWidget {
 
 class _NewOrderCardState extends State<_NewOrderCard> {
   late bool _isExpanded;
+  bool _isMarkingReceived = false;
 
   @override
   void initState() {
@@ -736,7 +938,7 @@ class _NewOrderCardState extends State<_NewOrderCard> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const DeliveryPartnersScreen(),
+                      builder: (context) => DeliveryPartnersScreen(orderId: widget.backendOrderId),
                     ),
                   );
                 },
@@ -784,18 +986,42 @@ class _NewOrderCardState extends State<_NewOrderCard> {
                             borderRadius: BorderRadius.circular(18),
                           ),
                         ),
-                        onPressed: () {
-                          // Handle verified & received action
-                        },
-                        child: Text(
-                          'Verified & Received',
-                          style: AppTextStyles.button(
-                            color: Colors.white,
-                          ).copyWith(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                        onPressed: _isMarkingReceived
+                            ? null
+                            : () async {
+                                final handler = widget.onMarkReceived;
+                                if (handler == null) return;
+                                setState(() {
+                                  _isMarkingReceived = true;
+                                });
+                                try {
+                                  await handler(widget.backendOrderId);
+                                } finally {
+                                  if (mounted) {
+                                    setState(() {
+                                      _isMarkingReceived = false;
+                                    });
+                                  }
+                                }
+                              },
+                        child: _isMarkingReceived
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              )
+                            : Text(
+                                'Verified & Received',
+                                style: AppTextStyles.button(
+                                  color: Colors.white,
+                                ).copyWith(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                       ),
                     ),
                   ),

@@ -4,7 +4,7 @@ const collectionManagerAppController = require('../controllers/collection-manage
 const { authenticateJWT, authorize } = require('../middleware/auth.middleware');
 const { validate, validateQuery } = require('../middleware/validation.middleware');
 const { validateUuidParam } = require('../middleware/delivery-staff-app.middleware');
-const { listPaginationQuerySchema, assignDeliverySchema } = require('../validators/staff-app.validator');
+const { listPaginationQuerySchema, assignDeliverySchema, directAssignDeliverySchema } = require('../validators/staff-app.validator');
 
 const router = express.Router();
 
@@ -34,6 +34,16 @@ router.post(
     validateUuidParam('orderId'),
     validate(assignDeliverySchema),
     collectionManagerAppController.assignPickupDelivery
+);
+
+// POST manually assign pickup to a specific delivery staff (no accept/reject)
+router.post(
+    '/orders/:orderId/assign-pickup-direct',
+    authenticateJWT,
+    authorize('collection_manager'),
+    validateUuidParam('orderId'),
+    validate(directAssignDeliverySchema),
+    collectionManagerAppController.assignPickupDirect
 );
 
 // POST mark received_by_collection

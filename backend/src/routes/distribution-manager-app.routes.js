@@ -4,7 +4,7 @@ const distributionManagerAppController = require('../controllers/distribution-ma
 const { authenticateJWT, authorize } = require('../middleware/auth.middleware');
 const { validate, validateQuery } = require('../middleware/validation.middleware');
 const { validateUuidParam } = require('../middleware/delivery-staff-app.middleware');
-const { listPaginationQuerySchema, assignDeliverySchema } = require('../validators/staff-app.validator');
+const { listPaginationQuerySchema, assignDeliverySchema, directAssignDeliverySchema } = require('../validators/staff-app.validator');
 
 const router = express.Router();
 
@@ -52,6 +52,16 @@ router.post(
     validateUuidParam('orderId'),
     validate(assignDeliverySchema),
     distributionManagerAppController.dispatchOrder
+);
+
+// POST manually assign drop to a specific delivery staff (no accept/reject)
+router.post(
+    '/orders/:orderId/assign-drop-direct',
+    authenticateJWT,
+    authorize('distribution_manager'),
+    validateUuidParam('orderId'),
+    validate(directAssignDeliverySchema),
+    distributionManagerAppController.assignDropDirect
 );
 
 // GET dispatch history

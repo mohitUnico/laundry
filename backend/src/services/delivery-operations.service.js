@@ -493,6 +493,238 @@ exports.createAssignmentRequest = async ({
     };
 };
 
+exports.directAssignDelivery = async ({
+    orderId,
+    deliveryType,
+    deliveryStaffId,
+    orderUpdateData = {},
+    assignedBy = null,
+}) => {
+    if (!orderId) throw new ValidationError('orderId is required');
+    if (!deliveryStaffId) throw new ValidationError('deliveryStaffId is required');
+    if (!['pickup', 'drop'].includes(deliveryType)) throw new ValidationError('deliveryType must be pickup or drop');
+
+    const [order, laundry, staff] = await Promise.all([
+        _getOrderForAssignment(orderId),
+        _getActiveLaundryConfig(),
+        prisma.deliveryStaff.findUnique({
+            where: { staff_id: deliveryStaffId },
+            select: { staff_id: true, is_active: true, is_verified_by_admin: true },
+        }),
+    ]);
+
+    if (!staff) throw new NotFoundError('DeliveryStaff');
+    if (!staff.is_active) throw new ValidationError('Delivery staff is inactive');
+    if (!staff.is_verified_by_admin) throw new ValidationError('Delivery staff is not verified by admin');
+
+    const activeShift = await prisma.deliveryStaffShift.findFirst({
+        where: { staff_id: deliveryStaffId, is_active: true, ended_at: null },
+        orderBy: { started_at: 'desc' },
+        select: { shift_id: true },
+    });
+    if (!activeShift) throw new ConflictError('Delivery staff shift is not active');
+
+    if (!order.pickup_address || !order.delivery_address) {
+        throw new ValidationError('Order is missing pickup or delivery address');
+    }
+
+    const leg = _buildLeg({ deliveryType, order, laundry });
+    const needsWeightMachine = (order.order_items || []).some((i) => i.pricing_type === 'per_kg');
+    const when = nowUtc();
+
+    const requiredOrderStatus = deliveryType === 'pickup' ? 'pickup_assigned' : 'dispatch_assigned';
+
+    const result = await prisma.$transaction(async (tx) => {
+        let delivery = await tx.delivery.findFirst({
+            where: { order_id: orderId, delivery_type: deliveryType },
+            orderBy: { created_at: 'desc' },
+        });
+
+        if (!delivery) {
+            delivery = await tx.delivery.create({
+                data: {
+                    order_id: orderId,
+                    staff_id: null,
+                    delivery_type: deliveryType,
+                    delivery_status: 'unassigned',
+                    delivery_fee: order.bill?.delivery_fee ?? 0,
+                    needs_weight_machine: needsWeightMachine,
+                },
+            });
+        }
+
+        // Ensure leg tables exist
+        await tx.pickupForDelivery.upsert({
+            where: { delivery_id: delivery.delivery_id },
+            create: {
+                delivery_id: delivery.delivery_id,
+                pickup_address: leg.pickup.address,
+                pickup_lat: leg.pickup.latitude,
+                pickup_lng: leg.pickup.longitude,
+                pickup_status: 'unassigned',
+            },
+            update: {},
+        });
+
+        await tx.dropForDelivery.upsert({
+            where: { delivery_id: delivery.delivery_id },
+            create: {
+                delivery_id: delivery.delivery_id,
+                drop_address: leg.drop.address,
+                drop_lat: leg.drop.latitude,
+                drop_lng: leg.drop.longitude,
+                drop_status: 'unassigned',
+            },
+            update: {},
+        });
+
+        // Cancel any active pending request for this delivery to avoid stale offers on other devices
+        const existingRequest = await tx.deliveryAssignmentRequest.findFirst({
+            where: {
+                delivery_id: delivery.delivery_id,
+                status: 'pending',
+                expires_at: { gt: when },
+            },
+            orderBy: { offered_at: 'desc' },
+            select: { request_id: true },
+        });
+
+        if (existingRequest) {
+            await tx.deliveryAssignmentRequest.update({
+                where: { request_id: existingRequest.request_id },
+                data: { status: 'cancelled', responded_at: when, rejection_note: 'Manually assigned by manager' },
+            });
+            await tx.deliveryAssignmentRecipient.updateMany({
+                where: { request_id: existingRequest.request_id, status: 'pending' },
+                data: { status: 'cancelled', responded_at: when, rejection_note: 'Manually assigned by manager' },
+            });
+        }
+
+        const current = await tx.delivery.findUnique({
+            where: { delivery_id: delivery.delivery_id },
+            select: { delivery_id: true, staff_id: true, delivery_status: true, completed_at: true },
+        });
+        if (!current) throw new NotFoundError('Delivery');
+        if (current.delivery_status === 'cancelled') throw new ConflictError('Delivery is cancelled');
+        if (current.completed_at) throw new ConflictError('Delivery is already completed');
+
+        if (current.staff_id && current.staff_id !== deliveryStaffId) {
+            throw new ConflictError('Delivery is already assigned to another delivery staff');
+        }
+
+        const alreadyAssigned = current.staff_id === deliveryStaffId;
+
+        await tx.delivery.update({
+            where: { delivery_id: delivery.delivery_id },
+            data: {
+                staff_id: deliveryStaffId,
+                delivery_status: 'assigned',
+                assigned_at: when,
+            },
+        });
+
+        if (deliveryType === 'pickup') {
+            await tx.pickupForDelivery.update({
+                where: { delivery_id: delivery.delivery_id },
+                data: { pickup_status: 'assigned', pickup_time: null },
+            });
+        } else {
+            await tx.dropForDelivery.update({
+                where: { delivery_id: delivery.delivery_id },
+                data: { drop_status: 'assigned', drop_time: null },
+            });
+        }
+
+        const normalizedOrderUpdate = { ...(orderUpdateData || {}) };
+        // If caller sets dispatched_by_distribution_manager_id but not dispatched_at, auto-fill it.
+        if (
+            deliveryType === 'drop' &&
+            normalizedOrderUpdate.dispatched_by_distribution_manager_id &&
+            !normalizedOrderUpdate.dispatched_at
+        ) {
+            normalizedOrderUpdate.dispatched_at = when;
+        }
+
+        await tx.order.update({
+            where: { order_id: orderId },
+            data: {
+                ...normalizedOrderUpdate,
+                order_status: requiredOrderStatus,
+            },
+            select: { order_id: true },
+        });
+
+        return {
+            deliveryId: delivery.delivery_id,
+            requestIdCancelled: existingRequest?.request_id ?? null,
+            alreadyAssigned,
+            assignedAt: when,
+        };
+    });
+
+    const notification = await prisma.deliveryStaffNotification.create({
+        data: {
+            staff_id: deliveryStaffId,
+            type: 'direct_assignment',
+            title: deliveryType === 'pickup' ? 'New pickup assigned' : 'New delivery assigned',
+            body: `You have a new ${deliveryType} assigned for order ${orderId}`,
+            payload: {
+                mode: 'direct',
+                orderId,
+                deliveryId: result.deliveryId,
+                deliveryType,
+                assignedAt: result.assignedAt,
+                assignedBy: assignedBy || null,
+            },
+        },
+    });
+
+    await _notifyDeliveryStaff(deliveryStaffId, {
+        notificationId: notification.notification_id,
+        type: notification.type,
+        title: notification.title,
+        body: notification.body,
+        payload: notification.payload,
+        createdAt: notification.created_at,
+    });
+
+    // Fire a dedicated SSE event so apps can refresh accepted orders immediately
+    realtimeService.emitToDeliveryStaff(deliveryStaffId, 'direct_assignment', {
+        orderId,
+        deliveryId: result.deliveryId,
+        deliveryType,
+        assignedAt: result.assignedAt,
+        mode: 'direct',
+    });
+
+    // Also emit the existing event name used after accept (for compatibility)
+    realtimeService.emitToDeliveryStaff(deliveryStaffId, 'assignment_accepted', {
+        requestId: null,
+        deliveryId: result.deliveryId,
+        orderId,
+        deliveryType,
+        mode: 'direct',
+    });
+
+    logger.info('Direct delivery assignment completed', {
+        orderId,
+        deliveryId: result.deliveryId,
+        deliveryType,
+        deliveryStaffId,
+        alreadyAssigned: result.alreadyAssigned,
+        assignedBy,
+    });
+
+    return {
+        orderId,
+        deliveryId: result.deliveryId,
+        deliveryType,
+        deliveryStaffId,
+        assignedAt: result.assignedAt,
+        alreadyAssigned: result.alreadyAssigned,
+    };
+};
+
 exports.cancelAssignmentRequest = async ({ requestId }) => {
     if (!requestId) throw new ValidationError('requestId is required');
 

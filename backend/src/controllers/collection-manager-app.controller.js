@@ -85,6 +85,32 @@ exports.assignPickupDelivery = async (req, res, next) => {
     }
 };
 
+exports.assignPickupDirect = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'collection_manager') {
+            throw new AuthorizationError('Only collection managers can access this endpoint');
+        }
+
+        const staffId = req.user.user_id;
+        const { orderId } = req.params;
+        const { deliveryStaffId } = req.body;
+
+        const data = await collectionManagerAppService.assignPickupDirect({
+            staffId,
+            orderId,
+            deliveryStaffId,
+        });
+
+        res.status(200).json({
+            success: true,
+            data,
+            message: 'Pickup assigned to delivery staff successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 exports.listReceivedOrders = async (req, res, next) => {
     try {
         if (req.user.role !== 'collection_manager') {

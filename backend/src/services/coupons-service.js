@@ -41,42 +41,37 @@ exports.listCoupons = async (query = {}) => {
     // If Prisma client doesn't include Coupon model (e.g., server not regenerated yet),
     // fall back to raw SQL so customers can still fetch coupons.
     if (!hasCouponModel()) {
-        const filters = [];
-
-        if (typeof is_active === 'boolean') {
-            filters.push(Prisma.sql`is_active = ${is_active}`);
-        }
-
-        if (code) {
-            filters.push(Prisma.sql`code ILIKE ${`%${code}%`}`);
-        }
-
-        if (discount_type) {
-            filters.push(Prisma.sql`discount_type = ${discount_type}`);
-        }
-
-        if (valid_now === true) {
-            const now = new Date();
-            filters.push(Prisma.sql`is_active = true`);
-            filters.push(Prisma.sql`(valid_from IS NULL OR valid_from <= ${now})`);
-            filters.push(Prisma.sql`(valid_till IS NULL OR valid_till >= ${now})`);
-        }
-
-        const whereSql =
-            filters.length > 0 ? Prisma.sql`WHERE ${Prisma.join(filters, Prisma.sql` AND `)}` : Prisma.sql``;
-
         try {
+            const now = new Date();
+            const codeLike = code ? `%${code}%` : null;
+
+            // NOTE: We intentionally avoid dynamic SQL fragment composition here because some
+            // Prisma runtime builds stringify fragments as "[object Object]" in tagged templates.
             const countRows = await prisma.$queryRaw`
                 SELECT COUNT(*)::int AS count
                 FROM coupons
-                ${whereSql}
+                WHERE (${is_active}::boolean IS NULL OR is_active = ${is_active})
+                  AND (${codeLike}::text IS NULL OR code ILIKE ${codeLike})
+                  AND (${discount_type}::text IS NULL OR discount_type = ${discount_type})
+                  AND (${valid_now}::boolean IS NOT TRUE OR (
+                        is_active = true
+                        AND (valid_from IS NULL OR valid_from <= ${now})
+                        AND (valid_till IS NULL OR valid_till >= ${now})
+                  ))
             `;
             const total = Array.isArray(countRows) && countRows[0] ? Number(countRows[0].count || 0) : 0;
 
             const coupons = await prisma.$queryRaw`
                 SELECT *
                 FROM coupons
-                ${whereSql}
+                WHERE (${is_active}::boolean IS NULL OR is_active = ${is_active})
+                  AND (${codeLike}::text IS NULL OR code ILIKE ${codeLike})
+                  AND (${discount_type}::text IS NULL OR discount_type = ${discount_type})
+                  AND (${valid_now}::boolean IS NOT TRUE OR (
+                        is_active = true
+                        AND (valid_from IS NULL OR valid_from <= ${now})
+                        AND (valid_till IS NULL OR valid_till >= ${now})
+                  ))
                 ORDER BY id DESC
                 LIMIT ${take} OFFSET ${skip}
             `;

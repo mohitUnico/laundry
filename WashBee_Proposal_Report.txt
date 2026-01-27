@@ -1,0 +1,283 @@
+========================================================================================================================
+                                             WASHBEE — PROPOSAL REPORT
+                                   Customer App + Management App(s) + Backend Platform
+========================================================================================================================
+
+Document Type   : Client Pitch Proposal (High-level + Technical Overview)
+Product Name    : WashBee
+Prepared For    : Client Stakeholders (Business + Technology)
+Version         : 1.0
+
+
+TABLE OF CONTENTS
+------------------------------------------------------------------------------------------------------------------------
+1. Executive Summary
+2. Project Overview & Objectives
+3. Scope of Work
+   3.1 In-Scope
+   3.2 Out-of-Scope
+4. Key Features (High-Level)
+5. Pricing
+   5.1 Development Costs
+   5.2 Market Data Subscription Costs
+6. Next Steps
+------------------------------------------------------------------------------------------------------------------------
+
+
+1. Executive Summary —
+------------------------------------------------------------------------------------------------------------------------
+WashBee is an end-to-end on-demand laundry platform designed to connect customers with a laundry mart’s operations team and
+support a full order journey: service selection, pricing (per-piece/per-kg), pickup & delivery coordination, service
+processing, billing, and real-time tracking.
+
+WashBee consists of:
+  - Customer App (mobile): ordering, payments, tracking, notifications, and customer account management.
+  - Management App(s): operational dashboards for managing services, orders, staff, assignments/queues, billing, and reports.
+  - Backend Platform: secure REST APIs + database + integrations (OTP, payments, notifications, storage).
+
+
+2. Project Overview & Objectives —
+------------------------------------------------------------------------------------------------------------------------
+2.1 Project Overview
+WashBee will provide a modern, scalable digital workflow for laundry operations and customer experience. The platform will
+support a structured order lifecycle, operational control for staff roles, and transparency for customers.
+
+2.2 Primary Objectives
+  - Deliver a smooth, trustworthy customer ordering and tracking experience.
+  - Standardize and streamline the operational workflow (pickup → received → service processing → dispatch → delivery).
+  - Provide a management interface for service catalog, pricing, order status control, and staff operations.
+  - Enable accurate billing and payment status tracking.
+  - Ensure security, maintainability, and scalability via clean architecture and robust validations.
+
+2.3 Technical Objectives (Implementation-Level)
+  - RESTful, versioned APIs (e.g., /api/v1/*) with standardized JSON responses.
+  - Role-Based Access Control (RBAC) across all management modules.
+  - Strong validation at API boundaries (request schemas) and consistent error contracts.
+  - Database schema with proper relations, indexes, and migrations.
+  - Secure authentication (JWT strategy as agreed) and authorization checks.
+  - Deployment-ready setup (Docker), environment configuration, and operational logging.
+
+
+3. Scope of Work
+------------------------------------------------------------------------------------------------------------------------
+3.1 In-Scope
+
+  A) Customer App (Mobile)
+  --------------------------------------------------------------------------------------------------------------
+  Functional Scope
+    - Authentication & onboarding:
+        • OTP/email/phone-based authentication as finalized during requirements.
+        • Session handling and secure token storage (approach finalized during implementation).
+    - Profile management:
+        • Customer profile details and basic settings.
+    - Address management:
+        • Add/edit/delete addresses, default address selection.
+        • Optional: location pin + geo-coordinates for delivery calculations (if enabled).
+    - Service catalog browsing:
+        • Service categories, services, and item lists as configured by mart admin.
+        • Pricing visibility for per-piece and per-kg offerings.
+    - Cart & checkout:
+        • Add services/items, update quantities (per-piece) or weight (per-kg).
+        • Checkout confirmation; pickup/delivery scheduling if required.
+    - Orders:
+        • Place orders, view order details and timeline, order history.
+        • Optional: reorder from history.
+    - Payments:
+        • COD and/or online payments (payment gateway integration if selected).
+        • Payment status tracking (pending/completed/failed/refunded as applicable).
+    - Notifications:
+        • Push/SMS/email notifications as agreed (status updates, reminders).
+    - Support:
+        • Contact/help workflow (FAQ + support ticket/contact channel as agreed).
+
+  Technical Scope
+    - API-driven implementation using secure auth headers for all protected endpoints.
+    - Client-side form validations + graceful error handling.
+    - Optional: image upload flows if customer-side proofs are required by business rules.
+
+
+  B) Management App(s) (Operations / Admin Panel)
+  --------------------------------------------------------------------------------------------------------------
+  Note: “Management App” may include one or more operational interfaces depending on final delivery model:
+        - Admin web panel for mart management and operations (common).
+        - Staff operations app (optional, if required for staff roles as a dedicated application).
+
+  Functional Scope
+    - Authentication + RBAC:
+        • Admin (mart owner) and staff roles (as agreed) with permission-controlled actions/screens.
+    - Service catalog management:
+        • Manage service categories, services, item catalog, pricing rules, activation status, display order.
+    - Order operations dashboard:
+        • View/search/filter orders; detailed order view; operational actions with audit-friendly status changes.
+    - Workflow management (aligned to agreed lifecycle):
+        • Pickup assignment (auto/manual as agreed).
+        • Mark pickup completed (with proof, if required).
+        • Mark received by collection.
+        • Submit/distribute items to services (queue-based handling as agreed).
+        • Track/mark service progress and completion.
+        • Dispatch assignment and out-for-delivery tracking (if delivery partner module is included).
+        • Final delivery confirmation and payment confirmation status updates (as applicable).
+    - Staff management (if included):
+        • Create/manage staff accounts, activate/deactivate, assign roles/permissions.
+    - Billing & invoices:
+        • Invoice computation display, payment status tracking, reconciliation views (as agreed).
+    - Reports & analytics (baseline):
+        • Order/revenue summaries, operational snapshots, completion and cancellation trends (as agreed).
+
+  Technical Scope
+    - Protected routes and RBAC enforcement at both UI and API layers.
+    - Reusable UI components, standardized API client, and consistent error rendering.
+
+
+  C) Backend Platform (REST API + Database + Integrations)
+  --------------------------------------------------------------------------------------------------------------
+  Architecture & Design
+    - Layered backend structure:
+        • Controllers: request handling, validation, response formatting.
+        • Services: business logic orchestration + transaction handling.
+        • Data access layer (ORM): database queries and relations.
+        • Middleware: authentication, authorization, validation, logging, error handling.
+        • Utilities/constants: shared helpers, enums, and status definitions.
+    - API conventions:
+        • Versioned endpoints.
+        • Standard response structure (success/data/errors).
+        • Meaningful HTTP status codes and error codes.
+
+  Core Backend Modules
+    - Authentication:
+        • OTP/email auth as agreed; JWT issuance and renewal strategy as agreed.
+    - Customer:
+        • Profile and address management.
+    - Service Catalog:
+        • Categories, services, items, pricing models (per-piece/per-kg), activation and ordering.
+    - Orders:
+        • Cart-to-order conversion logic.
+        • Order lifecycle status transitions with validations and RBAC checks.
+        • Item/service level tracking as required.
+    - Billing & Payments:
+        • Invoice generation logic (subtotal, delivery fee, taxes, discounts as agreed).
+        • Payment status management; gateway verification flow if online payments are enabled.
+    - Delivery / Assignments (if included):
+        • Partner assignment handling; pickup/drop proofs; delivery status tracking.
+    - Notifications:
+        • Event-based notifications on status changes (channels as agreed).
+
+  Database Scope
+    - Relational schema with proper relationships between:
+        • customers, addresses, service catalog entities, orders, order items, payments/bills, staff/users, etc.
+    - Indexing for common queries:
+        • order status filtering, date ranges, customer lookups, staff queues.
+    - Migration strategy:
+        • versioned schema migrations and seed data (where required).
+
+  Security & Compliance (Baseline)
+    - Secure token-based authentication, RBAC authorization checks.
+    - Input validation (schema-based) + sanitation for critical fields.
+    - Secure file upload handling (size/type restrictions) if proofs/documents are in scope.
+    - Consistent error handling to avoid leaking sensitive internals.
+
+  DevOps / Deployment Readiness
+    - Docker-based deployment support, environment configuration templates.
+    - Health endpoints and structured logging for monitoring and debugging.
+    - API documentation (Swagger/OpenAPI) for stakeholder review and integration testing.
+
+
+  Deliverables (In-Scope)
+  --------------------------------------------------------------------------------------------------------------
+  - Customer App build deliverable(s) (as agreed: Android/iOS targets).
+  - Management App deliverable(s) (web panel and/or staff app as agreed).
+  - Backend service (REST API) + database schema/migrations.
+  - API documentation (Swagger/OpenAPI) and environment setup documentation.
+  - Deployment/runbook documentation (how to run, configure, and deploy).
+
+
+3.2 Out-of-Scope
+------------------------------------------------------------------------------------------------------------------------
+Unless explicitly added and priced separately, the following are excluded:
+  - Hardware integrations (weight machines, POS printers, IoT devices).
+  - Advanced route optimization / fleet management / dynamic routing engines.
+  - AI/ML-based forecasting, fraud detection, automated anomaly detection.
+  - Multi-language localization and extensive accessibility audits (can be scoped later).
+  - Deep ERP/accounting integrations (Tally/SAP/NetSuite, etc.).
+  - 24x7 production monitoring and incident response coverage.
+  - App store publishing and compliance management end-to-end (can be included if requested).
+  - Large BI dashboards beyond baseline analytics agreed for MVP.
+
+
+4. Key Features (High-Level) —
+------------------------------------------------------------------------------------------------------------------------
+Customer App
+  - Secure onboarding and authentication
+  - Address management and scheduling (if enabled)
+  - Service browsing with transparent pricing (per-piece / per-kg)
+  - Cart → checkout → order confirmation flow
+  - Order tracking with status timeline and history
+  - Payments (COD/online) and notifications
+  - Support/contact module
+
+Management App(s)
+  - Role-based access for admin and staff
+  - Service catalog and pricing configuration
+  - Operational order dashboard and lifecycle controls
+  - Queue/assignment workflow for service processing (as agreed)
+  - Billing, invoices, and payment status tracking
+  - Reports and baseline analytics
+
+Backend Platform
+  - Versioned REST APIs + standardized response/error formats
+  - Secure authentication + RBAC authorization enforcement
+  - Database with migrations, indexes, and audit-friendly fields
+  - Optional proof uploads and notification integrations (as agreed)
+
+
+5. Pricing
+------------------------------------------------------------------------------------------------------------------------
+5.1 Development Costs
+Final cost depends on the confirmed scope (MVP vs full), integrations, UI depth, timelines, and acceptance criteria.
+We propose finalizing commercial numbers after requirement sign-off.
+
+Option A: Fixed Scope (recommended for a frozen feature set)
+  - Customer App (Mobile)                    : TBD
+  - Management App(s) (Admin/Operations)     : TBD
+  - Backend/API + Database                   : TBD
+  - QA/UAT + Release Support                 : TBD
+  ---------------------------------------------------------------
+  - Total                                    : TBD
+
+Option B: Time & Material (recommended for evolving scope)
+  - Rate                                     : TBD (per hour / per month)
+  - Team Composition                         : TBD (Mobile + Web + Backend + QA + PM as required)
+  - Estimated Duration                       : TBD weeks
+  - Total                                    : Based on actual tracked effort (weekly status reporting)
+
+Commercial Notes
+  - Any new modules or integrations beyond signed scope will be treated as change requests and estimated separately.
+  - Third-party subscriptions/usage fees are billed directly by the providers (see 5.2).
+
+
+5.2 Market Data Subscription Costs
+WashBee typically does NOT require “market data” subscriptions by default. However, the following common third-party
+services may introduce subscription or usage-based costs depending on selected integrations and traffic volumes:
+  - OTP/SMS provider charges (per message / per OTP)
+  - Payment gateway charges (per transaction + applicable taxes)
+  - Maps/Geocoding charges (usage-based) if distance/pricing or pin-based addressing is enabled
+  - Cloud hosting costs (compute, database, storage, CDN)
+  - Email service charges (if used)
+  - Monitoring/logging tools (optional)
+
+Exact monthly estimates will be shared after confirming providers and expected usage volumes.
+
+
+6. Next Steps —
+------------------------------------------------------------------------------------------------------------------------
+  - Confirm final workflow and user roles for Management App(s).
+  - Freeze MVP scope and finalize the in-scope vs out-of-scope list.
+  - Confirm integrations (OTP, payments, maps, notifications, storage).
+  - Finalize delivery timeline, milestones, and acceptance criteria.
+  - Finalize pricing model (Fixed Scope vs Time & Material) and execute sign-off.
+  - Kick-off implementation with project plan, environment setup, and sprint schedule.
+
+
+END OF DOCUMENT
+
+

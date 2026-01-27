@@ -5,12 +5,14 @@ import '../../../../theme/app_colors.dart';
 import '../../../../theme/app_text_styles.dart';
 import '../../../../utils/auth_storage.dart';
 import '../../../../utils/role_manager.dart';
+import '../../../../utils/role_constants.dart';
 import '../../../common/widgets/bottom_nav_bar.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
   Future<void> _logout(BuildContext context) async {
+    final role = await RoleManager.getRole();
     await Future.wait([
       RoleManager.clearRole(),
       AuthStorage.clearAll(),
@@ -20,6 +22,7 @@ class ProfileScreen extends StatelessWidget {
     Navigator.of(context).pushNamedAndRemoveUntil(
       AppRoutes.login,
       (route) => false,
+      arguments: {'role': role ?? RoleConstants.deliveryPartner},
     );
   }
 

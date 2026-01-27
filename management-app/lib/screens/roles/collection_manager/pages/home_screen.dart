@@ -629,6 +629,7 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
                     deliveryPersonId: o.deliveryPersonId,
                     items: o.items,
                     onMarkReceived: _markReceivedAndRefresh,
+                    onAssigned: _refreshIncoming,
                   ),
                   const SizedBox(height: 12),
                 ],
@@ -816,6 +817,7 @@ class _NewOrderCard extends StatefulWidget {
   final List<_OrderItem> items;
   final bool isExpanded;
   final Future<void> Function(String orderId)? onMarkReceived;
+  final VoidCallback? onAssigned;
 
   const _NewOrderCard({
     required this.backendOrderId,
@@ -830,6 +832,7 @@ class _NewOrderCard extends StatefulWidget {
     required this.items,
     this.isExpanded = false,
     this.onMarkReceived,
+    this.onAssigned,
   });
 
   @override
@@ -947,8 +950,8 @@ class _NewOrderCardState extends State<_NewOrderCard> {
               Expanded(
                 child: Text(
                   widget.isAssigned
-                      ? 'Delivered by : ${widget.deliveryPerson} (${widget.deliveryPersonId})'
-                      : 'Delivered by : Not Assigned (10 mins)',
+                      ? 'Assigned: ${widget.deliveryPerson} (${widget.deliveryPersonId})'
+                      : 'Not assigned',
                   style: AppTextStyles.subtitle(
                     color: widget.isAssigned ? AppColors.textSecondary : AppColors.error,
                   ),
@@ -963,13 +966,15 @@ class _NewOrderCardState extends State<_NewOrderCard> {
               width: double.infinity,
               height: 48,
               child: OutlinedButton(
-                onPressed: () {
-                  Navigator.push(
+                onPressed: () async {
+                  final result = await Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (context) => DeliveryPartnersScreen(orderId: widget.backendOrderId),
                     ),
                   );
+                  if (!mounted) return;
+                  if (result == true) widget.onAssigned?.call();
                 },
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.primary,
@@ -979,7 +984,7 @@ class _NewOrderCardState extends State<_NewOrderCard> {
                   ),
                 ),
                 child: Text(
-                  'Assign >>>',
+                  'Assign Delivery Partner',
                   style: AppTextStyles.button(
                     color: AppColors.primary,
                   ).copyWith(
@@ -990,94 +995,108 @@ class _NewOrderCardState extends State<_NewOrderCard> {
               ),
             )
           else
-            Row(
+            Column(
               children: [
-                Expanded(
-                  child: SizedBox(
-                    height: 48,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                          colors: [
-                            Color(0xFF283897),
-                            Color(0xFF0F73F7),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      child: TextButton(
-                        style: TextButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                        ),
-                        onPressed: _isMarkingReceived
-                            ? null
-                            : () async {
-                                final handler = widget.onMarkReceived;
-                                if (handler == null) return;
-                                setState(() {
-                                  _isMarkingReceived = true;
-                                });
-                                try {
-                                  await handler(widget.backendOrderId);
-                                } finally {
-                                  if (mounted) {
-                                    setState(() {
-                                      _isMarkingReceived = false;
-                                    });
-                                  }
-                                }
-                              },
-                        child: _isMarkingReceived
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                ),
-                              )
-                            : Text(
-                                'Verified & Received',
-                                style: AppTextStyles.button(
-                                  color: Colors.white,
-                                ).copyWith(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                      ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Assigned: ${widget.deliveryPerson ?? 'Staff'}',
+                    style: AppTextStyles.subtitle(color: AppColors.success).copyWith(
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: AppColors.primary,
-                      width: 1.4,
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 48,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              begin: Alignment.centerLeft,
+                              end: Alignment.centerRight,
+                              colors: [
+                                Color(0xFF283897),
+                                Color(0xFF0F73F7),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: TextButton(
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                            ),
+                            onPressed: _isMarkingReceived
+                                ? null
+                                : () async {
+                                    final handler = widget.onMarkReceived;
+                                    if (handler == null) return;
+                                    setState(() {
+                                      _isMarkingReceived = true;
+                                    });
+                                    try {
+                                      await handler(widget.backendOrderId);
+                                    } finally {
+                                      if (mounted) {
+                                        setState(() {
+                                          _isMarkingReceived = false;
+                                        });
+                                      }
+                                    }
+                                  },
+                            child: _isMarkingReceived
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                    ),
+                                  )
+                                : Text(
+                                    'Verified & Received',
+                                    style: AppTextStyles.button(
+                                      color: Colors.white,
+                                    ).copyWith(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                  child: IconButton(
-                    onPressed: () {
-                      // Handle phone call
-                    },
-                    icon: Icon(
-                      Icons.phone,
-                      color: AppColors.primary,
-                      size: 20,
+                    const SizedBox(width: 12),
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: AppColors.primary,
+                          width: 1.4,
+                        ),
+                      ),
+                      child: IconButton(
+                        onPressed: () {
+                          // Handle phone call
+                        },
+                        icon: Icon(
+                          Icons.phone,
+                          color: AppColors.primary,
+                          size: 20,
+                        ),
+                        splashRadius: 20,
+                      ),
                     ),
-                    splashRadius: 20,
-                  ),
+                  ],
                 ),
               ],
             ),

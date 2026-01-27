@@ -24,6 +24,7 @@ class _DeliveryPartnersScreenState extends State<DeliveryPartnersScreen> {
   final CollectionManagerOrdersService _ordersService = CollectionManagerOrdersService();
 
   late Future<List<_DeliveryPartnerUi>> _future;
+  String? _assigningStaffId;
 
   @override
   void initState() {
@@ -218,14 +219,43 @@ class _DeliveryPartnersScreenState extends State<DeliveryPartnersScreen> {
                     itemBuilder: (context, index) {
                       final p = list[index];
                       return _DeliveryPartnerCard(
+                        staffId: p.staffId,
                         name: p.name,
                         rating: p.rating,
                         totalDeliveries: p.totalDeliveries,
                         distanceKm: p.distanceKm,
                         profileImagePath: 'assets/icons/profile_pic_demo.png',
+                        isAssigning: _assigningStaffId == p.staffId,
                         onAssign: () {
-                          // TODO: call assign API if needed; for now just close
-                          Navigator.pop(context);
+                          if (_assigningStaffId != null) return;
+                          setState(() {
+                            _assigningStaffId = p.staffId;
+                          });
+
+                          () async {
+                            try {
+                              await _ordersService.assignPickupDirect(
+                                orderId: widget.orderId,
+                                deliveryStaffId: p.staffId,
+                              );
+
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Pickup assigned successfully')),
+                              );
+                              Navigator.pop(context, true);
+                            } catch (e) {
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+                              );
+                            } finally {
+                              if (!mounted) return;
+                              setState(() {
+                                _assigningStaffId = null;
+                              });
+                            }
+                          }();
                         },
                       );
                     },
@@ -241,20 +271,24 @@ class _DeliveryPartnersScreenState extends State<DeliveryPartnersScreen> {
 }
 
 class _DeliveryPartnerCard extends StatelessWidget {
+  final String staffId;
   final String name;
   final double rating;
   final int totalDeliveries;
   final double? distanceKm;
   final String profileImagePath;
   final VoidCallback onAssign;
+  final bool isAssigning;
 
   const _DeliveryPartnerCard({
+    required this.staffId,
     required this.name,
     required this.rating,
     required this.totalDeliveries,
     required this.distanceKm,
     required this.profileImagePath,
     required this.onAssign,
+    required this.isAssigning,
   });
 
   @override
@@ -408,9 +442,9 @@ class _DeliveryPartnerCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    onPressed: onAssign,
+                    onPressed: isAssigning ? null : onAssign,
                     child: Text(
-                      'Assign',
+                      isAssigning ? 'Assigning...' : 'Assign',
                       style: AppTextStyles.button(
                         color: Colors.white,
                       ).copyWith(

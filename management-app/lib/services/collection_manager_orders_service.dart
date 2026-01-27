@@ -105,6 +105,23 @@ class CollectionManagerOrdersService {
     }
   }
 
+  Future<Map<String, dynamic>> assignPickupDirect({
+    required String orderId,
+    required String deliveryStaffId,
+  }) async {
+    try {
+      final res = await _api.post(
+        '/staff-app/collection-manager/orders/$orderId/assign-pickup-direct',
+        data: {'deliveryStaffId': deliveryStaffId},
+      );
+      final body = res.data;
+      if (body is Map<String, dynamic>) return body;
+      throw Exception('Unexpected response format');
+    } catch (e) {
+      throw Exception(_extractErrorMessage(e, fallback: 'Failed to assign pickup to delivery staff'));
+    }
+  }
+
   Future<Map<String, dynamic>> listSubmissionHistory({
     int page = 1,
     int limit = 20,

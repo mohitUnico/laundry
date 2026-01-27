@@ -60,6 +60,13 @@ const limiter = rateLimit({
     message: 'Too many requests from this IP, please try again later.',
     standardHeaders: true,
     legacyHeaders: false,
+    // Allow high-frequency endpoints to work reliably (they are already protected by auth):
+    // - SSE is long-lived and should not count against burst limits
+    // - Location updates can be frequent (even after client-side throttling)
+    skip: (req) => {
+        const path = req.path || '';
+        return path.startsWith('/v1/delivery-staff/events') || path.startsWith('/v1/delivery-staff/location');
+    },
 });
 app.use('/api', limiter);
 

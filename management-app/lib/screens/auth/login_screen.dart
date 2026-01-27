@@ -9,7 +9,6 @@ import '../../providers/auth_provider.dart';
 
 import 'widgets/otp_input_row.dart' show OtpInputRow, OtpInputRowState;
 import 'widgets/pill_text_field.dart';
-import 'widgets/auth_colors.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -21,8 +20,6 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _serviceIdController = TextEditingController();
-  final TextEditingController _userIdController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
   final GlobalKey<OtpInputRowState> _otpInputKey = GlobalKey<OtpInputRowState>();
 
   bool _otpRequested = false;
@@ -31,9 +28,6 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _emailError;
   String? _serviceIdError;
   String? _otpError;
-  String? _userIdError;
-  String? _passwordError;
-  bool _obscurePassword = true;
   bool _isSendingOtp = false;
   bool _isVerifyingOtp = false;
 
@@ -41,8 +35,6 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _emailController.dispose();
     _serviceIdController.dispose();
-    _userIdController.dispose();
-    _passwordController.dispose();
     super.dispose();
   }
 
@@ -246,41 +238,6 @@ class _LoginScreenState extends State<LoginScreen> {
     return text.replaceFirst('Exception: ', '').trim();
   }
 
-  void _handleLogin() {
-    final userId = _userIdController.text.trim();
-    final password = _passwordController.text.trim();
-
-    setState(() {
-      _userIdError = null;
-      _passwordError = null;
-    });
-
-    if (userId.isEmpty) {
-      setState(() {
-        _userIdError = 'Please enter your User ID';
-      });
-      return;
-    }
-
-    if (password.isEmpty) {
-      setState(() {
-        _passwordError = 'Please enter your password';
-      });
-      return;
-    }
-
-    // TODO: Implement actual login logic
-    // For now, navigate to role-specific home
-    final role =
-        (ModalRoute.of(context)?.settings.arguments as Map?)?['role'] as String?;
-    
-    if (role == RoleConstants.serviceMan) {
-      Navigator.of(context).pushReplacementNamed(AppRoutes.pendingOrdersServicemen);
-    } else {
-      Navigator.of(context).pushReplacementNamed(AppRoutes.home);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final role =
@@ -288,9 +245,8 @@ class _LoginScreenState extends State<LoginScreen> {
     
     final isDeliveryPartner = role == RoleConstants.deliveryPartner;
     final isServiceMan = role == RoleConstants.serviceMan;
-    final isCollectionManager = role == RoleConstants.collectionManager;
-    final isDistributionManager = role == RoleConstants.distributionManager;
-    final usesOtpLogin = isDeliveryPartner || isCollectionManager || isDistributionManager || isServiceMan;
+    // We no longer use User ID / Password login for any role.
+    const usesOtpLogin = true;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -356,8 +312,28 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 12),
                       ],
-                      // Delivery Partner / Collection Manager / Distribution Manager: OTP-based login
+                      // OTP-based login for all roles
                       if (usesOtpLogin) ...[
+                        if (role == null) ...[
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: const Color(0xFFE6E3FF)),
+                            ),
+                            child: Text(
+                              'Please go back and select your role again.',
+                              style: AppTextStyles.body(color: AppColors.textSecondary).copyWith(
+                                fontSize: 13,
+                                height: 1.3,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                        ],
                         if (isServiceMan) ...[
                           Align(
                             alignment: Alignment.centerLeft,
@@ -499,165 +475,6 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ],
                         ],
-                      ] else ...[
-                        // Other roles: User ID and Password login
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'User ID',
-                            style: AppTextStyles.body(
-                                    color: AppColors.textPrimary)
-                                .copyWith(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        PillTextField(
-                          controller: _userIdController,
-                          hintText: 'Enter Your User ID',
-                          keyboardType: TextInputType.text,
-                          errorText: _userIdError,
-                        ),
-                        const SizedBox(height: 18),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'Password',
-                            style: AppTextStyles.body(
-                                    color: AppColors.textPrimary)
-                                .copyWith(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            TextField(
-                              controller: _passwordController,
-                              obscureText: _obscurePassword,
-                              keyboardType: TextInputType.visiblePassword,
-                              decoration: InputDecoration(
-                                hintText: 'Enter Your Password',
-                                hintStyle: const TextStyle(
-                                  color: Color(0xFFB8BDCF),
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                                filled: true,
-                                fillColor: Colors.white,
-                                contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 18, vertical: 16),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(30),
-                                  borderSide: BorderSide(
-                                    color: _passwordError != null
-                                        ? Colors.red
-                                        : AuthColors.border,
-                                    width: 1.6,
-                                  ),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(30),
-                                  borderSide: BorderSide(
-                                    color: _passwordError != null
-                                        ? Colors.red
-                                        : AuthColors.border,
-                                    width: 1.6,
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(30),
-                                  borderSide: BorderSide(
-                                    color: _passwordError != null
-                                        ? Colors.red
-                                        : AuthColors.border,
-                                    width: 2.0,
-                                  ),
-                                ),
-                                errorBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(30),
-                                  borderSide: const BorderSide(
-                                      color: Colors.red, width: 1.6),
-                                ),
-                                focusedErrorBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(30),
-                                  borderSide: const BorderSide(
-                                      color: Colors.red, width: 2.0),
-                                ),
-                                suffixIcon: IconButton(
-                                  icon: Icon(
-                                    _obscurePassword
-                                        ? Icons.visibility_outlined
-                                        : Icons.visibility_off_outlined,
-                                    color: AppColors.textSecondary,
-                                    size: 20,
-                                  ),
-                                  onPressed: () {
-                                    setState(() {
-                                      _obscurePassword = !_obscurePassword;
-                                    });
-                                  },
-                                ),
-                              ),
-                            ),
-                            if (_passwordError != null) ...[
-                              const SizedBox(height: 6),
-                              Padding(
-                                padding: const EdgeInsets.only(left: 18),
-                                child: Text(
-                                  _passwordError!,
-                                  style: const TextStyle(
-                                    color: Colors.red,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                        // Password visibility toggle
-                        const SizedBox(height: 18),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 52,
-                          child: ElevatedButton(
-                            onPressed: _handleLogin,
-                            style: ElevatedButton.styleFrom(
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(30),
-                              ),
-                              padding: EdgeInsets.zero,
-                              elevation: 0,
-                            ),
-                            child: Ink(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(30),
-                                gradient: const LinearGradient(
-                                  colors: [Color(0xFF2437B6), Color(0xFF2C3CA5)],
-                                  begin: Alignment.centerLeft,
-                                  end: Alignment.centerRight,
-                                ),
-                              ),
-                              child: Center(
-                                child: Text(
-                                  'Login',
-                                  style: AppTextStyles.button(
-                                          color: Colors.white)
-                                      .copyWith(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
                       ],
                     ],
                   ),

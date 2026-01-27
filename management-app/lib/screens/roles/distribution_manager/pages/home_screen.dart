@@ -80,6 +80,7 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
         time: _formatTime(createdAt),
         itemCount: itemsMapped.totalCount,
         items: itemsMapped.items,
+        assignedTo: '—',
         buttonText: 'Mark as Verified',
         isVerifyButton: true,
       );
@@ -111,6 +112,14 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
 
       final itemsMapped = await _safeFetchItems(orderId);
 
+      String assignedTo = '—';
+      final dropDelivery = o['dropDelivery'];
+      if (dropDelivery is Map) {
+        final staff = dropDelivery['deliveryStaff'];
+        final name = (staff is Map ? staff['fullName'] : null)?.toString().trim();
+        if (name != null && name.isNotEmpty) assignedTo = name;
+      }
+
       return _DmOrderUi(
         backendOrderId: orderId,
         orderIdDisplay: _formatOrderId(orderId),
@@ -119,7 +128,8 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
         time: _formatTime(createdAt),
         itemCount: itemsMapped.totalCount,
         items: itemsMapped.items,
-        buttonText: 'Assign Delivery Partner',
+        assignedTo: assignedTo,
+        buttonText: assignedTo == '—' ? 'Assign Delivery Partner' : 'Assigned',
         isVerifyButton: false,
       );
     }
@@ -542,7 +552,7 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
                     date: o.date,
                     time: o.time,
                     itemCount: o.itemCount,
-                    assignedTo: '—',
+                    assignedTo: o.assignedTo,
                     buttonText: o.buttonText,
                     items: o.items,
                     isVerifyButton: o.isVerifyButton,
@@ -610,11 +620,12 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
                     date: o.date,
                     time: o.time,
                     itemCount: o.itemCount,
-                    assignedTo: '—',
+                    assignedTo: o.assignedTo,
                     buttonText: o.buttonText,
                     items: o.items,
                     isVerifyButton: o.isVerifyButton,
                     onVerify: _verifyAndRefresh,
+                    onAssigned: _refreshVerified,
                   ),
                   const SizedBox(height: 12),
                 ],
@@ -649,6 +660,7 @@ class _DmOrderUi {
   final String time;
   final int itemCount;
   final List<_OrderItem> items;
+  final String assignedTo;
   final String buttonText;
   final bool isVerifyButton;
 
@@ -660,6 +672,7 @@ class _DmOrderUi {
     required this.time,
     required this.itemCount,
     required this.items,
+    required this.assignedTo,
     required this.buttonText,
     required this.isVerifyButton,
   });
@@ -678,6 +691,7 @@ class _OrderCard extends StatefulWidget {
   final bool isExpanded;
   final bool isVerifyButton;
   final Future<void> Function(String orderId)? onVerify;
+  final VoidCallback? onAssigned;
 
   const _OrderCard({
     required this.backendOrderId,
@@ -692,6 +706,7 @@ class _OrderCard extends StatefulWidget {
     this.isExpanded = false,
     required this.isVerifyButton,
     this.onVerify,
+    this.onAssigned,
   });
 
   @override
@@ -828,14 +843,20 @@ class _OrderCardState extends State<_OrderCard> {
                     borderRadius: BorderRadius.circular(18),
                   ),
                 ),
-                onPressed: () {
+                onPressed: () async {
                   if (!widget.isVerifyButton) {
-                    Navigator.push(
+                    final normalized = widget.assignedTo.trim();
+                    final alreadyAssigned = normalized.isNotEmpty && normalized != '—';
+                    if (alreadyAssigned) return;
+
+                    final result = await Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (context) => DistributionDeliveryPartnersScreen(orderId: widget.backendOrderId),
                       ),
                     );
+                    if (!mounted) return;
+                    if (result == true) widget.onAssigned?.call();
                   } else {
                     final handler = widget.onVerify;
                     if (handler == null) return;
@@ -862,7 +883,9 @@ class _OrderCardState extends State<_OrderCard> {
                         ),
                       )
                     : Text(
-                        widget.buttonText,
+                        (!widget.isVerifyButton && widget.assignedTo.trim().isNotEmpty && widget.assignedTo.trim() != '—')
+                            ? 'Assigned: ${widget.assignedTo}'
+                            : widget.buttonText,
                         style: AppTextStyles.button(
                           color: Colors.white,
                         ).copyWith(

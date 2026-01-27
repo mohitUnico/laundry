@@ -26,6 +26,7 @@ const normalizePagination = ({ page = 1, limit = 20 } = {}) => {
 };
 
 const mapDeliveryToOrderCard = (d) => {
+    const itemCount = d.order?._count?.order_items ?? 0;
     return {
         deliveryId: d.delivery_id,
         orderId: d.order_id,
@@ -34,6 +35,7 @@ const mapDeliveryToOrderCard = (d) => {
         assignedAt: d.assigned_at,
         completedAt: d.completed_at,
         needsWeightMachine: d.needs_weight_machine,
+        itemCount,
         order: d.order
             ? {
                 orderStatus: d.order.order_status,
@@ -125,6 +127,7 @@ exports.listAcceptedOrders = async ({ staffId, page, limit }) => {
                     include: {
                         customer: { select: { customer_id: true, full_name: true, phone: true } },
                         bill: { select: { final_amount: true, payment_status: true } },
+                        _count: { select: { order_items: true } },
                     },
                 },
             },

@@ -287,6 +287,7 @@ exports.createAssignmentRequest = async ({
     const expiresAt = new Date(Date.now() + Math.max(30, parseInt(expiresInSeconds, 10) || 0) * 1000);
 
     const needsWeightMachine = (order.order_items || []).some((i) => i.pricing_type === 'per_kg');
+    const itemCount = Array.isArray(order.order_items) ? order.order_items.length : 0;
 
     // Prefer using an existing Delivery leg created when the order is confirmed.
     // Fallback: if missing (older orders), create the delivery leg + pickup/drop rows here.
@@ -451,6 +452,7 @@ exports.createAssignmentRequest = async ({
                             orderId,
                             deliveryId: delivery.delivery_id,
                             deliveryType,
+                            itemCount,
                             pickup: leg.pickup,
                             drop: leg.drop,
                             expiresAt: request.expires_at,
@@ -530,6 +532,7 @@ exports.directAssignDelivery = async ({
 
     const leg = _buildLeg({ deliveryType, order, laundry });
     const needsWeightMachine = (order.order_items || []).some((i) => i.pricing_type === 'per_kg');
+    const itemCount = Array.isArray(order.order_items) ? order.order_items.length : 0;
     const when = nowUtc();
 
     const requiredOrderStatus = deliveryType === 'pickup' ? 'pickup_assigned' : 'dispatch_assigned';
@@ -674,6 +677,7 @@ exports.directAssignDelivery = async ({
                 deliveryId: result.deliveryId,
                 deliveryType,
                 assignedAt: result.assignedAt,
+                itemCount,
                 assignedBy: assignedBy || null,
             },
         },
@@ -694,6 +698,7 @@ exports.directAssignDelivery = async ({
         deliveryId: result.deliveryId,
         deliveryType,
         assignedAt: result.assignedAt,
+        itemCount,
         mode: 'direct',
     });
 
@@ -703,6 +708,7 @@ exports.directAssignDelivery = async ({
         deliveryId: result.deliveryId,
         orderId,
         deliveryType,
+        itemCount,
         mode: 'direct',
     });
 

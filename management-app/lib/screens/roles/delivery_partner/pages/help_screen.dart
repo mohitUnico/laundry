@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../routes/app_routes.dart';
 import '../../../../theme/app_colors.dart';
@@ -7,6 +8,23 @@ import '../../../common/widgets/bottom_nav_bar.dart';
 
 class HelpScreen extends StatelessWidget {
   const HelpScreen({super.key});
+
+  static const String _supportPhoneDisplay = '+91 87965 45689';
+  static const String _supportPhoneDial = '+918796545689';
+  static const String _supportEmail = 'laundryexample@gmail.com';
+
+  // TODO: Replace these with real links when available
+  static const String _termsUrl = 'https://example.com/terms';
+  static const String _privacyUrl = 'https://example.com/privacy';
+
+  static Future<void> _launchExternal(Uri uri) async {
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok) throw Exception('Unable to open');
+  }
+
+  static void _toast(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -20,53 +38,95 @@ class HelpScreen extends StatelessWidget {
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                children: const [
-                  _SectionTitle('Contact Support'),
-                  SizedBox(height: 18),
+                children: [
+                  const _SectionTitle('Contact Support'),
+                  const SizedBox(height: 18),
                   _ContactCard(
                     iconAsset: 'assets/icons/help_support/contact_support.png',
-                    title: 'Contact Support',
-                    subtitle: '+91 87965 45689',
+                    title: 'Call Support',
+                    subtitle: _supportPhoneDisplay,
+                    onTap: () async {
+                      try {
+                        await _launchExternal(Uri(scheme: 'tel', path: _supportPhoneDial));
+                      } catch (_) {
+                        _toast(context, 'Could not open phone dialer');
+                      }
+                    },
                   ),
-                  SizedBox(height: 14),
+                  const SizedBox(height: 14),
                   _ContactCard(
                     iconAsset: 'assets/icons/help_support/email_support.png',
                     title: 'Email Support',
-                    subtitle: 'laundryexample@gmail.com',
+                    subtitle: _supportEmail,
+                    onTap: () async {
+                      try {
+                        await _launchExternal(Uri(
+                          scheme: 'mailto',
+                          path: _supportEmail,
+                          queryParameters: {
+                            'subject': 'WashBee Support',
+                          },
+                        ));
+                      } catch (_) {
+                        _toast(context, 'Could not open email app');
+                      }
+                    },
                   ),
-                  SizedBox(height: 14),
+                  const SizedBox(height: 14),
                   _ContactCard(
                     iconAsset: 'assets/icons/help_support/live_chat.png',
                     title: 'Live chat',
                     subtitle: 'Chat with our team',
+                    onTap: () async {
+                      final wa = Uri.parse('https://wa.me/918796545689?text=Hi%20WashBee%20Support');
+                      try {
+                        await _launchExternal(wa);
+                      } catch (_) {
+                        _toast(context, 'Live chat is not available right now');
+                      }
+                    },
                   ),
-                  SizedBox(height: 24),
-                  _SectionTitle("FAQ's"),
-                  SizedBox(height: 18),
-                  _FaqItem(
+                  const SizedBox(height: 24),
+                  const _SectionTitle("FAQ's"),
+                  const SizedBox(height: 18),
+                  const _FaqItem(
                     question: 'What if the customer not answering the calls?',
                   ),
-                  SizedBox(height: 10),
-                  _FaqItem(
+                  const SizedBox(height: 10),
+                  const _FaqItem(
                     question: 'What if I face issues during delivery?',
                   ),
-                  SizedBox(height: 10),
-                  _FaqItem(
+                  const SizedBox(height: 10),
+                  const _FaqItem(
                     question: 'How do I update my profile?',
                   ),
-                  SizedBox(height: 24),
-                  _SectionTitle('Quick Links'),
-                  SizedBox(height: 18),
+                  const SizedBox(height: 24),
+                  const _SectionTitle('Quick Links'),
+                  const SizedBox(height: 18),
                   _QuickLink(
                     icon: Icons.description_outlined,
                     label: 'Terms and Conditions',
+                    onTap: () async {
+                      try {
+                        await _launchExternal(Uri.parse(_termsUrl));
+                      } catch (_) {
+                        _toast(context, 'Could not open Terms and Conditions');
+                      }
+                    },
                   ),
-                  SizedBox(height: 10),
+                  const SizedBox(height: 10),
                   _QuickLink(
                     icon: Icons.privacy_tip_outlined,
                     label: 'Privacy Policy',
+                    onTap: () async {
+                      try {
+                        await _launchExternal(Uri.parse(_privacyUrl));
+                      } catch (_) {
+                        _toast(context, 'Could not open Privacy Policy');
+                      }
+                    },
                   ),
-                  SizedBox(height: 24),
+                  const SizedBox(height: 24),
                 ],
               ),
             ),
@@ -149,60 +209,73 @@ class _ContactCard extends StatelessWidget {
   final String iconAsset;
   final String title;
   final String subtitle;
+  final VoidCallback? onTap;
 
   const _ContactCard({
     required this.iconAsset,
     required this.title,
     required this.subtitle,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.divider.withOpacity(0.4)),
-        boxShadow: [
-          const BoxShadow(
-            color: Color(0x7317253F),
-            blurRadius: 5.5,
-            offset: Offset(0, 0),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.divider.withOpacity(0.4)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x7317253F),
+                blurRadius: 5.5,
+                offset: Offset(0, 0),
+              ),
+            ],
           ),
-        ],
-      ),
-      constraints: const BoxConstraints(minHeight: 86),
-      child: Row(
-        children: [
-          Image.asset(
-            iconAsset,
-            width: 24,
-            height: 24,
-            fit: BoxFit.contain,
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: AppTextStyles.title(
-                    color: AppColors.textPrimary,
-                  ).copyWith(fontSize: 15, fontWeight: FontWeight.w600),
+          constraints: const BoxConstraints(minHeight: 86),
+          child: Row(
+            children: [
+              Image.asset(
+                iconAsset,
+                width: 24,
+                height: 24,
+                fit: BoxFit.contain,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: AppTextStyles.title(
+                        color: AppColors.textPrimary,
+                      ).copyWith(fontSize: 15, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: AppTextStyles.subtitle(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: AppTextStyles.subtitle(
-                    color: AppColors.textSecondary,
-                  ),
-                ),
+              ),
+              if (onTap != null) ...[
+                const SizedBox(width: 10),
+                const Icon(Icons.open_in_new, size: 18, color: AppColors.textSecondary),
               ],
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -260,47 +333,62 @@ class _FaqItem extends StatelessWidget {
 class _QuickLink extends StatelessWidget {
   final IconData icon;
   final String label;
+  final VoidCallback? onTap;
 
   const _QuickLink({
     required this.icon,
     required this.label,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            shape: BoxShape.circle,
-            boxShadow: [
-              const BoxShadow(
-                color: Color(0x7317253F),
-                blurRadius: 5.5,
-                offset: Offset(0, 0),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  shape: BoxShape.circle,
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x7317253F),
+                      blurRadius: 5.5,
+                      offset: Offset(0, 0),
+                    ),
+                  ],
+                  border: Border.all(
+                    color: AppColors.divider.withOpacity(0.8),
+                  ),
+                ),
+                child: Icon(
+                  icon,
+                  size: 18,
+                  color: AppColors.primary,
+                ),
               ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  label,
+                  style: AppTextStyles.title(
+                    color: AppColors.textPrimary,
+                  ).copyWith(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+              ),
+              if (onTap != null) const Icon(Icons.chevron_right, color: AppColors.textSecondary),
             ],
-            border: Border.all(
-              color: AppColors.divider.withOpacity(0.8),
-            ),
-          ),
-          child: Icon(
-            icon,
-            size: 18,
-            color: AppColors.primary,
           ),
         ),
-        const SizedBox(width: 14),
-        Text(
-          label,
-          style: AppTextStyles.title(
-            color: AppColors.textPrimary,
-          ).copyWith(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
-      ],
+      ),
     );
   }
 }

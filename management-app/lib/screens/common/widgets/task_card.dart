@@ -124,13 +124,7 @@ class TaskCard extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Text(
-                            amount,
-                            style: AppTextStyles.price(
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
+                          // Amount intentionally hidden for delivery staff UI (salary-based; no per-order amount shown)
                         ],
                       ),
                       const SizedBox(height: 4),

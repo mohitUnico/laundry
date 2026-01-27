@@ -513,10 +513,9 @@ exports.getPerKgItems = async ({ staffId, orderId }) => {
     });
 
     if (!order) throw new NotFoundError('Order');
-    if (order.pricing_model !== 'per_kg') {
-        return null;
-    }
 
+    // Do NOT gate by order.pricing_model; we rely on actual order_items.pricing_type.
+    // Some deployments/data can have per_kg items even when pricing_model is not strictly 'per_kg'.
     const perKgItems = await prisma.orderItem.findMany({
         where: { order_id: orderId, pricing_type: 'per_kg' },
         orderBy: { created_at: 'asc' },
@@ -528,9 +527,18 @@ exports.getPerKgItems = async ({ staffId, orderId }) => {
             unit_price: true,
             subtotal: true,
             updated_at: true,
-            service: { select: { service_name: true } },
+            service: {
+                select: {
+                    service_name: true,
+                    category: { select: { category_name: true } },
+                },
+            },
         },
     });
+
+    if (!perKgItems || perKgItems.length === 0) {
+        return null;
+    }
 
     return {
         orderId: order.order_id,
@@ -545,6 +553,7 @@ exports.getPerKgItems = async ({ staffId, orderId }) => {
             orderItemId: x.item_id,
             serviceId: x.service_id,
             serviceName: x.service?.service_name || null,
+            categoryName: x.service?.category?.category_name || null,
             pricingType: x.pricing_type,
             weightKg: x.weight_kg ? (x.weight_kg.toString?.() ?? String(x.weight_kg)) : null,
             unitPrice: x.unit_price?.toString?.() ?? String(x.unit_price),

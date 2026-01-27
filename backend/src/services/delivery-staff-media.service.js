@@ -120,3 +120,20 @@ exports.uploadDeliveryStaffDocument = async ({ registrationKey, kind, file }) =>
   return uploadToSupabase({ bucket: DEFAULT_BUCKET, objectPath, file });
 };
 
+exports.uploadDeliveryProofImage = async ({ deliveryId, kind, file }) => {
+  if (!deliveryId) throw new ValidationError('deliveryId is required');
+  if (!kind) throw new ValidationError('kind is required');
+  if (!file) throw new ValidationError('Proof image file is required');
+  if (!IMAGE_MIME_TYPES.has(file.mimetype)) {
+    throw new ValidationError('Proof image must be JPEG, PNG, or WEBP');
+  }
+
+  const ext = getFileExt(file.mimetype);
+  if (!ext) throw new ValidationError('Unsupported proof image file type');
+
+  const bucket = process.env.SUPABASE_DELIVERY_PROOFS_BUCKET || 'delivery-proofs';
+  const safeKind = String(kind).replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
+  const objectPath = `deliveries/${deliveryId}/${safeKind}/${uuidv4()}.${ext}`;
+  return uploadToSupabase({ bucket, objectPath, file });
+};
+

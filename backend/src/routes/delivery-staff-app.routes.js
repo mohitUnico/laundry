@@ -28,6 +28,8 @@ const upload = multer({
  * - GET   /api/v1/delivery-staff-app/orders/:orderId/items/weights
  * - PATCH /api/v1/delivery-staff-app/orders/:orderId/items/weights
  * - PATCH /api/v1/delivery-staff-app/deliveries/:deliveryId/status
+ * - POST  /api/v1/delivery-staff-app/deliveries/:deliveryId/mark-picked-up
+ * - POST  /api/v1/delivery-staff-app/deliveries/:deliveryId/mark-delivered
  * - GET   /api/v1/delivery-staff-app/orders/history
  * - GET   /api/v1/delivery-staff-app/profile
  * - POST  /api/v1/delivery-staff-app/profile-image/upload
@@ -67,6 +69,24 @@ router.patch(
     validateUuidParam('deliveryId'),
     validate(updateDeliveryStatusSchema),
     deliveryStaffAppController.updateDeliveryStatus
+);
+
+router.post(
+    '/deliveries/:deliveryId/mark-picked-up',
+    authenticateJWT,
+    authorize('delivery_staff'),
+    validateUuidParam('deliveryId'),
+    upload.single('file'),
+    deliveryStaffAppController.markPickedUpWithProof
+);
+
+router.post(
+    '/deliveries/:deliveryId/mark-delivered',
+    authenticateJWT,
+    authorize('delivery_staff'),
+    validateUuidParam('deliveryId'),
+    upload.single('file'),
+    deliveryStaffAppController.markDeliveredWithProof
 );
 
 router.get(

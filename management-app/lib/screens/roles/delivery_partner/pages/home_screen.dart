@@ -50,9 +50,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Position? _lastSentPosition;
   DateTime? _lastSentAt;
 
+  bool _isFirstBuild = true;
+
   @override
   void initState() {
     super.initState();
+    // Always fetch fresh data when home screen initializes
     _userFuture = AuthStorage.getCurrentUser();
     _statsFuture = _loadStats();
     _acceptedFuture = _loadAcceptedOrders();
@@ -62,6 +65,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _startLiveLocation();
       _startEvents();
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Refresh data when screen becomes visible after first build (e.g., navigating back from orders screen)
+    // This ensures fresh data is always shown, not cached from other screens
+    if (!_isFirstBuild && _isShiftActive) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _refreshHomeData();
+        }
+      });
+    }
+    _isFirstBuild = false;
   }
 
   @override
@@ -454,11 +472,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return bdt.compareTo(adt); // newest first
       });
 
-    return list.map((d) {
+    return list.map<_AcceptedTaskUi>((d) {
       final deliveryType = (d['deliveryType'] ?? '').toString();
       final deliveryId = (d['deliveryId'] ?? '').toString();
 
       final order = d['order'];
+      final orderId = (order is Map ? order['orderId'] : null)?.toString() ?? '';
       final customer = (order is Map ? order['customer'] : null);
       final customerName = (customer is Map ? customer['fullName'] : null)?.toString() ?? 'Customer';
       final phone = (customer is Map ? customer['phone'] : null)?.toString() ?? '—';
@@ -497,6 +516,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final isPickup = deliveryType == 'pickup';
       return _AcceptedTaskUi(
         deliveryId: deliveryId,
+        orderId: orderId,
         taskType: isPickup ? 'Pickup' : 'Delivery',
         scheduledTime: scheduledTime,
         customerName: customerName,
@@ -859,7 +879,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           // Handle navigation
           switch (index) {
             case 0:
-              // Already on home
+              // Refresh home data when tapping home tab
+              if (_isShiftActive) {
+                _refreshHomeData();
+              }
               break;
             case 1:
               Navigator.pushReplacementNamed(context, AppRoutes.orders);
@@ -955,7 +978,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           itemBuilder: (context, index) {
             final t = list[index];
             return GestureDetector(
-              onTap: () => _showTaskDialog(t.customerName),
+              onTap: () => _showTaskDialog(t.deliveryId, t.orderId, t.customerName, t.taskType == 'Pickup'),
               child: TaskCard(
                 taskType: t.taskType,
                 scheduledTime: t.scheduledTime,
@@ -966,7 +989,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 amount: t.amount,
                 buttonText: t.buttonText,
                 iconPath: t.iconPath,
-                onButtonPressed: () => _showTaskDialog(t.customerName),
+                onButtonPressed: () => _showTaskDialog(t.deliveryId, t.orderId, t.customerName, t.taskType == 'Pickup'),
                 onMapPressed: () {
                    final lat = t.destinationLat;
                    final lng = t.destinationLng;
@@ -997,13 +1020,52 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  void _showTaskDialog(String customerName) {
-    final weightController = TextEditingController();
+  void _showTaskDialog(String deliveryId, String orderId, String customerName, bool isPickup) async {
+    // Fetch per-kg items if it's a pickup order
+    List<Map<String, dynamic>>? perKgItems;
+    if (isPickup && orderId.isNotEmpty) {
+      try {
+        final body = await _deliveryStaffAppService.getPerKgItems(orderId: orderId);
+        final data = body['data'];
+        if (data is Map) {
+          final items = data['perKgItems'];
+          if (items is List) {
+            perKgItems = items.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList();
+          }
+        }
+      } catch (e) {
+        // If fetch fails, continue without per-kg items
+        perKgItems = null;
+      }
+    }
+
+    if (!mounted) return;
+    _showTaskDialogInternal(deliveryId, orderId, customerName, isPickup, perKgItems);
+  }
+
+  void _showTaskDialogInternal(
+    String deliveryId,
+    String orderId,
+    String customerName,
+    bool isPickup,
+    List<Map<String, dynamic>>? perKgItems,
+  ) {
+    final Map<String, TextEditingController> weightControllers = {};
+    if (perKgItems != null && perKgItems.isNotEmpty) {
+      for (final item in perKgItems) {
+        final itemId = (item['orderItemId'] ?? '').toString();
+        final currentWeight = item['weightKg'];
+        final weightStr = (currentWeight is num) ? currentWeight.toString() : (currentWeight?.toString() ?? '');
+        weightControllers[itemId] = TextEditingController(text: weightStr);
+      }
+    }
 
     showDialog(
       context: context,
       builder: (dialogContext) {
         XFile? pickedImage;
+        bool weightsSaved = perKgItems == null || perKgItems.isEmpty;
+        bool isSubmitting = false;
 
         return StatefulBuilder(
           builder: (context, setState) {
@@ -1014,17 +1076,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
               insetPadding:
                   const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.85,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Pickup Details',
+                          isPickup ? 'Pickup Details' : 'Delivery Details',
                           style: AppTextStyles.header(
                             color: AppColors.textPrimary,
                           ),
@@ -1053,31 +1120,124 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 18),
-                    Text(
-                      'Weight of Cloths (kg)*',
-                      style: AppTextStyles.subtitle(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: weightController,
-                      keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
-                        hintText: 'Enter weight in kg',
-                        filled: true,
-                        fillColor: AppColors.background,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(18),
-                          borderSide: BorderSide.none,
+                    // Show per-kg weight fields only if there are per-kg items
+                    if (perKgItems != null && perKgItems.isNotEmpty) ...[
+                      const SizedBox(height: 18),
+                      Text(
+                        'Item Weights (kg)*',
+                        style: AppTextStyles.subtitle(
+                          color: AppColors.textSecondary,
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 12),
+                      ...perKgItems.map((item) {
+                        final itemId = (item['orderItemId'] ?? '').toString();
+                        final serviceName = (item['serviceName'] ?? 'Item').toString();
+                        final categoryName = (item['categoryName'] ?? '').toString();
+                        final itemName = categoryName.isNotEmpty ? '$categoryName • $serviceName' : serviceName;
+                        final controller = weightControllers[itemId] ?? TextEditingController();
+                        
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                itemName,
+                                style: AppTextStyles.body(color: AppColors.textPrimary).copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              TextField(
+                                controller: controller,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                decoration: InputDecoration(
+                                  hintText: 'Enter weight in kg',
+                                  filled: true,
+                                  fillColor: AppColors.background,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
+                                  ),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(18),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 48,
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            // Validate all weights are entered
+                            bool allValid = true;
+                            final itemsToUpdate = <Map<String, dynamic>>[];
+                            
+                            for (final item in perKgItems!) {
+                              final itemId = (item['orderItemId'] ?? '').toString();
+                              final controller = weightControllers[itemId];
+                              final weightStr = controller?.text.trim() ?? '';
+                              final weight = double.tryParse(weightStr);
+                              
+                              if (weight == null || weight <= 0) {
+                                allValid = false;
+                                break;
+                              }
+                              
+                              itemsToUpdate.add({
+                                'orderItemId': itemId,
+                                'weightKg': weight,
+                              });
+                            }
+                            
+                            if (!allValid || itemsToUpdate.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Please enter valid weights for all items')),
+                              );
+                              return;
+                            }
+                            
+                            // Save weights
+                            try {
+                              await _deliveryStaffAppService.updatePerKgWeights(
+                                orderId: orderId,
+                                items: itemsToUpdate,
+                              );
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Weights saved successfully')),
+                                );
+                              }
+                              setState(() => weightsSaved = true);
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+                                );
+                              }
+                              setState(() => weightsSaved = false);
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                          ),
+                          child: Text(
+                            'Save Weights',
+                            style: AppTextStyles.button(color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 18),
                     Text(
                       'Upload Photo*',
@@ -1197,9 +1357,58 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               borderRadius: BorderRadius.circular(30),
                             ),
                           ),
-                          onPressed: () => Navigator.of(dialogContext).pop(),
+                          onPressed: isSubmitting
+                              ? null
+                              : () async {
+                                  if (pickedImage == null) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Please take a photo first')),
+                                    );
+                                    return;
+                                  }
+                                  if (!weightsSaved) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Please save weights before confirming pickup')),
+                                    );
+                                    return;
+                                  }
+
+                                  setState(() => isSubmitting = true);
+                                  try {
+                                    if (isPickup) {
+                                      await _deliveryStaffAppService.markPickedUpWithProof(
+                                        deliveryId: deliveryId,
+                                        file: pickedImage!,
+                                      );
+                                    } else {
+                                      await _deliveryStaffAppService.markDeliveredWithProof(
+                                        deliveryId: deliveryId,
+                                        file: pickedImage!,
+                                      );
+                                    }
+
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text(isPickup ? 'Pickup marked successfully' : 'Delivered successfully')),
+                                      );
+                                    }
+
+                                    Navigator.of(dialogContext).pop();
+                                    _refreshHomeData();
+                                  } catch (e) {
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+                                      );
+                                    }
+                                  } finally {
+                                    if (mounted) setState(() => isSubmitting = false);
+                                  }
+                                },
                           child: Text(
-                            'Confirm Pickup',
+                            isSubmitting
+                                ? (isPickup ? 'Confirming...' : 'Saving...')
+                                : (isPickup ? 'Confirm Pickup' : 'Confirm Delivery'),
                             style: AppTextStyles.button(
                               color: Colors.white,
                             ).copyWith(
@@ -1210,7 +1419,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ),
                       ),
                     ),
-                  ],
+                      ],
+                    ),
+                  ),
                 ),
               ),
             );
@@ -1230,6 +1441,7 @@ class _HomeStatsUi {
 
 class _AcceptedTaskUi {
   final String deliveryId;
+  final String orderId;
   final String taskType;
   final String scheduledTime;
   final String customerName;
@@ -1244,6 +1456,7 @@ class _AcceptedTaskUi {
 
   const _AcceptedTaskUi({
     required this.deliveryId,
+    required this.orderId,
     required this.taskType,
     required this.scheduledTime,
     required this.customerName,

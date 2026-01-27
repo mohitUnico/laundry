@@ -2,6 +2,7 @@ const prisma = require('../config/database');
 const logger = require('../utils/logger');
 const { NotFoundError, ValidationError, ConflictError, AppError } = require('../utils/errors');
 const { getSupabaseClient } = require('../config/supabase');
+const { uploadDeliveryProofImage } = require('./delivery-staff-media.service');
 const { v4: uuidv4 } = require('uuid');
 
 const UUID_REGEX =
@@ -321,12 +322,16 @@ exports.uploadProfileImage = async ({ staffId, file }) => {
     };
 };
 
-exports.updateAcceptedOrderStatus = async ({ staffId, deliveryId, action }) => {
+exports.updateAcceptedOrderStatus = async ({ staffId, deliveryId, action, proofUrl }) => {
     assertUuid(staffId, 'staffId');
     assertUuid(deliveryId, 'deliveryId');
 
     if (!['start_delivery', 'picked_up', 'dropped'].includes(action)) {
         throw new ValidationError('Invalid action');
+    }
+
+    if (proofUrl != null && (typeof proofUrl !== 'string' || !proofUrl.trim())) {
+        throw new ValidationError('proofUrl must be a non-empty string when provided');
     }
 
     const now = new Date();
@@ -377,7 +382,11 @@ exports.updateAcceptedOrderStatus = async ({ staffId, deliveryId, action }) => {
         if (action === 'picked_up') {
             await tx.pickupForDelivery.update({
                 where: { delivery_id: deliveryId },
-                data: { pickup_status: 'picked_up', pickup_time: now },
+                data: {
+                    pickup_status: 'picked_up',
+                    pickup_time: now,
+                    ...(proofUrl ? { pickup_proof: proofUrl } : {}),
+                },
             });
 
             if (delivery.delivery_type === 'pickup') {
@@ -405,7 +414,11 @@ exports.updateAcceptedOrderStatus = async ({ staffId, deliveryId, action }) => {
         if (action === 'dropped') {
             await tx.dropForDelivery.update({
                 where: { delivery_id: deliveryId },
-                data: { drop_status: 'dropped', drop_time: now },
+                data: {
+                    drop_status: 'dropped',
+                    drop_time: now,
+                    ...(proofUrl ? { drop_proof: proofUrl } : {}),
+                },
             });
 
             await tx.delivery.update({
@@ -437,6 +450,36 @@ exports.updateAcceptedOrderStatus = async ({ staffId, deliveryId, action }) => {
 
         logger.info('Delivery staff app updated delivery status', { staffId, deliveryId, action });
         return mapDeliveryToOrderCard(refreshed);
+    });
+};
+
+exports.markPickedUpWithProof = async ({ staffId, deliveryId, file }) => {
+    assertUuid(staffId, 'staffId');
+    assertUuid(deliveryId, 'deliveryId');
+    if (!file) throw new ValidationError('Proof image file is required');
+
+    const proofUrl = await uploadDeliveryProofImage({ deliveryId, kind: 'picked_up', file });
+
+    return exports.updateAcceptedOrderStatus({
+        staffId,
+        deliveryId,
+        action: 'picked_up',
+        proofUrl,
+    });
+};
+
+exports.markDeliveredWithProof = async ({ staffId, deliveryId, file }) => {
+    assertUuid(staffId, 'staffId');
+    assertUuid(deliveryId, 'deliveryId');
+    if (!file) throw new ValidationError('Proof image file is required');
+
+    const proofUrl = await uploadDeliveryProofImage({ deliveryId, kind: 'delivered', file });
+
+    return exports.updateAcceptedOrderStatus({
+        staffId,
+        deliveryId,
+        action: 'dropped',
+        proofUrl,
     });
 };
 

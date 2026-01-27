@@ -68,6 +68,54 @@ exports.updateDeliveryStatus = async (req, res, next) => {
     }
 };
 
+exports.markPickedUpWithProof = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'delivery_staff') {
+            throw new AuthorizationError('Only delivery staff can access this endpoint');
+        }
+
+        const staffId = req.user.user_id;
+        const { deliveryId } = req.params;
+        const updated = await deliveryStaffAppService.markPickedUpWithProof({
+            staffId,
+            deliveryId,
+            file: req.file,
+        });
+
+        res.status(200).json({
+            success: true,
+            data: updated,
+            message: 'Order marked as picked up successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.markDeliveredWithProof = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'delivery_staff') {
+            throw new AuthorizationError('Only delivery staff can access this endpoint');
+        }
+
+        const staffId = req.user.user_id;
+        const { deliveryId } = req.params;
+        const updated = await deliveryStaffAppService.markDeliveredWithProof({
+            staffId,
+            deliveryId,
+            file: req.file,
+        });
+
+        res.status(200).json({
+            success: true,
+            data: updated,
+            message: 'Order marked as delivered successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 exports.listOrderHistory = async (req, res, next) => {
     try {
         if (req.user.role !== 'delivery_staff') {

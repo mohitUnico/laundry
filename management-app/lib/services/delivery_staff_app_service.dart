@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../services/api_service.dart';
 
@@ -68,6 +69,80 @@ class DeliveryStaffAppService {
       throw Exception('Unexpected response format');
     } catch (e) {
       throw Exception(_extractErrorMessage(e, fallback: 'Failed to fetch order history'));
+    }
+  }
+
+  Future<Map<String, dynamic>> getPerKgItems({required String orderId}) async {
+    try {
+      final res = await _api.get('/delivery-staff-app/orders/$orderId/items/weights');
+      final body = res.data;
+      if (body is Map<String, dynamic>) return body;
+      throw Exception('Unexpected response format');
+    } catch (e) {
+      throw Exception(_extractErrorMessage(e, fallback: 'Failed to fetch per-kg items'));
+    }
+  }
+
+  Future<Map<String, dynamic>> updatePerKgWeights({
+    required String orderId,
+    required List<Map<String, dynamic>> items,
+  }) async {
+    try {
+      final res = await _api.patch(
+        '/delivery-staff-app/orders/$orderId/items/weights',
+        data: {'items': items},
+      );
+      final body = res.data;
+      if (body is Map<String, dynamic>) return body;
+      throw Exception('Unexpected response format');
+    } catch (e) {
+      throw Exception(_extractErrorMessage(e, fallback: 'Failed to update weights'));
+    }
+  }
+
+  Future<Map<String, dynamic>> markPickedUpWithProof({
+    required String deliveryId,
+    required XFile file,
+  }) async {
+    try {
+      final formData = FormData.fromMap({
+        'file': await MultipartFile.fromFile(
+          file.path,
+          filename: file.name,
+        ),
+      });
+      final res = await _api.postFormData(
+        '/delivery-staff-app/deliveries/$deliveryId/mark-picked-up',
+        data: formData,
+      );
+      final body = res.data;
+      if (body is Map<String, dynamic>) return body;
+      throw Exception('Unexpected response format');
+    } catch (e) {
+      throw Exception(_extractErrorMessage(e, fallback: 'Failed to mark picked up'));
+    }
+  }
+
+  Future<Map<String, dynamic>> markDeliveredWithProof({
+    required String deliveryId,
+    required XFile file,
+  }) async {
+    try {
+      final formData = FormData.fromMap({
+        'file': await MultipartFile.fromFile(
+          file.path,
+          filename: file.name,
+        ),
+      });
+      final res = await _api.postFormData(
+        '/delivery-staff-app/deliveries/$deliveryId/mark-delivered',
+        data: formData,
+      );
+      final body = res.data;
+      if (body is Map<String, dynamic>) return body;
+      throw Exception('Unexpected response format');
+    } catch (e) {
+      throw Exception(_extractErrorMessage(e, fallback: 'Failed to mark delivered'));
     }
   }
 }

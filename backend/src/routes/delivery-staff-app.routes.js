@@ -9,6 +9,7 @@ const {
     listAcceptedOrdersQuerySchema,
     listOrderHistoryQuerySchema,
     updateDeliveryStatusSchema,
+    updatePerKgWeightsSchema,
 } = require('../validators/delivery-staff-app.validator');
 
 const router = express.Router();
@@ -24,6 +25,8 @@ const upload = multer({
  * Endpoints:
  * - GET   /api/v1/delivery-staff-app/home/stats
  * - GET   /api/v1/delivery-staff-app/orders/accepted
+ * - GET   /api/v1/delivery-staff-app/orders/:orderId/items/weights
+ * - PATCH /api/v1/delivery-staff-app/orders/:orderId/items/weights
  * - PATCH /api/v1/delivery-staff-app/deliveries/:deliveryId/status
  * - GET   /api/v1/delivery-staff-app/orders/history
  * - GET   /api/v1/delivery-staff-app/profile
@@ -38,6 +41,23 @@ router.get(
     authorize('delivery_staff'),
     validateQuery(listAcceptedOrdersQuerySchema),
     deliveryStaffAppController.listAcceptedOrders
+);
+
+router.get(
+    '/orders/:orderId/items/weights',
+    authenticateJWT,
+    authorize('delivery_staff'),
+    validateUuidParam('orderId'),
+    deliveryStaffAppController.getPerKgItems
+);
+
+router.patch(
+    '/orders/:orderId/items/weights',
+    authenticateJWT,
+    authorize('delivery_staff'),
+    validateUuidParam('orderId'),
+    validate(updatePerKgWeightsSchema),
+    deliveryStaffAppController.updatePerKgWeights
 );
 
 router.patch(

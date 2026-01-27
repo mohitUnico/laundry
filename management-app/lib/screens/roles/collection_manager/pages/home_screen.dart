@@ -1053,7 +1053,7 @@ List<Widget> _buildCategorizedItemsList(List<_OrderItem> items) {
                 ),
               ),
               Text(
-                '${item.quantity.toString().padLeft(2, '0')} kg',
+                item.quantity.toString().padLeft(2, '0'),
                 style: AppTextStyles.subtitle(color: AppColors.textPrimary).copyWith(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
@@ -1542,7 +1542,7 @@ class _ReceivedOrderCardState extends State<_ReceivedOrderCard> {
               ),
               const SizedBox(width: 6),
               Text(
-                'Delivered by : ${widget.deliveryPerson}(${widget.deliveryPersonId})',
+                'Delivered by : ${widget.deliveryPerson}',
                 style: AppTextStyles.subtitle(
                   color: AppColors.textSecondary,
                 ),

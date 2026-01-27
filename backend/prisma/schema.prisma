@@ -370,6 +370,7 @@ enum OrderStatus {
   placed // Customer placed order
   pickup_assigned // Delivery partner assigned for pickup
   picked_up // Order picked up from customer
+  submitted_to_cm // Delivery partner submitted order to collection manager
   received_by_collection // Collection manager received order
   submitted_to_services // Submitted to service men
   services_in_progress // Service men working on items

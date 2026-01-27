@@ -27,7 +27,16 @@ const normalizePagination = ({ page = 1, limit = 20 } = {}) => {
 };
 
 const mapDeliveryToOrderCard = (d) => {
-    const itemCount = d.order?._count?.order_items ?? 0;
+    // itemCount is used by delivery staff UI as "number of clothes/items" (quantity), not number of order_items rows.
+    // Prefer total quantity derived from order_items.quantity and fallback to row-count if unavailable.
+    const itemCountFromQuantities = Array.isArray(d.order?.order_items)
+        ? d.order.order_items.reduce((sum, oi) => {
+              const qty = oi?.quantity;
+              const n = typeof qty === 'number' ? qty : parseInt(qty?.toString?.() ?? String(qty ?? ''), 10);
+              return sum + (Number.isFinite(n) ? n : 0);
+          }, 0)
+        : 0;
+    const itemCount = itemCountFromQuantities > 0 ? itemCountFromQuantities : d.order?._count?.order_items ?? 0;
     return {
         deliveryId: d.delivery_id,
         orderId: d.order_id,
@@ -129,6 +138,7 @@ exports.listAcceptedOrders = async ({ staffId, page, limit }) => {
                         customer: { select: { customer_id: true, full_name: true, phone: true } },
                         bill: { select: { final_amount: true, payment_status: true } },
                         _count: { select: { order_items: true } },
+                        order_items: { select: { quantity: true } },
                     },
                 },
             },
@@ -326,7 +336,7 @@ exports.updateAcceptedOrderStatus = async ({ staffId, deliveryId, action, proofU
     assertUuid(staffId, 'staffId');
     assertUuid(deliveryId, 'deliveryId');
 
-    if (!['start_delivery', 'picked_up', 'dropped'].includes(action)) {
+    if (!['start_delivery', 'picked_up', 'submitted_to_cm', 'dropped'].includes(action)) {
         throw new ValidationError('Invalid action');
     }
 
@@ -350,8 +360,10 @@ exports.updateAcceptedOrderStatus = async ({ staffId, deliveryId, action, proofU
         // Basic flow:
         // - start_delivery: marks the active leg in progress; for drop leg also sets order out_for_delivery
         // - picked_up:
-        //   - pickup leg: marks pickup + completes delivery + sets order picked_up
+        //   - pickup leg: marks pickup-from-customer + keeps delivery active + sets order picked_up
         //   - drop leg: marks pickup-from-laundry + sets order out_for_delivery
+        // - submitted_to_cm:
+        //   - pickup leg: marks drop-at-laundry + completes delivery + sets order submitted_to_cm
         // - dropped:
         //   - pickup leg: marks drop-at-laundry + completes delivery
         //   - drop leg: marks customer drop + completes delivery + sets order payment_pending
@@ -392,7 +404,7 @@ exports.updateAcceptedOrderStatus = async ({ staffId, deliveryId, action, proofU
             if (delivery.delivery_type === 'pickup') {
                 await tx.delivery.update({
                     where: { delivery_id: deliveryId },
-                    data: { delivery_status: 'completed', completed_at: now },
+                    data: { delivery_status: 'in_progress' },
                 });
                 await tx.order.update({
                     where: { order_id: delivery.order_id },
@@ -409,6 +421,31 @@ exports.updateAcceptedOrderStatus = async ({ staffId, deliveryId, action, proofU
                     data: { order_status: 'out_for_delivery' },
                 });
             }
+        }
+
+        if (action === 'submitted_to_cm') {
+            if (delivery.delivery_type !== 'pickup') {
+                throw new ConflictError('Only pickup deliveries can be submitted to collection manager');
+            }
+
+            // Mark drop-at-laundry (collection) and complete the pickup delivery leg
+            await tx.dropForDelivery.update({
+                where: { delivery_id: deliveryId },
+                data: {
+                    drop_status: 'dropped',
+                    drop_time: now,
+                },
+            });
+
+            await tx.delivery.update({
+                where: { delivery_id: deliveryId },
+                data: { delivery_status: 'completed', completed_at: now },
+            });
+
+            await tx.order.update({
+                where: { order_id: delivery.order_id },
+                data: { order_status: 'submitted_to_cm' },
+            });
         }
 
         if (action === 'dropped') {

@@ -145,6 +145,20 @@ class DeliveryStaffAppService {
       throw Exception(_extractErrorMessage(e, fallback: 'Failed to mark delivered'));
     }
   }
+
+  Future<Map<String, dynamic>> markSubmittedToCm({required String deliveryId}) async {
+    try {
+      final res = await _api.patch(
+        '/delivery-staff-app/deliveries/$deliveryId/status',
+        data: {'action': 'submitted_to_cm'},
+      );
+      final body = res.data;
+      if (body is Map<String, dynamic>) return body;
+      throw Exception('Unexpected response format');
+    } catch (e) {
+      throw Exception(_extractErrorMessage(e, fallback: 'Failed to mark submitted'));
+    }
+  }
 }
 
 

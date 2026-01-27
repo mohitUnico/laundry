@@ -15,7 +15,7 @@ exports.listOrderHistoryQuerySchema = Joi.object({
 });
 
 exports.updateDeliveryStatusSchema = Joi.object({
-    action: Joi.string().valid('start_delivery', 'picked_up', 'dropped').required(),
+    action: Joi.string().valid('start_delivery', 'picked_up', 'submitted_to_cm', 'dropped').required(),
 });
 
 exports.uuidParamSchema = uuid.required();

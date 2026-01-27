@@ -52,7 +52,7 @@ async function _getOrderForAssignment(orderId) {
                 },
             },
             bill: { select: { delivery_fee: true } },
-            order_items: { select: { pricing_type: true } },
+            order_items: { select: { pricing_type: true, quantity: true } },
         },
     });
 
@@ -287,7 +287,9 @@ exports.createAssignmentRequest = async ({
     const expiresAt = new Date(Date.now() + Math.max(30, parseInt(expiresInSeconds, 10) || 0) * 1000);
 
     const needsWeightMachine = (order.order_items || []).some((i) => i.pricing_type === 'per_kg');
-    const itemCount = Array.isArray(order.order_items) ? order.order_items.length : 0;
+    const itemCount = Array.isArray(order.order_items)
+        ? order.order_items.reduce((sum, i) => sum + (typeof i.quantity === 'number' ? i.quantity : 0), 0)
+        : 0;
 
     // Prefer using an existing Delivery leg created when the order is confirmed.
     // Fallback: if missing (older orders), create the delivery leg + pickup/drop rows here.
@@ -532,7 +534,9 @@ exports.directAssignDelivery = async ({
 
     const leg = _buildLeg({ deliveryType, order, laundry });
     const needsWeightMachine = (order.order_items || []).some((i) => i.pricing_type === 'per_kg');
-    const itemCount = Array.isArray(order.order_items) ? order.order_items.length : 0;
+    const itemCount = Array.isArray(order.order_items)
+        ? order.order_items.reduce((sum, i) => sum + (typeof i.quantity === 'number' ? i.quantity : 0), 0)
+        : 0;
     const when = nowUtc();
 
     const requiredOrderStatus = deliveryType === 'pickup' ? 'pickup_assigned' : 'dispatch_assigned';

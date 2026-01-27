@@ -52,7 +52,10 @@ const mapOrderRow = (o) => {
             : null,
         actions: {
             canAssignPickupDelivery: o.order_type === 'pickup_only' || o.order_type === 'both',
-            canMarkReceived: o.order_status === 'picked_up' || o.order_status === 'pickup_assigned',
+            canMarkReceived:
+                o.order_status === 'picked_up' ||
+                o.order_status === 'submitted_to_cm' ||
+                o.order_status === 'pickup_assigned',
             canSubmitToServices: o.order_status === 'received_by_collection',
         },
     };
@@ -62,7 +65,7 @@ exports.listIncomingOrders = async ({ page, limit } = {}) => {
     const { safePage, safeLimit, skip } = normalizePagination({ page, limit });
 
     const where = {
-        order_status: { in: ['placed', 'pickup_assigned', 'picked_up'] },
+        order_status: { in: ['placed', 'pickup_assigned', 'picked_up', 'submitted_to_cm'] },
     };
 
     const [total, rows] = await Promise.all([
@@ -201,7 +204,7 @@ exports.markOrderReceived = async ({ staffId, orderId }) => {
         });
         if (!order) throw new NotFoundError('Order');
 
-        if (!['picked_up', 'pickup_assigned'].includes(order.order_status)) {
+        if (!['picked_up', 'submitted_to_cm', 'pickup_assigned'].includes(order.order_status)) {
             throw new ConflictError(`Order cannot be marked received from status ${order.order_status}`);
         }
 

@@ -477,7 +477,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final deliveryId = (d['deliveryId'] ?? '').toString();
 
       final order = d['order'];
-      final orderId = (order is Map ? order['orderId'] : null)?.toString() ?? '';
+      // NOTE: backend sends orderId at the top-level, not inside `order`
+      final orderId = (d['orderId'] ?? '').toString();
       final customer = (order is Map ? order['customer'] : null);
       final customerName = (customer is Map ? customer['fullName'] : null)?.toString() ?? 'Customer';
       final phone = (customer is Map ? customer['phone'] : null)?.toString() ?? '—';
@@ -514,6 +515,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final itemCount = (itemCountRaw is num) ? itemCountRaw.toInt() : int.tryParse(itemCountRaw?.toString() ?? '') ?? 0;
 
       final isPickup = deliveryType == 'pickup';
+      final orderStatus = (order is Map ? order['orderStatus'] : null)?.toString() ?? '';
+      final pickupButtonText = (orderStatus == 'picked_up') ? 'Mark Submitted' : 'Mark as Picked Up';
       return _AcceptedTaskUi(
         deliveryId: deliveryId,
         orderId: orderId,
@@ -524,10 +527,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         phoneNumber: phone,
         itemCount: itemCount,
         amount: amountText,
-        buttonText: isPickup ? 'Mark as Picked Up' : 'Start Delivery',
+        buttonText: isPickup ? pickupButtonText : 'Start Delivery',
         iconPath: isPickup ? 'assets/icons/pickup.png' : 'assets/icons/out_for_delivery.png',
         destinationLat: destinationLat,
         destinationLng: destinationLng,
+        orderStatus: orderStatus,
       );
     }).toList();
   }
@@ -989,7 +993,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 amount: t.amount,
                 buttonText: t.buttonText,
                 iconPath: t.iconPath,
-                onButtonPressed: () => _showTaskDialog(t.deliveryId, t.orderId, t.customerName, t.taskType == 'Pickup'),
+                onButtonPressed: () async {
+                  final isPickup = t.taskType == 'Pickup';
+                  if (isPickup && t.orderStatus == 'picked_up') {
+                    // After pickup is confirmed, delivery staff must "submit" to collection manager.
+                    final closeLoader = _showBlockingLoader(context, message: 'Marking submitted...');
+                    try {
+                      await _deliveryStaffAppService.markSubmittedToCm(deliveryId: t.deliveryId);
+                      closeLoader();
+                      _refreshHomeData();
+                    } catch (e) {
+                      closeLoader();
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+                        );
+                      }
+                    }
+                    return;
+                  }
+                  _showTaskDialog(t.deliveryId, t.orderId, t.customerName, isPickup);
+                },
                 onMapPressed: () {
                    final lat = t.destinationLat;
                    final lng = t.destinationLng;
@@ -1027,14 +1051,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       try {
         final body = await _deliveryStaffAppService.getPerKgItems(orderId: orderId);
         final data = body['data'];
-        if (data is Map) {
+        // Handle null response (no per-kg items)
+        if (data == null) {
+          perKgItems = null;
+        } else if (data is Map) {
           final items = data['perKgItems'];
-          if (items is List) {
+          if (items is List && items.isNotEmpty) {
             perKgItems = items.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList();
+          } else {
+            perKgItems = null;
           }
+        } else {
+          perKgItems = null;
         }
       } catch (e) {
         // If fetch fails, continue without per-kg items
+        print('Error fetching per-kg items: $e');
         perKgItems = null;
       }
     }
@@ -1120,8 +1152,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ],
                       ),
                     ),
-                    // Show per-kg weight fields only if there are per-kg items
-                    if (perKgItems != null && perKgItems.isNotEmpty) ...[
+                    // Show per-kg weight fields ONLY if there are per-kg items AND weights not yet saved
+                    if (perKgItems != null && perKgItems.isNotEmpty && !weightsSaved) ...[
                       const SizedBox(height: 18),
                       Text(
                         'Item Weights (kg)*',
@@ -1238,140 +1270,135 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ),
                       ),
                     ],
-                    const SizedBox(height: 18),
-                    Text(
-                      'Upload Photo*',
-                      style: AppTextStyles.subtitle(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    InkWell(
-                      borderRadius: BorderRadius.circular(18),
-                      onTap: () async {
-                        final status = await Permission.camera.request();
-                        if (!status.isGranted) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Camera permission is required to take photos'),
-                              ),
-                            );
-                          }
-                          return;
-                        }
-                        final image = await _imagePicker.pickImage(
-                          source: ImageSource.camera,
-                          imageQuality: 80,
-                        );
-                        if (image != null) {
-                          setState(() => pickedImage = image);
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Photo captured successfully'),
-                              ),
-                            );
-                          }
-                        }
-                      },
-                      child: Container(
-                        width: double.infinity,
-                        height: 140,
-                        decoration: BoxDecoration(
-                          color: AppColors.surface,
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(
-                            color: AppColors.divider.withOpacity(0.4),
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.03),
-                              blurRadius: 8,
-                              offset: const Offset(0, 3),
-                            ),
-                          ],
+                    // Show photo upload ONLY if weights are saved (or no per-kg items)
+                    if (weightsSaved) ...[
+                      const SizedBox(height: 18),
+                      Text(
+                        'Upload Photo*',
+                        style: AppTextStyles.subtitle(
+                          color: AppColors.textSecondary,
                         ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              width: 48,
-                              height: 48,
-                              decoration: BoxDecoration(
-                                color: AppColors.surface,
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.06),
-                                    blurRadius: 6,
-                                    offset: const Offset(0, 3),
-                                  ),
-                                ],
-                                border: Border.all(
-                                  color:
-                                      AppColors.divider.withOpacity(0.8),
+                      ),
+                      const SizedBox(height: 12),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(18),
+                        onTap: () async {
+                          final status = await Permission.camera.request();
+                          if (!status.isGranted) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Camera permission is required to take photos'),
                                 ),
-                              ),
-                              child: Icon(
-                                pickedImage == null
-                                    ? Icons.photo_camera_outlined
-                                    : Icons.check,
-                                color: AppColors.primary,
-                              ),
+                              );
+                            }
+                            return;
+                          }
+                          final image = await _imagePicker.pickImage(
+                            source: ImageSource.camera,
+                            imageQuality: 80,
+                          );
+                          if (image != null) {
+                            setState(() => pickedImage = image);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Photo captured successfully'),
+                                ),
+                              );
+                            }
+                          }
+                        },
+                        child: Container(
+                          width: double.infinity,
+                          height: 140,
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: AppColors.divider.withOpacity(0.4),
                             ),
-                            const SizedBox(height: 10),
-                            Text(
-                              pickedImage == null
-                                  ? 'Take a Photo'
-                                  : 'Photo Added',
-                              style: AppTextStyles.subtitle(
-                                color: AppColors.textSecondary,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.03),
+                                blurRadius: 8,
+                                offset: const Offset(0, 3),
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            begin: Alignment.centerLeft,
-                            end: Alignment.centerRight,
-                            colors: [
-                              Color(0xFF283897),
-                              Color(0xFF0F73F7),
                             ],
                           ),
-                          borderRadius: BorderRadius.circular(30),
-                        ),
-                        child: TextButton(
-                          style: TextButton.styleFrom(
-                            padding: EdgeInsets.zero,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(30),
-                            ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  color: AppColors.surface,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.06),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 3),
+                                    ),
+                                  ],
+                                  border: Border.all(
+                                    color: AppColors.divider.withOpacity(0.8),
+                                  ),
+                                ),
+                                child: Icon(
+                                  pickedImage == null
+                                      ? Icons.photo_camera_outlined
+                                      : Icons.check,
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                pickedImage == null
+                                    ? 'Take a Photo'
+                                    : 'Photo Added',
+                                style: AppTextStyles.subtitle(
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
                           ),
-                          onPressed: isSubmitting
-                              ? null
-                              : () async {
-                                  if (pickedImage == null) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Please take a photo first')),
-                                    );
-                                    return;
-                                  }
-                                  if (!weightsSaved) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Please save weights before confirming pickup')),
-                                    );
-                                    return;
-                                  }
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 48,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              begin: Alignment.centerLeft,
+                              end: Alignment.centerRight,
+                              colors: [
+                                Color(0xFF283897),
+                                Color(0xFF0F73F7),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                          child: TextButton(
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                            ),
+                            onPressed: isSubmitting
+                                ? null
+                                : () async {
+                                    if (pickedImage == null) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('Please take a photo first')),
+                                      );
+                                      return;
+                                    }
 
                                   setState(() => isSubmitting = true);
                                   try {
@@ -1419,7 +1446,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ),
                       ),
                     ),
-                      ],
+                    ],
+                    ],
                     ),
                   ),
                 ),
@@ -1453,6 +1481,7 @@ class _AcceptedTaskUi {
   final String iconPath;
   final double? destinationLat;
   final double? destinationLng;
+  final String orderStatus;
 
   const _AcceptedTaskUi({
     required this.deliveryId,
@@ -1468,6 +1497,7 @@ class _AcceptedTaskUi {
     required this.iconPath,
     required this.destinationLat,
     required this.destinationLng,
+    required this.orderStatus,
   });
 }
 

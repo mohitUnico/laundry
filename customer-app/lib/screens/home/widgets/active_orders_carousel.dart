@@ -21,6 +21,7 @@ class ActiveOrdersCarousel extends StatefulWidget {
 
 class _ActiveOrdersCarouselState extends State<ActiveOrdersCarousel> {
   late final PageController _controller;
+  bool _controllerInitialized = false;
   int _index = 0;
 
   static const int _loopMultiplier = 1000;
@@ -36,6 +37,7 @@ class _ActiveOrdersCarouselState extends State<ActiveOrdersCarousel> {
       viewportFraction: 1.0, // Full width - one card at a time
       initialPage: alignedInitial,
     );
+    _controllerInitialized = true;
     _index = 0;
   }
 
@@ -46,17 +48,24 @@ class _ActiveOrdersCarouselState extends State<ActiveOrdersCarousel> {
     if (oldWidget.orders.length != widget.orders.length && widget.orders.isNotEmpty) {
       final initial = (widget.orders.length * _loopMultiplier) ~/ 2;
       final alignedInitial = initial - (initial % widget.orders.length);
-      _controller = PageController(
-        viewportFraction: 1.0,
-        initialPage: alignedInitial,
-      );
+      // If controller was never initialized (widget became non-empty later), create it once
+      if (!_controllerInitialized) {
+        _controller = PageController(
+          viewportFraction: 1.0,
+          initialPage: alignedInitial,
+        );
+        _controllerInitialized = true;
+      } else if (_controller.hasClients) {
+        // For already initialized controller, just jump to the new aligned page
+        _controller.jumpToPage(alignedInitial);
+      }
       _index = 0;
     }
   }
 
   @override
   void dispose() {
-    if (widget.orders.isNotEmpty) {
+    if (_controllerInitialized) {
       _controller.dispose();
     }
     super.dispose();

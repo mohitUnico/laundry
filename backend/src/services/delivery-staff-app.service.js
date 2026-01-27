@@ -192,6 +192,7 @@ exports.listOrderHistory = async ({ staffId, page, limit, from, to }) => {
                     select: {
                         order_id: true,
                         _count: { select: { order_items: true } },
+                        order_items: { select: { quantity: true } },
                         customer: { select: { full_name: true } },
                     },
                 },
@@ -207,11 +208,35 @@ exports.listOrderHistory = async ({ staffId, page, limit, from, to }) => {
             totalPages: Math.ceil(total / safeLimit),
         },
         orders: deliveries.map((d) => ({
+            // Quantity count (sum of order_items.quantity). Fallback to row-count if unknown/zero.
+            // NOTE: for per_kg items, quantity can be null; we fallback.
+            // This matches the delivery staff app UI expectation ("Qty", not "items").
+            quantity_count: Array.isArray(d.order?.order_items)
+                ? d.order.order_items.reduce((sum, oi) => {
+                      const qty = oi?.quantity;
+                      const n =
+                          typeof qty === 'number'
+                              ? qty
+                              : parseInt(qty?.toString?.() ?? String(qty ?? ''), 10);
+                      return sum + (Number.isFinite(n) ? n : 0);
+                  }, 0)
+                : 0,
             order_id: d.order_id,
             delivery_request_status: d.assignment_requests?.[0]?.status || null, // accepted/rejected (or null)
             customer_name: d.order?.customer?.full_name || null,
             date_of_delivery: d.completed_at,
-            number_of_order_items: d.order?._count?.order_items ?? 0,
+            // Backward-compatible key, but now represents quantity (not row count).
+            number_of_order_items:
+                (Array.isArray(d.order?.order_items)
+                    ? d.order.order_items.reduce((sum, oi) => {
+                          const qty = oi?.quantity;
+                          const n =
+                              typeof qty === 'number'
+                                  ? qty
+                                  : parseInt(qty?.toString?.() ?? String(qty ?? ''), 10);
+                          return sum + (Number.isFinite(n) ? n : 0);
+                      }, 0)
+                    : 0) || d.order?._count?.order_items ?? 0,
             delivery_type: d.delivery_type === 'drop' ? 'delivery' : 'pickup',
         })),
     };

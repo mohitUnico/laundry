@@ -216,17 +216,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           value: [vehicleType, vehicleNumber].where((s) => s.isNotEmpty).join(' • '),
                         ),
                       ],
-                      if (verificationStatus.isNotEmpty || isVerifiedByAdmin.isNotEmpty) ...[
-                        const SizedBox(height: 16),
-                        _AccountDetailItem(
-                          icon: Icons.verified_outlined,
-                          label: 'Verification',
-                          value: [
-                            if (verificationStatus.isNotEmpty) verificationStatus,
-                            if (isVerifiedByAdmin.isNotEmpty) 'admin: $isVerifiedByAdmin',
-                          ].join(' • '),
-                        ),
-                      ],
+                      // Verification intentionally hidden from UI (still stored in profile JSON).
                       const SizedBox(height: 24),
                       const _SectionTitle('Uploaded Documents'),
                       const SizedBox(height: 16),
@@ -474,19 +464,7 @@ class _AccountSummaryCard extends StatelessWidget {
                   _StatItem(value: averageRating, label: 'Avg Rating'),
                 ]);
               }
-              if (verificationStatus.isNotEmpty) {
-                widgets.addAll([
-                  Container(
-                    width: 1,
-                    height: 40,
-                    color: AppColors.divider.withValues(alpha: 0.3),
-                  ),
-                  _StatItem(
-                    value: verificationStatus,
-                    label: isVerifiedByAdmin.isNotEmpty ? 'Verification (admin: $isVerifiedByAdmin)' : 'Verification',
-                  ),
-                ]);
-              }
+              // Verification intentionally hidden from UI.
 
               return SingleChildScrollView(
                 scrollDirection: Axis.horizontal,

@@ -383,7 +383,7 @@ class _OrderCard extends StatelessWidget {
                             size: 14, color: AppColors.textSecondary),
                         const SizedBox(width: 4),
                         Text(
-                          '${items.toString().padLeft(2, '0')} items',
+                          'Qty: ${items.toString().padLeft(2, '0')}',
                           style: AppTextStyles.smallText(
                             color: AppColors.textSecondary,
                           ).copyWith(fontSize: 12, fontWeight: FontWeight.w500),

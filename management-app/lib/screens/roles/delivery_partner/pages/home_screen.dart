@@ -35,7 +35,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isShiftActive = true;
   bool _isShiftToggling = false;
   String? _currentShiftId; // Track active shift ID for Supabase location inserts
-  Future<Map<String, dynamic>?> _userFuture = AuthStorage.getCurrentUser();
+  Future<Map<String, dynamic>?> _userFuture = _loadStoredUser();
   Future<_HomeStatsUi> _statsFuture = Future.value(const _HomeStatsUi(inProgress: 0, completed: 0));
   Future<List<_AcceptedTaskUi>> _acceptedFuture = Future.value(const <_AcceptedTaskUi>[]);
 
@@ -52,11 +52,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   bool _isFirstBuild = true;
 
+  static Future<Map<String, dynamic>?> _loadStoredUser() async {
+    // Prefer delivery staff profile (snake_case, richer fields),
+    // fallback to generic current user (camelCase from auth).
+    final staff = await AuthStorage.getDeliveryStaff();
+    return staff ?? await AuthStorage.getCurrentUser();
+  }
+
+  static String _readString(Map<String, dynamic>? map, String key) {
+    final v = map?[key];
+    return v == null ? '' : v.toString().trim();
+  }
+
   @override
   void initState() {
     super.initState();
     // Always fetch fresh data when home screen initializes
-    _userFuture = AuthStorage.getCurrentUser();
+    _userFuture = _loadStoredUser();
     _statsFuture = _loadStats();
     _acceptedFuture = _loadAcceptedOrders();
 
@@ -588,7 +600,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (mounted) {
         setState(() {
           _isShiftToggling = false;
-          _userFuture = AuthStorage.getCurrentUser();
+          _userFuture = _loadStoredUser();
           _statsFuture = _loadStats();
           _acceptedFuture = _loadAcceptedOrders();
         });
@@ -658,11 +670,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             future: _userFuture,
                             builder: (context, snapshot) {
                               final user = snapshot.data;
-                              final fullName = (user?['fullName'] ?? '').toString().trim();
+                              final fullName = _readString(user, 'full_name').isNotEmpty
+                                  ? _readString(user, 'full_name')
+                                  : _readString(user, 'fullName');
                               final firstName = fullName.isNotEmpty
                                   ? fullName.split(RegExp(r'\s+')).first.trim()
                                   : '';
-                              final userId = (user?['userId'] ?? '').toString().trim();
 
                               return Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -673,39 +686,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                     overflow: TextOverflow.ellipsis,
                                     style: AppTextStyles.title(
                                       color: AppColors.primary,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Row(
-                                    children: [
-                                      Text(
-                                        'ID: ',
-                                        style: AppTextStyles.subtitle(
-                                          color: AppColors.textSecondary,
-                                        ),
-                                      ),
-                                      ConstrainedBox(
-                                        constraints: const BoxConstraints(maxWidth: 160),
-                                        child: userId.isNotEmpty
-                                            ? SingleChildScrollView(
-                                                scrollDirection: Axis.horizontal,
-                                                child: Text(
-                                                  userId,
-                                                  maxLines: 1,
-                                                  softWrap: false,
-                                                  style: AppTextStyles.subtitle(
-                                                    color: AppColors.textSecondary,
-                                                  ),
-                                                ),
-                                              )
-                                            : Text(
-                                                '—',
-                                                style: AppTextStyles.subtitle(
-                                                  color: AppColors.textSecondary,
-                                                ),
-                                              ),
-                                      ),
-                                    ],
+                                    ).copyWith(fontSize: 18, fontWeight: FontWeight.w700),
                                   ),
                                 ],
                               );

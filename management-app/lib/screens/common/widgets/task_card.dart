@@ -179,7 +179,7 @@ class TaskCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  '$itemCount items',
+                  'Qty: $itemCount',
                   style: AppTextStyles.smallText(
                     color: AppColors.textSecondary,
                   ),

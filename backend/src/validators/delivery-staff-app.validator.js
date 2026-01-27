@@ -20,3 +20,16 @@ exports.updateDeliveryStatusSchema = Joi.object({
 
 exports.uuidParamSchema = uuid.required();
 
+exports.updatePerKgWeightsSchema = Joi.object({
+    items: Joi.array()
+        .items(
+            Joi.object({
+                orderItemId: uuid.required(),
+                weightKg: Joi.number().min(0.01).max(500).precision(2).required(),
+            })
+        )
+        .min(1)
+        .unique('orderItemId')
+        .required(),
+});
+

@@ -440,5 +440,224 @@ exports.updateAcceptedOrderStatus = async ({ staffId, deliveryId, action }) => {
     });
 };
 
+exports.getPerKgItems = async ({ staffId, orderId }) => {
+    assertUuid(staffId, 'staffId');
+    assertUuid(orderId, 'orderId');
+
+    // Ensure this staff currently owns an active delivery leg for the order.
+    const activeDelivery = await prisma.delivery.findFirst({
+        where: {
+            order_id: orderId,
+            staff_id: staffId,
+            completed_at: null,
+            delivery_status: { not: 'cancelled' },
+        },
+        select: { delivery_id: true, delivery_type: true },
+    });
+
+    if (!activeDelivery) {
+        throw new ConflictError('No active delivery found for this order under this staff');
+    }
+
+    const order = await prisma.order.findUnique({
+        where: { order_id: orderId },
+        select: {
+            order_id: true,
+            pricing_model: true,
+            total_amount: true,
+            updated_at: true,
+        },
+    });
+
+    if (!order) throw new NotFoundError('Order');
+    if (order.pricing_model !== 'per_kg') {
+        return null;
+    }
+
+    const perKgItems = await prisma.orderItem.findMany({
+        where: { order_id: orderId, pricing_type: 'per_kg' },
+        orderBy: { created_at: 'asc' },
+        select: {
+            item_id: true,
+            service_id: true,
+            pricing_type: true,
+            weight_kg: true,
+            unit_price: true,
+            subtotal: true,
+            updated_at: true,
+            service: { select: { service_name: true } },
+        },
+    });
+
+    return {
+        orderId: order.order_id,
+        pricingModel: order.pricing_model,
+        totalAmount: order.total_amount?.toString?.() ?? String(order.total_amount),
+        orderUpdatedAt: order.updated_at,
+        deliveryContext: {
+            deliveryId: activeDelivery.delivery_id,
+            deliveryType: activeDelivery.delivery_type,
+        },
+        perKgItems: perKgItems.map((x) => ({
+            orderItemId: x.item_id,
+            serviceId: x.service_id,
+            serviceName: x.service?.service_name || null,
+            pricingType: x.pricing_type,
+            weightKg: x.weight_kg ? (x.weight_kg.toString?.() ?? String(x.weight_kg)) : null,
+            unitPrice: x.unit_price?.toString?.() ?? String(x.unit_price),
+            subtotal: x.subtotal?.toString?.() ?? String(x.subtotal),
+            updatedAt: x.updated_at,
+        })),
+    };
+};
+
+exports.updatePerKgWeights = async ({ staffId, orderId, items }) => {
+    assertUuid(staffId, 'staffId');
+    assertUuid(orderId, 'orderId');
+
+    if (!Array.isArray(items) || items.length === 0) {
+        throw new ValidationError('items must be a non-empty array');
+    }
+
+    // quick sanity (validator already checks UUID + weight range)
+    for (const it of items) {
+        if (!it || typeof it !== 'object') throw new ValidationError('items must be an array of objects');
+        assertUuid(it.orderItemId, 'orderItemId');
+        if (typeof it.weightKg !== 'number' || Number.isNaN(it.weightKg)) {
+            throw new ValidationError('weightKg must be a number');
+        }
+    }
+
+    return prisma.$transaction(async (tx) => {
+        // Ensure this staff currently owns an active delivery leg for the order.
+        const activeDelivery = await tx.delivery.findFirst({
+            where: {
+                order_id: orderId,
+                staff_id: staffId,
+                completed_at: null,
+                delivery_status: { not: 'cancelled' },
+            },
+            select: { delivery_id: true, delivery_type: true },
+        });
+
+        if (!activeDelivery) {
+            throw new ConflictError('No active delivery found for this order under this staff');
+        }
+
+        const order = await tx.order.findUnique({
+            where: { order_id: orderId },
+            select: {
+                order_id: true,
+                pricing_model: true,
+            },
+        });
+
+        if (!order) throw new NotFoundError('Order');
+        if (order.pricing_model !== 'per_kg') {
+            throw new ConflictError("Order pricing_model must be 'per_kg' to update weights");
+        }
+
+        const perKgItems = await tx.orderItem.findMany({
+            where: { order_id: orderId, pricing_type: 'per_kg' },
+            select: {
+                item_id: true,
+                unit_price: true,
+                weight_kg: true,
+                subtotal: true,
+                service_id: true,
+            },
+        });
+
+        if (perKgItems.length === 0) {
+            throw new ConflictError('No per_kg order items found to update');
+        }
+
+        const perKgItemIds = new Set(perKgItems.map((i) => i.item_id));
+        const requestIds = new Set(items.map((i) => i.orderItemId));
+
+        // Require "all per_kg order items" to be provided and disallow extras.
+        const missing = [...perKgItemIds].filter((id) => !requestIds.has(id));
+        const extra = [...requestIds].filter((id) => !perKgItemIds.has(id));
+
+        if (missing.length) {
+            throw new ValidationError(`Missing weight updates for per_kg order items: ${missing.join(', ')}`);
+        }
+        if (extra.length) {
+            throw new ValidationError(`Provided orderItemId(s) are not per_kg items of this order: ${extra.join(', ')}`);
+        }
+
+        const weightById = new Map(items.map((i) => [i.orderItemId, i.weightKg]));
+
+        // Update each per_kg item: weight_kg + subtotal = unit_price * weight_kg
+        for (const oi of perKgItems) {
+            const weightKg = weightById.get(oi.item_id);
+            const newSubtotal = oi.unit_price.mul(weightKg);
+
+            await tx.orderItem.update({
+                where: { item_id: oi.item_id },
+                data: {
+                    weight_kg: weightKg,
+                    subtotal: newSubtotal,
+                },
+            });
+        }
+
+        // Recompute order total from all order items.
+        const agg = await tx.orderItem.aggregate({
+            where: { order_id: orderId },
+            _sum: { subtotal: true },
+        });
+
+        const newTotal = agg._sum.subtotal || 0;
+
+        const updatedOrder = await tx.order.update({
+            where: { order_id: orderId },
+            data: { total_amount: newTotal },
+            select: {
+                order_id: true,
+                pricing_model: true,
+                total_amount: true,
+                updated_at: true,
+                order_items: {
+                    where: { pricing_type: 'per_kg' },
+                    select: {
+                        item_id: true,
+                        service_id: true,
+                        pricing_type: true,
+                        weight_kg: true,
+                        unit_price: true,
+                        subtotal: true,
+                        updated_at: true,
+                    },
+                },
+            },
+        });
+
+        logger.info('Delivery staff updated per_kg weights', {
+            staffId,
+            orderId,
+            deliveryId: activeDelivery.delivery_id,
+            deliveryType: activeDelivery.delivery_type,
+            perKgItemCount: perKgItems.length,
+        });
+
+        return {
+            orderId: updatedOrder.order_id,
+            pricingModel: updatedOrder.pricing_model,
+            totalAmount: updatedOrder.total_amount?.toString?.() ?? String(updatedOrder.total_amount),
+            updatedAt: updatedOrder.updated_at,
+            perKgItems: updatedOrder.order_items.map((x) => ({
+                orderItemId: x.item_id,
+                serviceId: x.service_id,
+                pricingType: x.pricing_type,
+                weightKg: x.weight_kg ? (x.weight_kg.toString?.() ?? String(x.weight_kg)) : null,
+                unitPrice: x.unit_price?.toString?.() ?? String(x.unit_price),
+                subtotal: x.subtotal?.toString?.() ?? String(x.subtotal),
+                updatedAt: x.updated_at,
+            })),
+        };
+    });
+};
+
 module.exports = exports;
 

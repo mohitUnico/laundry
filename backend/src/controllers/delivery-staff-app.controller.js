@@ -128,5 +128,48 @@ exports.uploadProfileImage = async (req, res, next) => {
     }
 };
 
+exports.updatePerKgWeights = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'delivery_staff') {
+            throw new AuthorizationError('Only delivery staff can access this endpoint');
+        }
+
+        const staffId = req.user.user_id;
+        const { orderId } = req.params;
+        const { items } = req.body;
+
+        const updated = await deliveryStaffAppService.updatePerKgWeights({ staffId, orderId, items });
+
+        res.status(200).json({
+            success: true,
+            data: updated,
+            message: 'Per-kg weights updated successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.getPerKgItems = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'delivery_staff') {
+            throw new AuthorizationError('Only delivery staff can access this endpoint');
+        }
+
+        const staffId = req.user.user_id;
+        const { orderId } = req.params;
+
+        const data = await deliveryStaffAppService.getPerKgItems({ staffId, orderId });
+
+        res.status(200).json({
+            success: true,
+            data,
+            message: data === null ? 'Order does not have per-kg pricing model' : 'Per-kg order items fetched successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = exports;
 

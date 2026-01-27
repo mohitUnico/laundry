@@ -33,6 +33,17 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
     _userFuture = AuthStorage.getCurrentUser();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Auto-refresh received orders when navigating to received tab
+    if (_selectedTabIndex == 1) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _refreshReceived();
+      });
+    }
+  }
+
   Future<void> _refreshIncoming() async {
     setState(() {
       _incomingOrdersFuture = _fetchIncomingOrdersWithItems(page: 1, limit: 20);
@@ -84,6 +95,14 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
       final customer = o['customer'];
       final customerName = (customer is Map ? customer['fullName'] : null)?.toString() ?? 'Customer';
 
+      // Extract delivery boy information from pickup delivery
+      final pickupDelivery = o['pickupDelivery'];
+      final deliveryStaff = (pickupDelivery is Map ? pickupDelivery['deliveryStaff'] : null);
+      final deliveryPersonRaw = (deliveryStaff is Map ? deliveryStaff['fullName'] : null);
+      final deliveryPerson = (deliveryPersonRaw != null) ? deliveryPersonRaw.toString().trim() : '—';
+      final deliveryPersonIdRaw = (deliveryStaff is Map ? deliveryStaff['staffId'] : null);
+      final deliveryPersonId = (deliveryPersonIdRaw != null) ? deliveryPersonIdRaw.toString().trim() : '';
+
       List<_OrderItem> items = const [];
       int itemCount = 0;
 
@@ -107,6 +126,8 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
         time: _formatTime(createdAt),
         itemCount: itemCount,
         items: items,
+        deliveryPerson: deliveryPerson,
+        deliveryPersonId: deliveryPersonId,
       );
     }
 
@@ -245,8 +266,10 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
   }
 
   static _ItemsUiMapping _mapItemsForUi(Object? itemsData) {
-    final items = <_OrderItem>[];
-    final aggregated = <String, int>{};
+    final perPieceItems = <_OrderItem>[];
+    final perKgItems = <_OrderItem>[];
+    final perPieceAggregated = <String, int>{};
+    final perKgAggregated = <String, int>{};
 
     if (itemsData is Map) {
       final map = itemsData.cast<String, dynamic>();
@@ -255,6 +278,7 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
         for (final rawItem in list) {
           if (rawItem is! Map) continue;
           final item = rawItem.cast<String, dynamic>();
+          final pricingType = (item['pricingType'] ?? '').toString().trim().toLowerCase();
           final serviceName = (item['serviceName'] ?? '').toString().trim();
           final categoryName = (item['categoryName'] ?? '').toString().trim();
           final key = _formatServiceKey(categoryName, serviceName);
@@ -277,19 +301,36 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
           }
 
           if (key.isEmpty || qty <= 0) continue;
-          aggregated[key] = (aggregated[key] ?? 0) + qty;
+
+          // Categorize by pricing type
+          if (pricingType == 'per_kg' || pricingType == 'per-kg') {
+            perKgAggregated[key] = (perKgAggregated[key] ?? 0) + qty;
+          } else {
+            // Default to per_piece
+            perPieceAggregated[key] = (perPieceAggregated[key] ?? 0) + qty;
+          }
         }
       }
     }
 
-    final entries = aggregated.entries.toList()
+    // Sort and add per-piece items
+    final perPieceEntries = perPieceAggregated.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
-
-    int total = 0;
-    for (final e in entries) {
-      total += e.value;
-      items.add(_OrderItem(name: e.key, quantity: e.value));
+    for (final e in perPieceEntries) {
+      perPieceItems.add(_OrderItem(name: e.key, quantity: e.value, pricingType: 'per_piece'));
     }
+
+    // Sort and add per-kg items
+    final perKgEntries = perKgAggregated.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    for (final e in perKgEntries) {
+      perKgItems.add(_OrderItem(name: e.key, quantity: e.value, pricingType: 'per_kg'));
+    }
+
+    // Combine items: per-piece first, then per-kg
+    final items = <_OrderItem>[...perPieceItems, ...perKgItems];
+    final total = perPieceItems.fold<int>(0, (sum, item) => sum + item.quantity) +
+        perKgItems.fold<int>(0, (sum, item) => sum + item.quantity);
 
     return _ItemsUiMapping(items: items, totalCount: total);
   }
@@ -537,13 +578,16 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
   }
 
   Widget _buildNewOrdersList() {
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      children: [
-        // Incoming orders list from backend (sorted by createdAt desc)
-        FutureBuilder<List<_IncomingOrderUi>>(
-          future: _incomingOrdersFuture,
-          builder: (context, snapshot) {
+    return RefreshIndicator(
+      onRefresh: _refreshIncoming,
+      color: AppColors.primary,
+      child: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        children: [
+          // Incoming orders list from backend (sorted by createdAt desc)
+          FutureBuilder<List<_IncomingOrderUi>>(
+            future: _incomingOrdersFuture,
+            builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 24),
@@ -601,7 +645,31 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
               );
             }
 
+            // Show cached data while loading new data
             final list = snapshot.data ?? const <_IncomingOrderUi>[];
+            
+            if (snapshot.connectionState == ConnectionState.waiting && list.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: Column(
+                    children: [
+                      const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Loading incoming orders...',
+                        style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+
             if (list.isEmpty) {
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 18),
@@ -638,74 +706,80 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
           },
         ),
       ],
+    ),
     );
   }
 
   Widget _buildReceivedOrdersList() {
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      children: [
-        FutureBuilder<List<_ReceivedOrderUi>>(
-          future: _receivedOrdersFuture,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                child: Center(
-                  child: Column(
-                    children: [
-                      const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        'Loading received orders...',
-                        style: AppTextStyles.subtitle(color: AppColors.textSecondary),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }
-
-            if (snapshot.hasError) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.divider.withOpacity(0.4)),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.error_outline, color: AppColors.error, size: 18),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          snapshot.error.toString().replaceFirst('Exception: ', ''),
+    return RefreshIndicator(
+      onRefresh: _refreshReceived,
+      color: AppColors.primary,
+      child: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        children: [
+          FutureBuilder<List<_ReceivedOrderUi>>(
+            future: _receivedOrdersFuture,
+            builder: (context, snapshot) {
+              // Show cached data while loading new data
+              final list = snapshot.data ?? const <_ReceivedOrderUi>[];
+              
+              if (snapshot.connectionState == ConnectionState.waiting && list.isEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 24),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          'Loading received orders...',
                           style: AppTextStyles.subtitle(color: AppColors.textSecondary),
                         ),
-                      ),
-                      TextButton(
-                        onPressed: _refreshReceived,
-                        child: Text(
-                          'Retry',
-                          style: AppTextStyles.subtitle(color: AppColors.primary).copyWith(
-                            fontWeight: FontWeight.w700,
+                      ],
+                    ),
+                  ),
+                );
+              }
+
+              if (snapshot.hasError) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.divider.withOpacity(0.4)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.error_outline, color: AppColors.error, size: 18),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            snapshot.error.toString().replaceFirst('Exception: ', ''),
+                            style: AppTextStyles.subtitle(color: AppColors.textSecondary),
                           ),
                         ),
-                      ),
-                    ],
+                        TextButton(
+                          onPressed: _refreshReceived,
+                          child: Text(
+                            'Retry',
+                            style: AppTextStyles.subtitle(color: AppColors.primary).copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              );
-            }
+                );
+              }
 
-            final list = snapshot.data ?? const <_ReceivedOrderUi>[];
             if (list.isEmpty) {
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 18),
@@ -728,8 +802,8 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
                     date: o.date,
                     time: o.time,
                     itemCount: o.itemCount,
-                    deliveryPerson: '—',
-                    deliveryPersonId: '',
+                    deliveryPerson: o.deliveryPerson,
+                    deliveryPersonId: o.deliveryPersonId,
                     items: o.items,
                     onSubmitToServices: _submitToServicesAndRefresh,
                   ),
@@ -740,6 +814,7 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
           },
         ),
       ],
+    ),
     );
   }
 }
@@ -747,8 +822,13 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
 class _OrderItem {
   final String name;
   final int quantity;
+  final String pricingType; // 'per_piece' or 'per_kg'
 
-  const _OrderItem({required this.name, required this.quantity});
+  const _OrderItem({
+    required this.name,
+    required this.quantity,
+    this.pricingType = 'per_piece',
+  });
 }
 
 class _ItemsUiMapping {
@@ -792,6 +872,8 @@ class _ReceivedOrderUi {
   final String time;
   final int itemCount;
   final List<_OrderItem> items;
+  final String deliveryPerson;
+  final String deliveryPersonId;
 
   const _ReceivedOrderUi({
     required this.backendOrderId,
@@ -801,6 +883,8 @@ class _ReceivedOrderUi {
     required this.time,
     required this.itemCount,
     required this.items,
+    this.deliveryPerson = '—',
+    this.deliveryPersonId = '',
   });
 }
 
@@ -837,6 +921,150 @@ class _NewOrderCard extends StatefulWidget {
 
   @override
   State<_NewOrderCard> createState() => _NewOrderCardState();
+}
+
+List<Widget> _buildCategorizedItemsList(List<_OrderItem> items) {
+  final perPieceItems = items.where((item) => item.pricingType == 'per_piece').toList();
+  final perKgItems = items.where((item) => item.pricingType == 'per_kg').toList();
+
+  final widgets = <Widget>[];
+
+  // Per-Piece Section
+  if (perPieceItems.isNotEmpty) {
+    widgets.add(
+      Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+              ),
+              child: Text(
+                'Per Piece',
+                style: AppTextStyles.subtitle(color: AppColors.primary).copyWith(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    widgets.addAll(perPieceItems.map((item) => Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  item.name,
+                  style: AppTextStyles.subtitle(color: AppColors.textPrimary).copyWith(
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: CustomPaint(
+                  painter: DottedLinePainter(),
+                  child: const SizedBox(height: 1),
+                ),
+              ),
+              Text(
+                item.quantity.toString().padLeft(2, '0'),
+                style: AppTextStyles.subtitle(color: AppColors.textPrimary).copyWith(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        )));
+  }
+
+  // Per-Kg Section
+  if (perKgItems.isNotEmpty) {
+    if (perPieceItems.isNotEmpty) {
+      widgets.add(const SizedBox(height: 8));
+    }
+    widgets.add(
+      Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF10B981).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFF10B981).withOpacity(0.3)),
+              ),
+              child: Text(
+                'Per Kg',
+                style: AppTextStyles.subtitle(color: const Color(0xFF10B981)).copyWith(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    widgets.addAll(perKgItems.map((item) => Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 6,
+                height: 6,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF10B981),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  item.name,
+                  style: AppTextStyles.subtitle(color: AppColors.textPrimary).copyWith(
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: CustomPaint(
+                  painter: DottedLinePainter(),
+                  child: const SizedBox(height: 1),
+                ),
+              ),
+              Text(
+                '${item.quantity.toString().padLeft(2, '0')} kg',
+                style: AppTextStyles.subtitle(color: AppColors.textPrimary).copyWith(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        )));
+  }
+
+  return widgets;
 }
 
 class _NewOrderCardState extends State<_NewOrderCard> {
@@ -1136,52 +1364,8 @@ class _NewOrderCardState extends State<_NewOrderCard> {
           ],
           if (_isExpanded) ...[
             const SizedBox(height: 16),
-            // Items List
-            ...widget.items.map((item) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Row(
-                    children: [
-                      // Bullet point
-                      Container(
-                        width: 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: AppColors.textSecondary,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      // Item name
-                      Text(
-                        item.name,
-                        style: AppTextStyles.subtitle(
-                          color: AppColors.textPrimary,
-                        ).copyWith(
-                          fontSize: 13,
-                        ),
-                      ),
-                      // Dotted line
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          child: CustomPaint(
-                            painter: DottedLinePainter(),
-                            child: const SizedBox(height: 1),
-                          ),
-                        ),
-                      ),
-                      // Quantity
-                      Text(
-                        item.quantity.toString().padLeft(2, '0'),
-                        style: AppTextStyles.subtitle(
-                          color: AppColors.textPrimary,
-                        ).copyWith(
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                )),
+            // Items List - Categorized by Pricing Type
+            ..._buildCategorizedItemsList(widget.items),
             const SizedBox(height: 12),
             // Items list footer with upward chevrons
             InkWell(
@@ -1472,52 +1656,8 @@ class _ReceivedOrderCardState extends State<_ReceivedOrderCard> {
           ],
           if (_isExpanded) ...[
             const SizedBox(height: 16),
-            // Items List
-            ...widget.items.map((item) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Row(
-                    children: [
-                      // Bullet point
-                      Container(
-                        width: 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: AppColors.textSecondary,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      // Item name
-                      Text(
-                        item.name,
-                        style: AppTextStyles.subtitle(
-                          color: AppColors.textPrimary,
-                        ).copyWith(
-                          fontSize: 13,
-                        ),
-                      ),
-                      // Dotted line
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          child: CustomPaint(
-                            painter: DottedLinePainter(),
-                            child: const SizedBox(height: 1),
-                          ),
-                        ),
-                      ),
-                      // Quantity
-                      Text(
-                        item.quantity.toString().padLeft(2, '0'),
-                        style: AppTextStyles.subtitle(
-                          color: AppColors.textPrimary,
-                        ).copyWith(
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                )),
+            // Items List - Categorized by Pricing Type
+            ..._buildCategorizedItemsList(widget.items),
             const SizedBox(height: 12),
             // Items list footer with upward chevrons
             InkWell(

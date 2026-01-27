@@ -6,7 +6,8 @@ const router = express.Router();
  * Returns client-side configuration (Supabase credentials, etc.)
  * No authentication required - these are public keys meant for client apps
  */
-router.get('/config', (req, res) => {
+// Mounted at /api/v1/config, so expose GET / here.
+router.get('/', (req, res) => {
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 

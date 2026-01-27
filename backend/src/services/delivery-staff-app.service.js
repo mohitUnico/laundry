@@ -26,17 +26,25 @@ const normalizePagination = ({ page = 1, limit = 20 } = {}) => {
     return { safePage, safeLimit, skip: (safePage - 1) * safeLimit };
 };
 
+// Node-safe nullish coalescing helper (replacement for `a ?? b`).
+// Uses `== null` to match both `null` and `undefined` only (does NOT treat 0/'' as nullish).
+const coalesce = (value, fallback) => (value == null ? fallback : value);
+
 const mapDeliveryToOrderCard = (d) => {
     // itemCount is used by delivery staff UI as "number of clothes/items" (quantity), not number of order_items rows.
     // Prefer total quantity derived from order_items.quantity and fallback to row-count if unavailable.
     const itemCountFromQuantities = Array.isArray(d.order?.order_items)
         ? d.order.order_items.reduce((sum, oi) => {
               const qty = oi?.quantity;
-              const n = typeof qty === 'number' ? qty : parseInt(qty?.toString?.() ?? String(qty ?? ''), 10);
+              const n =
+                  typeof qty === 'number'
+                      ? qty
+                      : parseInt(coalesce(qty?.toString?.(), String(coalesce(qty, ''))), 10);
               return sum + (Number.isFinite(n) ? n : 0);
           }, 0)
         : 0;
-    const itemCount = itemCountFromQuantities > 0 ? itemCountFromQuantities : d.order?._count?.order_items ?? 0;
+    const itemCount =
+        itemCountFromQuantities > 0 ? itemCountFromQuantities : coalesce(d.order?._count?.order_items, 0);
     return {
         deliveryId: d.delivery_id,
         orderId: d.order_id,
@@ -51,7 +59,7 @@ const mapDeliveryToOrderCard = (d) => {
                 orderStatus: d.order.order_status,
                 pricingModel: d.order.pricing_model,
                 orderType: d.order.order_type,
-                totalAmount: d.order.total_amount?.toString?.() ?? String(d.order.total_amount),
+                totalAmount: coalesce(d.order.total_amount?.toString?.(), String(d.order.total_amount)),
                 billingStatus: d.order.billing_status,
                 createdAt: d.order.created_at,
                 pickupDate: d.order.pickup_date,
@@ -65,7 +73,10 @@ const mapDeliveryToOrderCard = (d) => {
                     : null,
                 bill: d.order.bill
                     ? {
-                        finalAmount: d.order.bill.final_amount?.toString?.() ?? String(d.order.bill.final_amount),
+                        finalAmount: coalesce(
+                            d.order.bill.final_amount?.toString?.(),
+                            String(d.order.bill.final_amount)
+                        ),
                         paymentStatus: d.order.bill.payment_status,
                     }
                     : null,
@@ -217,7 +228,7 @@ exports.listOrderHistory = async ({ staffId, page, limit, from, to }) => {
                       const n =
                           typeof qty === 'number'
                               ? qty
-                              : parseInt(qty?.toString?.() ?? String(qty ?? ''), 10);
+                              : parseInt(coalesce(qty?.toString?.(), String(coalesce(qty, ''))), 10);
                       return sum + (Number.isFinite(n) ? n : 0);
                   }, 0)
                 : 0,
@@ -233,10 +244,10 @@ exports.listOrderHistory = async ({ staffId, page, limit, from, to }) => {
                           const n =
                               typeof qty === 'number'
                                   ? qty
-                                  : parseInt(qty?.toString?.() ?? String(qty ?? ''), 10);
+                                  : parseInt(coalesce(qty?.toString?.(), String(coalesce(qty, ''))), 10);
                           return sum + (Number.isFinite(n) ? n : 0);
                       }, 0)
-                    : 0) || d.order?._count?.order_items ?? 0,
+                    : 0) || coalesce(d.order?._count?.order_items, 0),
             delivery_type: d.delivery_type === 'drop' ? 'delivery' : 'pickup',
         })),
     };
@@ -284,7 +295,7 @@ exports.getProfile = async ({ staffId }) => {
         email: staff.email,
         vehicle_type: staff.vehicle_type,
         vehicle_number: staff.vehicle_number,
-        bank_account_details: staff.bank_account_details ?? null,
+        bank_account_details: coalesce(staff.bank_account_details, null),
         is_active: staff.is_active,
         average_rating: staff.average_rating ? staff.average_rating.toString() : null,
         total_deliveries: staff.total_deliveries,
@@ -615,7 +626,7 @@ exports.getPerKgItems = async ({ staffId, orderId }) => {
     return {
         orderId: order.order_id,
         pricingModel: order.pricing_model,
-        totalAmount: order.total_amount?.toString?.() ?? String(order.total_amount),
+        totalAmount: coalesce(order.total_amount?.toString?.(), String(order.total_amount)),
         orderUpdatedAt: order.updated_at,
         deliveryContext: {
             deliveryId: activeDelivery.delivery_id,
@@ -627,9 +638,9 @@ exports.getPerKgItems = async ({ staffId, orderId }) => {
             serviceName: x.service?.service_name || null,
             categoryName: x.service?.category?.category_name || null,
             pricingType: x.pricing_type,
-            weightKg: x.weight_kg ? (x.weight_kg.toString?.() ?? String(x.weight_kg)) : null,
-            unitPrice: x.unit_price?.toString?.() ?? String(x.unit_price),
-            subtotal: x.subtotal?.toString?.() ?? String(x.subtotal),
+            weightKg: x.weight_kg ? coalesce(x.weight_kg.toString?.(), String(x.weight_kg)) : null,
+            unitPrice: coalesce(x.unit_price?.toString?.(), String(x.unit_price)),
+            subtotal: coalesce(x.subtotal?.toString?.(), String(x.subtotal)),
             updatedAt: x.updated_at,
         })),
     };
@@ -768,15 +779,15 @@ exports.updatePerKgWeights = async ({ staffId, orderId, items }) => {
         return {
             orderId: updatedOrder.order_id,
             pricingModel: updatedOrder.pricing_model,
-            totalAmount: updatedOrder.total_amount?.toString?.() ?? String(updatedOrder.total_amount),
+            totalAmount: coalesce(updatedOrder.total_amount?.toString?.(), String(updatedOrder.total_amount)),
             updatedAt: updatedOrder.updated_at,
             perKgItems: updatedOrder.order_items.map((x) => ({
                 orderItemId: x.item_id,
                 serviceId: x.service_id,
                 pricingType: x.pricing_type,
-                weightKg: x.weight_kg ? (x.weight_kg.toString?.() ?? String(x.weight_kg)) : null,
-                unitPrice: x.unit_price?.toString?.() ?? String(x.unit_price),
-                subtotal: x.subtotal?.toString?.() ?? String(x.subtotal),
+                weightKg: x.weight_kg ? coalesce(x.weight_kg.toString?.(), String(x.weight_kg)) : null,
+                unitPrice: coalesce(x.unit_price?.toString?.(), String(x.unit_price)),
+                subtotal: coalesce(x.subtotal?.toString?.(), String(x.subtotal)),
                 updatedAt: x.updated_at,
             })),
         };

@@ -1003,4 +1003,110 @@ exports.getCustomerOrders = async (customerId, query = {}) => {
     };
 };
 
+exports.getOrderTrackingForCustomer = async ({ customerId, orderId }) => {
+    if (!customerId) throw new ValidationError('customerId is required');
+    if (!orderId) throw new ValidationError('orderId is required');
+
+    const order = await prisma.order.findFirst({
+        where: { order_id: orderId, customer_id: customerId },
+        select: {
+            order_id: true,
+            order_status: true,
+            order_type: true,
+            pickup_address: {
+                select: { full_address: true, latitude: true, longitude: true },
+            },
+            delivery_address: {
+                select: { full_address: true, latitude: true, longitude: true },
+            },
+        },
+    });
+
+    if (!order) throw new NotFoundError('Order');
+
+    const laundry = await prisma.laundryConfig.findFirst({
+        where: { is_active: true },
+        orderBy: { created_at: 'desc' },
+        select: {
+            config_id: true,
+            business_name: true,
+            address: true,
+            latitude: true,
+            longitude: true,
+        },
+    });
+
+    if (!laundry) throw new NotFoundError('LaundryConfig');
+
+    const deliveries = await prisma.delivery.findMany({
+        where: { order_id: orderId },
+        orderBy: { created_at: 'desc' },
+        select: {
+            delivery_id: true,
+            delivery_type: true,
+            delivery_status: true,
+            staff_id: true,
+            staff: {
+                select: {
+                    staff_id: true,
+                    full_name: true,
+                    current_latitude: true,
+                    current_longitude: true,
+                },
+            },
+        },
+    });
+
+    const pickupDelivery = deliveries.find((d) => d.delivery_type === 'pickup') || null;
+    const dropDelivery = deliveries.find((d) => d.delivery_type === 'drop') || null;
+
+    const mapDelivery = (d) => {
+        if (!d) return null;
+        return {
+            deliveryId: d.delivery_id,
+            deliveryType: d.delivery_type,
+            deliveryStatus: d.delivery_status,
+            staffId: d.staff_id || null,
+            staff: d.staff
+                ? {
+                    staffId: d.staff.staff_id,
+                    fullName: d.staff.full_name,
+                    latitude: d.staff.current_latitude,
+                    longitude: d.staff.current_longitude,
+                }
+                : null,
+        };
+    };
+
+    return {
+        orderId: order.order_id,
+        orderStatus: order.order_status,
+        orderType: order.order_type,
+        shop: {
+            name: laundry.business_name,
+            address: laundry.address,
+            latitude: laundry.latitude,
+            longitude: laundry.longitude,
+        },
+        pickup: order.pickup_address
+            ? {
+                address: order.pickup_address.full_address,
+                latitude: order.pickup_address.latitude,
+                longitude: order.pickup_address.longitude,
+            }
+            : null,
+        delivery: order.delivery_address
+            ? {
+                address: order.delivery_address.full_address,
+                latitude: order.delivery_address.latitude,
+                longitude: order.delivery_address.longitude,
+            }
+            : null,
+        deliveries: {
+            pickup: mapDelivery(pickupDelivery),
+            drop: mapDelivery(dropDelivery),
+        },
+    };
+};
+
 module.exports = exports;

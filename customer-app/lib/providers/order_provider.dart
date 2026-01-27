@@ -98,6 +98,7 @@ class OrderProvider with ChangeNotifier {
   OrderRecord? _mapBackendOrderToOrderRecord(Map<String, dynamic> data) {
     try {
       final orderId = (data['order_id'] ?? '') as String;
+      final orderType = (data['order_type'] ?? '') as String;
       final orderStatusRaw = (data['order_status'] ?? '') as String;
       // Default to "placed" if status is empty or null
       final orderStatus = orderStatusRaw.isEmpty ? 'placed' : orderStatusRaw;
@@ -300,6 +301,7 @@ class OrderProvider with ChangeNotifier {
         items: cartItems,
         totalItems: totalItems,
         totalInr: totalInr,
+        orderType: orderType.isEmpty ? 'both' : orderType,
         dateLabel: dateLabel,
         timeLabel: timeLabel,
         placedAt: placedAt ?? DateTime.now(),

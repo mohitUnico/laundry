@@ -10,7 +10,6 @@ import '../../widgets/cart_success_dialog.dart';
 import '../home/widgets/home_bottom_nav.dart';
 import '../home/widgets/home_colors.dart';
 import '../home/widgets/luxury_care_bottom_sheet.dart';
-import 'pro_clean/widgets/others_field.dart';
 
 class LuxuryCareScreen extends StatefulWidget {
   const LuxuryCareScreen({super.key});
@@ -20,7 +19,6 @@ class LuxuryCareScreen extends StatefulWidget {
 }
 
 class _LuxuryCareScreenState extends State<LuxuryCareScreen> {
-  final _othersController = TextEditingController();
   final TextEditingController _weightController = TextEditingController();
 
   final Map<String, int> _qtyByItemName = {};
@@ -29,7 +27,6 @@ class _LuxuryCareScreenState extends State<LuxuryCareScreen> {
 
   @override
   void dispose() {
-    _othersController.dispose();
     _weightController.dispose();
     super.dispose();
   }
@@ -155,8 +152,6 @@ class _LuxuryCareScreenState extends State<LuxuryCareScreen> {
                       const SizedBox(height: 10),
                     ],
                     const SizedBox(height: 12),
-                    OthersField(controller: _othersController),
-                    const SizedBox(height: 12),
                     _OrderSummaryCard(
                       rows: _qtyByItemName.entries
                           .where((e) => e.value > 0)
@@ -199,7 +194,6 @@ class _LuxuryCareScreenState extends State<LuxuryCareScreen> {
                                     clothIdByItemName: clothIdByName,
                                     unitPricesInr: unitPrices,
                                     weightKg: null, // Weight will be calculated after supervision
-                                    note: _othersController.text,
                               );
 
                               if (!mounted) return;

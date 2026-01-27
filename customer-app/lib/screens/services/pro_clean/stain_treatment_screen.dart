@@ -9,7 +9,6 @@ import '../../../utils/profile_service_error_messages.dart';
 import '../../../widgets/cart_success_dialog.dart';
 import '../../home/widgets/home_bottom_nav.dart';
 import '../../home/widgets/home_colors.dart';
-import 'widgets/others_field.dart';
 import '../../home/widgets/pro_clean_bottom_sheet.dart';
 
 class StainTreatmentScreen extends StatefulWidget {
@@ -20,7 +19,6 @@ class StainTreatmentScreen extends StatefulWidget {
 }
 
 class _StainTreatmentScreenState extends State<StainTreatmentScreen> {
-  final _othersController = TextEditingController();
   final TextEditingController _weightController = TextEditingController();
 
   final Map<String, int> _qtyByItemName = {};
@@ -29,7 +27,6 @@ class _StainTreatmentScreenState extends State<StainTreatmentScreen> {
 
   @override
   void dispose() {
-    _othersController.dispose();
     _weightController.dispose();
     super.dispose();
   }
@@ -154,8 +151,6 @@ class _StainTreatmentScreenState extends State<StainTreatmentScreen> {
                       const SizedBox(height: 10),
                     ],
                     const SizedBox(height: 12),
-                    OthersField(controller: _othersController),
-                    const SizedBox(height: 12),
                     _OrderSummaryCard(
                       rows: _qtyByItemName.entries
                           .where((e) => e.value > 0)
@@ -198,7 +193,6 @@ class _StainTreatmentScreenState extends State<StainTreatmentScreen> {
                                     clothIdByItemName: clothIdByName,
                                     unitPricesInr: unitPrices,
                                     weightKg: null, // Weight will be calculated after supervision
-                                    note: _othersController.text,
                               );
 
                               if (!mounted) return;

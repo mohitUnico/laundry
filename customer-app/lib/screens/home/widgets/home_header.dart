@@ -9,6 +9,7 @@ class HomeHeader extends StatelessWidget {
   final String location;
   final int notificationCount;
   final String? profileImageUrl;
+  final Future<void> Function()? onLocationTap;
 
   const HomeHeader({
     super.key,
@@ -16,6 +17,7 @@ class HomeHeader extends StatelessWidget {
     required this.location,
     required this.notificationCount,
     this.profileImageUrl,
+    this.onLocationTap,
   });
 
   @override
@@ -57,8 +59,14 @@ class HomeHeader extends StatelessWidget {
               ),
               const SizedBox(height: 3),
               InkWell(
-                onTap: () =>
-                    Navigator.of(context).pushNamed(AppRoutes.selectLocation),
+                onTap: () {
+                  final handler = onLocationTap;
+                  if (handler != null) {
+                    handler();
+                    return;
+                  }
+                  Navigator.of(context).pushNamed(AppRoutes.selectLocation);
+                },
                 borderRadius: BorderRadius.circular(12),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 2),

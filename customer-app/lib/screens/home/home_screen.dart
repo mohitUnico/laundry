@@ -19,6 +19,8 @@ import 'widgets/regular_wash_bottom_sheet.dart';
 import 'widgets/service_tile.dart';
 import '../../models/service_item.dart';
 import '../../utils/supabase_config.dart';
+import '../../repositories/customer_info_repository.dart';
+import '../../services/customer_info_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -30,6 +32,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   RealtimeChannel? _ordersChannel;
   RealtimeChannel? _couponsChannel;
+  String _locationText = 'Select location';
 
   @override
   void initState() {
@@ -43,6 +46,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       context.read<CouponsProvider>().fetchApplicableCoupons(force: true);
       // Fetch active orders for the home screen
       _refreshActiveOrders();
+      _refreshDefaultAddress();
       _subscribeToOrdersRealtime();
       _subscribeToCouponsRealtime();
     });
@@ -65,6 +69,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _refreshActiveOrders();
       // Refresh coupons so expired offers disappear without needing a restart.
       context.read<CouponsProvider>().fetchApplicableCoupons(force: true);
+      _refreshDefaultAddress();
     }
   }
 
@@ -72,6 +77,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     // Fetch active orders (excludes delivered/closed orders)
     context.read<OrderProvider>().fetchOrders(status: 'active', limit: 10);
+  }
+
+  Future<void> _refreshDefaultAddress() async {
+    try {
+      final repo = CustomerInfoRepository();
+      final addresses = await repo.getAddresses();
+      if (!mounted) return;
+
+      if (addresses.isEmpty) {
+        setState(() => _locationText = 'Select location');
+        return;
+      }
+
+      final defaultAddr = addresses.firstWhere(
+        (a) => a.isDefault,
+        orElse: () => addresses.first,
+      );
+
+      final text = defaultAddr.fullAddress.trim().isNotEmpty
+          ? defaultAddr.fullAddress.trim()
+          : defaultAddr.addressLabel.trim();
+
+      setState(() => _locationText = text.isEmpty ? 'Select location' : text);
+    } catch (_) {
+      // Keep UI stable even if address fetch fails (e.g. not logged in yet).
+    }
   }
 
   void _subscribeToOrdersRealtime() {
@@ -220,9 +251,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               const SizedBox(height: 8),
               HomeHeader(
                 userName: auth.displayFirstName,
-                location: 'E-City, Uniworld, neeladri road...',
+                location: _locationText,
                 notificationCount: 12,
                 profileImageUrl: auth.profileImageUrl,
+                onLocationTap: () async {
+                  await Navigator.of(context).pushNamed(AppRoutes.selectLocation);
+                  await _refreshDefaultAddress();
+                },
               ),
               const SizedBox(height: 14),
               Expanded(

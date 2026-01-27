@@ -9,7 +9,6 @@ import '../../utils/profile_service_error_messages.dart';
 import '../../widgets/cart_success_dialog.dart';
 import '../home/widgets/home_bottom_nav.dart';
 import '../home/widgets/home_colors.dart';
-import 'pro_clean/widgets/others_field.dart';
 import '../home/widgets/regular_wash_bottom_sheet.dart';
 
 class HomeLinensScreen extends StatefulWidget {
@@ -20,15 +19,12 @@ class HomeLinensScreen extends StatefulWidget {
 }
 
 class _HomeLinensScreenState extends State<HomeLinensScreen> {
-  final _othersController = TextEditingController();
-
   final Map<String, int> _qtyByItemName = {};
   String? _serviceId;
   bool _didInit = false;
 
   @override
   void dispose() {
-    _othersController.dispose();
     super.dispose();
   }
 
@@ -89,6 +85,9 @@ class _HomeLinensScreenState extends State<HomeLinensScreen> {
     final selection =
         ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
     final serviceName = selection?.serviceName ?? 'Home Linens';
+    final showPrices = selection == null
+        ? true
+        : selection.pricingType == RegularWashPricingType.perPiece;
     final sid = selection?.serviceId;
     final catalog = context.watch<ServiceCatalogProvider>();
     final items =
@@ -122,7 +121,7 @@ class _HomeLinensScreenState extends State<HomeLinensScreen> {
                       _ItemCard(
                         title: it.itemName,
                         imageAsset: _assetForItemName(it.itemName),
-                        priceText: _priceText(it.perUnitPrice),
+                        priceText: showPrices ? _priceText(it.perUnitPrice) : null,
                         value: _qtyByItemName[it.itemName] ?? 0,
                         onMinus: () => setState(() {
                           _qtyByItemName[it.itemName] =
@@ -135,8 +134,6 @@ class _HomeLinensScreenState extends State<HomeLinensScreen> {
                       ),
                       const SizedBox(height: 10),
                     ],
-                    const SizedBox(height: 12),
-                    OthersField(controller: _othersController),
                     const SizedBox(height: 12),
                     _OrderSummaryCard(
                       rows: _nonZeroSummaryRows,
@@ -170,11 +167,10 @@ class _HomeLinensScreenState extends State<HomeLinensScreen> {
                                     serviceName: serviceName,
                                     serviceId: serviceId,
                                     imageAsset: 'assets/images/home_linen/bedsheets.png',
-                                    isPerPiece: true,
+                                    isPerPiece: showPrices,
                                     quantities: {..._qtyByItemName},
                                     clothIdByItemName: clothIdByName,
-                                    unitPricesInr: unitPrices,
-                                    note: _othersController.text,
+                                    unitPricesInr: showPrices ? unitPrices : null,
                                   );
 
                               if (!mounted) return;
@@ -270,7 +266,7 @@ class _TopBar extends StatelessWidget {
 class _ItemCard extends StatelessWidget {
   final String title;
   final String imageAsset;
-  final String priceText;
+  final String? priceText;
   final int value;
   final VoidCallback onMinus;
   final VoidCallback onPlus;
@@ -324,14 +320,16 @@ class _ItemCard extends StatelessWidget {
                   style: AppTextStyles.header(color: HomeColors.text)
                       .copyWith(fontSize: 13),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  priceText,
-                  style: AppTextStyles.body(color: HomeColors.primary).copyWith(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+                if (priceText != null && priceText!.trim().isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    priceText!,
+                    style: AppTextStyles.body(color: HomeColors.primary).copyWith(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),

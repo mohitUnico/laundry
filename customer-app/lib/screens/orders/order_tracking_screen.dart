@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -6,7 +8,8 @@ import '../../theme/app_text_styles.dart';
 import '../home/widgets/home_colors.dart';
 import '../../routes/app_routes.dart';
 import '../../routes/route_args.dart';
-import '../../services/customer_info_service.dart';
+import '../../services/order_tracking_service.dart';
+import '../../services/google_directions_service.dart';
 import '../../utils/supabase_config.dart';
 
 class OrderTrackingScreen extends StatefulWidget {
@@ -19,13 +22,24 @@ class OrderTrackingScreen extends StatefulWidget {
 class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   // 0..4 (0 = Pickup)
   int _activeIndex = 0;
+  String? _backendStatus;
+  String _orderType = 'both';
 
-  LatLng? _pickupLatLng;
-  LatLng? _riderLatLng;
-  bool _isLoadingLocation = true;
   String? _orderId;
-  String? _pickupAddressText;
   RealtimeChannel? _orderChannel;
+  RealtimeChannel? _driverChannel;
+
+  final _trackingService = OrderTrackingService();
+  final _directionsService = GoogleDirectionsService();
+
+  OrderTrackingData? _tracking;
+  bool _isLoading = true;
+  String? _error;
+
+  LatLng? _driverLatLng;
+  DirectionsRoute? _route;
+  Timer? _routeDebounce;
+  GoogleMapController? _mapController;
 
   @override
   void initState() {
@@ -40,16 +54,16 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       final args = ModalRoute.of(context)?.settings.arguments;
       if (args is OrderTrackingArgs) {
         _orderId = args.orderId;
-        _pickupAddressText = args.pickupAddress;
-
-        if (args.pickupLat != null && args.pickupLng != null) {
-          final lat = args.pickupLat!;
-          final lng = args.pickupLng!;
-          _pickupLatLng = LatLng(lat, lng);
-          _riderLatLng = LatLng(lat + 0.0007, lng + 0.0007);
+        if (args.backendStatus != null && args.backendStatus!.trim().isNotEmpty) {
+          _backendStatus = args.backendStatus!.trim();
+          _activeIndex = _mapStatusToStepIndex(_backendStatus!, _orderType);
+        }
+        if (args.orderType != null && args.orderType!.trim().isNotEmpty) {
+          _orderType = args.orderType!.trim();
         }
 
         _subscribeToOrderRealtime();
+        _loadTracking();
       }
     }
   }
@@ -57,6 +71,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   @override
   void dispose() {
     _orderChannel?.unsubscribe();
+    _driverChannel?.unsubscribe();
+    _routeDebounce?.cancel();
     super.dispose();
   }
 
@@ -80,10 +96,11 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
 
               final newStatus = payload.newRecord['order_status'] as String?;
               if (newStatus == null) return;
-              final mappedIndex = _mapStatusToStepIndex(newStatus);
+              final mappedIndex = _mapStatusToStepIndex(newStatus, _orderType);
               if (!mounted) return;
               setState(() {
                 _activeIndex = mappedIndex;
+                _backendStatus = newStatus;
               });
             },
           )
@@ -93,287 +110,458 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     }
   }
 
-  int _mapStatusToStepIndex(String status) {
-    switch (status) {
-      case 'placed':
-      case 'pickup_assigned':
-      case 'picked_up':
-        return 0; // Pickup
-      case 'received_by_collection':
-      case 'submitted_to_services':
-      case 'services_in_progress':
-        return 1; // In Process
-      case 'services_completed':
-      case 'dispatch_assigned':
-        return 2; // Ready
-      case 'out_for_delivery':
-        return 3; // Out for Delivery
-      case 'payment_pending':
-      case 'delivered':
-      case 'closed':
-        return 4; // Delivered
-      default:
-        return 0;
+  Future<void> _loadTracking() async {
+    final id = _orderId;
+    if (id == null || id.isEmpty) return;
+
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final data = await _trackingService.getOrderTracking(orderId: id);
+      if (!mounted) return;
+
+      setState(() {
+        _tracking = data;
+        _orderType = data.orderType;
+        _backendStatus = data.orderStatus;
+        _activeIndex = _mapStatusToStepIndex(data.orderStatus, data.orderType);
+        _isLoading = false;
+      });
+
+      _subscribeToDriverRealtime();
+      await _refreshRoute();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString().replaceFirst('Exception: ', '').trim();
+        _isLoading = false;
+      });
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: HomeColors.background,
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: _GoogleMapBackground(
-              pickup: _pickupLatLng,
-              rider: _riderLatLng,
-            ),
-          ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.only(left: 12, top: 8),
-              child: InkWell(
-                onTap: () {
-                  if (Navigator.of(context).canPop()) {
-                    Navigator.of(context).pop();
-                    return;
-                  }
-                  Navigator.of(context).pushNamedAndRemoveUntil(
-                    AppRoutes.home,
-                    (r) => false,
-                  );
-                },
-                borderRadius: BorderRadius.circular(999),
-                child: Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(999),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x14000000),
-                        blurRadius: 12,
-                        offset: Offset(0, 6),
-                      ),
-                    ],
-                    border: Border.all(color: const Color(0xFFE5E7EB)),
-                  ),
-                  child: const Icon(
-                    Icons.arrow_back_ios_new_rounded,
-                    size: 16,
-                    color: HomeColors.text,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          DraggableScrollableSheet(
-            initialChildSize: 0.56,
-            minChildSize: 0.46,
-            maxChildSize: 0.72,
-            builder: (context, scrollController) {
-              return _BottomPanel(
-                activeIndex: _activeIndex,
-                riderName: 'Nadaan Sharma',
-                riderRole: 'Delivery Man',
-                scrollController: scrollController,
-                pickupAddress: _pickupAddressText,
-              );
+  OrderTrackingDeliveryLeg? _activeLeg(OrderTrackingData data) {
+    final s = (data.orderStatus).toLowerCase().trim();
+
+    // Prefer pickup leg early in lifecycle; prefer drop leg once dispatch starts.
+    final isDropPhase = s == 'dispatch_assigned' ||
+        s == 'out_for_delivery' ||
+        s == 'payment_pending' ||
+        s == 'delivered' ||
+        s == 'closed';
+
+    if (isDropPhase) return data.dropLeg ?? data.pickupLeg;
+    return data.pickupLeg ?? data.dropLeg;
+  }
+
+  void _subscribeToDriverRealtime() {
+    if (!SupabaseConfig.isEnabled) return;
+    final t = _tracking;
+    if (t == null) return;
+
+    final leg = _activeLeg(t);
+    final staffId = leg?.staffId;
+    if (staffId == null || staffId.isEmpty) return;
+
+    // Seed with current position if available (from tracking API).
+    final staff = leg?.staff;
+    if (staff?.latitude != null && staff?.longitude != null) {
+      _driverLatLng = LatLng(staff!.latitude!, staff.longitude!);
+    }
+
+    try {
+      final client = Supabase.instance.client;
+      _driverChannel?.unsubscribe();
+      _driverChannel = client
+          .channel('delivery_staffs:track:$staffId')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.update,
+            schema: 'public',
+            table: 'delivery_staffs',
+            callback: (payload) {
+              final updatedId = payload.newRecord['staff_id'] as String?;
+              if (updatedId == null || updatedId != staffId) return;
+
+              double? toDouble(dynamic v) {
+                if (v == null) return null;
+                if (v is num) return v.toDouble();
+                if (v is String) return double.tryParse(v);
+                return null;
+              }
+
+              final lat = toDouble(payload.newRecord['current_latitude']);
+              final lng = toDouble(payload.newRecord['current_longitude']);
+              if (lat == null || lng == null) return;
+              if (!mounted) return;
+              setState(() {
+                _driverLatLng = LatLng(lat, lng);
+              });
+              _scheduleRouteRefresh();
             },
-          ),
-        ],
-      ),
-    );
+          )
+          .subscribe();
+    } catch (_) {
+      // ignore realtime errors (map will still show static markers)
+    }
   }
-}
 
-class _GoogleMapBackground extends StatelessWidget {
-  final LatLng? pickup;
-  final LatLng? rider;
-
-  const _GoogleMapBackground({
-    this.pickup,
-    this.rider,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // Fallback demo coordinates (Bengaluru-ish) if no saved address is found.
-    const fallbackPickup = LatLng(12.9716, 77.5946);
-    const fallbackRider = LatLng(12.9723, 77.5953);
-    const fallbackDrop = LatLng(12.9352, 77.6245);
-
-    final effectivePickup = pickup ?? fallbackPickup;
-    final effectiveRider = rider ?? fallbackRider;
-    final effectiveDrop = fallbackDrop;
-
-    final markers = <Marker>{
-      Marker(
-        markerId: const MarkerId('pickup'),
-        position: effectivePickup,
-        infoWindow: const InfoWindow(title: 'Pickup'),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-      ),
-      Marker(
-        markerId: const MarkerId('rider'),
-        position: effectiveRider,
-        infoWindow: const InfoWindow(title: 'Delivery Partner'),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-      ),
-      Marker(
-        markerId: const MarkerId('drop'),
-        position: effectiveDrop,
-        infoWindow: const InfoWindow(title: 'Drop'),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
-      ),
-    };
-
-    final polyline = Polyline(
-      polylineId: const PolylineId('route'),
-      points: [effectivePickup, effectiveRider, effectiveDrop],
-      color: HomeColors.primary,
-      width: 4,
-    );
-
-    return GoogleMap(
-      initialCameraPosition: CameraPosition(
-        target: effectivePickup,
-        zoom: 14,
-      ),
-      markers: markers,
-      polylines: {polyline},
-      myLocationEnabled: false,
-      myLocationButtonEnabled: false,
-      zoomControlsEnabled: false,
-      compassEnabled: false,
-      mapToolbarEnabled: false,
-    );
+  void _scheduleRouteRefresh() {
+    _routeDebounce?.cancel();
+    _routeDebounce = Timer(const Duration(seconds: 2), () {
+      _refreshRoute();
+    });
   }
-}
 
-class _BottomPanel extends StatelessWidget {
-  final int activeIndex;
-  final String riderName;
-  final String riderRole;
-  final ScrollController scrollController;
-  final String? pickupAddress;
+  Future<void> _refreshRoute() async {
+    final t = _tracking;
+    if (t == null) return;
+    final leg = _activeLeg(t);
 
-  const _BottomPanel({
-    required this.activeIndex,
-    required this.riderName,
-    required this.riderRole,
-    required this.scrollController,
-    this.pickupAddress,
-  });
+    // Case 1: no driver assigned (static markers only)
+    if (leg?.staffId == null || leg!.staffId!.isEmpty) {
+      if (!mounted) return;
+      setState(() => _route = null);
+      return;
+    }
+
+    final driver = _driverLatLng;
+    if (driver == null) return;
+
+    final shop = _toLatLng(t.shop);
+    final pickup = t.pickup == null ? null : _toLatLng(t.pickup!);
+    final delivery = t.delivery == null ? null : _toLatLng(t.delivery!);
+
+    if (shop == null) return;
+
+    final deliveryType = (leg.deliveryType).toLowerCase().trim();
+    if (deliveryType == 'pickup') {
+      if (pickup == null) return;
+      final r = await _directionsService.getRoute(
+        origin: driver,
+        destination: shop,
+        waypoints: [pickup],
+      );
+      if (!mounted) return;
+      setState(() => _route = r);
+      return;
+    }
+
+    // drop
+    if (delivery == null) return;
+    final r = await _directionsService.getRoute(
+      origin: driver,
+      destination: delivery,
+      waypoints: [shop],
+    );
+    if (!mounted) return;
+    setState(() => _route = r);
+  }
+
+  LatLng? _toLatLng(OrderTrackingPoint p) {
+    final lat = p.latitude;
+    final lng = p.longitude;
+    if (lat == null || lng == null) return null;
+    return LatLng(lat, lng);
+  }
+
+  _OrderFlowType _resolveOrderFlowType(String rawOrderType) {
+    final t = rawOrderType.toLowerCase().trim();
+    if (t.contains('both')) return _OrderFlowType.both;
+    if (t.contains('pickup')) return _OrderFlowType.pickupOnly;
+    if (t.contains('drop') || t.contains('delivery')) return _OrderFlowType.deliveryOnly;
+    return _OrderFlowType.both;
+  }
+
+  int _mapStatusToStepIndex(String statusRaw, String rawOrderType) {
+    final status = statusRaw.toLowerCase().trim();
+    final flow = _resolveOrderFlowType(rawOrderType);
+
+    if (flow == _OrderFlowType.pickupOnly) {
+      if (status == 'placed' || status == 'pickup_assigned' || status == 'picked_up') return 0; // Pickup
+      if (status == 'received_by_collection' || status == 'submitted_to_services' || status == 'services_in_progress') {
+        return 1; // In Process
+      }
+      if (status == 'services_completed' || status == 'dispatch_assigned' || status == 'out_for_delivery' || status == 'payment_pending') {
+        return 2; // Ready for Takeaway
+      }
+      if (status == 'delivered' || status == 'closed' || status == 'cancelled') return 3; // Delivered/Closed
+      return 0;
+    }
+
+    if (flow == _OrderFlowType.deliveryOnly) {
+      // "Pickup" does not apply; we treat early + store receipt as the first step.
+      if (status == 'placed' ||
+          status == 'pickup_assigned' ||
+          status == 'picked_up' ||
+          status == 'received_by_collection') {
+        return 0; // Submitted to Store
+      }
+      if (status == 'submitted_to_services' ||
+          status == 'services_in_progress' ||
+          status == 'services_completed' ||
+          status == 'dispatch_assigned') {
+        return 1; // In Process
+      }
+      if (status == 'out_for_delivery' || status == 'payment_pending') return 2; // Out for Delivery
+      if (status == 'delivered' || status == 'closed' || status == 'cancelled') return 3; // Delivered/Closed
+      return 0;
+    }
+
+    // Both (default): Pickup → In Process → Ready → Out for Delivery → Delivered
+    if (status == 'placed' || status == 'pickup_assigned' || status == 'picked_up') return 0;
+    if (status == 'received_by_collection' || status == 'submitted_to_services' || status == 'services_in_progress') return 1;
+    if (status == 'services_completed' || status == 'dispatch_assigned') return 2;
+    if (status == 'out_for_delivery') return 3;
+    if (status == 'payment_pending' || status == 'delivered' || status == 'closed' || status == 'cancelled') return 4;
+    return 0;
+  }
 
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(28),
-          topRight: Radius.circular(28),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x1A000000),
-            blurRadius: 24,
-            offset: Offset(0, -10),
-          ),
-        ],
-      ),
-      child: ListView(
-        controller: scrollController,
-        padding: EdgeInsets.fromLTRB(18, 12, 18, 14 + bottomInset),
-        children: [
-          Center(
-            child: Container(
-              width: 56,
-              height: 5,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE5E7EB),
-                borderRadius: BorderRadius.circular(999),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Center(
-            child: Text(
-              'Order Tracking',
-              style: AppTextStyles.header(color: HomeColors.text)
-                  .copyWith(fontSize: 14),
-            ),
-          ),
-          const SizedBox(height: 14),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+    final t = _tracking;
+
+    return Scaffold(
+      backgroundColor: HomeColors.background,
+      appBar: AppBar(
+        elevation: 0,
+        backgroundColor: HomeColors.background,
+        leading: InkWell(
+          onTap: () {
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+              return;
+            }
+            Navigator.of(context).pushNamedAndRemoveUntil(
+              AppRoutes.home,
+              (r) => false,
+            );
+          },
+          borderRadius: BorderRadius.circular(999),
+          child: Container(
+            margin: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: HomeColors.borderSoft),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: const Color(0xFFE5E7EB)),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x14000000),
+                  blurRadius: 12,
+                  offset: Offset(0, 6),
+                ),
+              ],
             ),
-            child: _Timeline(
-              activeIndex: activeIndex,
-              pickupAddress: pickupAddress,
+            child: const Icon(
+              Icons.arrow_back_ios_new_rounded,
+              size: 16,
+              color: HomeColors.text,
             ),
           ),
-          const SizedBox(height: 12),
-          _RiderCard(name: riderName, role: riderRole),
-        ],
+        ),
+        title: Text(
+          'Order Tracking',
+          style: AppTextStyles.header(color: HomeColors.text).copyWith(fontSize: 16),
+        ),
+        centerTitle: true,
       ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : (t == null)
+              ? Center(
+                  child: Text(
+                    _error ?? 'Failed to load tracking',
+                    style: AppTextStyles.body(color: HomeColors.muted),
+                    textAlign: TextAlign.center,
+                  ),
+                )
+              : Stack(
+                  children: [
+                    Positioned.fill(
+                      child: _TrackingMap(
+                        onMapCreated: (c) => _mapController = c,
+                        tracking: t,
+                        driver: _driverLatLng,
+                        route: _route,
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Container(
+                        width: double.infinity,
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.only(
+                            topLeft: Radius.circular(22),
+                            topRight: Radius.circular(22),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Color(0x1A000000),
+                              blurRadius: 18,
+                              offset: Offset(0, -8),
+                            ),
+                          ],
+                        ),
+                        child: SafeArea(
+                          top: false,
+                          child: Padding(
+                            padding: EdgeInsets.fromLTRB(18, 14, 18, 14 + bottomInset),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 56,
+                                  height: 5,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE5E7EB),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(18),
+                                    border: Border.all(color: HomeColors.borderSoft),
+                                  ),
+                                  child: _Timeline(
+                                    activeIndex: _activeIndex,
+                                    pickupAddress: t.pickup?.address,
+                                    orderType: t.orderType,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                _AddressesCard(tracking: t),
+                                const SizedBox(height: 12),
+                                _RiderCard(
+                                  name: _activeLeg(t)?.staff?.fullName ?? 'Driver not assigned',
+                                  role: (_activeLeg(t)?.staffId ?? '').isEmpty ? 'Not assigned' : 'Delivery Partner',
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
     );
   }
 }
 
+enum _OrderFlowType { pickupOnly, deliveryOnly, both }
+
+
 class _Timeline extends StatelessWidget {
   final int activeIndex;
   final String? pickupAddress;
+  final String orderType;
 
   const _Timeline({
     required this.activeIndex,
     this.pickupAddress,
+    required this.orderType,
   });
+
+  _OrderFlowType _resolveOrderFlowType() {
+    final t = orderType.toLowerCase().trim();
+    if (t.contains('both')) return _OrderFlowType.both;
+    if (t.contains('pickup')) return _OrderFlowType.pickupOnly;
+    if (t.contains('drop') || t.contains('delivery')) return _OrderFlowType.deliveryOnly;
+    return _OrderFlowType.both;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final items = <_TimelineItemData>[
-      _TimelineItemData(
-        title: 'Pickup',
-        subtitle: pickupAddress,
-        iconAsset: 'assets/icons/order_track/pickup.png',
-      ),
-      const _TimelineItemData(
-        title: 'In Process',
-        subtitle: null,
-        iconAsset: 'assets/icons/order_track/in_process.png',
-      ),
-      const _TimelineItemData(
-        title: 'Ready',
-        subtitle: null,
-        iconAsset: 'assets/icons/order_track/ready.png',
-      ),
-      const _TimelineItemData(
-        title: 'Out for Delivery',
-        subtitle: null,
-        iconAsset: 'assets/icons/order_track/out_for_delivery.png',
-      ),
-      const _TimelineItemData(
-        title: 'Delivered',
-        subtitle: null,
-        iconAsset: 'assets/icons/order_track/delivered.png',
-      ),
-    ];
+    final flow = _resolveOrderFlowType();
+
+    final items = switch (flow) {
+      _OrderFlowType.pickupOnly => <_TimelineItemData>[
+          _TimelineItemData(
+            title: 'Pickup',
+            subtitle: pickupAddress,
+            iconAsset: 'assets/icons/order_track/pickup.png',
+          ),
+          const _TimelineItemData(
+            title: 'In Process',
+            subtitle: null,
+            iconAsset: 'assets/icons/order_track/in_process.png',
+          ),
+          const _TimelineItemData(
+            title: 'Ready for Takeaway',
+            subtitle: null,
+            iconAsset: 'assets/icons/order_track/ready.png',
+          ),
+          const _TimelineItemData(
+            title: 'Delivered',
+            subtitle: null,
+            iconAsset: 'assets/icons/order_track/delivered.png',
+          ),
+        ],
+      _OrderFlowType.deliveryOnly => const <_TimelineItemData>[
+          _TimelineItemData(
+            title: 'Submitted to Store',
+            subtitle: null,
+            iconAsset: 'assets/icons/order_track/pickup.png',
+          ),
+          _TimelineItemData(
+            title: 'In Process',
+            subtitle: null,
+            iconAsset: 'assets/icons/order_track/in_process.png',
+          ),
+          _TimelineItemData(
+            title: 'Out for Delivery',
+            subtitle: null,
+            iconAsset: 'assets/icons/order_track/out_for_delivery.png',
+          ),
+          _TimelineItemData(
+            title: 'Delivered',
+            subtitle: null,
+            iconAsset: 'assets/icons/order_track/delivered.png',
+          ),
+        ],
+      _OrderFlowType.both => <_TimelineItemData>[
+          _TimelineItemData(
+            title: 'Pickup',
+            subtitle: pickupAddress,
+            iconAsset: 'assets/icons/order_track/pickup.png',
+          ),
+          const _TimelineItemData(
+            title: 'In Process',
+            subtitle: null,
+            iconAsset: 'assets/icons/order_track/in_process.png',
+          ),
+          const _TimelineItemData(
+            title: 'Ready',
+            subtitle: null,
+            iconAsset: 'assets/icons/order_track/ready.png',
+          ),
+          const _TimelineItemData(
+            title: 'Out for Delivery',
+            subtitle: null,
+            iconAsset: 'assets/icons/order_track/out_for_delivery.png',
+          ),
+          const _TimelineItemData(
+            title: 'Delivered',
+            subtitle: null,
+            iconAsset: 'assets/icons/order_track/delivered.png',
+          ),
+        ],
+    };
+
+    final clampedActive = activeIndex.clamp(0, items.length - 1);
 
     return Column(
       children: [
         for (var i = 0; i < items.length; i++) ...[
           _TimelineRow(
             data: items[i],
-            isActive: i <= activeIndex,
+            isActive: i <= clampedActive,
             isLast: i == items.length - 1,
           ),
           if (i != items.length - 1) const SizedBox(height: 12),
@@ -520,6 +708,200 @@ class _RiderCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _AddressesCard extends StatelessWidget {
+  final OrderTrackingData tracking;
+
+  const _AddressesCard({required this.tracking});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: HomeColors.borderSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _AddressRow(
+            icon: Icons.storefront_outlined,
+            title: tracking.shopName.isEmpty ? 'Laundry Shop' : tracking.shopName,
+            subtitle: tracking.shop.address ?? '',
+          ),
+          const SizedBox(height: 10),
+          if (tracking.pickup != null)
+            _AddressRow(
+              icon: Icons.location_on_outlined,
+              title: 'Pickup address',
+              subtitle: tracking.pickup?.address ?? '',
+            ),
+          if (tracking.delivery != null) ...[
+            const SizedBox(height: 10),
+            _AddressRow(
+              icon: Icons.location_on_outlined,
+              title: 'Delivery address',
+              subtitle: tracking.delivery?.address ?? '',
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AddressRow extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  const _AddressRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF0F2FF),
+            shape: BoxShape.circle,
+            border: Border.all(color: HomeColors.borderSoft),
+          ),
+          child: Icon(icon, size: 18, color: HomeColors.text),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: AppTextStyles.body(color: HomeColors.text).copyWith(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.body(color: HomeColors.muted).copyWith(fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TrackingMap extends StatelessWidget {
+  final OrderTrackingData tracking;
+  final LatLng? driver;
+  final DirectionsRoute? route;
+  final void Function(GoogleMapController controller) onMapCreated;
+
+  const _TrackingMap({
+    required this.tracking,
+    required this.driver,
+    required this.route,
+    required this.onMapCreated,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    LatLng? toLatLng(OrderTrackingPoint p) {
+      final lat = p.latitude;
+      final lng = p.longitude;
+      if (lat == null || lng == null) return null;
+      return LatLng(lat, lng);
+    }
+
+    final shop = toLatLng(tracking.shop);
+    final pickup = tracking.pickup == null ? null : toLatLng(tracking.pickup!);
+    final drop = tracking.delivery == null ? null : toLatLng(tracking.delivery!);
+
+    final markers = <Marker>{};
+    if (shop != null) {
+      markers.add(
+        Marker(
+          markerId: const MarkerId('shop'),
+          position: shop,
+          infoWindow: InfoWindow(title: tracking.shopName.isEmpty ? 'Laundry Shop' : tracking.shopName),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueViolet),
+        ),
+      );
+    }
+    if (pickup != null) {
+      markers.add(
+        Marker(
+          markerId: const MarkerId('pickup'),
+          position: pickup,
+          infoWindow: const InfoWindow(title: 'Pickup'),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        ),
+      );
+    }
+    if (drop != null) {
+      markers.add(
+        Marker(
+          markerId: const MarkerId('drop'),
+          position: drop,
+          infoWindow: const InfoWindow(title: 'Delivery'),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+        ),
+      );
+    }
+    if (driver != null) {
+      markers.add(
+        Marker(
+          markerId: const MarkerId('driver'),
+          position: driver!,
+          infoWindow: const InfoWindow(title: 'Delivery Partner'),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+        ),
+      );
+    }
+
+    final polylines = <Polyline>{};
+    final r = route;
+    if (r != null && r.polylinePoints.isNotEmpty) {
+      polylines.add(
+        Polyline(
+          polylineId: const PolylineId('route'),
+          points: r.polylinePoints,
+          color: HomeColors.primary,
+          width: 5,
+        ),
+      );
+    }
+
+    final initialTarget = driver ?? pickup ?? drop ?? shop ?? const LatLng(20.5937, 78.9629);
+
+    return GoogleMap(
+      onMapCreated: onMapCreated,
+      initialCameraPosition: CameraPosition(target: initialTarget, zoom: 13),
+      markers: markers,
+      polylines: polylines,
+      myLocationEnabled: false,
+      myLocationButtonEnabled: false,
+      zoomControlsEnabled: false,
+      compassEnabled: false,
+      mapToolbarEnabled: false,
     );
   }
 }

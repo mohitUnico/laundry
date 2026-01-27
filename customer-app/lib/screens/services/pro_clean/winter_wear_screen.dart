@@ -9,7 +9,6 @@ import '../../../utils/profile_service_error_messages.dart';
 import '../../../widgets/cart_success_dialog.dart';
 import '../../home/widgets/home_bottom_nav.dart';
 import '../../home/widgets/home_colors.dart';
-import 'widgets/others_field.dart';
 import '../../home/widgets/pro_clean_bottom_sheet.dart';
 
 class WinterWearScreen extends StatefulWidget {
@@ -20,7 +19,6 @@ class WinterWearScreen extends StatefulWidget {
 }
 
 class _WinterWearScreenState extends State<WinterWearScreen> {
-  final _othersController = TextEditingController();
   final TextEditingController _weightController = TextEditingController();
 
   final Map<String, int> _qtyByItemName = {};
@@ -29,7 +27,6 @@ class _WinterWearScreenState extends State<WinterWearScreen> {
 
   @override
   void dispose() {
-    _othersController.dispose();
     _weightController.dispose();
     super.dispose();
   }
@@ -164,8 +161,6 @@ class _WinterWearScreenState extends State<WinterWearScreen> {
                       const SizedBox(height: 10),
                     ],
                     const SizedBox(height: 12),
-                    OthersField(controller: _othersController),
-                    const SizedBox(height: 12),
                     _OrderSummaryCard(
                       rows: _nonZeroSummaryRows,
                       total: _total,
@@ -205,7 +200,6 @@ class _WinterWearScreenState extends State<WinterWearScreen> {
                                     clothIdByItemName: clothIdByName,
                                     unitPricesInr: unitPrices,
                                     weightKg: null, // Weight will be calculated after supervision
-                                    note: _othersController.text,
                               );
 
                               if (!mounted) return;

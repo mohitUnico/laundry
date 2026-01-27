@@ -72,25 +72,34 @@ class _ActiveOrdersCarouselState extends State<ActiveOrdersCarousel> {
   }
 
   int _mapOrderStatusToStepIndex(String backendStatus) {
-    // Map backend order status to stepper index (0-3)
-    // Step 0: Placed
-    // Step 1: Picked Up
-    // Step 2: In Progress
-    // Step 3: Delivered
-    
-    final status = backendStatus.toLowerCase();
-    
-    if (status == 'placed') {
-      return 0; // Placed
-    } else if (status == 'picked_up') {
-      return 1; // Picked Up
-    } else if (status == 'in_progress') {
-      return 2; // In Progress
-    } else if (status == 'delivered') {
-      return 3; // Delivered
+    // Map backend order status to the 4-step Active Order card index:
+    // 0: Placed, 1: Pickup, 2: In Progress, 3: Delivered
+    final status = backendStatus.toLowerCase().trim();
+
+    // Placed group
+    if (status == 'placed' || status == 'pickup_assigned') return 0;
+
+    // Pickup group
+    if (status == 'picked_up') return 1;
+
+    // In progress group (processing + dispatch + out-for-delivery + payment pending)
+    if (status == 'received_by_collection' ||
+        status == 'submitted_to_services' ||
+        status == 'services_in_progress' ||
+        status == 'services_completed' ||
+        status == 'dispatch_assigned' ||
+        status == 'out_for_delivery' ||
+        status == 'payment_pending') {
+      return 2;
     }
-    
-    // Default to step 0 (placed) for unknown statuses
+
+    // Delivered group
+    if (status == 'delivered') return 3;
+
+    // For closed/cancelled we still show as delivered (these should typically not be in active orders).
+    if (status == 'closed' || status == 'cancelled') return 3;
+
+    // Default to "Placed" so the UI doesn't jump forward for unknown/empty statuses.
     return 0;
   }
 
@@ -155,6 +164,7 @@ class _ActiveOrdersCarouselState extends State<ActiveOrdersCarousel> {
             orderId: order.id,
             activeStepIndex: stepIndex,
             etaText: etaText,
+            onViewDetails: () => Navigator.of(context).pushNamed(AppRoutes.orders),
             onTrackNow: () => Navigator.of(context).pushNamed(
               AppRoutes.orderTracking,
               arguments: OrderTrackingArgs(
@@ -162,6 +172,8 @@ class _ActiveOrdersCarouselState extends State<ActiveOrdersCarousel> {
                 pickupAddress: order.pickupAddress,
                 pickupLat: order.pickupLat,
                 pickupLng: order.pickupLng,
+                backendStatus: order.backendStatus,
+                orderType: order.orderTypeOrBoth,
               ),
             ),
           ),
@@ -202,6 +214,7 @@ class _ActiveOrdersCarouselState extends State<ActiveOrdersCarousel> {
                           orderId: order.id,
                           activeStepIndex: stepIndex,
                           etaText: etaText,
+                          onViewDetails: () => Navigator.of(context).pushNamed(AppRoutes.orders),
                           onTrackNow: () => Navigator.of(context).pushNamed(
                             AppRoutes.orderTracking,
                             arguments: OrderTrackingArgs(
@@ -209,6 +222,8 @@ class _ActiveOrdersCarouselState extends State<ActiveOrdersCarousel> {
                               pickupAddress: order.pickupAddress,
                               pickupLat: order.pickupLat,
                               pickupLng: order.pickupLng,
+                              backendStatus: order.backendStatus,
+                              orderType: order.orderTypeOrBoth,
                             ),
                           ),
                         ),

@@ -27,8 +27,6 @@ class RegularWashServiceScreen extends StatefulWidget {
 }
 
 class _RegularWashServiceScreenState extends State<RegularWashServiceScreen> {
-  final _othersController = TextEditingController();
-
   final Map<String, int> _qtyByItemName = {};
   final TextEditingController _weightController = TextEditingController();
 
@@ -53,7 +51,6 @@ class _RegularWashServiceScreenState extends State<RegularWashServiceScreen> {
 
   @override
   void dispose() {
-    _othersController.dispose();
     _weightController.dispose();
     super.dispose();
   }
@@ -155,8 +152,6 @@ class _RegularWashServiceScreenState extends State<RegularWashServiceScreen> {
                       const SizedBox(height: 10),
                     ],
                     const SizedBox(height: 12),
-                    _OthersField(controller: _othersController),
-                    const SizedBox(height: 12),
                     _OrderSummaryCard(
                       rows: _qtyByItemName.entries
                           .where((e) => e.value > 0)
@@ -199,7 +194,6 @@ class _RegularWashServiceScreenState extends State<RegularWashServiceScreen> {
                                     clothIdByItemName: clothIdByName,
                                     unitPricesInr: unitPrices,
                                     weightKg: null, // Weight will be calculated after supervision
-                                    note: _othersController.text,
                               );
 
                               if (!mounted) return;
@@ -416,66 +410,6 @@ class _QtyButton extends StatelessWidget {
   }
 }
 
-class _OthersField extends StatelessWidget {
-  final TextEditingController controller;
-
-  const _OthersField({required this.controller});
-
-  @override
-  Widget build(BuildContext context) {
-    final inputStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
-          fontSize: 13,
-          fontWeight: FontWeight.w500,
-          color: HomeColors.text,
-        ) ??
-        const TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w500,
-          color: HomeColors.text,
-        );
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: HomeColors.borderSoft),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Others',
-            style:
-                AppTextStyles.header(color: HomeColors.text).copyWith(fontSize: 12),
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            height: 34,
-            child: TextField(
-              controller: controller,
-              textAlignVertical: TextAlignVertical.center,
-              decoration: const InputDecoration(
-                contentPadding: EdgeInsets.symmetric(vertical: 8),
-                border: UnderlineInputBorder(
-                  borderSide: BorderSide(color: HomeColors.borderSoft),
-                ),
-                enabledBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: HomeColors.borderSoft),
-                ),
-                focusedBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: HomeColors.primary, width: 1.6),
-                ),
-              ),
-              style: inputStyle,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _OrderSummaryCard extends StatelessWidget {
   final List<MapEntry<String, int>> rows;

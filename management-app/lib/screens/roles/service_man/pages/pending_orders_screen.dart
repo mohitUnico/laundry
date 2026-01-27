@@ -21,6 +21,16 @@ class _PendingOrdersServicemenScreenState extends State<PendingOrdersServicemenS
   Future<List<_CompletedOrderUi>> _completedFuture = Future.value(const <_CompletedOrderUi>[]);
   Future<Map<String, dynamic>?> _userFuture = AuthStorage.getCurrentUser();
 
+  static int _sumQuantityOrFallbackToRowCount(List<Map<String, dynamic>> rows) {
+    int sum = 0;
+    for (final r in rows) {
+      final qtyRaw = r['quantity'];
+      final qty = (qtyRaw is num) ? qtyRaw.toInt() : int.tryParse(qtyRaw?.toString() ?? '') ?? 0;
+      if (qty > 0) sum += qty;
+    }
+    return sum > 0 ? sum : rows.length;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -92,7 +102,7 @@ class _PendingOrdersServicemenScreenState extends State<PendingOrdersServicemenS
 
       // Build item lines from queue items (itemName + quantity/weight)
       final mappedItems = <_OrderItem>[];
-      int totalCount = 0;
+      final totalQty = _sumQuantityOrFallbackToRowCount(rows);
       for (final r in rows) {
         final name = (r['itemName'] ?? '').toString().trim();
         final qtyRaw = r['quantity'];
@@ -103,13 +113,10 @@ class _PendingOrdersServicemenScreenState extends State<PendingOrdersServicemenS
         if (name.isEmpty) continue;
 
         if (qty > 0) {
-          totalCount += qty;
           mappedItems.add(_OrderItem(name: name, valueText: qty.toString().padLeft(2, '0')));
         } else if (weight != null && weight > 0) {
-          totalCount += 1;
           mappedItems.add(_OrderItem(name: name, valueText: '${weight.toStringAsFixed(1)} kg'));
         } else {
-          totalCount += 1;
           mappedItems.add(_OrderItem(name: name, valueText: '01'));
         }
       }
@@ -122,7 +129,7 @@ class _PendingOrdersServicemenScreenState extends State<PendingOrdersServicemenS
           customerName: customerName,
           date: _formatDate(assignedAt),
           time: _formatTime(assignedAt),
-          itemCount: totalCount,
+          itemCount: totalQty,
           items: mappedItems,
           queueIds: queueIds,
           sortAt: assignedAt,
@@ -178,16 +185,13 @@ class _PendingOrdersServicemenScreenState extends State<PendingOrdersServicemenS
       final customer = (order is Map ? order['customer'] : null);
       final customerName = (customer is Map ? customer['fullName'] : null)?.toString() ?? 'Customer';
 
-      int count = 0;
+      int qtySum = 0;
       for (final r in items) {
         final c = r['clothItemsCount'];
         final q = (c is num) ? c.toInt() : int.tryParse(c?.toString() ?? '') ?? 0;
-        if (q > 0) {
-          count += q;
-        } else {
-          count += 1;
-        }
+        if (q > 0) qtySum += q;
       }
+      final count = qtySum > 0 ? qtySum : items.length;
 
       out.add(
         _CompletedOrderUi(
@@ -371,8 +375,6 @@ class _PendingOrdersView extends StatelessWidget {
                           final firstName = fullName.isNotEmpty
                               ? fullName.split(RegExp(r'\s+')).first.trim()
                               : '';
-                          final userId = (user?['userId'] ?? '').toString().trim();
-                          final serviceName = (user?['serviceName'] ?? '').toString().trim();
 
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -385,46 +387,6 @@ class _PendingOrdersView extends StatelessWidget {
                                   color: AppColors.primary,
                                 ),
                               ),
-                              const SizedBox(height: 2),
-                              Row(
-                                children: [
-                                  Text(
-                                    'ID: ',
-                                    style: AppTextStyles.subtitle(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                  Expanded(
-                                    child: userId.isNotEmpty
-                                        ? SingleChildScrollView(
-                                            scrollDirection: Axis.horizontal,
-                                            child: Text(
-                                              userId,
-                                              maxLines: 1,
-                                              softWrap: false,
-                                              style: AppTextStyles.subtitle(
-                                                color: AppColors.textSecondary,
-                                              ),
-                                            ),
-                                          )
-                                        : Text(
-                                            '—',
-                                            style: AppTextStyles.subtitle(
-                                              color: AppColors.textSecondary,
-                                            ),
-                                          ),
-                                  ),
-                                ],
-                              ),
-                              if (serviceName.isNotEmpty) ...[
-                                const SizedBox(height: 2),
-                                Text(
-                                  'Service: $serviceName',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: AppTextStyles.subtitle(color: AppColors.textSecondary).copyWith(fontSize: 12),
-                                ),
-                              ],
                             ],
                           );
                         },
@@ -833,7 +795,7 @@ class _OrderCardState extends State<_OrderCard> {
                     ),
                   ),
                   Text(
-                    'items',
+                    'qty',
                     style: AppTextStyles.subtitle(
                       color: AppColors.textPrimary,
                     ),
@@ -1141,7 +1103,7 @@ class _CompletedOrderCard extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    'items',
+                    'qty',
                     style: AppTextStyles.subtitle(
                       color: AppColors.success,
                     ),

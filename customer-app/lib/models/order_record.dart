@@ -9,6 +9,11 @@ class OrderRecord {
   final List<CartItem> items;
   final int totalItems;
   final int totalInr;
+  // pickup_only / drop_only / both
+  //
+  // NOTE: kept nullable so hot-reload / older in-memory objects don't crash when this field
+  // is introduced. Always use [orderTypeOrBoth] when reading it.
+  final String? orderType;
   final String dateLabel; // Scheduled date e.g. Dec 20
   final String timeLabel; // Scheduled time e.g. 2:30 PM
   final DateTime placedAt; // When order was placed
@@ -27,6 +32,7 @@ class OrderRecord {
     required this.items,
     required this.totalItems,
     required this.totalInr,
+    this.orderType,
     required this.dateLabel,
     required this.timeLabel,
     required this.placedAt,
@@ -46,6 +52,7 @@ class OrderRecord {
     List<CartItem>? items,
     int? totalItems,
     int? totalInr,
+    String? orderType,
     String? dateLabel,
     String? timeLabel,
     DateTime? placedAt,
@@ -64,6 +71,7 @@ class OrderRecord {
       items: items ?? this.items,
       totalItems: totalItems ?? this.totalItems,
       totalInr: totalInr ?? this.totalInr,
+      orderType: orderType ?? this.orderType,
       dateLabel: dateLabel ?? this.dateLabel,
       timeLabel: timeLabel ?? this.timeLabel,
       placedAt: placedAt ?? this.placedAt,
@@ -76,6 +84,11 @@ class OrderRecord {
       pickupLat: pickupLat ?? this.pickupLat,
       pickupLng: pickupLng ?? this.pickupLng,
     );
+  }
+
+  String get orderTypeOrBoth {
+    final t = (orderType ?? '').trim();
+    return t.isEmpty ? 'both' : t;
   }
 }
 

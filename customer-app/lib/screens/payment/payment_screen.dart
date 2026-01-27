@@ -370,6 +370,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                                   items: items,
                                   totalItems: totalItems,
                                   totalInr: totalInr,
+                                  orderType: orderType,
                                   dateLabel: dateLabel,
                                   timeLabel: timeLabel,
                                   placedAt: placedAt,

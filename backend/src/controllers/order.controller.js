@@ -59,3 +59,24 @@ exports.getCustomerOrders = async (req, res, next) => {
         next(error);
     }
 };
+
+exports.getOrderTracking = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'customer') {
+            throw new AuthorizationError('Only customers can view order tracking');
+        }
+
+        const customerId = req.user.user_id;
+        const { orderId } = req.params;
+
+        const data = await orderService.getOrderTrackingForCustomer({ customerId, orderId });
+
+        res.status(200).json({
+            success: true,
+            data,
+            message: 'Order tracking fetched successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};

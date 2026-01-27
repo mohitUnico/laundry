@@ -67,6 +67,29 @@ class CouponsProvider with ChangeNotifier {
     final now = DateTime.now();
     if (c.validFrom != null && now.isBefore(c.validFrom!)) return false;
     if (c.validTill != null && now.isAfter(c.validTill!)) return false;
+
+    // Extra constraints (client-side) for marketing-style coupons where backend doesn't encode
+    // day-of-week rules explicitly (e.g., "WEEKEND" coupons).
+    if (!_matchesInferredDayConstraint(c, now)) return false;
+    return true;
+  }
+
+  bool _matchesInferredDayConstraint(Coupon c, DateTime now) {
+    final text = [
+      c.code,
+      if (c.description != null) c.description!,
+    ].join(' ').toLowerCase();
+
+    final isWeekend = now.weekday == DateTime.saturday || now.weekday == DateTime.sunday;
+
+    // Heuristic constraints based on coupon naming/description conventions.
+    // If both keywords exist (misconfigured data), prefer "weekend" and require weekend.
+    final mentionsWeekend = text.contains('weekend');
+    final mentionsWeekday = text.contains('weekday');
+
+    if (mentionsWeekend) return isWeekend;
+    if (mentionsWeekday) return !isWeekend;
+
     return true;
   }
 

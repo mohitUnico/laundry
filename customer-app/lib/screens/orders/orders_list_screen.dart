@@ -9,6 +9,7 @@ import '../../models/order_record.dart';
 import '../../models/cart_item.dart';
 import '../../utils/pricing.dart';
 import '../../routes/app_routes.dart';
+import '../../routes/route_args.dart';
 import '../cart/delivery_options_screen.dart';
 import '../cart/schedule_date_time_screen.dart';
 
@@ -210,6 +211,17 @@ class _OrdersListScreenState extends State<OrdersListScreen> with WidgetsBinding
                           return _OrderCard(
                             data: order,
                             onViewDetails: () => _showOrderDetailsDialog(context, order),
+                            onTrackLaundry: () => Navigator.of(context).pushNamed(
+                              AppRoutes.orderTracking,
+                              arguments: OrderTrackingArgs(
+                                orderId: order.id,
+                                pickupAddress: order.pickupAddress,
+                                pickupLat: order.pickupLat,
+                                pickupLng: order.pickupLng,
+                                backendStatus: order.backendStatus,
+                                orderType: order.orderTypeOrBoth,
+                              ),
+                            ),
                           );
                         },
                       );
@@ -531,10 +543,12 @@ class _SecondaryActionButton extends StatelessWidget {
 class _OrderCard extends StatelessWidget {
   final OrderRecord data;
   final VoidCallback onViewDetails;
+  final VoidCallback onTrackLaundry;
 
   const _OrderCard({
     required this.data,
     required this.onViewDetails,
+    required this.onTrackLaundry,
   });
 
   @override
@@ -657,6 +671,26 @@ class _OrderCard extends StatelessWidget {
                 ),
               ],
               const Spacer(),
+              InkWell(
+                onTap: onTrackLaundry,
+                borderRadius: BorderRadius.circular(18),
+                child: Container(
+                  width: 54,
+                  height: 54,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: HomeColors.borderSoft),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    Icons.location_on_outlined,
+                    size: 22,
+                    color: HomeColors.primary,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
               InkWell(
                 onTap: onViewDetails,
                 borderRadius: BorderRadius.circular(18),

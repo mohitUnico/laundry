@@ -192,6 +192,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
               items: items,
               totalItems: totalItems,
               totalInr: 0, // Kg-wise items have no upfront price
+              orderType: orderType,
               dateLabel: args.dateLabel,
               timeLabel: args.timeLabel,
               placedAt: placedAt,

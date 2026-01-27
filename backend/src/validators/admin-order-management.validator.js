@@ -41,6 +41,7 @@ const adminOrderStatusSchema = Joi.string()
         'placed',
         'pickup_assigned',
         'picked_up',
+        'submitted_to_cm',
         'received_by_collection',
         'submitted_to_services',
         'services_in_progress',
@@ -55,7 +56,7 @@ const adminOrderStatusSchema = Joi.string()
     .required()
     .messages({
         'any.only':
-            'status must be one of: draft, placed, pickup_assigned, picked_up, received_by_collection, submitted_to_services, services_in_progress, services_completed, dispatch_assigned, out_for_delivery, payment_pending, delivered, closed, cancelled',
+            'status must be one of: draft, placed, pickup_assigned, picked_up, submitted_to_cm, received_by_collection, submitted_to_services, services_in_progress, services_completed, dispatch_assigned, out_for_delivery, payment_pending, delivered, closed, cancelled',
         'any.required': 'status is required',
         'string.base': 'status must be a string',
     });

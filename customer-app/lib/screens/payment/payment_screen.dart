@@ -52,15 +52,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
           builder: (context, cart, _) {
             final perPieceItems = cart.items.where((x) => x.isPerPiece).toList();
             final kgWiseItems = cart.items.where((x) => !x.isPerPiece).toList();
-            final hasMixed = perPieceItems.isNotEmpty && kgWiseItems.isNotEmpty;
 
             // Calculate fees for per-piece items only
             final itemTotal = perPieceItems.fold<int>(0, (sum, x) => sum + x.subtotalInr);
             final handlingFee = (itemTotal * 0.114).round(); // ~11.4% handling fee
             
             // All delivery options are FREE - no charges
-            final pickupFeeOriginal = 0; // FREE
-            final deliveryFeeAmount = 0; // FREE
+            const pickupFeeOriginal = 0; // FREE
             
             int pickupFee = 0; // FREE
             int deliveryFee = 0; // FREE
@@ -297,8 +295,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           final perPieceItems = items.where((x) => x.isPerPiece).toList();
                           final itemTotal = perPieceItems.fold<int>(0, (sum, x) => sum + x.subtotalInr);
                           final handlingFee = (itemTotal * 0.114).round(); // ~11.4% handling fee
-                          final pickupFeeOriginal = 0; // FREE
-                          final deliveryFeeAmount = 0; // FREE
+                          const pickupFeeOriginal = 0; // FREE
                           
                           int pickupFee = 0; // FREE
                           int deliveryFee = 0; // FREE
@@ -333,9 +330,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
                               paymentMethodBackend = 'cod';
                               paymentStatus = 'pending'; // COD is paid on delivery
                               break;
-                            default:
-                              paymentMethodBackend = 'card';
-                              paymentStatus = 'completed';
                           }
 
                           // Generate transaction ID (for card payments, this would come from payment gateway)
@@ -387,7 +381,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                                 ),
                               );
 
-                          cart.clear();
+                          await cart.clearAfterOrderPlaced();
 
                           if (!mounted) return;
                           
@@ -891,13 +885,11 @@ class _BillSummaryCard extends StatelessWidget {
 class _FeeRow extends StatelessWidget {
   final String label;
   final int amount;
-  final int? originalAmount;
   final bool isDiscount;
 
   const _FeeRow({
     required this.label,
     required this.amount,
-    this.originalAmount,
     this.isDiscount = false,
   });
 
@@ -912,17 +904,6 @@ class _FeeRow extends StatelessWidget {
                 .copyWith(fontSize: 14),
           ),
         ),
-        if (originalAmount != null && originalAmount! > amount) ...[
-          Text(
-            Pricing.inr(originalAmount!),
-            style: AppTextStyles.body(color: const Color(0xFF98A0B5))
-                .copyWith(
-              fontSize: 12,
-              decoration: TextDecoration.lineThrough,
-            ),
-          ),
-          const SizedBox(width: 8),
-        ],
         Text(
           isDiscount ? '-${Pricing.inr(amount.abs())}' : Pricing.inr(amount),
           style: AppTextStyles.body(

@@ -32,6 +32,17 @@ class DeliveryStaffAppService {
     }
   }
 
+  Future<Map<String, dynamic>> getProfile() async {
+    try {
+      final res = await _api.get('/delivery-staff-app/profile');
+      final body = res.data;
+      if (body is Map<String, dynamic>) return body;
+      throw Exception('Unexpected response format');
+    } catch (e) {
+      throw Exception(_extractErrorMessage(e, fallback: 'Failed to fetch profile'));
+    }
+  }
+
   Future<Map<String, dynamic>> listAcceptedOrders({int page = 1, int limit = 20}) async {
     try {
       final res = await _api.get(

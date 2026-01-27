@@ -227,12 +227,18 @@ exports.getProfile = async ({ staffId }) => {
             full_name: true,
             email: true,
             phone: true,
+            vehicle_type: true,
+            vehicle_number: true,
+            bank_account_details: true,
             address: true,
             current_latitude: true,
             current_longitude: true,
             vehicle_type: true,
             vehicle_number: true,
             profile_image_url: true,
+            id_proof_type: true,
+            id_proof_url: true,
+            driving_license_url: true,
             verification_status: true,
             is_verified_by_admin: true,
             is_active: true,
@@ -245,26 +251,30 @@ exports.getProfile = async ({ staffId }) => {
 
     if (!staff) throw new NotFoundError('DeliveryStaff');
 
+    // Return exact DB field names (snake_case) for client mapping consistency.
     return {
-        staffId: staff.staff_id,
-        fullName: staff.full_name,
-        email: staff.email,
+        staff_id: staff.staff_id,
+        full_name: staff.full_name,
         phone: staff.phone || null,
+        email: staff.email,
+        vehicle_type: staff.vehicle_type,
+        vehicle_number: staff.vehicle_number,
+        bank_account_details: staff.bank_account_details ?? null,
+        is_active: staff.is_active,
+        average_rating: staff.average_rating ? staff.average_rating.toString() : null,
+        total_deliveries: staff.total_deliveries,
+        created_at: staff.created_at,
+        updated_at: staff.updated_at,
+        id_proof_type: staff.id_proof_type || null,
+        id_proof_url: staff.id_proof_url || null,
+        is_verified_by_admin:
+            typeof staff.is_verified_by_admin === 'boolean' ? staff.is_verified_by_admin : null,
+        verification_status: staff.verification_status,
         address: staff.address || null,
-        currentCoordinates:
-            staff.current_latitude && staff.current_longitude
-                ? { latitude: staff.current_latitude.toString(), longitude: staff.current_longitude.toString() }
-                : null,
-        vehicleType: staff.vehicle_type,
-        vehicleNumber: staff.vehicle_number,
-        profileImageUrl: staff.profile_image_url || null,
-        verificationStatus: staff.verification_status,
-        isVerifiedByAdmin: staff.is_verified_by_admin,
-        isActive: staff.is_active,
-        averageRating: staff.average_rating ? staff.average_rating.toString() : null,
-        totalDeliveries: staff.total_deliveries,
-        createdAt: staff.created_at,
-        updatedAt: staff.updated_at,
+        current_latitude: staff.current_latitude ? staff.current_latitude.toString() : null,
+        current_longitude: staff.current_longitude ? staff.current_longitude.toString() : null,
+        profile_image_url: staff.profile_image_url || null,
+        driving_license_url: staff.driving_license_url || null,
     };
 };
 

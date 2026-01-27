@@ -380,6 +380,9 @@ class AuthProvider with ChangeNotifier {
       if (deliveryStaff is Map<String, dynamic>) {
         _partner = deliveryStaff;
         await AuthStorage.saveDeliveryStaff(deliveryStaff);
+        // Keep Account/Profile screen consistent: it reads from `current_user_json`.
+        _currentUser = deliveryStaff;
+        await AuthStorage.saveCurrentUser(deliveryStaff);
       }
 
       _token = token;

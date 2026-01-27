@@ -202,7 +202,7 @@ class CartProvider with ChangeNotifier {
             // Include selections to track cloth items for kg-wise services
             'selections': selections.isNotEmpty ? selections : [],
             // weight_kg is optional - can be null, will be set later
-            'weight_kg': weightKg != null && weightKg! > 0 ? weightKg : null,
+            'weight_kg': weightKg != null && weightKg > 0 ? weightKg : null,
           }
         ];
       }
@@ -292,7 +292,7 @@ class CartProvider with ChangeNotifier {
         final cartItemId = cartItemData['cart_item_id'] as String? ?? '';
 
         // Get category from service (if available) or default
-        final category = 'Service'; // Default, can be enhanced if category is in response
+        const category = 'Service'; // Default, can be enhanced if category is in response
 
         if (isPerPiece) {
           final selections = (cartItemData['item_selections'] as List?) ?? [];
@@ -481,6 +481,49 @@ class CartProvider with ChangeNotifier {
     _items.clear();
     _activeCartId = null;
     notifyListeners();
+  }
+
+  /// Clears cart locally and best-effort clears the active cart on backend.
+  ///
+  /// Why: Order creation should delete the cart server-side, but if anything
+  /// leaves the cart active (race/deploy mismatch), the app must not show
+  /// stale items after successful order placement.
+  Future<void> clearAfterOrderPlaced() async {
+    // Always clear local state first (fast UI feedback).
+    clear();
+
+    try {
+      final carts = await _repo.getCarts();
+
+      // Find active cart (backend returns both active+inactive).
+      final activeCart = carts.cast<Map<String, dynamic>>().firstWhere(
+            (c) => c['is_active'] == true,
+            orElse: () => <String, dynamic>{},
+          );
+
+      if (activeCart.isEmpty) return;
+
+      final cartItems = (activeCart['cart_items'] as List?) ?? const [];
+      if (cartItems.isEmpty) return;
+
+      // Delete all cart items best-effort. If backend already deleted the cart,
+      // these calls may fail (404) — we intentionally ignore.
+      for (final raw in cartItems) {
+        final item = raw as Map<String, dynamic>?;
+        final cartItemId = (item?['cart_item_id'] ?? '').toString().trim();
+        if (cartItemId.isEmpty) continue;
+        try {
+          await _repo.deleteCartItem(cartItemId: cartItemId);
+        } catch (_) {
+          // ignore best-effort
+        }
+      }
+    } catch (_) {
+      // ignore best-effort
+    } finally {
+      // Ensure local is clean even if backend cleanup failed.
+      clear();
+    }
   }
 }
 

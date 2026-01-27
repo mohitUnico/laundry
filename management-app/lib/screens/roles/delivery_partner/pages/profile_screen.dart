@@ -6,10 +6,73 @@ import '../../../../theme/app_text_styles.dart';
 import '../../../../utils/auth_storage.dart';
 import '../../../../utils/role_manager.dart';
 import '../../../../utils/role_constants.dart';
+import '../../../../services/delivery_staff_app_service.dart';
 import '../../../common/widgets/bottom_nav_bar.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  final DeliveryStaffAppService _deliveryStaffAppService = DeliveryStaffAppService();
+  late final Future<Map<String, dynamic>?> _profileFuture;
+  late final Future<_HomeStatsUi> _statsFuture;
+
+  static String _readString(Map<String, dynamic>? map, String key) {
+    final v = map?[key];
+    return v == null ? '' : v.toString().trim();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _profileFuture = _loadProfile();
+    _statsFuture = _loadStats();
+  }
+
+  Future<_HomeStatsUi> _loadStats() async {
+    try {
+      final body = await _deliveryStaffAppService.getHomeStats();
+      final data = body['data'];
+      if (data is! Map) return const _HomeStatsUi(inProgress: 0, completed: 0);
+      final map = data.cast<String, dynamic>();
+      final inProgressRaw = map['inProgress'];
+      final completedRaw = map['completed'];
+      final inProgress =
+          (inProgressRaw is num) ? inProgressRaw.toInt() : int.tryParse(inProgressRaw?.toString() ?? '') ?? 0;
+      final completed =
+          (completedRaw is num) ? completedRaw.toInt() : int.tryParse(completedRaw?.toString() ?? '') ?? 0;
+      return _HomeStatsUi(inProgress: inProgress, completed: completed);
+    } catch (_) {
+      return const _HomeStatsUi(inProgress: 0, completed: 0);
+    }
+  }
+
+  Future<Map<String, dynamic>?> _loadProfile() async {
+    // 1) Try network (most accurate)
+    try {
+      final body = await _deliveryStaffAppService.getProfile();
+      final data = body['data'];
+      if (data is Map) {
+        final profile = data.cast<String, dynamic>();
+        // Persist for other screens and offline use.
+        await Future.wait([
+          AuthStorage.saveDeliveryStaff(profile),
+          AuthStorage.saveCurrentUser(profile),
+        ]);
+        return profile;
+      }
+    } catch (_) {
+      // ignore and fallback to storage
+    }
+
+    // 2) Fallback to storage
+    final stored = await AuthStorage.getDeliveryStaff();
+    return stored ?? await AuthStorage.getCurrentUser();
+  }
 
   Future<void> _logout(BuildContext context) async {
     final role = await RoleManager.getRole();
@@ -31,94 +94,162 @@ class ProfileScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        child: Column(
-          children: [
-            const _AccountHeader(),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: FutureBuilder<Map<String, dynamic>?>(
+          future: _profileFuture,
+          builder: (context, snapshot) {
+            final user = snapshot.data;
+
+            final staffId = _readString(user, 'staff_id').isNotEmpty ? _readString(user, 'staff_id') : _readString(user, 'userId');
+            final fullName = _readString(user, 'full_name').isNotEmpty ? _readString(user, 'full_name') : _readString(user, 'fullName');
+
+            final phone = _readString(user, 'phone');
+            final email = _readString(user, 'email');
+            final address = _readString(user, 'address');
+            final vehicleType = _readString(user, 'vehicle_type');
+            final vehicleNumber = _readString(user, 'vehicle_number');
+
+            final verificationStatus = _readString(user, 'verification_status');
+            final isVerifiedByAdmin = _readString(user, 'is_verified_by_admin');
+            final totalDeliveries = _readString(user, 'total_deliveries');
+            final averageRating = _readString(user, 'average_rating');
+
+            final profileImageUrl = _readString(user, 'profile_image_url');
+            final idProofType = _readString(user, 'id_proof_type');
+            final idProofUrl = _readString(user, 'id_proof_url');
+            final drivingLicenseUrl = _readString(user, 'driving_license_url');
+
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Column(
                 children: [
-                  const SizedBox(height: 16),
-                  const _AccountSummaryCard(),
-                  const SizedBox(height: 16),
-                  // Logout button (moved here; Home screen End Shift no longer logs out)
-                  SizedBox(
-                    height: 52,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(26),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.08),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
+                  _AccountHeader(),
+                  Expanded(child: Center(child: CircularProgressIndicator())),
+                ],
+              );
+            }
+
+            return Column(
+              children: [
+                const _AccountHeader(),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    children: [
+                      const SizedBox(height: 16),
+                      _AccountSummaryCard(
+                        staffId: staffId,
+                        fullName: fullName,
+                        phone: phone,
+                        email: email,
+                        profileImageUrl: profileImageUrl,
+                        totalDeliveries: totalDeliveries,
+                        averageRating: averageRating,
+                        verificationStatus: verificationStatus,
+                        isVerifiedByAdmin: isVerifiedByAdmin,
+                        statsFuture: _statsFuture,
                       ),
-                      child: TextButton(
-                        style: TextButton.styleFrom(
-                          shape: RoundedRectangleBorder(
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        height: 52,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
                             borderRadius: BorderRadius.circular(26),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.08),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
                           ),
-                        ),
-                        onPressed: () => _logout(context),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.logout, color: AppColors.error, size: 18),
-                            const SizedBox(width: 10),
-                            Text(
-                              'Log Out',
-                              style: AppTextStyles.button(color: AppColors.error).copyWith(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
+                          child: TextButton(
+                            style: TextButton.styleFrom(
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(26),
                               ),
                             ),
-                          ],
+                            onPressed: () => _logout(context),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.logout, color: AppColors.error, size: 18),
+                                const SizedBox(width: 10),
+                                Text(
+                                  'Log Out',
+                                  style: AppTextStyles.button(color: AppColors.error).copyWith(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 24),
+                      const _SectionTitle('Account Details'),
+                      const SizedBox(height: 16),
+                      _AccountDetailItem(
+                        icon: Icons.phone_outlined,
+                        label: 'Phone Number',
+                        value: phone.isNotEmpty ? phone : '—',
+                      ),
+                      const SizedBox(height: 16),
+                      _AccountDetailItem(
+                        icon: Icons.email_outlined,
+                        label: 'Email',
+                        value: email.isNotEmpty ? email : '—',
+                      ),
+                      if (address.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        _AccountDetailItem(
+                          icon: Icons.location_on_outlined,
+                          label: 'Address',
+                          value: address,
+                        ),
+                      ],
+                      if (vehicleType.isNotEmpty || vehicleNumber.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        _AccountDetailItem(
+                          icon: Icons.directions_bike_outlined,
+                          label: 'Vehicle',
+                          value: [vehicleType, vehicleNumber].where((s) => s.isNotEmpty).join(' • '),
+                        ),
+                      ],
+                      if (verificationStatus.isNotEmpty || isVerifiedByAdmin.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        _AccountDetailItem(
+                          icon: Icons.verified_outlined,
+                          label: 'Verification',
+                          value: [
+                            if (verificationStatus.isNotEmpty) verificationStatus,
+                            if (isVerifiedByAdmin.isNotEmpty) 'admin: $isVerifiedByAdmin',
+                          ].join(' • '),
+                        ),
+                      ],
+                      const SizedBox(height: 24),
+                      const _SectionTitle('Uploaded Documents'),
+                      const SizedBox(height: 16),
+                      _DocumentCard(
+                        imagePath: 'assets/images/documents/aadhaar.png',
+                        title: 'ID Proof',
+                        subtitle: idProofType.isNotEmpty
+                            ? idProofType
+                            : (idProofUrl.isNotEmpty ? 'Uploaded' : 'Not uploaded'),
+                      ),
+                      const SizedBox(height: 12),
+                      _DocumentCard(
+                        imagePath: 'assets/images/documents/driving_license.png',
+                        title: 'Driving License',
+                        subtitle: drivingLicenseUrl.isNotEmpty ? 'Uploaded' : 'Not uploaded',
+                      ),
+                      const SizedBox(height: 24),
+                    ],
                   ),
-                  const SizedBox(height: 24),
-                  const _SectionTitle('Account Details'),
-                  const SizedBox(height: 16),
-                  const _AccountDetailItem(
-                    icon: Icons.phone_outlined,
-                    label: 'Phone Number',
-                    value: '+91 78569 45865',
-                  ),
-                  const SizedBox(height: 16),
-                  const _AccountDetailItem(
-                    icon: Icons.email_outlined,
-                    label: 'Email',
-                    value: 'nadaansharma@gmail.com',
-                  ),
-                  const SizedBox(height: 16),
-                  const _AccountDetailItem(
-                    icon: Icons.location_on_outlined,
-                    label: 'Address',
-                    value: 'No. 42, 3rd Cross, Indiranagar, Bengaluru, Karnataka 560038',
-                  ),
-                  const SizedBox(height: 24),
-                  const _SectionTitle('Uploaded Documents'),
-                  const SizedBox(height: 16),
-                  const _DocumentCard(
-                    imagePath: 'assets/images/documents/aadhaar.png',
-                    title: 'Id Proof',
-                    subtitle: 'Adhaar',
-                  ),
-                  const SizedBox(height: 12),
-                  const _DocumentCard(
-                    imagePath: 'assets/images/documents/driving_license.png',
-                    title: 'Driving License',
-                    subtitle: '',
-                  ),
-                  const SizedBox(height: 24),
-                ],
-              ),
-            ),
-          ],
+                ),
+              ],
+            );
+          },
         ),
       ),
       bottomNavigationBar: BottomNavBar(
@@ -178,143 +309,209 @@ class _AccountHeader extends StatelessWidget {
 }
 
 class _AccountSummaryCard extends StatelessWidget {
-  const _AccountSummaryCard();
+  final String staffId;
+  final String fullName;
+  final String phone;
+  final String email;
+  final String profileImageUrl;
+  final String totalDeliveries;
+  final String averageRating;
+  final String verificationStatus;
+  final String isVerifiedByAdmin;
+  final Future<_HomeStatsUi> statsFuture;
+
+  const _AccountSummaryCard({
+    required this.staffId,
+    required this.fullName,
+    required this.phone,
+    required this.email,
+    required this.profileImageUrl,
+    required this.totalDeliveries,
+    required this.averageRating,
+    required this.verificationStatus,
+    required this.isVerifiedByAdmin,
+    required this.statsFuture,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<Map<String, dynamic>?>(
-      future: AuthStorage.getCurrentUser(),
-      builder: (context, snapshot) {
-        final user = snapshot.data;
-        final fullName = (user?['fullName'] ?? '').toString().trim();
-        final userId = (user?['userId'] ?? '').toString().trim();
-        final phone = (user?['phone'] ?? '').toString().trim();
-        final email = (user?['email'] ?? '').toString().trim();
+    final secondary = <String>[
+      if (phone.isNotEmpty) phone,
+      if (email.isNotEmpty) email,
+    ].join(' • ');
 
-        return Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 2),
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Profile Picture (use uploaded URL if available)
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: AppColors.primary.withValues(alpha: 0.3),
+                width: 2,
+              ),
+            ),
+            child: ClipOval(
+              child: (profileImageUrl.isNotEmpty && profileImageUrl.startsWith('http'))
+                  ? Image.network(
+                      profileImageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          color: AppColors.primary.withValues(alpha: 0.1),
+                          child: const Icon(Icons.person, size: 40, color: AppColors.primary),
+                        );
+                      },
+                    )
+                  : Container(
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                      child: const Icon(Icons.person, size: 40, color: AppColors.primary),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Name
+          Text(
+            fullName.isNotEmpty ? fullName : '—',
+            style: AppTextStyles.title(
+              color: AppColors.textPrimary,
+            ).copyWith(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          // ID (scrollable)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'ID: ',
+                style: AppTextStyles.subtitle(
+                  color: AppColors.textSecondary,
+                ).copyWith(fontSize: 13),
+              ),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 180),
+                child: staffId.isNotEmpty
+                    ? SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Text(
+                          staffId,
+                          maxLines: 1,
+                          softWrap: false,
+                          style: AppTextStyles.subtitle(
+                            color: AppColors.textSecondary,
+                          ).copyWith(fontSize: 13),
+                        ),
+                      )
+                    : Text(
+                        '—',
+                        style: AppTextStyles.subtitle(
+                          color: AppColors.textSecondary,
+                        ).copyWith(fontSize: 13),
+                      ),
               ),
             ],
           ),
-          child: Column(
-            children: [
-              // Profile Picture
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: AppColors.primary.withOpacity(0.3),
-                    width: 2,
-                  ),
+          const SizedBox(height: 8),
+          if (secondary.isNotEmpty) ...[
+            Text(
+              secondary,
+              textAlign: TextAlign.center,
+              style: AppTextStyles.subtitle(color: AppColors.textSecondary).copyWith(fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+          ] else ...[
+            const SizedBox(height: 12),
+          ],
+          FutureBuilder<_HomeStatsUi>(
+            future: statsFuture,
+            builder: (context, snapshot) {
+              final stats = snapshot.data ?? const _HomeStatsUi(inProgress: 0, completed: 0);
+              final widgets = <Widget>[
+                _StatItem(value: '${stats.inProgress}', label: 'In Progress'),
+                Container(
+                  width: 1,
+                  height: 40,
+                  color: AppColors.divider.withValues(alpha: 0.3),
                 ),
-                child: ClipOval(
-                  child: Image.asset(
-                    'assets/images/profile_placeholder.png',
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        color: AppColors.primary.withOpacity(0.1),
-                        child: const Icon(
-                          Icons.person,
-                          size: 40,
-                          color: AppColors.primary,
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              // Name
-              Text(
-                fullName.isNotEmpty ? fullName : '—',
-                style: AppTextStyles.title(
-                  color: AppColors.textPrimary,
-                ).copyWith(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 4),
-              // ID (scrollable)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'ID: ',
-                    style: AppTextStyles.subtitle(
-                      color: AppColors.textSecondary,
-                    ).copyWith(fontSize: 13),
-                  ),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 180),
-                    child: userId.isNotEmpty
-                        ? SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Text(
-                              userId,
-                              maxLines: 1,
-                              softWrap: false,
-                              style: AppTextStyles.subtitle(
-                                color: AppColors.textSecondary,
-                              ).copyWith(fontSize: 13),
-                            ),
-                          )
-                        : Text(
-                            '—',
-                            style: AppTextStyles.subtitle(
-                              color: AppColors.textSecondary,
-                            ).copyWith(fontSize: 13),
-                          ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              if (phone.isNotEmpty || email.isNotEmpty) ...[
-                Text(
-                  [if (phone.isNotEmpty) phone, if (email.isNotEmpty) email].join(' • '),
-                  textAlign: TextAlign.center,
-                  style: AppTextStyles.subtitle(color: AppColors.textSecondary).copyWith(fontSize: 12),
-                ),
-                const SizedBox(height: 12),
-              ] else ...[
-                const SizedBox(height: 12),
-              ],
-              // Statistics
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  const _StatItem(
-                    value: '156',
-                    label: 'Total Deliveries',
-                  ),
+                _StatItem(value: '${stats.completed}', label: 'Completed'),
+              ];
+
+              if (totalDeliveries.isNotEmpty) {
+                widgets.addAll([
                   Container(
                     width: 1,
                     height: 40,
-                    color: AppColors.divider.withOpacity(0.3),
+                    color: AppColors.divider.withValues(alpha: 0.3),
                   ),
-                  const _StatItem(
-                    value: '98%',
-                    label: 'On-Time Rate',
+                  _StatItem(value: totalDeliveries, label: 'Total Deliveries'),
+                ]);
+              }
+              if (averageRating.isNotEmpty) {
+                widgets.addAll([
+                  Container(
+                    width: 1,
+                    height: 40,
+                    color: AppColors.divider.withValues(alpha: 0.3),
                   ),
-                ],
-              ),
-            ],
+                  _StatItem(value: averageRating, label: 'Avg Rating'),
+                ]);
+              }
+              if (verificationStatus.isNotEmpty) {
+                widgets.addAll([
+                  Container(
+                    width: 1,
+                    height: 40,
+                    color: AppColors.divider.withValues(alpha: 0.3),
+                  ),
+                  _StatItem(
+                    value: verificationStatus,
+                    label: isVerifiedByAdmin.isNotEmpty ? 'Verification (admin: $isVerifiedByAdmin)' : 'Verification',
+                  ),
+                ]);
+              }
+
+              return SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: widgets
+                      .map((w) => Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            child: w,
+                          ))
+                      .toList(),
+                ),
+              );
+            },
           ),
-        );
-      },
+        ],
+      ),
     );
   }
+}
+
+class _HomeStatsUi {
+  final int inProgress;
+  final int completed;
+
+  const _HomeStatsUi({required this.inProgress, required this.completed});
 }
 
 class _StatItem extends StatelessWidget {
@@ -390,7 +587,7 @@ class _AccountDetailItem extends StatelessWidget {
           width: 40,
           height: 40,
           decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(0.1),
+            color: AppColors.primary.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(
@@ -447,7 +644,7 @@ class _DocumentCard extends StatelessWidget {
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: AppColors.divider.withOpacity(0.3),
+          color: AppColors.divider.withValues(alpha: 0.3),
         ),
       ),
       child: Row(
@@ -459,7 +656,7 @@ class _DocumentCard extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: AppColors.divider.withOpacity(0.3),
+                color: AppColors.divider.withValues(alpha: 0.3),
               ),
             ),
             child: ClipRRect(

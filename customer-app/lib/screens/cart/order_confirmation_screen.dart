@@ -202,7 +202,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
             ),
           );
 
-      cart.clear();
+      await cart.clearAfterOrderPlaced();
 
       if (!mounted) return;
       Navigator.of(context).pushNamedAndRemoveUntil(

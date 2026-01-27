@@ -288,6 +288,15 @@ exports.listReceivedOrders = async ({ page, limit } = {}) => {
             take: safeLimit,
             include: {
                 customer: { select: { customer_id: true, full_name: true, phone: true } },
+                pickup_address: { select: { address_id: true, full_address: true, latitude: true, longitude: true } },
+                deliveries: {
+                    where: { delivery_type: 'pickup' },
+                    orderBy: { created_at: 'desc' },
+                    take: 1,
+                    include: {
+                        staff: { select: { staff_id: true, full_name: true, phone: true } },
+                    },
+                },
             },
         }),
     ]);

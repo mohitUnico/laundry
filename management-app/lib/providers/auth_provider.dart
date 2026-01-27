@@ -77,7 +77,6 @@ class AuthProvider with ChangeNotifier {
   Future<void> sendOtpForRole({
     required String role,
     required String email,
-    String? serviceId,
   }) async {
     if (role == RoleConstants.deliveryPartner) {
       return sendDeliveryOtp(email: email);
@@ -93,11 +92,7 @@ class AuthProvider with ChangeNotifier {
       } else if (role == RoleConstants.distributionManager) {
         await _staffAuthService.sendDistributionManagerOtp(email: email);
       } else if (role == RoleConstants.serviceMan) {
-        final sid = (serviceId ?? '').trim();
-        if (sid.isEmpty) {
-          throw Exception('Service ID is required');
-        }
-        await _staffAuthService.sendServiceManOtp(email: email, serviceId: sid);
+        await _staffAuthService.sendServiceManOtp(email: email);
       } else {
         throw Exception('Unsupported role for OTP login');
       }
@@ -181,7 +176,6 @@ class AuthProvider with ChangeNotifier {
     required String role,
     required String email,
     required String otp,
-    String? serviceId,
   }) async {
     if (role == RoleConstants.deliveryPartner) {
       return verifyDeliveryOtp(email: email, otp: otp);
@@ -198,11 +192,7 @@ class AuthProvider with ChangeNotifier {
       } else if (role == RoleConstants.distributionManager) {
         body = await _staffAuthService.verifyDistributionManagerOtp(email: email, otp: otp);
       } else if (role == RoleConstants.serviceMan) {
-        final sid = (serviceId ?? '').trim();
-        if (sid.isEmpty) {
-          throw Exception('Service ID is required');
-        }
-        body = await _staffAuthService.verifyServiceManOtp(email: email, otp: otp, serviceId: sid);
+        body = await _staffAuthService.verifyServiceManOtp(email: email, otp: otp);
       } else {
         throw Exception('Unsupported role for OTP login');
       }

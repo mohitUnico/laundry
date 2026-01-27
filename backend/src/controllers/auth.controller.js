@@ -948,8 +948,6 @@ const completeDistributionManagerRegistration = async (req, res, next) => {
 /**
  * Send OTP to service man email
  * POST /api/v1/auth/service-man/send-otp
- *
- * NOTE: requires serviceType/serviceId in request (validated at route layer)
  */
 const sendServiceManOtp = async (req, res, next) => {
   try {
@@ -974,14 +972,12 @@ const sendServiceManOtp = async (req, res, next) => {
 /**
  * Verify service man OTP
  * POST /api/v1/auth/service-man/verify-otp
- *
- * Requires serviceType/serviceId in request so we can enforce that the login is for the correct service.
  */
 const verifyServiceManOtp = async (req, res, next) => {
   try {
-    const { email, otp, serviceId } = req.body;
+    const { email, otp } = req.body;
 
-    const result = await otpService.verifyOtp(email, otp, otpService.USER_TYPES.SERVICE_MAN, { serviceId });
+    const result = await otpService.verifyOtp(email, otp, otpService.USER_TYPES.SERVICE_MAN);
 
     if (result.isNewUser) {
       res.status(200).json({

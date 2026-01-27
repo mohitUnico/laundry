@@ -19,14 +19,12 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _serviceIdController = TextEditingController();
   final GlobalKey<OtpInputRowState> _otpInputKey = GlobalKey<OtpInputRowState>();
 
   bool _otpRequested = false;
   String _otp = '';
   bool _otpAutoSubmitting = false;
   String? _emailError;
-  String? _serviceIdError;
   String? _otpError;
   bool _isSendingOtp = false;
   bool _isVerifyingOtp = false;
@@ -34,7 +32,6 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void dispose() {
     _emailController.dispose();
-    _serviceIdController.dispose();
     super.dispose();
   }
 
@@ -112,22 +109,8 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    String? serviceId;
-    if (role == RoleConstants.serviceMan) {
-      final raw = _serviceIdController.text.trim();
-      final uuid = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$');
-      if (raw.isEmpty || !uuid.hasMatch(raw)) {
-        setState(() {
-          _serviceIdError = 'Please enter a valid Service ID (UUID)';
-        });
-        return;
-      }
-      serviceId = raw;
-    }
-
     setState(() {
       _emailError = null;
-      _serviceIdError = null;
       _otpError = null;
       _isSendingOtp = true;
     });
@@ -136,7 +119,6 @@ class _LoginScreenState extends State<LoginScreen> {
       await context.read<AuthProvider>().sendOtpForRole(
             role: role,
             email: email,
-            serviceId: serviceId,
           );
       if (!mounted) return;
       setState(() {
@@ -195,7 +177,6 @@ class _LoginScreenState extends State<LoginScreen> {
             role: role,
             email: email,
             otp: _otp,
-            serviceId: role == RoleConstants.serviceMan ? _serviceIdController.text.trim() : null,
           );
       if (!mounted) return;
       if (isNewUser) {
@@ -244,7 +225,6 @@ class _LoginScreenState extends State<LoginScreen> {
         (ModalRoute.of(context)?.settings.arguments as Map?)?['role'] as String?;
     
     final isDeliveryPartner = role == RoleConstants.deliveryPartner;
-    final isServiceMan = role == RoleConstants.serviceMan;
     // We no longer use User ID / Password login for any role.
     const usesOtpLogin = true;
 
@@ -331,26 +311,6 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                               textAlign: TextAlign.center,
                             ),
-                          ),
-                          const SizedBox(height: 18),
-                        ],
-                        if (isServiceMan) ...[
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              'Service ID',
-                              style: AppTextStyles.body(color: AppColors.textPrimary).copyWith(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          PillTextField(
-                            controller: _serviceIdController,
-                            hintText: 'Enter Service ID (UUID)',
-                            keyboardType: TextInputType.text,
-                            errorText: _serviceIdError,
                           ),
                           const SizedBox(height: 18),
                         ],

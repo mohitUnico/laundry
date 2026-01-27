@@ -358,18 +358,6 @@ const verifyOtp = async (email, otp, userType, options = {}) => {
                 userId: existingUser.user_id || existingUser.customer_id || existingUser.staff_id
             });
 
-            // Service man login must include serviceId and must match the assigned service.
-            if (userType === USER_TYPES.SERVICE_MAN) {
-                const requestedServiceId = String(options?.serviceId || '').trim();
-                if (!requestedServiceId) {
-                    throw new ValidationError('Service ID is required');
-                }
-                const assignedServiceId = String(existingUser.service_id || '').trim();
-                if (!assignedServiceId || assignedServiceId !== requestedServiceId) {
-                    throw new AuthorizationError('Invalid service for this service man');
-                }
-            }
-
             const userId =
                 existingUser.user_id ||
                 existingUser.customer_id ||

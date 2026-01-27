@@ -117,12 +117,11 @@ class StaffAuthService {
 
   Future<int?> sendServiceManOtp({
     required String email,
-    required String serviceId,
   }) async {
     try {
       final res = await _api.post(
         '/auth/service-man/send-otp',
-        data: {'email': email, 'serviceId': serviceId},
+        data: {'email': email},
       );
       final data = res.data;
       if (data is Map<String, dynamic>) {
@@ -142,12 +141,11 @@ class StaffAuthService {
   Future<Map<String, dynamic>> verifyServiceManOtp({
     required String email,
     required String otp,
-    required String serviceId,
   }) async {
     try {
       final res = await _api.post(
         '/auth/service-man/verify-otp',
-        data: {'email': email, 'otp': otp, 'serviceId': serviceId},
+        data: {'email': email, 'otp': otp},
       );
       final body = res.data;
       if (body is Map<String, dynamic>) return body;

@@ -95,13 +95,8 @@ const sendOtpSchema = Joi.object({
   email: emailSchema
 });
 
-// Service man auth must be tied to a service (1 service man per service).
 const sendServiceManOtpSchema = Joi.object({
   email: emailSchema,
-  serviceId: Joi.string().uuid().required().messages({
-    'string.guid': 'Service ID must be a valid UUID',
-    'any.required': 'Service ID is required',
-  }),
 });
 
 const sendPortalOtpSchema = Joi.object({
@@ -120,10 +115,6 @@ const verifyOtpSchema = Joi.object({
 const verifyServiceManOtpSchema = Joi.object({
   email: emailSchema,
   otp: otpSchema,
-  serviceId: Joi.string().uuid().required().messages({
-    'string.guid': 'Service ID must be a valid UUID',
-    'any.required': 'Service ID is required',
-  }),
 });
 
 const verifyPortalOtpSchema = Joi.object({

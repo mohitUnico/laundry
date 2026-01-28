@@ -463,8 +463,11 @@ exports.generateInvoice = async ({ staffId, orderId }) => {
         });
 
         if (!order) throw new NotFoundError('Order');
-        if (order.order_status !== 'received_by_collection') {
-            throw new ConflictError('Order must be received by collection manager before generating invoice');
+        // Invoice should only be generated after delivery staff has submitted the order
+        // to the collection centre (submitted_to_cm). This ensures all per-kg weights
+        // are recorded and the order is fully in collection custody.
+        if (order.order_status !== 'submitted_to_cm') {
+            throw new ConflictError('Invoice can only be generated after order is submitted to collection manager (submitted_to_cm)');
         }
         if (!order.order_items || order.order_items.length === 0) {
             throw new ValidationError('Order has no items');

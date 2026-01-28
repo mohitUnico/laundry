@@ -168,12 +168,26 @@ class DashboardService {
             const dayStart = new Date(Date.UTC(year, month, day, 0, 0, 0));
             const nextDayStart = new Date(Date.UTC(year, month, day + 1, 0, 0, 0));
 
-            const buildCountPromise = (status) =>
+            // IMPORTANT:
+            // - Pending / In progress / Out for delivery should reflect CURRENT queue (not only "created today"),
+            //   otherwise older pending orders show as 0 on dashboard while modals show them correctly.
+            // - Completed today should remain day-scoped (delivered today), using updated_at.
+            const buildCurrentCountPromise = (statusOrStatuses) =>
                 prisma.order.count({
                     where: {
                         ...(martId ? { mart_id: martId } : {}),
-                        order_status: status,
-                        created_at: {
+                        order_status: Array.isArray(statusOrStatuses)
+                            ? { in: statusOrStatuses }
+                            : statusOrStatuses,
+                    },
+                });
+
+            const buildCompletedTodayPromise = () =>
+                prisma.order.count({
+                    where: {
+                        ...(martId ? { mart_id: martId } : {}),
+                        order_status: 'delivered',
+                        updated_at: {
                             gte: dayStart,
                             lt: nextDayStart,
                         },
@@ -181,10 +195,18 @@ class DashboardService {
                 });
 
             const [pendingOrders, inProgressOrders, outForDeliveryOrders, completedTodayOrders] = await Promise.all([
-                buildCountPromise('placed'), // Pending orders (placed but not yet picked up)
-                buildCountPromise('services_in_progress'), // Orders in progress
-                buildCountPromise('out_for_delivery'), // Orders out for delivery
-                buildCountPromise('delivered'), // Completed today
+                buildCurrentCountPromise([
+                    // "Pending" on dashboard should reflect all not-yet-in-service / not-delivered work
+                    'placed',
+                    'pickup_assigned',
+                    'picked_up',
+                    'submitted_to_cm',
+                    'received_by_collection',
+                    'submitted_to_services',
+                ]),
+                buildCurrentCountPromise('services_in_progress'), // Orders in progress (current)
+                buildCurrentCountPromise('out_for_delivery'), // Orders out for delivery (current)
+                buildCompletedTodayPromise(), // Completed today
             ]);
 
             return {

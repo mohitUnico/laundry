@@ -66,6 +66,7 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
 
     Future<_DmOrderUi> mapOne(Map<String, dynamic> o) async {
       final orderId = (o['orderId'] ?? '').toString();
+      final orderType = (o['orderType'] ?? '').toString();
       final createdAt = _parseDate(o['createdAt']);
       final customer = o['customer'];
       final customerName = (customer is Map ? customer['fullName'] : null)?.toString() ?? 'Customer';
@@ -81,6 +82,7 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
         itemCount: itemsMapped.totalCount,
         items: itemsMapped.items,
         assignedTo: '—',
+        orderType: orderType,
         buttonText: 'Mark as Verified',
         isVerifyButton: true,
       );
@@ -129,7 +131,10 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
         itemCount: itemsMapped.totalCount,
         items: itemsMapped.items,
         assignedTo: assignedTo,
-        buttonText: assignedTo == '—' ? 'Assign Delivery Partner' : 'Assigned',
+        orderType: orderType,
+        buttonText: orderType == 'pickup_only'
+            ? 'Submitted to Customer'
+            : (assignedTo == '—' ? 'Assign Delivery Partner' : 'Assigned'),
         isVerifyButton: false,
       );
     }
@@ -157,6 +162,22 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
       );
       // Refresh both lists so the order moves to dispatch tab.
       await Future.wait([_refreshReady(), _refreshVerified()]);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', '').trim())),
+      );
+    }
+  }
+
+  Future<void> _submitToCustomerAndRefresh(String orderId) async {
+    try {
+      await _ordersService.submitToCustomer(orderId: orderId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Order submitted to customer')),
+      );
+      await _refreshVerified();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -464,22 +485,7 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
                 ],
               ),
             ),
-            // Screen Title
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-              child: Align(
-                alignment: _selectedTabIndex == 0 ? Alignment.centerLeft : Alignment.centerRight,
-                child: Text(
-                  _selectedTabIndex == 0 ? 'Home' : 'Dispatch',
-                  style: AppTextStyles.header(
-                    color: AppColors.textSecondary,
-                  ).copyWith(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
+            const SizedBox(height: 8),
             // Orders List
             Expanded(
               child: _selectedTabIndex == 0
@@ -553,6 +559,7 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
                     time: o.time,
                     itemCount: o.itemCount,
                     assignedTo: o.assignedTo,
+                    orderType: o.orderType,
                     buttonText: o.buttonText,
                     items: o.items,
                     isVerifyButton: o.isVerifyButton,
@@ -621,11 +628,13 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
                     time: o.time,
                     itemCount: o.itemCount,
                     assignedTo: o.assignedTo,
+                    orderType: o.orderType,
                     buttonText: o.buttonText,
                     items: o.items,
                     isVerifyButton: o.isVerifyButton,
                     onVerify: _verifyAndRefresh,
                     onAssigned: _refreshVerified,
+                    onSubmitToCustomer: _submitToCustomerAndRefresh,
                   ),
                   const SizedBox(height: 12),
                 ],
@@ -661,6 +670,7 @@ class _DmOrderUi {
   final int itemCount;
   final List<_OrderItem> items;
   final String assignedTo;
+  final String orderType;
   final String buttonText;
   final bool isVerifyButton;
 
@@ -673,6 +683,7 @@ class _DmOrderUi {
     required this.itemCount,
     required this.items,
     required this.assignedTo,
+    required this.orderType,
     required this.buttonText,
     required this.isVerifyButton,
   });
@@ -686,12 +697,14 @@ class _OrderCard extends StatefulWidget {
   final String time;
   final int itemCount;
   final String assignedTo;
+  final String orderType;
   final String buttonText;
   final List<_OrderItem> items;
   final bool isExpanded;
   final bool isVerifyButton;
   final Future<void> Function(String orderId)? onVerify;
   final VoidCallback? onAssigned;
+  final Future<void> Function(String orderId)? onSubmitToCustomer;
 
   const _OrderCard({
     required this.backendOrderId,
@@ -701,12 +714,14 @@ class _OrderCard extends StatefulWidget {
     required this.time,
     required this.itemCount,
     required this.assignedTo,
+    required this.orderType,
     required this.buttonText,
     required this.items,
     this.isExpanded = false,
     required this.isVerifyButton,
     this.onVerify,
     this.onAssigned,
+    this.onSubmitToCustomer,
   });
 
   @override
@@ -848,6 +863,13 @@ class _OrderCardState extends State<_OrderCard> {
                     final normalized = widget.assignedTo.trim();
                     final alreadyAssigned = normalized.isNotEmpty && normalized != '—';
                     if (alreadyAssigned) return;
+
+                    if (widget.orderType == 'pickup_only') {
+                      final handler = widget.onSubmitToCustomer;
+                      if (handler == null) return;
+                      await handler(widget.backendOrderId);
+                      return;
+                    }
 
                     final result = await Navigator.push(
                       context,
@@ -1182,16 +1204,7 @@ class _NavTab extends StatelessWidget {
               size: 26,
               color: color,
             ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                height: 1.0,
-                color: color,
-              ),
-            ),
+            const SizedBox(height: 2),
           ],
         ),
       ),

@@ -376,6 +376,66 @@ exports.assignDropDirect = async ({ staffId, orderId, deliveryStaffId }) => {
     });
 };
 
+exports.submitToCustomer = async ({ staffId, orderId }) => {
+    if (!orderId) throw new ValidationError('orderId is required');
+
+    const now = new Date();
+
+    return prisma.$transaction(async (tx) => {
+        const order = await tx.order.findUnique({
+            where: { order_id: orderId },
+            select: {
+                order_id: true,
+                order_status: true,
+                order_type: true,
+                verified_at: true,
+                dispatched_at: true,
+                payment_confirmed_at: true,
+            },
+        });
+
+        if (!order) throw new NotFoundError('Order');
+
+        // This action is only valid when customer will collect from store (no drop delivery).
+        if (order.order_type !== 'pickup_only') {
+            throw new ValidationError('Submit to customer is only allowed for pickup_only orders');
+        }
+
+        if (order.order_status !== 'services_completed') {
+            throw new ConflictError('Order must be services_completed before submitting to customer');
+        }
+
+        if (!order.verified_at) {
+            throw new ConflictError('Order must be verified by distribution manager before submitting to customer');
+        }
+
+        // Idempotent: if already delivered/closed, just return.
+        if (order.order_status === 'delivered' || order.order_status === 'closed') {
+            return { orderId, orderStatus: order.order_status, deliveredAt: order.payment_confirmed_at || null };
+        }
+
+        const updated = await tx.order.update({
+            where: { order_id: orderId },
+            data: {
+                // We treat store handover as "delivered" (payment confirmed).
+                order_status: 'delivered',
+                payment_confirmed_at: order.payment_confirmed_at || now,
+                // Keep a record of who performed this action in distribution module.
+                dispatched_by_distribution_manager_id: staffId,
+                dispatched_at: order.dispatched_at || now,
+            },
+            select: { order_id: true, order_status: true, payment_confirmed_at: true, dispatched_at: true },
+        });
+
+        return {
+            orderId: updated.order_id,
+            orderStatus: updated.order_status,
+            deliveredAt: updated.payment_confirmed_at,
+            submittedAt: updated.dispatched_at,
+        };
+    });
+};
+
 exports.listDispatchHistory = async ({ page, limit } = {}) => {
     const { safePage, safeLimit, skip } = normalizePagination({ page, limit });
 

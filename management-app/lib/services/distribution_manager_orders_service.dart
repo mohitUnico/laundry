@@ -105,6 +105,17 @@ class DistributionManagerOrdersService {
     }
   }
 
+  Future<Map<String, dynamic>> submitToCustomer({required String orderId}) async {
+    try {
+      final res = await _api.post('/staff-app/distribution-manager/orders/$orderId/submit-to-customer');
+      final body = res.data;
+      if (body is Map<String, dynamic>) return body;
+      throw Exception('Unexpected response format');
+    } catch (e) {
+      throw Exception(_extractErrorMessage(e, fallback: 'Failed to submit order to customer'));
+    }
+  }
+
   Future<Map<String, dynamic>> listDispatchHistory({int page = 1, int limit = 20}) async {
     try {
       final res = await _api.get(

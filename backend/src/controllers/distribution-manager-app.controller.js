@@ -133,6 +133,30 @@ exports.assignDropDirect = async (req, res, next) => {
     }
 };
 
+exports.submitToCustomer = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'distribution_manager') {
+            throw new AuthorizationError('Only distribution managers can access this endpoint');
+        }
+
+        const staffId = req.user.user_id;
+        const { orderId } = req.params;
+
+        const data = await distributionManagerAppService.submitToCustomer({
+            staffId,
+            orderId,
+        });
+
+        res.status(200).json({
+            success: true,
+            data,
+            message: 'Order submitted to customer successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 exports.listDispatchHistory = async (req, res, next) => {
     try {
         if (req.user.role !== 'distribution_manager') {

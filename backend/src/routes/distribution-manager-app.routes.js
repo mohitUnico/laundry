@@ -64,6 +64,15 @@ router.post(
     distributionManagerAppController.assignDropDirect
 );
 
+// POST submit to customer (pickup_only: customer collects from store; no drop delivery)
+router.post(
+    '/orders/:orderId/submit-to-customer',
+    authenticateJWT,
+    authorize('distribution_manager'),
+    validateUuidParam('orderId'),
+    distributionManagerAppController.submitToCustomer
+);
+
 // GET dispatch history
 router.get(
     '/orders/history',

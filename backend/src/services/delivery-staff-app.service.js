@@ -112,7 +112,11 @@ const mapDeliveryToOrderCard = (d) => {
 exports.getHomeStats = async ({ staffId }) => {
     assertUuid(staffId, 'staffId');
 
-    const [completed, inProgress] = await Promise.all([
+    // IMPORTANT:
+    // In production we often run with a very small DB pool (e.g. connection_limit=3).
+    // Promise.all here can consume multiple connections at once and trigger P2024 pool timeouts.
+    // Use a Prisma transaction to run both queries safely using a single pooled connection.
+    const [completed, inProgress] = await prisma.$transaction([
         prisma.delivery.count({
             where: { staff_id: staffId, completed_at: { not: null } },
         }),
@@ -134,7 +138,8 @@ exports.listAcceptedOrders = async ({ staffId, page, limit }) => {
         delivery_status: { not: 'cancelled' },
     };
 
-    const [total, deliveries] = await Promise.all([
+    // Same rationale as getHomeStats(): avoid parallel queries that can exhaust a small pool.
+    const [total, deliveries] = await prisma.$transaction([
         prisma.delivery.count({ where }),
         prisma.delivery.findMany({
             where,
@@ -181,7 +186,7 @@ exports.listOrderHistory = async ({ staffId, page, limit, from, to }) => {
         ...(from || to ? { created_at } : {}),
     };
 
-    const [total, deliveries] = await Promise.all([
+    const [total, deliveries] = await prisma.$transaction([
         prisma.delivery.count({ where }),
         prisma.delivery.findMany({
             where,

@@ -159,7 +159,7 @@ exports.getOrderItems = async ({ orderId }) => {
         return {
             itemId: item.item_id,
             pricingType: item.pricing_type,
-            quantity: item.quantity ?? null,
+            quantity: item.quantity != null ? item.quantity : null,
             weightKg: item.weight_kg != null ? item.weight_kg.toString() : null,
             serviceName,
             categoryName,

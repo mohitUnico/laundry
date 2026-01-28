@@ -100,14 +100,11 @@ exports.getOrderItems = async ({ orderId }) => {
                 delivery_address: {
                     select: {
                         address_id: true,
-                        address_line1: true,
-                        address_line2: true,
-                        city: true,
-                        state: true,
-                        pincode: true,
+                        full_address: true,
+                        address_label: true,
                         latitude: true,
                         longitude: true,
-                        label: true,
+                        delivery_note: true,
                     },
                 },
                 order_items: {
@@ -216,14 +213,11 @@ exports.getOrderItems = async ({ orderId }) => {
             deliveryAddress: order.delivery_address
                 ? {
                       addressId: order.delivery_address.address_id,
-                      addressLine1: order.delivery_address.address_line1,
-                      addressLine2: order.delivery_address.address_line2,
-                      city: order.delivery_address.city,
-                      state: order.delivery_address.state,
-                      pincode: order.delivery_address.pincode,
+                      fullAddress: order.delivery_address.full_address,
+                      addressLabel: order.delivery_address.address_label,
                       latitude: order.delivery_address.latitude ? order.delivery_address.latitude.toString() : null,
                       longitude: order.delivery_address.longitude ? order.delivery_address.longitude.toString() : null,
-                      label: order.delivery_address.label,
+                      deliveryNote: order.delivery_address.delivery_note || null,
                   }
                 : null,
             itemsCount: items.length,

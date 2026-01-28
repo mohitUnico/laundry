@@ -312,7 +312,7 @@ exports.getInvoiceByOrderId = async (customerId, orderId) => {
             weightKg: it.weight_kg ? it.weight_kg.toString() : null,
             unitPrice: it.unit_price.toString(),
             subtotal: it.subtotal.toString(),
-            selections: const [],
+            selections: [],
         };
     });
 

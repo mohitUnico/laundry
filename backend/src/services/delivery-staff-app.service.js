@@ -30,6 +30,49 @@ const normalizePagination = ({ page = 1, limit = 20 } = {}) => {
 // Uses `== null` to match both `null` and `undefined` only (does NOT treat 0/'' as nullish).
 const coalesce = (value, fallback) => (value == null ? fallback : value);
 
+// -----------------------------------------------------------------------------
+// In-memory cache + in-flight de-duplication for high-frequency endpoints.
+//
+// Why:
+// - Production DB often runs with a very small pool (e.g. connection_limit=3).
+// - Delivery staff app polls/refreshes frequently; concurrent identical requests can saturate the pool.
+// - When pool is saturated Prisma throws P2024 ("Timed out fetching a new connection").
+//
+// What we do:
+// - De-dupe concurrent calls for the same key (staffId/page/limit)
+// - Cache results for a short TTL (2-4 seconds)
+// - On P2024, serve cached data if present instead of failing the request
+// -----------------------------------------------------------------------------
+
+const _inflight = new Map(); // key -> Promise
+const _cache = new Map(); // key -> { expiresAt: number, value: any }
+
+const _getCached = (key) => {
+    const entry = _cache.get(key);
+    if (!entry) return null;
+    if (Date.now() > entry.expiresAt) {
+        _cache.delete(key);
+        return null;
+    }
+    return entry.value;
+};
+
+const _setCached = (key, value, ttlMs) => {
+    _cache.set(key, { value, expiresAt: Date.now() + ttlMs });
+};
+
+const _withInflight = async (key, fn) => {
+    const existing = _inflight.get(key);
+    if (existing) return existing;
+    const p = (async () => fn())().finally(() => _inflight.delete(key));
+    _inflight.set(key, p);
+    return p;
+};
+
+const _isPrismaPoolTimeout = (err) => {
+    return err && typeof err === 'object' && err.code === 'P2024';
+};
+
 const mapDeliveryToOrderCard = (d) => {
     // itemCount is used by delivery staff UI as "number of clothes/items" (quantity), not number of order_items rows.
     // Prefer total quantity derived from order_items.quantity and fallback to row-count if unavailable.
@@ -112,20 +155,35 @@ const mapDeliveryToOrderCard = (d) => {
 exports.getHomeStats = async ({ staffId }) => {
     assertUuid(staffId, 'staffId');
 
-    // IMPORTANT:
-    // In production we often run with a very small DB pool (e.g. connection_limit=3).
-    // Promise.all here can consume multiple connections at once and trigger P2024 pool timeouts.
-    // Use a Prisma transaction to run both queries safely using a single pooled connection.
-    const [completed, inProgress] = await prisma.$transaction([
-        prisma.delivery.count({
-            where: { staff_id: staffId, completed_at: { not: null } },
-        }),
-        prisma.delivery.count({
-            where: { staff_id: staffId, completed_at: null, delivery_status: { not: 'cancelled' } },
-        }),
-    ]);
+    const cacheKey = `deliveryStaffApp:homeStats:${staffId}`;
+    const cached = _getCached(cacheKey);
+    if (cached) return cached;
 
-    return { completed, inProgress };
+    return _withInflight(cacheKey, async () => {
+        try {
+            // Single SQL round-trip instead of 2 count() calls
+            const rows = await prisma.$queryRaw`
+                SELECT
+                  COUNT(*) FILTER (WHERE staff_id = ${staffId} AND completed_at IS NOT NULL) AS completed,
+                  COUNT(*) FILTER (WHERE staff_id = ${staffId} AND completed_at IS NULL AND delivery_status <> 'cancelled') AS in_progress
+                FROM "public"."delivery"
+            `;
+
+            const row = Array.isArray(rows) && rows.length ? rows[0] : null;
+            const completed = Number(row?.completed ?? 0);
+            const inProgress = Number(row?.in_progress ?? 0);
+            const value = { completed, inProgress };
+
+            _setCached(cacheKey, value, 2500);
+            return value;
+        } catch (err) {
+            if (_isPrismaPoolTimeout(err) && cached) {
+                logger.warn('P2024 in getHomeStats; serving cached stats', { staffId });
+                return cached;
+            }
+            throw err;
+        }
+    });
 };
 
 exports.listAcceptedOrders = async ({ staffId, page, limit }) => {
@@ -138,38 +196,53 @@ exports.listAcceptedOrders = async ({ staffId, page, limit }) => {
         delivery_status: { not: 'cancelled' },
     };
 
-    // Same rationale as getHomeStats(): avoid parallel queries that can exhaust a small pool.
-    const [total, deliveries] = await prisma.$transaction([
-        prisma.delivery.count({ where }),
-        prisma.delivery.findMany({
-            where,
-            orderBy: { assigned_at: 'desc' },
-            skip,
-            take: safeLimit,
-            include: {
-                pickup: true,
-                drop: true,
-                order: {
-                    include: {
-                        customer: { select: { customer_id: true, full_name: true, phone: true } },
-                        bill: { select: { final_amount: true, payment_status: true } },
-                        _count: { select: { order_items: true } },
-                        order_items: { select: { quantity: true } },
+    const cacheKey = `deliveryStaffApp:accepted:${staffId}:${safePage}:${safeLimit}`;
+    const cached = _getCached(cacheKey);
+    if (cached) return cached;
+
+    return _withInflight(cacheKey, async () => {
+        try {
+            // Avoid COUNT() for this high-frequency endpoint to reduce DB load.
+            const deliveries = await prisma.delivery.findMany({
+                where,
+                orderBy: { assigned_at: 'desc' },
+                skip,
+                take: safeLimit,
+                include: {
+                    pickup: true,
+                    drop: true,
+                    order: {
+                        include: {
+                            customer: { select: { customer_id: true, full_name: true, phone: true } },
+                            bill: { select: { final_amount: true, payment_status: true } },
+                            _count: { select: { order_items: true } },
+                            order_items: { select: { quantity: true } },
+                        },
                     },
                 },
-            },
-        }),
-    ]);
+            });
 
-    return {
-        pagination: {
-            page: safePage,
-            limit: safeLimit,
-            total,
-            totalPages: Math.ceil(total / safeLimit),
-        },
-        orders: deliveries.map(mapDeliveryToOrderCard),
-    };
+            const value = {
+                pagination: {
+                    page: safePage,
+                    limit: safeLimit,
+                    total: null,
+                    totalPages: null,
+                    hasNext: deliveries.length === safeLimit,
+                },
+                orders: deliveries.map(mapDeliveryToOrderCard),
+            };
+
+            _setCached(cacheKey, value, 2000);
+            return value;
+        } catch (err) {
+            if (_isPrismaPoolTimeout(err) && cached) {
+                logger.warn('P2024 in listAcceptedOrders; serving cached list', { staffId, page: safePage, limit: safeLimit });
+                return cached;
+            }
+            throw err;
+        }
+    });
 };
 
 exports.listOrderHistory = async ({ staffId, page, limit, from, to }) => {
@@ -186,42 +259,58 @@ exports.listOrderHistory = async ({ staffId, page, limit, from, to }) => {
         ...(from || to ? { created_at } : {}),
     };
 
-    const [total, deliveries] = await prisma.$transaction([
-        prisma.delivery.count({ where }),
-        prisma.delivery.findMany({
-            where,
-            orderBy: { completed_at: 'desc' },
-            skip,
-            take: safeLimit,
-            select: {
-                delivery_id: true,
-                delivery_type: true,
-                completed_at: true,
-                order_id: true,
-                assignment_requests: {
-                    where: { staff_id: staffId },
-                    orderBy: { offered_at: 'desc' },
-                    take: 1,
-                    select: { status: true },
-                },
-                order: {
-                    select: {
-                        order_id: true,
-                        _count: { select: { order_items: true } },
-                        order_items: { select: { quantity: true } },
-                        customer: { select: { full_name: true } },
+    const cacheKey = `deliveryStaffApp:history:${staffId}:${safePage}:${safeLimit}:${from || ''}:${to || ''}`;
+    const cached = _getCached(cacheKey);
+    if (cached) return cached;
+
+    const deliveries = await _withInflight(cacheKey, async () => {
+        try {
+            // Avoid COUNT() for history as well; UI does not rely on total pages.
+            const rows = await prisma.delivery.findMany({
+                where,
+                orderBy: { completed_at: 'desc' },
+                skip,
+                take: safeLimit,
+                select: {
+                    delivery_id: true,
+                    delivery_type: true,
+                    completed_at: true,
+                    order_id: true,
+                    assignment_requests: {
+                        where: { staff_id: staffId },
+                        orderBy: { offered_at: 'desc' },
+                        take: 1,
+                        select: { status: true },
+                    },
+                    order: {
+                        select: {
+                            order_id: true,
+                            _count: { select: { order_items: true } },
+                            order_items: { select: { quantity: true } },
+                            customer: { select: { full_name: true } },
+                        },
                     },
                 },
-            },
-        }),
-    ]);
+            });
+
+            _setCached(cacheKey, rows, 4000);
+            return rows;
+        } catch (err) {
+            if (_isPrismaPoolTimeout(err) && cached) {
+                logger.warn('P2024 in listOrderHistory; serving cached list', { staffId, page: safePage, limit: safeLimit });
+                return cached;
+            }
+            throw err;
+        }
+    });
 
     return {
         pagination: {
             page: safePage,
             limit: safeLimit,
-            total,
-            totalPages: Math.ceil(total / safeLimit),
+            total: null,
+            totalPages: null,
+            hasNext: deliveries.length === safeLimit,
         },
         orders: deliveries.map((d) => ({
             // Quantity count (sum of order_items.quantity). Fallback to row-count if unknown/zero.

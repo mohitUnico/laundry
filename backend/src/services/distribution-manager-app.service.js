@@ -88,107 +88,157 @@ exports.listReadyToVerify = async ({ page, limit } = {}) => {
 exports.getOrderItems = async ({ orderId }) => {
     if (!orderId) throw new ValidationError('orderId is required');
 
-    const order = await prisma.order.findUnique({
-        where: { order_id: orderId },
-        select: {
-            order_id: true,
-            pricing_model: true,
-            order_type: true,
-            order_status: true,
-            created_at: true,
-            delivery_address: {
-                select: {
-                    address_id: true,
-                    address_line1: true,
-                    address_line2: true,
-                    city: true,
-                    state: true,
-                    pincode: true,
-                    latitude: true,
-                    longitude: true,
-                    label: true,
-                },
-            },
-            order_items: {
-                select: {
-                    item_id: true,
-                    pricing_type: true,
-                    quantity: true,
-                    weight_kg: true,
-                    service: {
-                        select: {
-                            service_id: true,
-                            service_name: true,
-                            category: { select: { category_id: true, category_name: true } },
-                        },
+    try {
+        const order = await prisma.order.findUnique({
+            where: { order_id: orderId },
+            select: {
+                order_id: true,
+                pricing_model: true,
+                order_type: true,
+                order_status: true,
+                created_at: true,
+                delivery_address: {
+                    select: {
+                        address_id: true,
+                        address_line1: true,
+                        address_line2: true,
+                        city: true,
+                        state: true,
+                        pincode: true,
+                        latitude: true,
+                        longitude: true,
+                        label: true,
                     },
-                    item_selections: {
-                        select: {
-                            selection_id: true,
-                            quantity: true,
-                            cloth_item: {
-                                select: {
-                                    cloth_id: true,
-                                    item_name: true,
-                                    per_unit_price: true,
+                },
+                order_items: {
+                    select: {
+                        item_id: true,
+                        pricing_type: true,
+                        quantity: true,
+                        weight_kg: true,
+                        unit_price: true,
+                        subtotal: true,
+                        service: {
+                            select: {
+                                service_id: true,
+                                service_name: true,
+                                category: { select: { category_id: true, category_name: true } },
+                            },
+                        },
+                        item_selections: {
+                            select: {
+                                selection_id: true,
+                                quantity: true,
+                                cloth_item: {
+                                    select: {
+                                        cloth_id: true,
+                                        item_name: true,
+                                        per_unit_price: true,
+                                    },
                                 },
                             },
                         },
                     },
                 },
             },
-        },
-    });
+        });
 
-    if (!order) throw new NotFoundError('Order');
+        if (!order) throw new NotFoundError('Order');
 
-    const items = (order.order_items || []).map((item) => {
-        const serviceName = item.service?.service_name || '';
-        const categoryName = item.service?.category?.category_name || '';
+        const items = (order.order_items || []).map((item) => {
+            const serviceId = item.service?.service_id || null;
+            const serviceName = item.service?.service_name || '';
+            const categoryId = item.service?.category?.category_id || null;
+            const categoryName = item.service?.category?.category_name || '';
 
-        const selections = (item.item_selections || [])
-            .map((sel) => ({
-                selectionId: sel.selection_id,
-                quantity: sel.quantity,
-                clothId: sel.cloth_item?.cloth_id || null,
-                clothName: sel.cloth_item?.item_name || '',
-                perUnitPrice: sel.cloth_item?.per_unit_price ? sel.cloth_item.per_unit_price.toString() : null,
-            }))
-            .filter((s) => s.quantity != null && (s.quantity > 0));
+            const selections = (item.item_selections || [])
+                .map((sel) => ({
+                    selectionId: sel.selection_id,
+                    quantity: sel.quantity,
+                    clothId: sel.cloth_item?.cloth_id || null,
+                    clothName: sel.cloth_item?.item_name || '',
+                    perUnitPrice: sel.cloth_item?.per_unit_price ? sel.cloth_item.per_unit_price.toString() : null,
+                }))
+                .filter((s) => s.quantity != null && s.quantity > 0);
+
+            // NOTE: Keep this shape backward-compatible for the staff app UI that aggregates by (categoryName, serviceName).
+            return {
+                itemId: item.item_id,
+                pricingType: item.pricing_type, // per_unit | per_kg
+                quantity: item.quantity != null ? item.quantity : null,
+                weightKg: item.weight_kg != null ? item.weight_kg.toString() : null,
+                unitPrice: item.unit_price != null ? item.unit_price.toString() : null,
+                subtotal: item.subtotal != null ? item.subtotal.toString() : null,
+                serviceId,
+                serviceName,
+                categoryId,
+                categoryName,
+                selections,
+            };
+        });
+
+        // Grouped view for verification UI (category -> service -> items)
+        const categoriesMap = new Map();
+        for (const it of items) {
+            const catKey = it.categoryId || it.categoryName || 'uncategorized';
+            if (!categoriesMap.has(catKey)) {
+                categoriesMap.set(catKey, {
+                    categoryId: it.categoryId,
+                    categoryName: it.categoryName || 'Uncategorized',
+                    services: new Map(),
+                });
+            }
+
+            const cat = categoriesMap.get(catKey);
+            const svcKey = it.serviceId || it.serviceName || 'unknown_service';
+            if (!cat.services.has(svcKey)) {
+                cat.services.set(svcKey, {
+                    serviceId: it.serviceId,
+                    serviceName: it.serviceName || 'Service',
+                    items: [],
+                });
+            }
+            cat.services.get(svcKey).items.push(it);
+        }
+
+        const groupedCategories = Array.from(categoriesMap.values()).map((c) => ({
+            categoryId: c.categoryId,
+            categoryName: c.categoryName,
+            services: Array.from(c.services.values()),
+        }));
 
         return {
-            itemId: item.item_id,
-            pricingType: item.pricing_type,
-            quantity: item.quantity != null ? item.quantity : null,
-            weightKg: item.weight_kg != null ? item.weight_kg.toString() : null,
-            serviceName,
-            categoryName,
-            selections,
+            orderId: order.order_id,
+            orderStatus: order.order_status,
+            orderType: order.order_type,
+            pricingModel: order.pricing_model,
+            createdAt: order.created_at,
+            deliveryAddress: order.delivery_address
+                ? {
+                      addressId: order.delivery_address.address_id,
+                      addressLine1: order.delivery_address.address_line1,
+                      addressLine2: order.delivery_address.address_line2,
+                      city: order.delivery_address.city,
+                      state: order.delivery_address.state,
+                      pincode: order.delivery_address.pincode,
+                      latitude: order.delivery_address.latitude ? order.delivery_address.latitude.toString() : null,
+                      longitude: order.delivery_address.longitude ? order.delivery_address.longitude.toString() : null,
+                      label: order.delivery_address.label,
+                  }
+                : null,
+            itemsCount: items.length,
+            items,
+            groupedItems: {
+                categories: groupedCategories,
+            },
         };
-    });
-
-    return {
-        orderId: order.order_id,
-        orderStatus: order.order_status,
-        orderType: order.order_type,
-        pricingModel: order.pricing_model,
-        createdAt: order.created_at,
-        deliveryAddress: order.delivery_address
-            ? {
-                  addressId: order.delivery_address.address_id,
-                  addressLine1: order.delivery_address.address_line1,
-                  addressLine2: order.delivery_address.address_line2,
-                  city: order.delivery_address.city,
-                  state: order.delivery_address.state,
-                  pincode: order.delivery_address.pincode,
-                  latitude: order.delivery_address.latitude ? order.delivery_address.latitude.toString() : null,
-                  longitude: order.delivery_address.longitude ? order.delivery_address.longitude.toString() : null,
-                  label: order.delivery_address.label,
-              }
-            : null,
-        itemsCount: items.length,
-        items,
-    };
+    } catch (error) {
+        // Re-throw Prisma errors with more context
+        if (error.code === 'P2002' || error.code === 'P2025') {
+            throw new NotFoundError('Order');
+        }
+        throw error;
+    }
 };
 
 exports.verifyOrder = async ({ staffId, orderId }) => {

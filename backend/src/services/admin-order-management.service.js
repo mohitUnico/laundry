@@ -8,6 +8,7 @@ const ORDER_STATUSES = [
     'placed',
     'pickup_assigned',
     'picked_up',
+    'submitted_to_cm',
     'received_by_collection',
     'submitted_to_services',
     'services_in_progress',

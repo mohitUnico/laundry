@@ -97,7 +97,7 @@ class DailyMetricsService {
             });
 
             const totalRevenueDecimal = completedOrdersWithBill.reduce((acc, order) => {
-                const revenue = order.bill?.final_amount ?? order.total_amount ?? new Prisma.Decimal(0);
+                const revenue = (order.bill?.final_amount != null) ? order.bill.final_amount : ((order.total_amount != null) ? order.total_amount : new Prisma.Decimal(0));
                 return acc.add(new Prisma.Decimal(revenue));
             }, new Prisma.Decimal(0));
 

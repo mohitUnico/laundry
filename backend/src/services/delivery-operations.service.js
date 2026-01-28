@@ -306,7 +306,7 @@ exports.createAssignmentRequest = async ({
                     staff_id: null,
                     delivery_type: deliveryType,
                     delivery_status: 'unassigned',
-                    delivery_fee: order.bill?.delivery_fee ?? 0,
+                    delivery_fee: (order.bill?.delivery_fee != null) ? order.bill.delivery_fee : 0,
                     needs_weight_machine: needsWeightMachine,
                 },
             });
@@ -554,7 +554,7 @@ exports.directAssignDelivery = async ({
                     staff_id: null,
                     delivery_type: deliveryType,
                     delivery_status: 'unassigned',
-                    delivery_fee: order.bill?.delivery_fee ?? 0,
+                    delivery_fee: (order.bill?.delivery_fee != null) ? order.bill.delivery_fee : 0,
                     needs_weight_machine: needsWeightMachine,
                 },
             });
@@ -663,7 +663,7 @@ exports.directAssignDelivery = async ({
 
         return {
             deliveryId: delivery.delivery_id,
-            requestIdCancelled: existingRequest?.request_id ?? null,
+            requestIdCancelled: (existingRequest?.request_id != null) ? existingRequest.request_id : null,
             alreadyAssigned,
             assignedAt: when,
         };

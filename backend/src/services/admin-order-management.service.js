@@ -108,7 +108,7 @@ const getAdminOrdersRaw = async ({ statusList, from, to, skip, take }) => {
         ${whereSql}
     `;
 
-    const total = countRows?.[0]?.total ?? 0;
+    const total = (countRows?.[0]?.total != null) ? countRows[0].total : 0;
 
     const rows = await prisma.$queryRaw`
         SELECT
@@ -195,7 +195,7 @@ const getAdminOrdersRaw = async ({ statusList, from, to, skip, take }) => {
                 : null,
         },
         services: Array.isArray(r.services) ? r.services.filter(Boolean) : [],
-        amount: (r.final_amount ?? r.total_amount)?.toString?.() ?? r.total_amount,
+        amount: ((r.final_amount != null ? r.final_amount : r.total_amount)?.toString?.() != null) ? (r.final_amount != null ? r.final_amount : r.total_amount).toString() : r.total_amount,
         status: r.order_status || null,
         delivery_boy: r.delivery_staff_id
             ? {
@@ -206,7 +206,7 @@ const getAdminOrdersRaw = async ({ statusList, from, to, skip, take }) => {
             : null,
         estimated_delivery_time: {
             delivery_date: r.delivery_date ? new Date(r.delivery_date).toISOString() : null,
-            estimated_duration_minutes: r.estimated_duration ?? null,
+            estimated_duration_minutes: (r.estimated_duration != null) ? r.estimated_duration : null,
         },
         actions: {
             can_view: true,
@@ -518,7 +518,7 @@ exports.getAdminOrders = async (query = {}) => {
                     : null,
             },
             services,
-            amount: (o.bill?.final_amount ?? o.total_amount)?.toString?.() ?? o.total_amount,
+            amount: ((o.bill?.final_amount != null ? o.bill.final_amount : o.total_amount)?.toString?.() != null) ? (o.bill?.final_amount != null ? o.bill.final_amount : o.total_amount).toString() : o.total_amount,
             status: o.order_status,
             delivery_boy: latestDelivery?.staff
                 ? {

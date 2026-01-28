@@ -41,7 +41,17 @@ class DeliveryEventsService {
   }
 
   /// Connects to `/delivery-staff/events` and emits parsed SSE events.
+  /// Only works for delivery_staff role. Returns empty stream for other roles.
   Stream<DeliverySseEvent> connect() async* {
+    // Check if user is delivery staff before connecting
+    // Backend uses 'delivery_staff' as the role value
+    final user = await AuthStorage.getCurrentUser();
+    final role = user?['role']?.toString()?.toLowerCase();
+    if (role != 'delivery_staff') {
+      // Return empty stream for non-delivery-staff roles
+      return;
+    }
+
     final response = await _dio.get<ResponseBody>(
       '/delivery-staff/events',
       options: Options(responseType: ResponseType.stream),

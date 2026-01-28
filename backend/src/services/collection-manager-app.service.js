@@ -25,8 +25,8 @@ const mapOrderRow = (o) => {
             ? {
                 addressId: o.pickup_address.address_id,
                 fullAddress: o.pickup_address.full_address,
-                latitude: o.pickup_address.latitude?.toString?.() ?? o.pickup_address.latitude,
-                longitude: o.pickup_address.longitude?.toString?.() ?? o.pickup_address.longitude,
+                latitude: (o.pickup_address.latitude?.toString?.() != null) ? o.pickup_address.latitude.toString() : o.pickup_address.latitude,
+                longitude: (o.pickup_address.longitude?.toString?.() != null) ? o.pickup_address.longitude.toString() : o.pickup_address.longitude,
             }
             : null,
         customer: o.customer
@@ -165,7 +165,7 @@ exports.getOrderItems = async ({ orderId }) => {
         return {
             itemId: item.item_id,
             pricingType: item.pricing_type,
-            quantity: item.quantity ?? null,
+            quantity: (item.quantity != null) ? item.quantity : null,
             weightKg: item.weight_kg != null ? item.weight_kg.toString() : null,
             serviceName,
             categoryName,
@@ -363,13 +363,13 @@ exports.submitOrderToServices = async ({ staffId, orderId }) => {
                     where: { service_id: sid },
                     _max: { priority: true },
                 });
-                maxPriorityByService.set(sid, agg?._max?.priority ?? 0);
+                maxPriorityByService.set(sid, (agg?._max?.priority != null) ? agg._max.priority : 0);
             })
         );
 
         const queueRows = order.order_items.map((it) => {
             const sid = it.service_id;
-            const nextPriority = (maxPriorityByService.get(sid) ?? 0) + 1;
+            const nextPriority = ((maxPriorityByService.get(sid) != null) ? maxPriorityByService.get(sid) : 0) + 1;
             maxPriorityByService.set(sid, nextPriority);
 
             return {
@@ -378,8 +378,8 @@ exports.submitOrderToServices = async ({ staffId, orderId }) => {
                 service_man_id: serviceIdToServiceManId.get(sid),
                 item_id: it.item_id,
                 item_name: it.service?.service_name || 'Service',
-                quantity: it.quantity ?? null,
-                weight_kg: it.weight_kg ?? null,
+                quantity: (it.quantity != null) ? it.quantity : null,
+                weight_kg: (it.weight_kg != null) ? it.weight_kg : null,
                 queue_status: 'pending',
                 priority: nextPriority,
                 assigned_at: now,

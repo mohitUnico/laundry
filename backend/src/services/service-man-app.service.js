@@ -30,8 +30,8 @@ const mapQueueItem = (q) => ({
     orderItemId: q.item_id,
     serviceId: q.service_id,
     itemName: q.item_name,
-    quantity: q.quantity ?? null,
-    weightKg: q.weight_kg?.toString?.() ?? (q.weight_kg ?? null),
+    quantity: (q.quantity != null) ? q.quantity : null,
+    weightKg: (q.weight_kg?.toString?.() != null) ? q.weight_kg.toString() : ((q.weight_kg != null) ? q.weight_kg : null),
     queueStatus: q.queue_status,
     priority: q.priority,
     assignedAt: q.assigned_at,
@@ -172,7 +172,7 @@ exports.updateQueueItem = async ({ staffId, queueId, action, comments }) => {
                 where: { service_man_id: staffId, queue_status: 'pending' },
                 _max: { priority: true },
             });
-            const newPriority = (agg?._max?.priority ?? 0) + 1;
+            const newPriority = ((agg?._max?.priority != null) ? agg._max.priority : 0) + 1;
 
             await tx.serviceQueueItem.update({
                 where: { queue_id: queueId },
@@ -255,8 +255,8 @@ exports.listCompleted = async ({ staffId, page, limit } = {}) => {
             itemName: q.item_name,
             addedOn: q.assigned_at,
             completedOn: q.completed_at,
-            clothItemsCount: q.orderItem?.quantity ?? null,
-            weightKg: q.orderItem?.weight_kg?.toString?.() ?? (q.orderItem?.weight_kg ?? null),
+            clothItemsCount: (q.orderItem?.quantity != null) ? q.orderItem.quantity : null,
+            weightKg: (q.orderItem?.weight_kg?.toString?.() != null) ? q.orderItem.weight_kg.toString() : ((q.orderItem?.weight_kg != null) ? q.orderItem.weight_kg : null),
             order: q.order
                 ? {
                     orderStatus: q.order.order_status,

@@ -65,7 +65,25 @@ const limiter = rateLimit({
     // - Location updates can be frequent (even after client-side throttling)
     skip: (req) => {
         const path = req.path || '';
-        return path.startsWith('/v1/delivery-staff/events') || path.startsWith('/v1/delivery-staff/location');
+        const hasAuth = typeof req.headers?.authorization === 'string' && req.headers.authorization.startsWith('Bearer ');
+
+        // Always skip SSE + location update endpoints
+        if (path.startsWith('/v1/delivery-staff/events') || path.startsWith('/v1/delivery-staff/location')) {
+            return true;
+        }
+
+        // Delivery staff app screens poll multiple endpoints frequently (home stats, accepted orders, etc.)
+        // These routes are already JWT-protected, so applying the global IP limiter causes false 429s.
+        if (hasAuth && path.startsWith('/v1/delivery-staff-app')) {
+            return true;
+        }
+
+        // Staff apps (collection/distribution/service man) can also refresh frequently and are JWT-protected.
+        if (hasAuth && path.startsWith('/v1/staff-app')) {
+            return true;
+        }
+
+        return false;
     },
 });
 app.use('/api', limiter);

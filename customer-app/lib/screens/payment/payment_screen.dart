@@ -316,7 +316,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           // Process payment only if order has NO kg-wise items
                           // For orders with kg-wise items, payment will be done after collection manager generates invoice
                           final hasKgWiseItems = kgWiseItems.isNotEmpty;
-                          PaymentResult? paymentResult;
                           String transactionId = '';
                           String paymentMethodBackend = '';
                           String paymentStatus = 'pending';
@@ -344,7 +343,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                             transactionId = 'QUCVG${timestamp.length > 7 ? timestamp.substring(timestamp.length - 7) : timestamp.padLeft(7, '0')}';
 
                             // Process payment and update bill
-                            paymentResult = await paymentRepo.processPayment(
+                            final paymentResult = await paymentRepo.processPayment(
                               orderId: orderResult.orderId,
                               paymentMethod: paymentMethodBackend,
                               transactionId: paymentStatus == 'completed' ? transactionId : null, // Only set transaction ID for completed payments

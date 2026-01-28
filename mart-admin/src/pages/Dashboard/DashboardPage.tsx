@@ -27,12 +27,22 @@ import { Toast, Modal } from '@/components/common';
 import { useToast } from '@/hooks/common';
 import { useDashboard } from '@/hooks/api';
 import { formatCompactCurrency } from '@/utils/formatters';
-import { dashboardApi } from '@/services/api/modules/dashboardApi';
+import { dashboardApi, type AdminRevenueBreakdown } from '@/services/api/modules/dashboardApi';
 import { useEffect, useCallback } from 'react';
 import { Download, Loader2, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ROUTES } from '@/routes';
 import { ExportDropdown } from '@/components/layout/Header/ExportDropdown';
+import {
+  ResponsiveContainer,
+  ComposedChart,
+  Bar,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+} from 'recharts';
 
 export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
@@ -53,73 +63,34 @@ export const DashboardPage: React.FC = () => {
   const [exportOpen, setExportOpen] = useState(false);
   const [revenueLoading, setRevenueLoading] = useState(false);
   const [revenueError, setRevenueError] = useState<string | null>(null);
-  const [revenueData, setRevenueData] = useState<{
-    daily: number;
-    weekly: number;
-    monthly: number;
-  } | null>(null);
+  const [revenueBreakdown, setRevenueBreakdown] = useState<AdminRevenueBreakdown | null>(null);
+  const [selectedRevenuePeriod, setSelectedRevenuePeriod] = useState<'daily' | 'weekly' | 'monthly'>('weekly');
 
   const { data, error, loading, range, setRange, refresh } = useDashboard();
 
-  // Fetch revenue data for different periods
-  const fetchRevenueData = useCallback(async () => {
+  const fetchRevenueBreakdown = useCallback(async () => {
     if (!showRevenueModal) return;
-    
+
     setRevenueLoading(true);
     setRevenueError(null);
 
     try {
-      const now = new Date();
-      
-      // Daily: Today
-      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-      
-      // Weekly: Last 7 days
-      const weekStart = new Date(now);
-      weekStart.setDate(weekStart.getDate() - 7);
-      
-      // Monthly: Current month
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-
-      const [dailyRes, weeklyRes, monthlyRes] = await Promise.all([
-        dashboardApi.getAdminSummary({
-          from: todayStart.toISOString(),
-          to: todayEnd.toISOString(),
-        }),
-        dashboardApi.getAdminSummary({
-          from: weekStart.toISOString(),
-          to: now.toISOString(),
-        }),
-        dashboardApi.getAdminSummary({
-          from: monthStart.toISOString(),
-          to: monthEnd.toISOString(),
-        }),
-      ]);
-
-      if (dailyRes.success && weeklyRes.success && monthlyRes.success) {
-        setRevenueData({
-          daily: dailyRes.data?.totalRevenue || 0,
-          weekly: weeklyRes.data?.totalRevenue || 0,
-          monthly: monthlyRes.data?.totalRevenue || 0,
-        });
-      } else {
-        setRevenueError('Failed to fetch revenue data');
-      }
+      const res = await dashboardApi.getAdminRevenueBreakdown();
+      if (!res.success) throw new Error(res.message || 'Failed to fetch revenue data');
+      setRevenueBreakdown(res.data);
     } catch (err: any) {
       console.error('Failed to fetch revenue data:', err);
       const errorMessage = err?.response?.data?.message || 'Failed to load revenue data. Please try again.';
       setRevenueError(errorMessage);
-      setRevenueData(null);
+      setRevenueBreakdown(null);
     } finally {
       setRevenueLoading(false);
     }
   }, [showRevenueModal]);
 
   useEffect(() => {
-    fetchRevenueData();
-  }, [fetchRevenueData]);
+    fetchRevenueBreakdown();
+  }, [fetchRevenueBreakdown]);
 
   const handleReportSuccess = () => {
     showToast('Report generated successfully!', 'success');
@@ -410,12 +381,15 @@ export const DashboardPage: React.FC = () => {
         size="lg"
       >
         <div className="space-y-4 sm:space-y-5 md:space-y-6">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-600">
+            Showing <span className="font-semibold">live data</span>.
+          </div>
           {/* Error Message */}
           {revenueError && (
             <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-center">
               <div className="text-red-600 text-sm font-medium">{revenueError}</div>
               <button
-                onClick={() => fetchRevenueData()}
+                onClick={() => fetchRevenueBreakdown()}
                 className="mt-2 text-xs text-red-600 underline hover:text-red-700"
               >
                 Try again
@@ -424,50 +398,134 @@ export const DashboardPage: React.FC = () => {
           )}
 
           {/* Loading State */}
-          {revenueLoading && !revenueData && (
+          {revenueLoading && !revenueBreakdown && (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="animate-spin h-8 w-8 text-blue-600" />
             </div>
           )}
 
           {/* Revenue Cards */}
-          {!revenueLoading && (
+          {!revenueLoading && revenueBreakdown && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-              <div className="text-center p-3 sm:p-4 bg-blue-50 rounded-lg sm:rounded-xl">
-                <p className="text-xs sm:text-sm text-slate-600 mb-1">Daily</p>
-                {revenueLoading ? (
-                  <Loader2 className="animate-spin h-6 w-6 mx-auto text-blue-600" />
-                ) : (
-                  <p className="text-xl sm:text-2xl font-bold text-blue-600">
-                    {formatCompactCurrency(revenueData?.daily || 0)}
-                  </p>
-                )}
+              {(['daily', 'weekly', 'monthly'] as const).map((key) => {
+                const p = revenueBreakdown.periods[key];
+                const isSelected = selectedRevenuePeriod === key;
+                const delta = typeof p.delta_pct === 'number' ? p.delta_pct : 0;
+                const isPositive = delta >= 0;
+                const badgeText = `${delta > 0 ? '+' : ''}${delta.toFixed(1)}%`;
+                const compareText =
+                  p.compare_to === 'yesterday' ? 'vs yesterday' : p.compare_to === 'last_week' ? 'vs last week' : 'vs last month';
+
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setSelectedRevenuePeriod(key)}
+                    className={[
+                      'text-left rounded-2xl border p-4 transition-colors',
+                      isSelected ? 'border-[#2F47FF] bg-[#EEF2FF]' : 'border-slate-200 bg-white hover:bg-slate-50',
+                    ].join(' ')}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="text-sm text-slate-600 capitalize">{key}</div>
+                        <div className="mt-1 text-2xl font-semibold text-[#2F47FF]">
+                          {formatCompactCurrency(p.revenue || 0)}
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500">{compareText}</div>
+                      </div>
+                      <div
+                        className={[
+                          'shrink-0 rounded-full px-2 py-1 text-xs font-semibold',
+                          isPositive ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700',
+                        ].join(' ')}
+                      >
+                        {badgeText}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Revenue Trend Chart */}
+          {!revenueLoading && revenueBreakdown && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Revenue Trend</div>
+                  <div className="text-xs text-slate-500">Last 7 days</div>
+                </div>
+                <div className="flex items-center gap-3 text-xs text-slate-600">
+                  <div className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-[#2F47FF]" />
+                    Revenue
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-[#EF4444]" />
+                    Orders
+                  </div>
+                </div>
               </div>
-              <div className="text-center p-3 sm:p-4 bg-blue-50 rounded-lg sm:rounded-xl">
-                <p className="text-xs sm:text-sm text-slate-600 mb-1">Weekly</p>
-                {revenueLoading ? (
-                  <Loader2 className="animate-spin h-6 w-6 mx-auto text-blue-600" />
-                ) : (
-                  <p className="text-xl sm:text-2xl font-bold text-blue-600">
-                    {formatCompactCurrency(revenueData?.weekly || 0)}
-                  </p>
-                )}
-              </div>
-              <div className="text-center p-3 sm:p-4 bg-blue-50 rounded-lg sm:rounded-xl">
-                <p className="text-xs sm:text-sm text-slate-600 mb-1">Monthly</p>
-                {revenueLoading ? (
-                  <Loader2 className="animate-spin h-6 w-6 mx-auto text-blue-600" />
-                ) : (
-                  <p className="text-xl sm:text-2xl font-bold text-blue-600">
-                    {formatCompactCurrency(revenueData?.monthly || 0)}
-                  </p>
-                )}
+
+              <div className="mt-3 h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={revenueBreakdown.trend_last_7_days}>
+                    <defs>
+                      <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#2F47FF" stopOpacity={0.9} />
+                        <stop offset="100%" stopColor="#2F47FF" stopOpacity={0.2} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: '#64748B', fontSize: 12 }} />
+                    <YAxis
+                      yAxisId="rev"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fill: '#64748B', fontSize: 12 }}
+                      width={40}
+                    />
+                    <YAxis
+                      yAxisId="ord"
+                      orientation="right"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fill: '#64748B', fontSize: 12 }}
+                      width={30}
+                    />
+                    <Tooltip
+                      cursor={{ fill: 'rgba(148,163,184,0.12)' }}
+                      contentStyle={{
+                        backgroundColor: 'white',
+                        border: '1px solid #E2E8F0',
+                        borderRadius: '10px',
+                        boxShadow: '0 10px 30px rgba(15,23,42,0.10)',
+                        fontSize: '12px',
+                      }}
+                      formatter={(value: any, name: any) => {
+                        if (name === 'revenue') return [formatCompactCurrency(Number(value) || 0), 'Revenue'];
+                        if (name === 'orders') return [Number(value) || 0, 'Orders'];
+                        return [value, name];
+                      }}
+                      labelFormatter={(label: any) => String(label)}
+                    />
+                    <Bar yAxisId="rev" dataKey="revenue" fill="url(#revGrad)" radius={[10, 10, 0, 0]} barSize={26} />
+                    <Line
+                      yAxisId="ord"
+                      type="monotone"
+                      dataKey="orders"
+                      stroke="#EF4444"
+                      strokeWidth={2}
+                      dot={{ r: 3, strokeWidth: 2, fill: '#fff' }}
+                      activeDot={{ r: 4 }}
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
               </div>
             </div>
           )}
-          <div className="h-48 sm:h-56 md:h-64 bg-slate-50 rounded-lg sm:rounded-xl flex items-center justify-center">
-            <p className="text-sm sm:text-base text-slate-500">Revenue Trend Chart</p>
-          </div>
         </div>
       </Modal>
 

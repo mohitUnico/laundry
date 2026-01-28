@@ -164,6 +164,20 @@ export type AdminDashboardCustomerSatisfaction = {
   };
 };
 
+export type AdminRevenueBreakdown = {
+  periods: {
+    daily: { revenue: number; delta_pct: number; compare_to: 'yesterday' };
+    weekly: { revenue: number; delta_pct: number; compare_to: 'last_week' };
+    monthly: { revenue: number; delta_pct: number; compare_to: 'last_month' };
+  };
+  trend_last_7_days: Array<{
+    date: string; // YYYY-MM-DD (UTC)
+    label: string; // Mon, Tue, ...
+    revenue: number;
+    orders: number;
+  }>;
+};
+
 export const dashboardApi = {
   // ---------------------------------------------------------------------------
   // Mart dashboard (mart scoped): /api/v1/dashboard/*
@@ -274,6 +288,13 @@ export const dashboardApi = {
     const response = await axiosInstance.get<ApiEnvelope<AdminDashboardLateDeliveries>>(
       '/admin/dashboard/late-deliveries',
       { params }
+    );
+    return response.data;
+  },
+
+  getAdminRevenueBreakdown: async () => {
+    const response = await axiosInstance.get<ApiEnvelope<AdminRevenueBreakdown>>(
+      '/admin/dashboard/revenue-breakdown'
     );
     return response.data;
   },

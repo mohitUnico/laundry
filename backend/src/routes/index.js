@@ -12,6 +12,7 @@ const adminCustomerManagementRoutes = require('./admin-customer-management.route
 const adminDeliveryStaffManagementRoutes = require('./admin-delivery-staff-management.routes');
 const adminDeliveryOperationsRoutes = require('./delivery-operations.routes');
 const adminSettingsRoutes = require('./admin-settings.routes');
+const adminDashboardRoutes = require('./admin-dashboard.routes');
 const paymentRoutes = require('./payment.routes');
 const deliveryStaffOperationsRoutes = require('./delivery-staff-operations.routes');
 const deliveryStaffAppRoutes = require('./delivery-staff-app.routes');
@@ -90,6 +91,7 @@ router.use('/admin/customers', adminCustomerManagementRoutes);
 router.use('/admin/delivery-staff', adminDeliveryStaffManagementRoutes);
 router.use('/admin/delivery-ops', adminDeliveryOperationsRoutes);
 router.use('/admin/settings', adminSettingsRoutes);
+router.use('/admin/dashboard', adminDashboardRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/coupons', couponsRoutes);
 router.use('/delivery-staff', deliveryStaffOperationsRoutes);

@@ -7,6 +7,7 @@ import '../../../providers/service_catalog_provider.dart';
 import '../../../theme/app_text_styles.dart';
 import '../../../utils/profile_service_error_messages.dart';
 import '../../../widgets/cart_success_dialog.dart';
+import '../../../widgets/per_kg_price_banner.dart';
 import '../../home/widgets/home_bottom_nav.dart';
 import '../../home/widgets/home_colors.dart';
 import '../../home/widgets/pro_clean_bottom_sheet.dart';
@@ -107,6 +108,7 @@ class _DryCleaningScreenState extends State<DryCleaningScreen> {
         ModalRoute.of(context)?.settings.arguments as ProCleanSelection?;
     final showPrices = selection?.pricingType == ProCleanPricingType.perPiece;
     final serviceName = selection?.categoryName ?? 'Dry Cleaning';
+    final perKgPrice = selection?.perKgPrice;
     final sid = selection?.serviceId;
     final catalog = context.watch<ServiceCatalogProvider>();
     final items =
@@ -130,6 +132,12 @@ class _DryCleaningScreenState extends State<DryCleaningScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 child: Column(
                   children: [
+                    if (!showPrices)
+                      PerKgPriceBanner(
+                        perKgPrice: perKgPrice,
+                        label: '₹/kg for $serviceName',
+                      ),
+                    if (!showPrices) const SizedBox(height: 12),
                     if (sid != null && sid.isNotEmpty && isLoading)
                       const Padding(
                         padding: EdgeInsets.only(top: 24, bottom: 24),

@@ -151,6 +151,26 @@ exports.submitToServices = async (req, res, next) => {
     }
 };
 
+exports.generateInvoice = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'collection_manager') {
+            throw new AuthorizationError('Only collection managers can access this endpoint');
+        }
+
+        const staffId = req.user.user_id;
+        const { orderId } = req.params;
+        const data = await collectionManagerAppService.generateInvoice({ staffId, orderId });
+
+        res.status(200).json({
+            success: true,
+            data,
+            message: 'Invoice generated successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 exports.listSubmissionHistory = async (req, res, next) => {
     try {
         if (req.user.role !== 'collection_manager') {

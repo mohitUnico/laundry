@@ -55,6 +55,15 @@ router.post(
     collectionManagerAppController.markOrderReceived
 );
 
+// POST generate invoice (bill) for an order after received
+router.post(
+    '/orders/:orderId/generate-invoice',
+    authenticateJWT,
+    authorize('collection_manager'),
+    validateUuidParam('orderId'),
+    collectionManagerAppController.generateInvoice
+);
+
 // GET received orders
 router.get(
     '/orders/received',

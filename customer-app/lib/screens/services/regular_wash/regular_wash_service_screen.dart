@@ -9,17 +9,20 @@ import '../../../utils/profile_service_error_messages.dart';
 import '../../../widgets/cart_success_dialog.dart';
 import '../../home/widgets/home_bottom_nav.dart';
 import '../../home/widgets/home_colors.dart';
+import '../../../widgets/per_kg_price_banner.dart';
 
 class RegularWashServiceScreen extends StatefulWidget {
   final String serviceTitle;
   final bool showPrices;
   final String? serviceId;
+  final double? perKgPrice;
 
   const RegularWashServiceScreen({
     super.key,
     required this.serviceTitle,
     this.showPrices = true,
     this.serviceId,
+    this.perKgPrice,
   });
 
   @override
@@ -129,6 +132,12 @@ class _RegularWashServiceScreenState extends State<RegularWashServiceScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 child: Column(
                   children: [
+                    if (!widget.showPrices)
+                      PerKgPriceBanner(
+                        perKgPrice: widget.perKgPrice,
+                        label: '₹/kg for ${widget.serviceTitle}',
+                      ),
+                    if (!widget.showPrices) const SizedBox(height: 12),
                     if (serviceId != null && serviceId.isNotEmpty && isLoading)
                       const Padding(
                         padding: EdgeInsets.only(top: 24, bottom: 24),

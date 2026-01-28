@@ -10,6 +10,7 @@ import '../../widgets/cart_success_dialog.dart';
 import '../home/widgets/home_bottom_nav.dart';
 import '../home/widgets/home_colors.dart';
 import '../home/widgets/pro_clean_bottom_sheet.dart';
+import '../../widgets/per_kg_price_banner.dart';
 
 /// Generic Pro Clean service screen.
 ///
@@ -106,6 +107,7 @@ class _ProCleanScreenState extends State<ProCleanScreen> {
   Widget build(BuildContext context) {
     final selection = ModalRoute.of(context)?.settings.arguments as ProCleanSelection?;
     final showPrices = selection?.pricingType == ProCleanPricingType.perPiece;
+    final perKgPrice = selection?.perKgPrice;
     final serviceName = selection?.categoryName ?? 'Pro Clean';
     final sid = selection?.serviceId;
 
@@ -130,6 +132,12 @@ class _ProCleanScreenState extends State<ProCleanScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 child: Column(
                   children: [
+                    if (!showPrices)
+                      PerKgPriceBanner(
+                        perKgPrice: perKgPrice,
+                        label: '₹/kg for $serviceName',
+                      ),
+                    if (!showPrices) const SizedBox(height: 12),
                     if (sid != null && sid.isNotEmpty && isLoading)
                       const Padding(
                         padding: EdgeInsets.only(top: 24, bottom: 24),

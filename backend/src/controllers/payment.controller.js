@@ -64,5 +64,38 @@ exports.getBillByOrderId = async (req, res, next) => {
     }
 };
 
+/**
+ * Get invoice (bill + line items) for an order
+ * GET /api/v1/payments/invoice/:orderId
+ */
+exports.getInvoiceByOrderId = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'customer') {
+            throw new AuthorizationError('Only customers can view their invoices');
+        }
+
+        const customerId = req.user.user_id;
+        const { orderId } = req.params;
+
+        const invoice = await paymentService.getInvoiceByOrderId(customerId, orderId);
+
+        if (!invoice) {
+            return res.status(200).json({
+                success: true,
+                data: null,
+                message: 'Invoice not generated for this order',
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: invoice,
+            message: 'Invoice fetched successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = exports;
 

@@ -43,5 +43,14 @@ router.get(
     paymentController.getBillByOrderId
 );
 
+// Get invoice (bill + line items) for an order
+router.get(
+    '/invoice/:orderId',
+    authenticateJWT,
+    authorize('customer'),
+    validateUuidParam('orderId'),
+    paymentController.getInvoiceByOrderId
+);
+
 module.exports = router;
 

@@ -10,11 +10,13 @@ class LuxuryCareSelection {
   final String? serviceId;
   final String serviceName;
   final LuxuryCarePricingType pricingType;
+  final double? perKgPrice;
 
   const LuxuryCareSelection({
     required this.serviceId,
     required this.serviceName,
     required this.pricingType,
+    this.perKgPrice,
   });
 }
 
@@ -66,6 +68,7 @@ class _LuxuryCareBottomSheetState extends State<LuxuryCareBottomSheet> {
       final template = _services[i % _services.length];
       return _LuxuryCareService(
         serviceId: services[i].serviceId,
+        perKgPrice: services[i].perKgPrice,
         title: services[i].serviceName,
         subtitle: template.subtitle,
         imageAsset: template.imageAsset,
@@ -211,6 +214,7 @@ class _LuxuryCareBottomSheetState extends State<LuxuryCareBottomSheet> {
                                       : _selectedService.serviceId,
                                   serviceName: _selectedService.title,
                                   pricingType: _pricingType,
+                                  perKgPrice: _selectedService.perKgPrice,
                                 ),
                               )
                           : () {},
@@ -228,12 +232,14 @@ class _LuxuryCareBottomSheetState extends State<LuxuryCareBottomSheet> {
 
 class _LuxuryCareService {
   final String? serviceId;
+  final double? perKgPrice;
   final String title;
   final String subtitle;
   final String imageAsset;
 
   const _LuxuryCareService({
     this.serviceId,
+    this.perKgPrice,
     required this.title,
     required this.subtitle,
     required this.imageAsset,

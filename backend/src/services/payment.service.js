@@ -191,5 +191,154 @@ exports.getBillByOrderId = async (customerId, orderId) => {
     };
 };
 
+/**
+ * Get invoice details (bill + item-wise breakdown) for an order.
+ * Returns null if invoice not generated yet.
+ *
+ * @param {string} customerId
+ * @param {string} orderId
+ */
+exports.getInvoiceByOrderId = async (customerId, orderId) => {
+    // Verify order belongs to customer and invoice exists
+    const order = await prisma.order.findFirst({
+        where: {
+            order_id: orderId,
+            customer_id: customerId,
+        },
+        select: {
+            order_id: true,
+            billing_status: true,
+            order_status: true,
+            pricing_model: true,
+            order_type: true,
+            bill: {
+                select: {
+                    bill_id: true,
+                    subtotal: true,
+                    delivery_fee: true,
+                    tax_amount: true,
+                    discount: true,
+                    final_amount: true,
+                    payment_method: true,
+                    payment_status: true,
+                    transaction_id: true,
+                    paid_at: true,
+                    created_at: true,
+                    updated_at: true,
+                },
+            },
+            order_items: {
+                orderBy: { created_at: 'asc' },
+                select: {
+                    item_id: true,
+                    pricing_type: true,
+                    quantity: true,
+                    weight_kg: true,
+                    unit_price: true,
+                    subtotal: true,
+                    service: {
+                        select: {
+                            service_id: true,
+                            service_name: true,
+                            category: { select: { category_id: true, category_name: true } },
+                        },
+                    },
+                    item_selections: {
+                        orderBy: { created_at: 'asc' },
+                        select: {
+                            selection_id: true,
+                            quantity: true,
+                            cloth_item: {
+                                select: {
+                                    cloth_id: true,
+                                    item_name: true,
+                                    per_unit_price: true,
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    });
+
+    if (!order) {
+        throw new NotFoundError('Order');
+    }
+
+    if (order.billing_status !== 'generated' || !order.bill) {
+        return null;
+    }
+
+    const items = (order.order_items || []).map((it) => {
+        const serviceName = it.service?.service_name || 'Service';
+        const categoryName = it.service?.category?.category_name || 'Category';
+
+        if (it.pricing_type === 'per_unit') {
+            const lines = (it.item_selections || [])
+                .map((s) => {
+                    const qty = s.quantity || 0;
+                    const unit = s.cloth_item?.per_unit_price;
+                    const lineSubtotal = unit != null ? new Prisma.Decimal(unit).mul(qty) : new Prisma.Decimal(0);
+                    return {
+                        selectionId: s.selection_id,
+                        clothId: s.cloth_item?.cloth_id || null,
+                        clothName: s.cloth_item?.item_name || '',
+                        quantity: qty,
+                        unitPrice: unit != null ? unit.toString() : null,
+                        subtotal: lineSubtotal.toString(),
+                    };
+                })
+                .filter((x) => x.quantity > 0);
+
+            return {
+                orderItemId: it.item_id,
+                pricingType: 'per_unit',
+                categoryName,
+                serviceName,
+                quantity: it.quantity,
+                unitPrice: it.unit_price.toString(),
+                subtotal: it.subtotal.toString(),
+                selections: lines,
+            };
+        }
+
+        // per_kg
+        return {
+            orderItemId: it.item_id,
+            pricingType: 'per_kg',
+            categoryName,
+            serviceName,
+            weightKg: it.weight_kg ? it.weight_kg.toString() : null,
+            unitPrice: it.unit_price.toString(),
+            subtotal: it.subtotal.toString(),
+            selections: const [],
+        };
+    });
+
+    return {
+        orderId: order.order_id,
+        orderStatus: order.order_status,
+        orderType: order.order_type,
+        pricingModel: order.pricing_model,
+        billingStatus: order.billing_status,
+        bill: {
+            billId: order.bill.bill_id,
+            subtotal: order.bill.subtotal.toString(),
+            deliveryFee: order.bill.delivery_fee.toString(),
+            taxAmount: order.bill.tax_amount.toString(),
+            discount: order.bill.discount.toString(),
+            finalAmount: order.bill.final_amount.toString(),
+            paymentMethod: order.bill.payment_method,
+            paymentStatus: order.bill.payment_status,
+            transactionId: order.bill.transaction_id,
+            paidAt: order.bill.paid_at ? order.bill.paid_at.toISOString() : null,
+            createdAt: order.bill.created_at.toISOString(),
+            updatedAt: order.bill.updated_at.toISOString(),
+        },
+        items,
+    };
+};
+
 module.exports = exports;
 

@@ -10,6 +10,7 @@ import '../../widgets/cart_success_dialog.dart';
 import '../home/widgets/home_bottom_nav.dart';
 import '../home/widgets/home_colors.dart';
 import '../home/widgets/luxury_care_bottom_sheet.dart';
+import '../../widgets/per_kg_price_banner.dart';
 
 class LuxuryCareScreen extends StatefulWidget {
   const LuxuryCareScreen({super.key});
@@ -107,6 +108,7 @@ class _LuxuryCareScreenState extends State<LuxuryCareScreen> {
         ModalRoute.of(context)?.settings.arguments as LuxuryCareSelection?;
     final title = selection?.serviceName ?? 'Luxury Care';
     final showPrices = selection?.pricingType == LuxuryCarePricingType.perPiece;
+    final perKgPrice = selection?.perKgPrice;
     final sid = selection?.serviceId;
     final catalog = context.watch<ServiceCatalogProvider>();
     final items = (sid == null || sid.isEmpty) ? const [] : catalog.clothesItemsForService(sid);
@@ -129,6 +131,12 @@ class _LuxuryCareScreenState extends State<LuxuryCareScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 child: Column(
                   children: [
+                    if (!showPrices)
+                      PerKgPriceBanner(
+                        perKgPrice: perKgPrice,
+                        label: '₹/kg for $title',
+                      ),
+                    if (!showPrices) const SizedBox(height: 12),
                     if (sid != null && sid.isNotEmpty && isLoading)
                       const Padding(
                         padding: EdgeInsets.only(top: 24, bottom: 24),

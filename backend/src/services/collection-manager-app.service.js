@@ -1,3 +1,4 @@
+const { Prisma } = require('@prisma/client');
 const prisma = require('../config/database');
 const deliveryOperationsService = require('./delivery-operations.service');
 const { NotFoundError, ValidationError, ConflictError } = require('../utils/errors');
@@ -406,6 +407,188 @@ exports.submitOrderToServices = async ({ staffId, orderId }) => {
             submittedToServicesAt: now,
             serviceQueueItemsCreated: queueRows.length,
             submittedByStaffId: staffId,
+        };
+    });
+};
+
+exports.generateInvoice = async ({ staffId, orderId }) => {
+    if (!orderId) throw new ValidationError('orderId is required');
+
+    const now = new Date();
+
+    return prisma.$transaction(async (tx) => {
+        const order = await tx.order.findUnique({
+            where: { order_id: orderId },
+            select: {
+                order_id: true,
+                order_status: true,
+                billing_status: true,
+                customer_id: true,
+                pricing_model: true,
+                total_amount: true,
+                bill: { select: { bill_id: true, payment_status: true, payment_method: true } },
+                order_items: {
+                    select: {
+                        item_id: true,
+                        service_id: true,
+                        pricing_type: true,
+                        quantity: true,
+                        weight_kg: true,
+                        unit_price: true,
+                        subtotal: true,
+                        service: {
+                            select: {
+                                service_id: true,
+                                service_name: true,
+                                per_kg_price: true,
+                                category: { select: { category_id: true, category_name: true } },
+                            },
+                        },
+                        item_selections: {
+                            select: {
+                                selection_id: true,
+                                quantity: true,
+                                cloth_item: {
+                                    select: {
+                                        cloth_id: true,
+                                        item_name: true,
+                                        per_unit_price: true,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        });
+
+        if (!order) throw new NotFoundError('Order');
+        if (order.order_status !== 'received_by_collection') {
+            throw new ConflictError('Order must be received by collection manager before generating invoice');
+        }
+        if (!order.order_items || order.order_items.length === 0) {
+            throw new ValidationError('Order has no items');
+        }
+        if (order.bill && order.bill.payment_status === 'completed') {
+            throw new ConflictError('Cannot regenerate invoice after payment is completed');
+        }
+
+        // Recompute item subtotals for BOTH per_unit and per_kg items.
+        // This is required because when pricing_model is per_kg (mixed orders),
+        // order creation intentionally stores 0 totals until billing is generated.
+        for (const it of order.order_items) {
+            if (it.pricing_type === 'per_unit') {
+                const selections = Array.isArray(it.item_selections) ? it.item_selections : [];
+                if (selections.length === 0) {
+                    throw new ValidationError('Missing per-piece selections for one or more items');
+                }
+
+                let qty = 0;
+                let subtotal = new Prisma.Decimal(0);
+
+                for (const sel of selections) {
+                    const q = sel.quantity;
+                    const price = sel.cloth_item?.per_unit_price;
+                    if (q == null || q <= 0) continue;
+                    if (price == null) {
+                        throw new ValidationError('Missing per_unit_price for one or more cloth items');
+                    }
+                    qty += q;
+                    subtotal = subtotal.plus(new Prisma.Decimal(price).mul(q));
+                }
+
+                await tx.orderItem.update({
+                    where: { item_id: it.item_id },
+                    data: {
+                        quantity: qty,
+                        subtotal,
+                        // keep unit_price as-is (already required); subtotal is authoritative for billing
+                    },
+                });
+            } else if (it.pricing_type === 'per_kg') {
+                const weight = it.weight_kg;
+                if (weight == null || Number(weight) <= 0) {
+                    throw new ValidationError('Weight (kg) is required for all kg-wise items before generating invoice');
+                }
+
+                const unitPrice = it.unit_price || it.service?.per_kg_price;
+                if (unitPrice == null || Number(unitPrice) <= 0) {
+                    throw new ValidationError('per_kg_price is missing for one or more services');
+                }
+
+                const subtotal = new Prisma.Decimal(unitPrice).mul(new Prisma.Decimal(weight));
+
+                await tx.orderItem.update({
+                    where: { item_id: it.item_id },
+                    data: {
+                        unit_price: new Prisma.Decimal(unitPrice),
+                        subtotal,
+                    },
+                });
+            }
+        }
+
+        const agg = await tx.orderItem.aggregate({
+            where: { order_id: orderId },
+            _sum: { subtotal: true },
+        });
+
+        const newSubtotal = agg._sum.subtotal || new Prisma.Decimal(0);
+
+        await tx.order.update({
+            where: { order_id: orderId },
+            data: {
+                total_amount: newSubtotal,
+                billing_status: 'generated',
+            },
+        });
+
+        // Create or update bill totals. Keep delivery/tax/discount as 0 for now.
+        const billData = {
+            subtotal: newSubtotal,
+            delivery_fee: new Prisma.Decimal(0),
+            tax_amount: new Prisma.Decimal(0),
+            discount: new Prisma.Decimal(0),
+            final_amount: newSubtotal,
+            payment_method: (order.bill?.payment_method && order.bill.payment_method.length > 0)
+                ? order.bill.payment_method
+                : 'pending',
+            payment_status: 'pending',
+        };
+
+        const bill = await tx.bill.upsert({
+            where: { order_id: orderId },
+            create: {
+                order_id: orderId,
+                ...billData,
+            },
+            update: billData,
+            select: {
+                bill_id: true,
+                order_id: true,
+                subtotal: true,
+                delivery_fee: true,
+                tax_amount: true,
+                discount: true,
+                final_amount: true,
+                payment_method: true,
+                payment_status: true,
+                created_at: true,
+                updated_at: true,
+            },
+        });
+
+        // Return invoice summary (details can be fetched by customer via /payments/invoice/:orderId)
+        return {
+            orderId,
+            billingStatus: 'generated',
+            subtotal: bill.subtotal.toString(),
+            deliveryFee: bill.delivery_fee.toString(),
+            taxAmount: bill.tax_amount.toString(),
+            discount: bill.discount.toString(),
+            finalAmount: bill.final_amount.toString(),
+            generatedAt: now,
+            generatedByStaffId: staffId,
         };
     });
 };

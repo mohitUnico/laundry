@@ -25,5 +25,11 @@ class PaymentRepository {
   }) {
     return _service.getBillByOrderId(orderId: orderId);
   }
+
+  Future<InvoiceDetails?> getInvoiceByOrderId({
+    required String orderId,
+  }) {
+    return _service.getInvoiceByOrderId(orderId: orderId);
+  }
 }
 

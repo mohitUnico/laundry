@@ -10,11 +10,13 @@ class RegularWashSelection {
   final String? serviceId;
   final String serviceName;
   final RegularWashPricingType pricingType;
+  final double? perKgPrice;
 
   const RegularWashSelection({
     required this.serviceId,
     required this.serviceName,
     required this.pricingType,
+    this.perKgPrice,
   });
 }
 
@@ -190,6 +192,7 @@ class _RegularWashBottomSheetState extends State<RegularWashBottomSheet> {
                                       : _selectedService.serviceId,
                                   serviceName: _selectedService.serviceName,
                                   pricingType: _pricingType,
+                                  perKgPrice: _selectedService.perKgPrice,
                                 ),
                               )
                           : () {},

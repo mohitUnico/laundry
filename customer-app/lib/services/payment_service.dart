@@ -52,6 +52,128 @@ class PaymentResult {
   }
 }
 
+class InvoiceDetails {
+  final String orderId;
+  final String orderStatus;
+  final String orderType;
+  final String pricingModel;
+  final String billingStatus;
+  final PaymentResult bill;
+  final List<InvoiceItem> items;
+
+  const InvoiceDetails({
+    required this.orderId,
+    required this.orderStatus,
+    required this.orderType,
+    required this.pricingModel,
+    required this.billingStatus,
+    required this.bill,
+    required this.items,
+  });
+
+  factory InvoiceDetails.fromJson(Map<String, dynamic> json) {
+    final billJson = (json['bill'] as Map).cast<String, dynamic>();
+    final itemsJson = (json['items'] as List?) ?? const [];
+    return InvoiceDetails(
+      orderId: (json['orderId'] ?? '') as String,
+      orderStatus: (json['orderStatus'] ?? '') as String,
+      orderType: (json['orderType'] ?? '') as String,
+      pricingModel: (json['pricingModel'] ?? '') as String,
+      billingStatus: (json['billingStatus'] ?? '') as String,
+      bill: PaymentResult.fromJson({
+        'bill_id': billJson['billId'],
+        'order_id': json['orderId'],
+        'subtotal': billJson['subtotal'],
+        'delivery_fee': billJson['deliveryFee'],
+        'tax_amount': billJson['taxAmount'],
+        'discount': billJson['discount'],
+        'final_amount': billJson['finalAmount'],
+        'payment_method': billJson['paymentMethod'],
+        'payment_status': billJson['paymentStatus'],
+        'transaction_id': billJson['transactionId'],
+        'paid_at': billJson['paidAt'],
+        'created_at': billJson['createdAt'],
+        'updated_at': billJson['updatedAt'],
+      }),
+      items: itemsJson
+          .whereType<Map>()
+          .map((e) => InvoiceItem.fromJson(e.cast<String, dynamic>()))
+          .toList(),
+    );
+  }
+}
+
+class InvoiceItem {
+  final String orderItemId;
+  final String pricingType; // per_unit | per_kg
+  final String categoryName;
+  final String serviceName;
+  final int? quantity;
+  final String? weightKg;
+  final String unitPrice;
+  final String subtotal;
+  final List<InvoiceSelection> selections;
+
+  const InvoiceItem({
+    required this.orderItemId,
+    required this.pricingType,
+    required this.categoryName,
+    required this.serviceName,
+    required this.quantity,
+    required this.weightKg,
+    required this.unitPrice,
+    required this.subtotal,
+    required this.selections,
+  });
+
+  factory InvoiceItem.fromJson(Map<String, dynamic> json) {
+    final selectionsJson = (json['selections'] as List?) ?? const [];
+    return InvoiceItem(
+      orderItemId: (json['orderItemId'] ?? '') as String,
+      pricingType: (json['pricingType'] ?? '') as String,
+      categoryName: (json['categoryName'] ?? '') as String,
+      serviceName: (json['serviceName'] ?? '') as String,
+      quantity: json['quantity'] is int ? (json['quantity'] as int) : null,
+      weightKg: json['weightKg'] as String?,
+      unitPrice: (json['unitPrice'] ?? '0') as String,
+      subtotal: (json['subtotal'] ?? '0') as String,
+      selections: selectionsJson
+          .whereType<Map>()
+          .map((e) => InvoiceSelection.fromJson(e.cast<String, dynamic>()))
+          .toList(),
+    );
+  }
+}
+
+class InvoiceSelection {
+  final String selectionId;
+  final String? clothId;
+  final String clothName;
+  final int quantity;
+  final String? unitPrice;
+  final String subtotal;
+
+  const InvoiceSelection({
+    required this.selectionId,
+    required this.clothId,
+    required this.clothName,
+    required this.quantity,
+    required this.unitPrice,
+    required this.subtotal,
+  });
+
+  factory InvoiceSelection.fromJson(Map<String, dynamic> json) {
+    return InvoiceSelection(
+      selectionId: (json['selectionId'] ?? '') as String,
+      clothId: json['clothId'] as String?,
+      clothName: (json['clothName'] ?? '') as String,
+      quantity: (json['quantity'] ?? 0) as int,
+      unitPrice: json['unitPrice'] as String?,
+      subtotal: (json['subtotal'] ?? '0') as String,
+    );
+  }
+}
+
 class PaymentService {
   final ApiService _api;
 
@@ -110,6 +232,26 @@ class PaymentService {
       throw Exception(msg);
     } catch (e) {
       throw Exception('Failed to fetch bill: $e');
+    }
+  }
+
+  /// Get invoice (bill + line items) for an order
+  Future<InvoiceDetails?> getInvoiceByOrderId({
+    required String orderId,
+  }) async {
+    try {
+      final res = await _api.get('/payments/invoice/$orderId');
+      final data = (res.data as Map<String, dynamic>)['data'];
+      if (data == null) return null;
+      if (data is Map<String, dynamic>) {
+        return InvoiceDetails.fromJson(data);
+      }
+      throw Exception('Unexpected response format');
+    } on DioException catch (e) {
+      final msg = _extractErrorMessage(e, 'Failed to fetch invoice');
+      throw Exception(msg);
+    } catch (e) {
+      throw Exception('Failed to fetch invoice: $e');
     }
   }
 

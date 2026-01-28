@@ -10,7 +10,10 @@ interface ActiveOrdersModalProps {
   onClose: () => void;
 }
 
-const ACTIVE_STATUSES = 'placed,pickup_assigned,picked_up,received_by_collection,submitted_to_services,services_in_progress,dispatch_assigned,out_for_delivery';
+// "Active" (as used in UI modal) = everything except draft/closed/cancelled.
+// This matches the Orders page expectation where "Delivered" is still shown.
+const ACTIVE_STATUSES =
+  'placed,pickup_assigned,picked_up,submitted_to_cm,received_by_collection,submitted_to_services,services_in_progress,services_completed,dispatch_assigned,out_for_delivery,payment_pending,delivered';
 
 const formatStatus = (status: string | null): string => {
   if (!status) return 'Unknown';
@@ -19,11 +22,15 @@ const formatStatus = (status: string | null): string => {
     placed: 'Placed',
     pickup_assigned: 'Pickup Assigned',
     picked_up: 'Picked Up',
+    submitted_to_cm: 'Submitted to CM',
     received_by_collection: 'Received',
     submitted_to_services: 'In Service',
     services_in_progress: 'In Progress',
+    services_completed: 'Services Completed',
     dispatch_assigned: 'Dispatch Assigned',
     out_for_delivery: 'Out for Delivery',
+    payment_pending: 'Payment Pending',
+    delivered: 'Delivered',
   };
   
   return statusMap[status] || status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());

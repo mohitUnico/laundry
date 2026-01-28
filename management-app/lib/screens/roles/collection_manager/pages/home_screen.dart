@@ -166,6 +166,22 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
     }
   }
 
+  Future<void> _generateInvoiceAndRefresh(String orderId) async {
+    try {
+      await _ordersService.generateInvoice(orderId: orderId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Invoice generated successfully')),
+      );
+      await _refreshReceived();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', '').trim())),
+      );
+    }
+  }
+
   Future<List<_IncomingOrderUi>> _fetchIncomingOrdersWithItems({
     required int page,
     required int limit,
@@ -806,6 +822,7 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
                     deliveryPersonId: o.deliveryPersonId,
                     items: o.items,
                     onSubmitToServices: _submitToServicesAndRefresh,
+                    onGenerateInvoice: _generateInvoiceAndRefresh,
                   ),
                   const SizedBox(height: 12),
                 ],
@@ -1417,6 +1434,7 @@ class _ReceivedOrderCard extends StatefulWidget {
   final List<_OrderItem> items;
   final bool isExpanded;
   final Future<void> Function(String orderId)? onSubmitToServices;
+  final Future<void> Function(String orderId)? onGenerateInvoice;
 
   const _ReceivedOrderCard({
     required this.backendOrderId,
@@ -1430,6 +1448,7 @@ class _ReceivedOrderCard extends StatefulWidget {
     required this.items,
     this.isExpanded = false,
     this.onSubmitToServices,
+    this.onGenerateInvoice,
   });
 
   @override
@@ -1439,6 +1458,7 @@ class _ReceivedOrderCard extends StatefulWidget {
 class _ReceivedOrderCardState extends State<_ReceivedOrderCard> {
   late bool _isExpanded;
   bool _isSubmittingToServices = false;
+  bool _isGeneratingInvoice = false;
 
   @override
   void initState() {
@@ -1550,6 +1570,51 @@ class _ReceivedOrderCardState extends State<_ReceivedOrderCard> {
             ],
           ),
           const SizedBox(height: 16),
+          // Generate Invoice Button
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: AppColors.primary, width: 1.2),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+              ),
+              onPressed: _isGeneratingInvoice
+                  ? null
+                  : () async {
+                      final handler = widget.onGenerateInvoice;
+                      if (handler == null) return;
+                      setState(() {
+                        _isGeneratingInvoice = true;
+                      });
+                      try {
+                        await handler(widget.backendOrderId);
+                      } finally {
+                        if (mounted) {
+                          setState(() {
+                            _isGeneratingInvoice = false;
+                          });
+                        }
+                      }
+                    },
+              child: _isGeneratingInvoice
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(
+                      'Generate Invoice',
+                      style: AppTextStyles.button(color: AppColors.primary).copyWith(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 12),
           // Assign to Service Man Button
           SizedBox(
             width: double.infinity,

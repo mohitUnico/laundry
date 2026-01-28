@@ -313,43 +313,56 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           final originalTotal = itemTotal + handlingFee + originalPickupFee + originalDeliveryFee;
                           final finalTotal = subtotal - _promoDiscount;
 
-                          // Process payment via backend
-                          final paymentRepo = PaymentRepository();
-                          String transactionId;
-                          String paymentMethodBackend;
-                          String paymentStatus;
-                          
-                          // Map PaymentMethod enum to backend payment_method string
-                          switch (_selectedMethod) {
-                            case PaymentMethod.visa:
-                            case PaymentMethod.mastercard:
-                              paymentMethodBackend = 'card';
-                              paymentStatus = 'completed';
-                              break;
-                            case PaymentMethod.cod:
-                              paymentMethodBackend = 'cod';
-                              paymentStatus = 'pending'; // COD is paid on delivery
-                              break;
-                          }
+                          // Process payment only if order has NO kg-wise items
+                          // For orders with kg-wise items, payment will be done after collection manager generates invoice
+                          final hasKgWiseItems = kgWiseItems.isNotEmpty;
+                          PaymentResult? paymentResult;
+                          String transactionId = '';
+                          String paymentMethodBackend = '';
+                          String paymentStatus = 'pending';
 
-                          // Generate transaction ID (for card payments, this would come from payment gateway)
-                          // For COD, transaction ID is generated when payment is confirmed on delivery
-                          final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
-                          transactionId = 'QUCVG${timestamp.length > 7 ? timestamp.substring(timestamp.length - 7) : timestamp.padLeft(7, '0')}';
+                          if (!hasKgWiseItems) {
+                            // Process payment immediately for per-piece only orders
+                            final paymentRepo = PaymentRepository();
+                            
+                            // Map PaymentMethod enum to backend payment_method string
+                            switch (_selectedMethod) {
+                              case PaymentMethod.visa:
+                              case PaymentMethod.mastercard:
+                                paymentMethodBackend = 'card';
+                                paymentStatus = 'completed';
+                                break;
+                              case PaymentMethod.cod:
+                                paymentMethodBackend = 'cod';
+                                paymentStatus = 'pending'; // COD is paid on delivery
+                                break;
+                            }
 
-                          // Process payment and update bill
-                          final paymentResult = await paymentRepo.processPayment(
-                            orderId: orderResult.orderId,
-                            paymentMethod: paymentMethodBackend,
-                            transactionId: paymentStatus == 'completed' ? transactionId : null, // Only set transaction ID for completed payments
-                            paymentStatus: paymentStatus,
-                          );
+                            // Generate transaction ID (for card payments, this would come from payment gateway)
+                            // For COD, transaction ID is generated when payment is confirmed on delivery
+                            final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+                            transactionId = 'QUCVG${timestamp.length > 7 ? timestamp.substring(timestamp.length - 7) : timestamp.padLeft(7, '0')}';
 
-                          // Use transaction ID from payment result if available
-                          if (paymentResult.transactionId != null && paymentResult.transactionId!.isNotEmpty) {
-                            transactionId = paymentResult.transactionId!;
-                          } else if (paymentStatus == 'pending') {
-                            // For pending payments (COD), use a placeholder or empty
+                            // Process payment and update bill
+                            paymentResult = await paymentRepo.processPayment(
+                              orderId: orderResult.orderId,
+                              paymentMethod: paymentMethodBackend,
+                              transactionId: paymentStatus == 'completed' ? transactionId : null, // Only set transaction ID for completed payments
+                              paymentStatus: paymentStatus,
+                            );
+
+                            // Use transaction ID from payment result if available
+                            if (paymentResult.transactionId != null && paymentResult.transactionId!.isNotEmpty) {
+                              transactionId = paymentResult.transactionId!;
+                            } else if (paymentStatus == 'pending') {
+                              // For pending payments (COD), use a placeholder or empty
+                              transactionId = 'Pending';
+                            }
+                          } else {
+                            // For orders with kg-wise items, skip payment processing
+                            // Payment will be done after collection manager generates invoice
+                            paymentMethodBackend = _selectedMethod == PaymentMethod.cod ? 'cod' : 'card';
+                            paymentStatus = 'pending';
                             transactionId = 'Pending';
                           }
 
@@ -386,33 +399,45 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
                           if (!mounted) return;
                           
-                          // Navigate based on payment method
-                          if (_selectedMethod == PaymentMethod.cod) {
-                            // For COD, navigate to order successful screen
+                          // Navigate based on whether payment was processed
+                          if (hasKgWiseItems) {
+                            // For orders with kg-wise items, payment is skipped
+                            // Navigate to order successful screen (payment will be done after invoice generation)
                             Navigator.of(context).pushNamedAndRemoveUntil(
                               AppRoutes.orderSuccessful,
                               (r) => false,
                               arguments: orderResult.orderId,
                             );
                           } else {
-                            // For card payments, navigate to payment successful screen
-                            Navigator.of(context).pushNamedAndRemoveUntil(
-                              AppRoutes.paymentSuccessful,
-                              (r) => false,
-                              arguments: {
-                                'transactionId': transactionId,
-                                'itemTotal': itemTotal,
-                                'handlingFee': handlingFee,
-                                'pickupFeeOriginal': pickupFeeOriginal,
-                                'pickupFee': pickupFee,
-                                'deliveryFee': deliveryFee,
-                                'originalTotal': originalTotal,
-                                'finalTotal': finalTotal,
-                                'deliveryOption': deliveryOption.name,
-                                'promoCode': _appliedPromoCode,
-                                'promoDiscount': _promoDiscount,
-                              },
-                            );
+                            // For per-piece only orders, payment was processed
+                            // Navigate based on payment method
+                            if (_selectedMethod == PaymentMethod.cod) {
+                              // For COD, navigate to order successful screen
+                              Navigator.of(context).pushNamedAndRemoveUntil(
+                                AppRoutes.orderSuccessful,
+                                (r) => false,
+                                arguments: orderResult.orderId,
+                              );
+                            } else {
+                              // For card payments, navigate to payment successful screen
+                              Navigator.of(context).pushNamedAndRemoveUntil(
+                                AppRoutes.paymentSuccessful,
+                                (r) => false,
+                                arguments: {
+                                  'transactionId': transactionId,
+                                  'itemTotal': itemTotal,
+                                  'handlingFee': handlingFee,
+                                  'pickupFeeOriginal': pickupFeeOriginal,
+                                  'pickupFee': pickupFee,
+                                  'deliveryFee': deliveryFee,
+                                  'originalTotal': originalTotal,
+                                  'finalTotal': finalTotal,
+                                  'deliveryOption': deliveryOption.name,
+                                  'promoCode': _appliedPromoCode,
+                                  'promoDiscount': _promoDiscount,
+                                },
+                              );
+                            }
                           }
                         } catch (e) {
                           if (!mounted) return;

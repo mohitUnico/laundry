@@ -108,6 +108,7 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
 
     Future<_DmOrderUi> mapOne(Map<String, dynamic> o) async {
       final orderId = (o['orderId'] ?? '').toString();
+      final orderType = (o['orderType'] ?? '').toString();
       final createdAt = _parseDate(o['createdAt']);
       final customer = o['customer'];
       final customerName = (customer is Map ? customer['fullName'] : null)?.toString() ?? 'Customer';

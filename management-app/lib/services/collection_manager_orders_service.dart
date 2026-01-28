@@ -105,6 +105,17 @@ class CollectionManagerOrdersService {
     }
   }
 
+  Future<Map<String, dynamic>> generateInvoice({required String orderId}) async {
+    try {
+      final res = await _api.post('/staff-app/collection-manager/orders/$orderId/generate-invoice');
+      final body = res.data;
+      if (body is Map<String, dynamic>) return body;
+      throw Exception('Unexpected response format');
+    } catch (e) {
+      throw Exception(_extractErrorMessage(e, fallback: 'Failed to generate invoice'));
+    }
+  }
+
   Future<Map<String, dynamic>> assignPickupDirect({
     required String orderId,
     required String deliveryStaffId,

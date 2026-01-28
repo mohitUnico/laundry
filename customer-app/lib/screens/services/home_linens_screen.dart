@@ -10,6 +10,7 @@ import '../../widgets/cart_success_dialog.dart';
 import '../home/widgets/home_bottom_nav.dart';
 import '../home/widgets/home_colors.dart';
 import '../home/widgets/regular_wash_bottom_sheet.dart';
+import '../../widgets/per_kg_price_banner.dart';
 
 class HomeLinensScreen extends StatefulWidget {
   const HomeLinensScreen({super.key});
@@ -88,6 +89,7 @@ class _HomeLinensScreenState extends State<HomeLinensScreen> {
     final showPrices = selection == null
         ? true
         : selection.pricingType == RegularWashPricingType.perPiece;
+    final perKgPrice = selection?.perKgPrice;
     final sid = selection?.serviceId;
     final catalog = context.watch<ServiceCatalogProvider>();
     final items =
@@ -112,6 +114,12 @@ class _HomeLinensScreenState extends State<HomeLinensScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 child: Column(
                   children: [
+                    if (!showPrices)
+                      PerKgPriceBanner(
+                        perKgPrice: perKgPrice,
+                        label: '₹/kg for $serviceName',
+                      ),
+                    if (!showPrices) const SizedBox(height: 12),
                     if (sid != null && sid.isNotEmpty && isLoading)
                       const Padding(
                         padding: EdgeInsets.only(top: 24, bottom: 24),

@@ -10,11 +10,13 @@ class ProCleanSelection {
   final String? serviceId;
   final String categoryName;
   final ProCleanPricingType pricingType;
+  final double? perKgPrice;
 
   const ProCleanSelection({
     required this.serviceId,
     required this.categoryName,
     required this.pricingType,
+    this.perKgPrice,
   });
 }
 
@@ -83,6 +85,7 @@ class _ProCleanBottomSheetState extends State<ProCleanBottomSheet> {
       final template = _categories[i % _categories.length];
       return _ProCleanCategory(
         serviceId: services[i].serviceId,
+        perKgPrice: services[i].perKgPrice,
         title: services[i].serviceName,
         subtitle: template.subtitle,
         imageAsset: template.imageAsset,
@@ -226,6 +229,7 @@ class _ProCleanBottomSheetState extends State<ProCleanBottomSheet> {
                                       : _selectedCategory.serviceId,
                                   categoryName: _selectedCategory.title,
                                   pricingType: _pricingType,
+                                  perKgPrice: _selectedCategory.perKgPrice,
                                 ),
                               )
                           : () {},
@@ -243,12 +247,14 @@ class _ProCleanBottomSheetState extends State<ProCleanBottomSheet> {
 
 class _ProCleanCategory {
   final String? serviceId;
+  final double? perKgPrice;
   final String title;
   final String subtitle;
   final String imageAsset;
 
   const _ProCleanCategory({
     this.serviceId,
+    this.perKgPrice,
     required this.title,
     required this.subtitle,
     required this.imageAsset,

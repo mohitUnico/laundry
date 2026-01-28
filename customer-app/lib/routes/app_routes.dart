@@ -98,6 +98,11 @@ class AppRoutes {
                   ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
               return sel?.serviceId;
             })(),
+            perKgPrice: (() {
+              final sel =
+                  ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
+              return sel?.perKgPrice;
+            })(),
             showPrices: (() {
               final sel =
                   ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
@@ -111,6 +116,11 @@ class AppRoutes {
               final sel =
                   ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
               return sel?.serviceId;
+            })(),
+            perKgPrice: (() {
+              final sel =
+                  ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
+              return sel?.perKgPrice;
             })(),
             showPrices: (() {
               final sel =
@@ -126,6 +136,11 @@ class AppRoutes {
                   ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
               return sel?.serviceId;
             })(),
+            perKgPrice: (() {
+              final sel =
+                  ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
+              return sel?.perKgPrice;
+            })(),
             showPrices: (() {
               final sel =
                   ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
@@ -139,6 +154,11 @@ class AppRoutes {
               final sel =
                   ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
               return sel?.serviceId;
+            })(),
+            perKgPrice: (() {
+              final sel =
+                  ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
+              return sel?.perKgPrice;
             })(),
             showPrices: (() {
               final sel =

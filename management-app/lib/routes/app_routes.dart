@@ -10,6 +10,7 @@ import '../screens/auth/register_success_screen.dart';
 import '../screens/bootstrap/bootstrap_screen.dart';
 // Role-specific screens
 import '../screens/roles/delivery_partner/pages/home_screen.dart';
+import '../screens/roles/delivery_partner/pages/main_shell_screen.dart';
 import '../screens/roles/delivery_partner/pages/active_delivery_screen.dart';
 import '../screens/roles/delivery_partner/pages/orders_screen.dart';
 import '../screens/roles/delivery_partner/pages/profile_screen.dart';
@@ -71,7 +72,8 @@ class AppRoutes {
         if (role == RoleConstants.serviceMan) {
           return const PendingOrdersServicemenScreen();
         } else if (role == RoleConstants.deliveryPartner) {
-          return const HomeScreen();
+          // Wrap delivery partner experience in a shell with persistent bottom nav.
+          return const DeliveryPartnerMainShellScreen();
         } else if (role == RoleConstants.collectionManager) {
           return const CollectionManagerHomeScreen();
         } else if (role == RoleConstants.distributionManager) {

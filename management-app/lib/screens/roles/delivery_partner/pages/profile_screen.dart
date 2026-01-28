@@ -10,7 +10,12 @@ import '../../../../services/delivery_staff_app_service.dart';
 import '../../../common/widgets/bottom_nav_bar.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final bool showBottomNav;
+
+  const ProfileScreen({
+    super.key,
+    this.showBottomNav = true,
+  });
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -260,6 +265,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
           }
         },
       ),
+      bottomNavigationBar: widget.showBottomNav
+          ? BottomNavBar(
+              currentIndex: 3,
+              onTap: (index) {
+                switch (index) {
+                  case 0:
+                    Navigator.pushReplacementNamed(context, AppRoutes.home);
+                    break;
+                  case 1:
+                    Navigator.pushReplacementNamed(context, AppRoutes.orders);
+                    break;
+                  case 2:
+                    Navigator.pushReplacementNamed(context, AppRoutes.help);
+                    break;
+                  case 3:
+                    break;
+                }
+              },
+            )
+          : null,
     );
   }
 }

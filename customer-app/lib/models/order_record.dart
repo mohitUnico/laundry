@@ -25,6 +25,9 @@ class OrderRecord {
   final String? pickupAddress; // Full pickup address text
   final double? pickupLat;
   final double? pickupLng;
+  // Billing info from backend (orders + bill tables)
+  final String? billingStatus; // e.g. generated, pending
+  final String? billPaymentStatus; // e.g. completed, pending, failed
 
   const OrderRecord({
     required this.id,
@@ -44,6 +47,8 @@ class OrderRecord {
     this.pickupAddress,
     this.pickupLat,
     this.pickupLng,
+    this.billingStatus,
+    this.billPaymentStatus,
   });
 
   OrderRecord copyWith({
@@ -64,6 +69,8 @@ class OrderRecord {
     String? pickupAddress,
     double? pickupLat,
     double? pickupLng,
+    String? billingStatus,
+    String? billPaymentStatus,
   }) {
     return OrderRecord(
       id: id ?? this.id,
@@ -83,12 +90,24 @@ class OrderRecord {
       pickupAddress: pickupAddress ?? this.pickupAddress,
       pickupLat: pickupLat ?? this.pickupLat,
       pickupLng: pickupLng ?? this.pickupLng,
+      billingStatus: billingStatus ?? this.billingStatus,
+      billPaymentStatus: billPaymentStatus ?? this.billPaymentStatus,
     );
   }
 
   String get orderTypeOrBoth {
     final t = (orderType ?? '').trim();
     return t.isEmpty ? 'both' : t;
+  }
+
+  /// Short, human-friendly ID used across apps, e.g. ORDABC123.
+  /// Mirrors the format used in staff/management apps so orders
+  /// are easily traceable everywhere.
+  String get shortId {
+    final normalized = id.replaceAll('-', '').toUpperCase().trim();
+    if (normalized.isEmpty) return 'ORDER';
+    if (normalized.length >= 6) return 'ORD${normalized.substring(0, 6)}';
+    return 'ORD$normalized';
   }
 }
 

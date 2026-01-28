@@ -6,6 +6,7 @@ class PrefsKeys {
 
   static const String couponsJson = 'coupons_json';
   static const String couponsLastRefreshMs = 'coupons_last_refresh_ms';
+  static const String couponUsageJson = 'coupon_usage_json';
 }
 
 

@@ -77,40 +77,36 @@ class ActiveOrderCard extends StatelessWidget {
             labels: _steps,
           ),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  etaText,
-                  style: AppTextStyles.body(color: HomeColors.muted)
-                      .copyWith(fontSize: 12),
-                ),
-              ),
-              Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                  TextButton(
-                    onPressed: onViewDetails,
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      foregroundColor: HomeColors.primary,
-                      textStyle: AppTextStyles.button(color: HomeColors.primary).copyWith(fontSize: 12),
-                    ),
-                    child: const Text('View Details'),
-                      ),
-                  const SizedBox(width: 6),
-                  TextButton(
-                    onPressed: onTrackNow,
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      foregroundColor: HomeColors.primary,
-                      textStyle: AppTextStyles.button(color: HomeColors.primary).copyWith(fontSize: 12),
-                      ),
-                    child: const Text('Track Laundry'),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextButton(
+                  onPressed: onViewDetails,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    foregroundColor: HomeColors.primary,
+                    textStyle: AppTextStyles
+                        .button(color: HomeColors.primary)
+                        .copyWith(fontSize: 12),
                   ),
-                ],
-              )
-            ],
+                  child: const Text('View Details'),
+                ),
+                const SizedBox(width: 6),
+                TextButton(
+                  onPressed: onTrackNow,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    foregroundColor: HomeColors.primary,
+                    textStyle: AppTextStyles
+                        .button(color: HomeColors.primary)
+                        .copyWith(fontSize: 12),
+                  ),
+                  child: const Text('Track Laundry'),
+                ),
+              ],
+            ),
           ),
         ],
       ),

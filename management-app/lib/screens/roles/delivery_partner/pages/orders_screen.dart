@@ -7,7 +7,12 @@ import '../../../../services/delivery_staff_app_service.dart';
 import '../../../common/widgets/bottom_nav_bar.dart';
 
 class OrdersScreen extends StatefulWidget {
-  const OrdersScreen({super.key});
+  final bool showBottomNav;
+
+  const OrdersScreen({
+    super.key,
+    this.showBottomNav = true,
+  });
 
   @override
   State<OrdersScreen> createState() => _OrdersScreenState();
@@ -170,24 +175,26 @@ class _OrdersScreenState extends State<OrdersScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: BottomNavBar(
-        currentIndex: 1,
-        onTap: (index) {
-          switch (index) {
-            case 0:
-              Navigator.pushReplacementNamed(context, AppRoutes.home);
-              break;
-            case 1:
-              break;
-            case 2:
-              Navigator.pushReplacementNamed(context, AppRoutes.help);
-              break;
-            case 3:
-              Navigator.pushReplacementNamed(context, AppRoutes.profile);
-              break;
-          }
-        },
-      ),
+      bottomNavigationBar: widget.showBottomNav
+          ? BottomNavBar(
+              currentIndex: 1,
+              onTap: (index) {
+                switch (index) {
+                  case 0:
+                    Navigator.pushReplacementNamed(context, AppRoutes.home);
+                    break;
+                  case 1:
+                    break;
+                  case 2:
+                    Navigator.pushReplacementNamed(context, AppRoutes.help);
+                    break;
+                  case 3:
+                    Navigator.pushReplacementNamed(context, AppRoutes.profile);
+                    break;
+                }
+              },
+            )
+          : null,
     );
   }
 }

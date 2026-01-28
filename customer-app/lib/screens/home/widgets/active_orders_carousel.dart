@@ -84,12 +84,14 @@ class _ActiveOrdersCarouselState extends State<ActiveOrdersCarousel> {
 
     // In progress group (processing + dispatch + out-for-delivery + payment pending)
     if (status == 'received_by_collection' ||
+        status == 'submitted_to_cm' ||
         status == 'submitted_to_services' ||
         status == 'services_in_progress' ||
         status == 'services_completed' ||
         status == 'dispatch_assigned' ||
         status == 'out_for_delivery' ||
-        status == 'payment_pending') {
+        status == 'payment_pending' ||
+        status == 'payment_completed') {
       return 2;
     }
 
@@ -161,7 +163,7 @@ class _ActiveOrdersCarouselState extends State<ActiveOrdersCarousel> {
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 6),
           child: ActiveOrderCard(
-            orderId: order.id,
+            orderId: order.shortId,
             activeStepIndex: stepIndex,
             etaText: etaText,
             onViewDetails: () => Navigator.of(context).pushNamed(AppRoutes.orders),
@@ -211,7 +213,7 @@ class _ActiveOrdersCarouselState extends State<ActiveOrdersCarousel> {
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 6),
                         child: ActiveOrderCard(
-                          orderId: order.id,
+                          orderId: order.shortId,
                           activeStepIndex: stepIndex,
                           etaText: etaText,
                           onViewDetails: () => Navigator.of(context).pushNamed(AppRoutes.orders),

@@ -7,8 +7,7 @@ import '../../theme/app_text_styles.dart';
 import '../../providers/order_provider.dart';
 import '../../models/order_record.dart';
 import '../../models/cart_item.dart';
-import '../../repositories/payment_repository.dart';
-import '../../services/payment_service.dart';
+import 'order_invoice_screen.dart';
 import '../../utils/pricing.dart';
 import '../../routes/app_routes.dart';
 import '../../routes/route_args.dart';
@@ -75,18 +74,10 @@ class _OrdersListScreenState extends State<OrdersListScreen> with WidgetsBinding
       return;
     }
     
-    String? status;
-    // For "all" filter, fetch without status (gets all orders)
-    // For "active" filter, fetch with status=active (backend will filter out delivered/closed)
-    // For "completed" filter, fetch with status=delivered
-    if (_filter == _OrdersFilter.active) {
-      status = 'active'; // Backend will filter out delivered and closed orders
-    } else if (_filter == _OrdersFilter.completed) {
-      status = 'completed'; // Backend will fetch delivered and closed orders
-    }
-    // For "all", status is null - fetches all orders
     try {
-      await orderProvider.fetchOrders(page: 1, limit: 10, status: status);
+      // Always fetch the full list once; filtering for Active/Completed is done
+      // purely on the frontend using the mapped OrderStatus field.
+      await orderProvider.fetchOrders(page: 1, limit: 10);
     } catch (e) {
       // Error is already handled in OrderProvider
       // Orders will be preserved if fetch fails
@@ -129,7 +120,6 @@ class _OrdersListScreenState extends State<OrdersListScreen> with WidgetsBinding
                 value: _filter,
                 onChanged: (next) {
                   setState(() => _filter = next);
-                  _fetchOrders();
                 },
               ),
               const SizedBox(height: 14),
@@ -139,14 +129,71 @@ class _OrdersListScreenState extends State<OrdersListScreen> with WidgetsBinding
                       .where((o) => o.status == OrderStatus.inProgress)
                       .toList(growable: false);
                   if (active.isEmpty) return const SizedBox.shrink();
-                  final first = active.first;
+
+                  OrderRecord? cardOrder;
+                  String? title;
+                  String? subtitle;
+                  DeliveryOptionType? option;
+
+                  for (final o in active) {
+                    final backend = (o.backendStatus ?? '').toLowerCase();
+                    final type = o.orderTypeOrBoth;
+
+                    // Show upcoming cards ONLY when order is in:
+                    // - placed  -> upcoming pickup
+                    // - services_completed -> upcoming delivery
+                    if (backend != 'placed' && backend != 'services_completed') {
+                      continue;
+                    }
+
+                    if (type == 'pickup_only') {
+                      if (backend == 'placed') {
+                        cardOrder = o;
+                        title = 'Upcoming Pickup';
+                        subtitle = 'Pickup scheduled';
+                        option = DeliveryOptionType.pickupOnly;
+                        break;
+                      }
+                    } else if (type == 'drop_only') {
+                      if (backend == 'services_completed') {
+                        cardOrder = o;
+                        title = 'Upcoming Delivery';
+                        subtitle = 'Delivery scheduled';
+                        option = DeliveryOptionType.deliveryOnly;
+                        break;
+                      }
+                    } else {
+                      // both pickup & delivery
+                      if (backend == 'placed') {
+                        cardOrder = o;
+                        title = 'Upcoming Pickup';
+                        subtitle = 'Pickup scheduled';
+                        option = DeliveryOptionType.pickupAndDelivery;
+                        break;
+                      } else if (backend == 'services_completed') {
+                        cardOrder = o;
+                        title = 'Upcoming Delivery';
+                        subtitle = 'Delivery scheduled';
+                        option = DeliveryOptionType.pickupAndDelivery;
+                        break;
+                      }
+                    }
+                  }
+
+                  if (cardOrder == null || title == null || subtitle == null || option == null) {
+                    return const SizedBox.shrink();
+                  }
+
                   return Column(
                     children: [
                       _UpcomingPickupCard(
-                        order: first,
-                        timeLabel: '${first.dateLabel} at ${first.timeLabel}',
+                        order: cardOrder,
+                        timeLabel: '${cardOrder.dateLabel} at ${cardOrder.timeLabel}',
+                        title: title,
+                        subtitle: subtitle,
+                        option: option,
                       ),
-              const SizedBox(height: 12),
+                      const SizedBox(height: 12),
                     ],
                   );
                 },
@@ -214,31 +261,14 @@ class _OrdersListScreenState extends State<OrdersListScreen> with WidgetsBinding
                           return _OrderCard(
                             data: order,
                             onViewDetails: () => _showOrderDetailsDialog(context, order),
-                            onPayBill: () async {
-                              try {
-                                final invoice = await PaymentRepository().getInvoiceByOrderId(orderId: order.id);
-                                if (!mounted) return;
-                                if (invoice == null) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Invoice not generated yet')),
-                                  );
-                                  return;
-                                }
-                                await Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => OrderInvoiceScreen(orderId: order.id),
-                                  ),
-                                );
-                              } catch (e) {
-                                if (!mounted) return;
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      e.toString().replaceFirst('Exception: ', '').trim(),
-                                    ),
-                                  ),
-                                );
-                              }
+                            // Navigate immediately to invoice screen; it will show its own loader
+                            // while fetching invoice details, avoiding delay before navigation.
+                            onPayBill: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => OrderInvoiceScreen(orderId: order.id),
+                                ),
+                              );
                             },
                             onTrackLaundry: () => Navigator.of(context).pushNamed(
                               AppRoutes.orderTracking,
@@ -397,10 +427,16 @@ class _FilterPill extends StatelessWidget {
 class _UpcomingPickupCard extends StatelessWidget {
   final OrderRecord order;
   final String timeLabel;
+  final String title;
+  final String subtitle;
+  final DeliveryOptionType option;
 
   const _UpcomingPickupCard({
     required this.order,
     required this.timeLabel,
+    required this.title,
+    required this.subtitle,
+    required this.option,
   });
 
   @override
@@ -431,7 +467,7 @@ class _UpcomingPickupCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Text(
-                'Upcoming Pickup',
+                title,
                 style: AppTextStyles.header(color: const Color(0xFF1B1F2A))
                     .copyWith(fontSize: 18),
               ),
@@ -446,7 +482,7 @@ class _UpcomingPickupCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Pickup scheduled',
+            subtitle,
             style: AppTextStyles.body(color: const Color(0xFF9AA3B2))
                 .copyWith(fontSize: 12),
           ),
@@ -460,7 +496,7 @@ class _UpcomingPickupCard extends StatelessWidget {
                     Navigator.of(context).pushNamed(
                       AppRoutes.scheduleDateTime,
                       arguments: ScheduleDateTimeArgs(
-                        option: DeliveryOptionType.pickupOnly,
+                        option: option,
                         orderId: order.id,
                       ),
                     );
@@ -603,6 +639,9 @@ class _OrderCard extends StatelessWidget {
     final hasOnlyPerPiece =
         data.items.isNotEmpty && !hasKgWiseItems; // all items per-piece
 
+    final isBillPaid =
+        (data.billPaymentStatus ?? '').toLowerCase() == 'completed';
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -622,22 +661,27 @@ class _OrderCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Flexible(
+              Expanded(
                 child: Text(
-                  data.id,
+                  data.shortId,
                   style: AppTextStyles.body(color: const Color(0xFF98A0B5))
                       .copyWith(fontSize: 12),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
               const SizedBox(width: 8),
-              Text(
-                statusText,
-                style: AppTextStyles.header(color: statusColor)
-                    .copyWith(fontSize: 14),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    statusText,
+                    style: AppTextStyles.header(color: statusColor)
+                        .copyWith(fontSize: 14),
+                  ),
+                  const SizedBox(width: 6),
+                  Icon(statusIcon, size: 18, color: statusColor),
+                ],
               ),
-              const SizedBox(width: 6),
-              Icon(statusIcon, size: 18, color: statusColor),
             ],
           ),
           const SizedBox(height: 10),
@@ -668,19 +712,15 @@ class _OrderCard extends StatelessWidget {
                     Text(
                       'Schedule date & time',
                       style: AppTextStyles.body(color: const Color(0xFF98A0B5))
-                          .copyWith(fontSize: 10),
+                          .copyWith(fontSize: 12, fontWeight: FontWeight.w500),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${data.dateLabel} • ${data.timeLabel}',
+                      style: AppTextStyles.body(color: const Color(0xFF1B1F2A))
+                          .copyWith(fontSize: 14, fontWeight: FontWeight.w700),
+                    ),
                   ],
-                  Text(
-                    data.dateLabel,
-                    style: AppTextStyles.body(color: const Color(0xFF1B1F2A)),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    data.timeLabel,
-                    style: AppTextStyles.body(color: const Color(0xFF98A0B5)),
-                  ),
                 ],
               ),
             ],
@@ -702,24 +742,27 @@ class _OrderCard extends StatelessWidget {
                 ),
               ],
               const Spacer(),
-              // Show "Pay Bill" button only for orders with kg-wise items
-              // (per-piece only orders have payment processed immediately at placement)
+              // Show bill action only for orders with kg-wise items
               if (hasKgWiseItems) ...[
                 InkWell(
-                  onTap: onPayBill,
+                  onTap: isBillPaid ? null : onPayBill,
                   borderRadius: BorderRadius.circular(18),
                   child: Container(
                     height: 54,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: isBillPaid ? const Color(0xFF16A34A) : Colors.white,
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: HomeColors.borderSoft),
+                      border: Border.all(
+                        color: isBillPaid ? const Color(0xFF16A34A) : HomeColors.borderSoft,
+                      ),
                     ),
                     alignment: Alignment.center,
                     child: Text(
-                      'Pay Bill',
-                      style: AppTextStyles.button(color: HomeColors.primary).copyWith(fontSize: 12),
+                      isBillPaid ? 'Bill paid' : 'Pay Bill',
+                      style: AppTextStyles.button(
+                        color: isBillPaid ? Colors.white : HomeColors.primary,
+                      ).copyWith(fontSize: 12),
                     ),
                   ),
                 ),
@@ -832,7 +875,7 @@ void _showOrderDetailsDialog(BuildContext context, OrderRecord order) {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Order ID: ${order.id}',
+                    'Order ID: ${order.shortId}',
                     style: AppTextStyles.header(color: HomeColors.text)
                         .copyWith(fontSize: 14),
                   ),
@@ -888,13 +931,13 @@ void _showOrderDetailsDialog(BuildContext context, OrderRecord order) {
                               Text(
                                 'Schedule date & time',
                                 style: AppTextStyles.body(color: HomeColors.muted)
-                                    .copyWith(fontSize: 10),
+                                    .copyWith(fontSize: 12, fontWeight: FontWeight.w500),
                               ),
-                              const SizedBox(height: 4),
+                              const SizedBox(height: 6),
                               Text(
                                 '${order.dateLabel} at ${order.timeLabel}',
                                 style: AppTextStyles.body(color: HomeColors.text)
-                                    .copyWith(fontSize: 12, fontWeight: FontWeight.w600),
+                                    .copyWith(fontSize: 14, fontWeight: FontWeight.w700),
                               ),
                             ],
                           ),
@@ -957,12 +1000,6 @@ Widget _buildItemsList(OrderRecord order) {
   // Separate items by pricing type
   final perPieceItems = order.items.where((x) => x.isPerPiece).toList();
   final kgWiseItems = order.items.where((x) => !x.isPerPiece).toList();
-  final hasAnyKgWise = kgWiseItems.isNotEmpty;
-  // If there are any kg-wise items, per-piece items should also show "Bill pending"
-  // because total bill will be generated after weighing
-  final isCod = hasAnyKgWise 
-      ? true // Show pending if there are kg-wise items
-      : (order.paymentMethod == PaymentMethod.cod);
 
   // Group per-piece items by category
   final perPieceByCategory = <String, List<CartItem>>{};
@@ -1029,16 +1066,6 @@ Widget _buildItemsList(OrderRecord order) {
                 const SizedBox(height: 4),
               ],
             ],
-            // Payment status for per-piece items
-            const SizedBox(height: 6),
-            Padding(
-              padding: const EdgeInsets.only(left: 24),
-              child: _ItemSetPaymentStatus(
-                isPerPiece: true,
-                isKgWise: false,
-                isCod: isCod,
-              ),
-            ),
             const SizedBox(height: 12),
           ],
         ],
@@ -1089,267 +1116,10 @@ Widget _buildItemsList(OrderRecord order) {
                 const SizedBox(height: 4),
               ],
             ],
-            // Payment status for kg-wise items
-            const SizedBox(height: 6),
-            Padding(
-              padding: const EdgeInsets.only(left: 24),
-              child: _ItemSetPaymentStatus(
-                isPerPiece: false,
-                isKgWise: true,
-                isCod: isCod,
-                hasAnyKgWiseInOrder: hasAnyKgWise,
-              ),
-            ),
             const SizedBox(height: 12),
           ],
         ],
       ],
     ],
   );
-}
-
-class _PaymentStatusSection extends StatelessWidget {
-  final OrderRecord order;
-
-  const _PaymentStatusSection({required this.order});
-
-  @override
-  Widget build(BuildContext context) {
-    final perPieceItems = order.items.where((x) => x.isPerPiece).toList();
-    final kgWiseItems = order.items.where((x) => !x.isPerPiece).toList();
-    final hasPerPiece = perPieceItems.isNotEmpty;
-    final hasKgWise = kgWiseItems.isNotEmpty;
-    // If there are any kg-wise items, per-piece items should also show "Bill pending"
-    // because total bill will be generated after weighing
-    final hasAnyKgWise = hasKgWise;
-    final isCod = hasAnyKgWise 
-        ? true // Show pending if there are kg-wise items
-        : (order.paymentMethod == PaymentMethod.cod);
-    final hasPayment = order.paymentMethod != null;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Payment Status',
-          style: AppTextStyles.header(color: const Color(0xFF1B1F2A))
-              .copyWith(fontSize: 14),
-        ),
-        const SizedBox(height: 8),
-        if (hasPerPiece) ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: isCod
-                  ? const Color(0xFFFEF3C7)
-                  : const Color(0xFFD1FAE5),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: isCod
-                    ? const Color(0xFFFCD34D)
-                    : const Color(0xFF86EFAC),
-                width: 1,
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  isCod ? Icons.pending_outlined : Icons.check_circle_outline,
-                  size: 16,
-                  color: isCod
-                      ? const Color(0xFFD97706)
-                      : const Color(0xFF16A34A),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    isCod
-                        ? (hasKgWise ? 'Bill pending (kg-wise)' : 'Bill pending (COD)')
-                        : 'Bill paid',
-                    style: AppTextStyles.body(
-                      color: isCod
-                          ? const Color(0xFF92400E)
-                          : const Color(0xFF166534),
-                    ).copyWith(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-        if (hasKgWise) ...[
-          if (hasPerPiece) const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFEF3C7),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: const Color(0xFFFCD34D),
-                width: 1,
-              ),
-            ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.pending_outlined,
-                  size: 16,
-                  color: Color(0xFFD97706),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Bill pending (kg-wise items)',
-                    style: AppTextStyles.body(
-                      color: const Color(0xFF92400E),
-                    ).copyWith(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-        if (!hasPayment && !hasKgWise) ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFEF3C7),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: const Color(0xFFFCD34D),
-                width: 1,
-              ),
-            ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.pending_outlined,
-                  size: 16,
-                  color: Color(0xFFD97706),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Bill pending',
-                    style: AppTextStyles.body(
-                      color: const Color(0xFF92400E),
-                    ).copyWith(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _ItemSetPaymentStatus extends StatelessWidget {
-  final bool isPerPiece;
-  final bool isKgWise;
-  final bool isCod;
-  final bool hasAnyKgWiseInOrder;
-
-  const _ItemSetPaymentStatus({
-    required this.isPerPiece,
-    required this.isKgWise,
-    required this.isCod,
-    this.hasAnyKgWiseInOrder = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (isPerPiece) ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: isCod
-                  ? const Color(0xFFFEF3C7)
-                  : const Color(0xFFD1FAE5),
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: isCod
-                    ? const Color(0xFFFCD34D)
-                    : const Color(0xFF86EFAC),
-                width: 1,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  isCod ? Icons.pending_outlined : Icons.check_circle_outline,
-                  size: 14,
-                  color: isCod
-                      ? const Color(0xFFD97706)
-                      : const Color(0xFF16A34A),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  isCod 
-                      ? (hasAnyKgWiseInOrder ? 'Bill pending (kg-wise)' : 'Bill pending (COD)')
-                      : 'Bill paid',
-                  style: AppTextStyles.body(
-                    color: isCod
-                        ? const Color(0xFF92400E)
-                        : const Color(0xFF166534),
-                  ).copyWith(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-        if (isKgWise) ...[
-          if (isPerPiece) const SizedBox(height: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFEF3C7),
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: const Color(0xFFFCD34D),
-                width: 1,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.pending_outlined,
-                  size: 14,
-                  color: Color(0xFFD97706),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'Bill pending (kg-wise)',
-                  style: AppTextStyles.body(
-                    color: const Color(0xFF92400E),
-                  ).copyWith(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ],
-    );
-  }
 }

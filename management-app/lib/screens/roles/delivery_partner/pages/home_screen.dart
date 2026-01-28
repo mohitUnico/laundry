@@ -17,7 +17,12 @@ import '../../../common/widgets/task_card.dart';
 import '../../../common/widgets/bottom_nav_bar.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final bool showBottomNav;
+
+  const HomeScreen({
+    super.key,
+    this.showBottomNav = true,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -949,30 +954,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ],
         ),
       ),
-      bottomNavigationBar: BottomNavBar(
-        currentIndex: _bottomNavIndex,
-        onTap: (index) {
-          setState(() => _bottomNavIndex = index);
-          // Handle navigation
-          switch (index) {
-            case 0:
-              // Refresh home data when tapping home tab
-              if (_isShiftActive) {
-                _refreshHomeData();
-              }
-              break;
-            case 1:
-              Navigator.pushReplacementNamed(context, AppRoutes.orders);
-              break;
-            case 2:
-              Navigator.pushReplacementNamed(context, AppRoutes.help);
-              break;
-            case 3:
-              Navigator.pushNamed(context, AppRoutes.profile);
-              break;
-          }
-        },
-      ),
+      bottomNavigationBar: widget.showBottomNav
+          ? BottomNavBar(
+              currentIndex: _bottomNavIndex,
+              onTap: (index) {
+                setState(() => _bottomNavIndex = index);
+                // Handle navigation
+                switch (index) {
+                  case 0:
+                    // Refresh home data when tapping home tab
+                    if (_isShiftActive) {
+                      _refreshHomeData();
+                    }
+                    break;
+                  case 1:
+                    Navigator.pushReplacementNamed(context, AppRoutes.orders);
+                    break;
+                  case 2:
+                    Navigator.pushReplacementNamed(context, AppRoutes.help);
+                    break;
+                  case 3:
+                    Navigator.pushNamed(context, AppRoutes.profile);
+                    break;
+                }
+              },
+            )
+          : null,
     );
   }
 
@@ -1281,8 +1288,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       SizedBox(
                         width: double.infinity,
                         height: 48,
-                        child: ElevatedButton(
-                          onPressed: () async {
+                        child: StatefulBuilder(
+                          builder: (context, setInnerState) {
+                            bool isSaving = false;
+                            Future<void> handleSave() async {
+                              if (isSaving) return;
+                              setInnerState(() => isSaving = true);
+                              try {
                             // Validate all weights are entered
                             bool allValid = true;
                             final itemsToUpdate = <Map<String, dynamic>>[];
@@ -1310,38 +1322,57 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               );
                               return;
                             }
-                            
-                            // Save weights
-                            try {
-                              await _deliveryStaffAppService.updatePerKgWeights(
-                                orderId: orderId,
-                                items: itemsToUpdate,
-                              );
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Weights saved successfully')),
+
+                              // Save weights
+                              try {
+                                await _deliveryStaffAppService.updatePerKgWeights(
+                                  orderId: orderId,
+                                  items: itemsToUpdate,
                                 );
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Weights saved successfully')),
+                                  );
+                                }
+                                setState(() => weightsSaved = true);
+                              } catch (e) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+                                  );
+                                }
+                                setState(() => weightsSaved = false);
+                              } finally {
+                                if (mounted) {
+                                  setInnerState(() => isSaving = false);
+                                }
                               }
-                              setState(() => weightsSaved = true);
-                            } catch (e) {
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
-                                );
-                              }
-                              setState(() => weightsSaved = false);
                             }
+
+                            return ElevatedButton(
+                              onPressed: isSaving ? null : handleSave,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primary,
+                                disabledBackgroundColor: AppColors.primary.withOpacity(0.7),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                              ),
+                              child: isSaving
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                      ),
+                                    )
+                                  : Text(
+                                      'Save Weights',
+                                      style: AppTextStyles.button(color: Colors.white),
+                                    ),
+                            );
                           },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                          ),
-                          child: Text(
-                            'Save Weights',
-                            style: AppTextStyles.button(color: Colors.white),
-                          ),
                         ),
                       ),
                     ],

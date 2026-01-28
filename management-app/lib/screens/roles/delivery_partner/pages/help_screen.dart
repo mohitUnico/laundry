@@ -7,7 +7,12 @@ import '../../../../theme/app_text_styles.dart';
 import '../../../common/widgets/bottom_nav_bar.dart';
 
 class HelpScreen extends StatelessWidget {
-  const HelpScreen({super.key});
+  final bool showBottomNav;
+
+  const HelpScreen({
+    super.key,
+    this.showBottomNav = true,
+  });
 
   static const String _supportPhoneDisplay = '+91 87965 45689';
   static const String _supportPhoneDial = '+918796545689';
@@ -133,24 +138,26 @@ class HelpScreen extends StatelessWidget {
           ],
         ),
       ),
-      bottomNavigationBar: BottomNavBar(
-        currentIndex: 2,
-        onTap: (index) {
-          switch (index) {
-            case 0:
-              Navigator.pushReplacementNamed(context, AppRoutes.home);
-              break;
-            case 1:
-              Navigator.pushReplacementNamed(context, AppRoutes.orders);
-              break;
-            case 2:
-              break;
-            case 3:
-              Navigator.pushReplacementNamed(context, AppRoutes.profile);
-              break;
-          }
-        },
-      ),
+      bottomNavigationBar: showBottomNav
+          ? BottomNavBar(
+              currentIndex: 2,
+              onTap: (index) {
+                switch (index) {
+                  case 0:
+                    Navigator.pushReplacementNamed(context, AppRoutes.home);
+                    break;
+                  case 1:
+                    Navigator.pushReplacementNamed(context, AppRoutes.orders);
+                    break;
+                  case 2:
+                    break;
+                  case 3:
+                    Navigator.pushReplacementNamed(context, AppRoutes.profile);
+                    break;
+                }
+              },
+            )
+          : null,
     );
   }
 }

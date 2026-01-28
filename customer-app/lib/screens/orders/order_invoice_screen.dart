@@ -6,7 +6,7 @@ import '../../screens/home/widgets/home_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../utils/pricing.dart';
 import '../home/widgets/home_bottom_nav.dart';
-import '../payment/pay_bill_screen.dart';
+import '../../routes/app_routes.dart';
 import '../../services/payment_service.dart';
 
 class OrderInvoiceScreen extends StatefulWidget {
@@ -51,6 +51,7 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
             }
 
             final billTotal = (double.tryParse(invoice.bill.finalAmount) ?? 0).toInt();
+            final billingLabel = _formatBillingLabel(invoice);
 
             return Column(
               children: [
@@ -70,12 +71,16 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
                         const SizedBox(height: 6),
                         _MetaRow(label: 'Status', value: invoice.orderStatus),
                         const SizedBox(height: 6),
-                        _MetaRow(label: 'Billing', value: invoice.billingStatus),
+                        _MetaRow(label: 'Billing', value: billingLabel),
                         const SizedBox(height: 16),
                         _ItemsSection(items: invoice.items),
                         const SizedBox(height: 16),
                         _TotalsCard(invoice: invoice),
                         const SizedBox(height: 18),
+                        // Use main PaymentScreen for bill payment flow; it already
+                        // contains the full invoice + payment UI for new orders.
+                        // Here we just navigate to it with a special flag so it can
+                        // fetch and display the existing bill for this order.
                         SizedBox(
                           width: double.infinity,
                           height: 54,
@@ -89,13 +94,12 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
                             onPressed: billTotal <= 0
                                 ? null
                                 : () {
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) => PayBillScreen(
-                                          orderId: invoice.orderId,
-                                          amountInr: billTotal,
-                                        ),
-                                      ),
+                                    Navigator.of(context).pushNamed(
+                                      AppRoutes.payment,
+                                      arguments: {
+                                        'mode': 'existingBill',
+                                        'orderId': invoice.orderId,
+                                      },
                                     );
                                   },
                             child: Text(
@@ -121,6 +125,18 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
         },
       ),
     );
+  }
+
+  String _formatBillingLabel(InvoiceDetails invoice) {
+    final method = (invoice.bill.paymentMethod).toLowerCase();
+    final paymentStatus = (invoice.bill.paymentStatus).toLowerCase();
+    final methodLabel = method == 'cod' ? 'COD' : 'Card';
+
+    if (paymentStatus == 'completed') {
+      return 'Paid ($methodLabel)';
+    }
+
+    return 'Pending ($methodLabel)';
   }
 }
 

@@ -108,6 +108,10 @@ class OrderProvider with ChangeNotifier {
       final totalAmount = (data['total_amount'] ?? '0') as String;
       final items = (data['items'] as List?) ?? [];
       final bill = data['bill'] as Map<String, dynamic>?;
+      final billingStatus = (data['billing_status'] ?? '') as String;
+      final billPaymentStatus = bill != null
+          ? (bill['payment_status'] ?? '') as String
+          : '';
 
       // Map order status
       final status = _mapOrderStatus(orderStatus);
@@ -295,9 +299,31 @@ class OrderProvider with ChangeNotifier {
         if (lng is num) pickupLng = lng.toDouble();
       }
 
+      // Derive a human-friendly title. If backend provided a title, use it;
+      // otherwise show category/service or "Mixed" when multiple services exist.
+      String computedTitle;
+      if (title != null && title.trim().isNotEmpty) {
+        computedTitle = title.trim();
+      } else {
+        final serviceNames = cartItems.map((c) => c.serviceName.trim()).where((s) => s.isNotEmpty).toSet();
+        final categories = cartItems.map((c) => c.category.trim()).where((s) => s.isNotEmpty).toSet();
+        final hasMultipleServices = serviceNames.length > 1;
+        final hasMultipleCategories = categories.length > 1;
+
+        if (hasMultipleServices || hasMultipleCategories) {
+          computedTitle = 'Mixed';
+        } else if (categories.isNotEmpty) {
+          computedTitle = categories.first;
+        } else if (serviceNames.isNotEmpty) {
+          computedTitle = serviceNames.first;
+        } else {
+          computedTitle = 'Order';
+        }
+      }
+
       return OrderRecord(
         id: orderId,
-        title: title ?? (cartItems.length == 1 ? cartItems.first.category : 'Mixed'),
+        title: computedTitle,
         items: cartItems,
         totalItems: totalItems,
         totalInr: totalInr,
@@ -313,6 +339,8 @@ class OrderProvider with ChangeNotifier {
         pickupAddress: pickupAddress,
         pickupLat: pickupLat,
         pickupLng: pickupLng,
+        billingStatus: billingStatus.isEmpty ? null : billingStatus,
+        billPaymentStatus: billPaymentStatus.isEmpty ? null : billPaymentStatus,
       );
     } catch (e) {
       debugPrint('Error mapping order: $e');

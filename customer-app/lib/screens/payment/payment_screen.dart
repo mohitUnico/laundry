@@ -5,6 +5,7 @@ import '../home/widgets/home_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/order_provider.dart';
+import '../../providers/coupons_provider.dart';
 import '../../models/order_record.dart';
 import '../../models/cart_item.dart';
 import '../../routes/app_routes.dart';
@@ -37,8 +38,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Get delivery option from route arguments
+    // Determine mode: new order from cart OR existing bill (kg-wise invoice)
     final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final mode = args?['mode'] as String? ?? 'newOrder';
+    final isExistingBill = mode == 'existingBill';
+    final existingOrderId = args?['orderId'] as String?;
+
+    // Get delivery option from route arguments (used only for new order flow)
     final deliveryOptionStr = args?['deliveryOption'] as String? ?? 'pickupOnly';
     final deliveryOption = DeliveryOptionType.values.firstWhere(
       (e) => e.name == deliveryOptionStr,
@@ -53,28 +59,37 @@ class _PaymentScreenState extends State<PaymentScreen> {
             final perPieceItems = cart.items.where((x) => x.isPerPiece).toList();
             final kgWiseItems = cart.items.where((x) => !x.isPerPiece).toList();
 
-            // Calculate fees for per-piece items only
-            final itemTotal = perPieceItems.fold<int>(0, (sum, x) => sum + x.subtotalInr);
-            final handlingFee = (itemTotal * 0.114).round(); // ~11.4% handling fee
-            
-            // All delivery options are FREE - no charges
-            const pickupFeeOriginal = 0; // FREE
-            
-            int pickupFee = 0; // FREE
-            int deliveryFee = 0; // FREE
+            // NEW ORDER: amounts from cart; EXISTING BILL: amounts from backend in onTap.
+            int itemTotal = 0;
+            int handlingFee = 0;
+            const int pickupFeeOriginal = 0;
+            int pickupFee = 0;
+            int deliveryFee = 0;
+            int originalTotal = 0;
+
+            if (!isExistingBill) {
+              // Calculate fees for per-piece items only
+              itemTotal = perPieceItems.fold<int>(0, (sum, x) => sum + x.subtotalInr);
+              handlingFee = (itemTotal * 0.114).round(); // ~11.4% handling fee
+
+              // All delivery options are FREE - no charges
+              pickupFee = 0;
+              deliveryFee = 0;
+
+              final originalPickupFee =
+                  (deliveryOption == DeliveryOptionType.pickupOnly ||
+                          deliveryOption == DeliveryOptionType.pickupAndDelivery)
+                      ? pickupFeeOriginal
+                      : 0;
+              final originalDeliveryFee =
+                  (deliveryOption == DeliveryOptionType.deliveryOnly ||
+                          deliveryOption == DeliveryOptionType.pickupAndDelivery)
+                      ? deliveryFee
+                      : 0;
+              originalTotal = itemTotal + handlingFee + originalPickupFee + originalDeliveryFee;
+            }
 
             final subtotal = itemTotal + handlingFee + pickupFee + deliveryFee;
-            // Calculate original total based on delivery option
-            final originalPickupFee = (deliveryOption == DeliveryOptionType.pickupOnly ||
-                    deliveryOption == DeliveryOptionType.pickupAndDelivery)
-                ? pickupFeeOriginal
-                : 0;
-            final originalDeliveryFee = (deliveryOption == DeliveryOptionType.deliveryOnly ||
-                    deliveryOption == DeliveryOptionType.pickupAndDelivery)
-                ? deliveryFee
-                : 0;
-            final originalTotal = itemTotal + handlingFee + originalPickupFee + originalDeliveryFee;
-            // Apply promo discount to subtotal
             final finalTotal = (subtotal - _promoDiscount).clamp(0, double.infinity).toInt();
             final savings = originalTotal - finalTotal;
 
@@ -92,37 +107,40 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const SizedBox(height: 20),
-                        _BillSummaryCard(
-                          perPieceItems: perPieceItems,
-                          itemTotal: itemTotal,
-                          handlingFee: handlingFee,
-                          pickupFeeOriginal: pickupFeeOriginal,
-                          pickupFee: pickupFee,
-                          deliveryFee: deliveryFee,
-                          subtotal: subtotal,
-                          originalTotal: originalTotal,
-                          finalTotal: finalTotal,
-                          hasKgWise: kgWiseItems.isNotEmpty,
-                          deliveryOption: deliveryOption,
-                          promoCodeController: _promoCodeController,
-                          appliedPromoCode: _appliedPromoCode,
-                          promoDiscount: _promoDiscount,
-                          onApplyPromo: (code, discount) {
-                            setState(() {
-                              _appliedPromoCode = code.isEmpty ? null : code;
-                              _promoDiscount = discount;
-                              if (code.isEmpty) {
-                                _promoCodeController.clear();
-                              }
-                            });
-                          },
-                        ),
-                        const SizedBox(height: 20),
-                        _ToPaySection(
-                          originalTotal: originalTotal,
-                          finalTotal: finalTotal,
-                          savings: savings,
-                        ),
+                        if (!isExistingBill)
+                          _BillSummaryCard(
+                            perPieceItems: perPieceItems,
+                            itemTotal: itemTotal,
+                            handlingFee: handlingFee,
+                            pickupFeeOriginal: pickupFeeOriginal,
+                            pickupFee: pickupFee,
+                            deliveryFee: deliveryFee,
+                            subtotal: subtotal,
+                            originalTotal: originalTotal,
+                            finalTotal: finalTotal,
+                            hasKgWise: kgWiseItems.isNotEmpty,
+                            deliveryOption: deliveryOption,
+                            promoCodeController: _promoCodeController,
+                            appliedPromoCode: _appliedPromoCode,
+                            promoDiscount: _promoDiscount,
+                            onApplyPromo: (code, discount) {
+                              setState(() {
+                                _appliedPromoCode = code.isEmpty ? null : code;
+                                _promoDiscount = discount;
+                                if (code.isEmpty) {
+                                  _promoCodeController.clear();
+                                }
+                              });
+                            },
+                          ),
+                        if (!isExistingBill) ...[
+                          const SizedBox(height: 20),
+                          _ToPaySection(
+                            originalTotal: originalTotal,
+                            finalTotal: finalTotal,
+                            savings: savings,
+                          ),
+                        ],
                         const SizedBox(height: 20),
                         const Divider(height: 1, thickness: 1, color: Color(0xFFE5E7EB)),
                         const SizedBox(height: 20),
@@ -180,7 +198,135 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     child: _PayButton(
                       amount: finalTotal,
                       onTap: () async {
-                        // Create order via backend, then process payment
+                        // EXISTING BILL FLOW: only process payment for an already-created invoice
+                        if (isExistingBill) {
+                          if (existingOrderId == null || existingOrderId.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Order ID missing for bill payment')),
+                            );
+                            return;
+                          }
+
+                          if (!mounted) return;
+                          showDialog(
+                            context: context,
+                            barrierDismissible: false,
+                            builder: (context) => const Center(
+                              child: CircularProgressIndicator(),
+                            ),
+                          );
+
+                          try {
+                            final paymentRepo = PaymentRepository();
+                            final invoice =
+                                await paymentRepo.getInvoiceByOrderId(orderId: existingOrderId);
+
+                            if (invoice == null) {
+                              if (mounted) {
+                                Navigator.of(context).pop();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Invoice not generated yet')),
+                                );
+                              }
+                              return;
+                            }
+
+                            final bill = invoice.bill;
+                            final billAmount =
+                                (double.tryParse(bill.finalAmount) ?? 0.0).toInt();
+                            if (billAmount <= 0) {
+                              if (mounted) {
+                                Navigator.of(context).pop();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Nothing to pay for this bill')),
+                                );
+                              }
+                              return;
+                            }
+
+                            String paymentMethodBackend;
+                            String paymentStatus;
+
+                            switch (_selectedMethod) {
+                              case PaymentMethod.visa:
+                              case PaymentMethod.mastercard:
+                                paymentMethodBackend = 'card';
+                                paymentStatus = 'completed';
+                                break;
+                              case PaymentMethod.cod:
+                                paymentMethodBackend = 'cod';
+                                paymentStatus = 'pending';
+                                break;
+                            }
+
+                            final timestamp =
+                                DateTime.now().millisecondsSinceEpoch.toString();
+                            var transactionId =
+                                'QUCVG${timestamp.length > 7 ? timestamp.substring(timestamp.length - 7) : timestamp.padLeft(7, '0')}';
+
+                            final paymentResult = await paymentRepo.processPayment(
+                              orderId: existingOrderId,
+                              paymentMethod: paymentMethodBackend,
+                              transactionId:
+                                  paymentStatus == 'completed' ? transactionId : null,
+                              paymentStatus: paymentStatus,
+                            );
+
+                            if (paymentResult.transactionId != null &&
+                                paymentResult.transactionId!.isNotEmpty) {
+                              transactionId = paymentResult.transactionId!;
+                            }
+
+                            // Refresh orders so bill payment status is updated in list
+                            try {
+                              await context
+                                  .read<OrderProvider>()
+                                  .fetchOrders(page: 1, limit: 10);
+                            } catch (_) {}
+
+                            if (!mounted) return;
+
+                            Navigator.of(context).pop(); // close loader
+
+                            if (_selectedMethod == PaymentMethod.cod) {
+                              // COD: status pending, go back to Orders
+                              Navigator.of(context).pushNamedAndRemoveUntil(
+                                AppRoutes.orders,
+                                (route) => false,
+                              );
+                            } else {
+                              // Card: reuse payment successful screen, then Orders
+                              Navigator.of(context).pushNamedAndRemoveUntil(
+                                AppRoutes.paymentSuccessful,
+                                (route) => false,
+                                arguments: {
+                                  'transactionId': transactionId,
+                                  'itemTotal': billAmount,
+                                  'handlingFee': 0,
+                                  'pickupFeeOriginal': 0,
+                                  'pickupFee': 0,
+                                  'deliveryFee': 0,
+                                  'originalTotal': billAmount,
+                                  'finalTotal': billAmount,
+                                  'deliveryOption': 'pickupOnly',
+                                },
+                              );
+                            }
+                          } catch (e) {
+                            if (!mounted) return;
+                            Navigator.of(context).pop(); // close loader
+                            final message = OrderPaymentErrorMessages.getPaymentErrorMessage(
+                              e,
+                              operation: 'process payment',
+                            );
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(message)),
+                            );
+                          }
+                          return;
+                        }
+
+                        // NEW ORDER FLOW: create order from cart, then process payment
                         final cart = context.read<CartProvider>();
                         final items = cart.items;
                         if (items.isEmpty) {
@@ -366,7 +512,22 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           }
 
                           // Create local order record for UI
-                          final title = items.length == 1 ? items.first.category : 'Mixed';
+                          // Title: use category/service when single, "Mixed" when multiple services.
+                          final serviceNames = items
+                              .map((c) => c.serviceName.trim())
+                              .where((s) => s.isNotEmpty)
+                              .toSet();
+                          final categories = items
+                              .map((c) => c.category.trim())
+                              .where((s) => s.isNotEmpty)
+                              .toSet();
+                          final hasMultipleServices = serviceNames.length > 1;
+                          final hasMultipleCategories = categories.length > 1;
+                          final title = (hasMultipleServices || hasMultipleCategories)
+                              ? 'Mixed'
+                              : (categories.isNotEmpty
+                                  ? categories.first
+                                  : (serviceNames.isNotEmpty ? serviceNames.first : 'Order'));
                           final placedAt = DateTime.now();
                           final placedDateLabel = _formatDateLabel(placedAt);
                           final placedTimeLabel = _formatTime12h(
@@ -795,6 +956,13 @@ class _BillSummaryCard extends StatelessWidget {
                               // Calculate discount based on promo code type
                               final discount = promoCode.calculateDiscount(subtotal);
                               onApplyPromo(promoCode.code, discount);
+                              // Record successful usage so "first order"/limited-use
+                              // coupons stop showing in banners for this user.
+                              try {
+                                // Safe even if CouponsProvider isn't in scope; wrap in try.
+                                // ignore: use_build_context_synchronously
+                                context.read<CouponsProvider>().recordCouponUsage(promoCode.code);
+                              } catch (_) {}
                             } else {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(

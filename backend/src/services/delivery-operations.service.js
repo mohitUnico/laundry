@@ -112,17 +112,48 @@ exports.startShift = async ({ staffId }) => {
     if (!staff.is_active) throw new ValidationError('Delivery staff is inactive');
     if (!staff.is_verified_by_admin) throw new ValidationError('Delivery staff is not verified by admin');
 
-    const existing = await prisma.deliveryStaffShift.findFirst({
+    // If there's already an active shift, just return it (idempotent).
+    const existingActive = await prisma.deliveryStaffShift.findFirst({
         where: { staff_id: staffId, is_active: true, ended_at: null },
         orderBy: { started_at: 'desc' },
     });
 
-    if (existing) {
-        return existing;
+    if (existingActive) {
+        return existingActive;
+    }
+
+    // Otherwise, reuse the most recent shift row for this staff by
+    // updating its timings and flags instead of creating a brand new
+    // row every time. This keeps one logical shift record per staff
+    // that can be started/stopped multiple times.
+    const lastShift = await prisma.deliveryStaffShift.findFirst({
+        where: { staff_id: staffId },
+        orderBy: { started_at: 'desc' },
+    });
+
+    const startedAt = nowUtc();
+
+    if (lastShift) {
+        return prisma.deliveryStaffShift.update({
+            where: { shift_id: lastShift.shift_id },
+            data: {
+                is_active: true,
+                started_at: startedAt,
+                ended_at: null,
+                // Reset last known location so new session starts clean.
+                last_latitude: null,
+                last_longitude: null,
+                last_location_at: null,
+            },
+        });
     }
 
     return prisma.deliveryStaffShift.create({
-        data: { staff_id: staffId, is_active: true },
+        data: {
+            staff_id: staffId,
+            is_active: true,
+            started_at: startedAt,
+        },
     });
 };
 
@@ -160,7 +191,7 @@ exports.updateLiveLocation = async ({ staffId, latitude, longitude }) => {
 
     const when = nowUtc();
 
-    const [_, shift, loc] = await prisma.$transaction([
+    const [_, shift] = await prisma.$transaction([
         prisma.deliveryStaff.update({
             where: { staff_id: staffId },
             data: {
@@ -177,21 +208,12 @@ exports.updateLiveLocation = async ({ staffId, latitude, longitude }) => {
                 last_location_at: when,
             },
         }),
-        prisma.deliveryStaffLocation.create({
-            data: {
-                staff_id: staffId,
-                shift_id: activeShift.shift_id,
-                latitude: lat,
-                longitude: lng,
-                recorded_at: when,
-            },
-        }),
     ]);
 
     realtimeService.emitToDeliveryStaff(staffId, 'location', {
         latitude: lat,
         longitude: lng,
-        recordedAt: loc.recorded_at,
+        recordedAt: when,
         shiftId: activeShift.shift_id,
     });
 

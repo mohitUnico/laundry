@@ -10,6 +10,9 @@ const { AppError } = require('../utils/errors');
 class DashboardService {
     /**
      * Get monthly overview metrics for a mart
+     * Uses live aggregation from orders + bills (not daily_metrics table).
+     * Revenue only counts completed orders (status = 'delivered').
+     *
      * @param {string|null} martId - Mart ID (optional for single mart system)
      * @param {Date} currentTimestamp - Current timestamp
      * @returns {Promise<Object>} Monthly overview data
@@ -31,48 +34,77 @@ class DashboardService {
             const nextMonthStart = new Date(Date.UTC(year, month + 1, 1, 0, 0, 0));
             const previousMonthStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
 
-            // Build where clause for date range (single mart system - no mart_id filter)
-            const whereClause = (dateStart, dateEnd) => ({
-                metric_date: {
-                    gte: dateStart,
-                    lt: dateEnd,
-                },
-            });
+            // Live aggregation helper: get revenue, orders, new customers, avg delivery time for a date range
+            const getLiveMetrics = async (dateStart, dateEnd) => {
+                // Revenue: sum of completed orders (delivered) that were completed in this period
+                const revenueRow = await prisma.$queryRaw`
+                    SELECT
+                        COALESCE(SUM(COALESCE(b.final_amount, o.total_amount)), 0)::numeric AS revenue
+                    FROM orders o
+                    LEFT JOIN bills b ON b.order_id = o.order_id
+                    WHERE o.order_status IN ('delivered')
+                      AND o.updated_at >= ${dateStart}
+                      AND o.updated_at < ${dateEnd}
+                `;
+
+                // Total orders: non-draft orders created in this period
+                const totalOrders = await prisma.order.count({
+                    where: {
+                        order_status: { not: 'draft' },
+                        created_at: { gte: dateStart, lt: dateEnd },
+                    },
+                });
+
+                // New customers: customers created in this period
+                const newCustomers = await prisma.customer.count({
+                    where: {
+                        created_at: { gte: dateStart, lt: dateEnd },
+                    },
+                });
+
+                // Avg delivery time: weighted average from completed drop deliveries in this period
+                const deliveries = await prisma.delivery.findMany({
+                    where: {
+                        delivery_type: 'drop',
+                        completed_at: { gte: dateStart, lt: dateEnd },
+                        delivery_status: 'completed',
+                    },
+                    select: {
+                        actual_duration: true,
+                        assigned_at: true,
+                        completed_at: true,
+                    },
+                });
+
+                const deliveryDurations = deliveries
+                    .map((d) => {
+                        if (Number.isFinite(d.actual_duration) && d.actual_duration > 0) return d.actual_duration;
+                        if (!d.assigned_at || !d.completed_at) return null;
+                        const minutes = Math.round((d.completed_at.getTime() - d.assigned_at.getTime()) / 60000);
+                        return minutes > 0 ? minutes : null;
+                    })
+                    .filter((v) => typeof v === 'number' && Number.isFinite(v));
+
+                const avgDeliveryTime =
+                    deliveryDurations.length === 0
+                        ? 0
+                        : Math.round(deliveryDurations.reduce((sum, v) => sum + v, 0) / deliveryDurations.length);
+
+                const revenue = revenueRow?.[0]?.revenue != null ? Number(new Prisma.Decimal(revenueRow[0].revenue).toFixed(2)) : 0;
+
+                return {
+                    revenue,
+                    totalOrders,
+                    newCustomers,
+                    avgDeliveryTime,
+                };
+            };
 
             // Fetch current and previous month metrics
-            const [currentMonthMetrics, previousMonthMetrics] = await Promise.all([
-                prisma.dailyMetrics.findMany({
-                    where: whereClause(currentMonthStart, nextMonthStart),
-                }),
-                prisma.dailyMetrics.findMany({
-                    where: whereClause(previousMonthStart, currentMonthStart),
-                }),
+            const [currentMonth, previousMonth] = await Promise.all([
+                getLiveMetrics(currentMonthStart, nextMonthStart),
+                getLiveMetrics(previousMonthStart, currentMonthStart),
             ]);
-
-            // Helper functions
-            const sumDecimal = (records, key) =>
-                records.reduce(
-                    (acc, record) => acc.add(record[key] ? new Prisma.Decimal(record[key]) : new Prisma.Decimal(0)),
-                    new Prisma.Decimal(0)
-                );
-
-            const sumInt = (records, key) =>
-                records.reduce((acc, record) => acc + (record[key] || 0), 0);
-
-            const calculateWeightedAverage = (records, valueKey, weightKey) => {
-                const totalWeight = sumInt(records, weightKey);
-                if (totalWeight === 0) {
-                    return 0;
-                }
-
-                const weightedSum = records.reduce((acc, record) => {
-                    const value = record[valueKey] || 0;
-                    const weight = record[weightKey] || 0;
-                    return acc + value * weight;
-                }, 0);
-
-                return Math.round(weightedSum / totalWeight);
-            };
 
             const calculatePercentageIncrease = (currentValue, previousValue) => {
                 if (previousValue === 0) {
@@ -87,57 +119,32 @@ class DashboardService {
                 return Math.max(0, Math.min(100, Math.round(change)));
             };
 
-            // Current month calculations
-            const currentTotalRevenue = sumDecimal(currentMonthMetrics, 'total_revenue');
-            const currentTotalOrders = sumInt(currentMonthMetrics, 'total_orders');
-            const currentNewCustomers = sumInt(currentMonthMetrics, 'new_customers');
-            const currentAvgDeliveryTime = calculateWeightedAverage(
-                currentMonthMetrics,
-                'avg_delivery_duration',
-                'total_orders'
-            );
-
-            // Previous month calculations
-            const previousTotalRevenue = sumDecimal(previousMonthMetrics, 'total_revenue');
-            const previousTotalOrders = sumInt(previousMonthMetrics, 'total_orders');
-            const previousNewCustomers = sumInt(previousMonthMetrics, 'new_customers');
-            const previousAvgDeliveryTime = calculateWeightedAverage(
-                previousMonthMetrics,
-                'avg_delivery_duration',
-                'total_orders'
-            );
-
-            // Convert decimals to strings for output
-            const totalRevenueValue = currentTotalRevenue.toFixed(2);
-            const previousRevenueValue = parseFloat(previousTotalRevenue.toFixed(2));
-            const currentRevenueValue = parseFloat(totalRevenueValue);
-
             // Calculate percentage increases
             const percentageIncreaseRevenue = calculatePercentageIncrease(
-                currentRevenueValue,
-                previousRevenueValue
+                currentMonth.revenue,
+                previousMonth.revenue
             );
             const percentageIncreaseOrders = calculatePercentageIncrease(
-                currentTotalOrders,
-                previousTotalOrders
+                currentMonth.totalOrders,
+                previousMonth.totalOrders
             );
             const percentageIncreaseNewCustomers = calculatePercentageIncrease(
-                currentNewCustomers,
-                previousNewCustomers
+                currentMonth.newCustomers,
+                previousMonth.newCustomers
             );
             const percentageIncreaseAvgDelivery = calculatePercentageIncrease(
-                currentAvgDeliveryTime,
-                previousAvgDeliveryTime
+                currentMonth.avgDeliveryTime,
+                previousMonth.avgDeliveryTime
             );
 
             return {
-                total_revenue: totalRevenueValue,
+                total_revenue: currentMonth.revenue.toFixed(2),
                 percentage_increase_total_revenue: percentageIncreaseRevenue,
-                total_orders: currentTotalOrders,
+                total_orders: currentMonth.totalOrders,
                 percentage_increase_total_orders: percentageIncreaseOrders,
-                new_customers: currentNewCustomers,
+                new_customers: currentMonth.newCustomers,
                 percentage_increase_new_customers: percentageIncreaseNewCustomers,
-                avg_delivery_time: currentAvgDeliveryTime,
+                avg_delivery_time: currentMonth.avgDeliveryTime,
                 percentage_increase_avg_delivery_time: percentageIncreaseAvgDelivery,
             };
         } catch (error) {
@@ -328,15 +335,25 @@ class DashboardService {
             const rangeStart = periods[0].start;
             const rangeEnd = periods[periods.length - 1].end;
 
-            const metrics = await prisma.dailyMetrics.findMany({
+            // Live aggregation: fetch all completed orders in range, then group by period
+            // Revenue only counts orders with status = 'delivered'
+            const completedOrders = await prisma.order.findMany({
                 where: {
-                    metric_date: {
-                        gte: rangeStart,
-                        lt: rangeEnd,
+                    order_status: 'delivered',
+                    updated_at: { gte: rangeStart, lt: rangeEnd },
+                },
+                select: {
+                    updated_at: true,
+                    total_amount: true,
+                    bill: {
+                        select: {
+                            final_amount: true,
+                        },
                     },
                 },
             });
 
+            // Initialize period map with zeros
             const periodMap = new Map();
             periods.forEach((period) => {
                 periodMap.set(period.key, {
@@ -348,16 +365,21 @@ class DashboardService {
                 });
             });
 
-            metrics.forEach((metric) => {
-                const metricDate = new Date(metric.metric_date);
-                const key = config.getKeyFromDate(metricDate);
+            // Group completed orders into periods
+            completedOrders.forEach((order) => {
+                const updatedAt = new Date(order.updated_at);
+                if (Number.isNaN(updatedAt.getTime())) return;
+
+                // Determine which period this order belongs to
+                const key = config.getKeyFromDate(updatedAt);
                 const periodEntry = periodMap.get(key);
                 if (periodEntry) {
-                    const revenue = metric.total_revenue
-                        ? new Prisma.Decimal(metric.total_revenue)
-                        : new Prisma.Decimal(0);
+                    // Revenue: use bill.final_amount if available, else order.total_amount
+                    const revenue = order.bill?.final_amount != null
+                        ? new Prisma.Decimal(order.bill.final_amount)
+                        : (order.total_amount != null ? new Prisma.Decimal(order.total_amount) : new Prisma.Decimal(0));
                     periodEntry.totalRevenue = periodEntry.totalRevenue.add(revenue);
-                    periodEntry.totalOrders += metric.total_orders || 0;
+                    periodEntry.totalOrders += 1;
                 }
             });
 

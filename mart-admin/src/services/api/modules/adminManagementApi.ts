@@ -128,6 +128,14 @@ export const adminManagementApi = {
     return response.data;
   },
 
+  updateOrderStatus: async (orderId: string, status: string) => {
+    const response = await axiosInstance.patch<ApiEnvelope<{ order_id: string; order_status: string; updated_at: string }>>(
+      `/admin/orders/${orderId}/status`,
+      { status }
+    );
+    return response.data;
+  },
+
   getAdminCustomersSummary: async (params?: { from?: string; to?: string; isActive?: boolean }) => {
     const response = await axiosInstance.get<ApiEnvelope<AdminCustomersSummary>>('/admin/customers/summary', {
       params,

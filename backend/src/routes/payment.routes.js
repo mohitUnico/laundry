@@ -6,7 +6,8 @@ const { processPaymentSchema } = require('../validators/payment.validator');
 const { ValidationError } = require('../utils/errors');
 const Joi = require('joi');
 
-const router = express.Router();
+// Use a uniquely named router to avoid any potential identifier clashes
+const paymentRouter = express.Router();
 
 // ============================================================================
 // VALIDATION HELPERS
@@ -25,7 +26,7 @@ const validateUuidParam = (paramName) => {
 };
 
 // Process payment for an order
-router.post(
+paymentRouter.post(
     '/process/:orderId',
     authenticateJWT,
     authorize('customer'),
@@ -35,7 +36,7 @@ router.post(
 );
 
 // Get bill/payment details for an order
-router.get(
+paymentRouter.get(
     '/bill/:orderId',
     authenticateJWT,
     authorize('customer'),
@@ -44,7 +45,7 @@ router.get(
 );
 
 // Get invoice (bill + line items) for an order
-router.get(
+paymentRouter.get(
     '/invoice/:orderId',
     authenticateJWT,
     authorize('customer'),
@@ -52,5 +53,5 @@ router.get(
     paymentController.getInvoiceByOrderId
 );
 
-module.exports = router;
+module.exports = paymentRouter;
 

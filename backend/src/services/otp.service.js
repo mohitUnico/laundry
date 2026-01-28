@@ -9,8 +9,10 @@
  * 3. New user completes registration with session token
  */
 
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+// IMPORTANT: Use the shared Prisma client from config/database.
+// Creating multiple PrismaClient instances can exhaust the DB pool (especially with Supabase connection_limit=3)
+// and cause P2024 timeouts under normal app polling.
+const prisma = require('../config/database');
 const logger = require('../utils/logger');
 const { generateToken } = require('../utils/jwt');
 const {

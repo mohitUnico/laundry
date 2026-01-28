@@ -29,6 +29,8 @@ export const OrdersPage: React.FC = () => {
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editStatus, setEditStatus] = useState<string>('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const selectedOrder = useMemo(() => {
     if (!selectedOrderId) return null;
@@ -169,6 +171,7 @@ export const OrdersPage: React.FC = () => {
     setSelectedOrderId(orderId);
     const current = apiOrders.find((o) => o.order_number === orderId);
     setEditStatus(current?.status || '');
+    setSaveError(null);
     setIsEditOpen(true);
   };
 
@@ -180,6 +183,55 @@ export const OrdersPage: React.FC = () => {
   const closeEdit = () => {
     setIsEditOpen(false);
     setSelectedOrderId(null);
+    setSaveError(null);
+  };
+
+  const handleSaveStatus = async () => {
+    if (!selectedOrderId || !editStatus) return;
+    try {
+      setIsSaving(true);
+      setSaveError(null);
+
+      const res = await adminManagementApi.updateOrderStatus(selectedOrderId, editStatus);
+
+      // Update the list immediately (keeps UI consistent without extra fetches)
+      if (res.success) {
+        setApiOrders((prev) =>
+          prev.map((o) =>
+            o.order_number === selectedOrderId
+              ? {
+                  ...o,
+                  status: editStatus,
+                  updated_at: (res.data as any)?.updated_at || o.updated_at,
+                }
+              : o
+          )
+        );
+
+        // Also refresh summary so KPI cards update
+        try {
+          const from = monthRange?.from;
+          const to = monthRange?.to;
+          const summaryRes = await adminManagementApi.getAdminOrdersSummary({
+            from,
+            to,
+            completedDate: dateFilter || undefined,
+          });
+          setSummary(summaryRes.data);
+        } catch {
+          // ignore summary refresh failures
+        }
+
+        setIsEditOpen(false);
+        setSelectedOrderId(null);
+      } else {
+        setSaveError(res.message || 'Failed to update status');
+      }
+    } catch (e: any) {
+      setSaveError(e?.response?.data?.message || e?.message || 'Failed to update status');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const mapApiStatusToRowStatus = (status: string | null): OrderRowData['status'] => {
@@ -375,6 +427,7 @@ export const OrdersPage: React.FC = () => {
                 <option value="placed">placed</option>
                 <option value="pickup_assigned">pickup_assigned</option>
                 <option value="picked_up">picked_up</option>
+                <option value="submitted_to_cm">submitted_to_cm</option>
                 <option value="received_by_collection">received_by_collection</option>
                 <option value="submitted_to_services">submitted_to_services</option>
                 <option value="services_in_progress">services_in_progress</option>
@@ -386,9 +439,7 @@ export const OrdersPage: React.FC = () => {
                 <option value="closed">closed</option>
                 <option value="cancelled">cancelled</option>
               </select>
-              <p className="text-xs text-slate-500">
-                This modal is wired to open; saving is not connected to an API endpoint yet.
-              </p>
+              {saveError ? <p className="text-xs text-red-600">{saveError}</p> : null}
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2">
@@ -401,10 +452,13 @@ export const OrdersPage: React.FC = () => {
               </button>
               <button
                 type="button"
-                disabled
-                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm text-white opacity-50 cursor-not-allowed"
+                onClick={handleSaveStatus}
+                disabled={!editStatus || isSaving}
+                className={`rounded-xl bg-indigo-600 px-4 py-2 text-sm text-white transition-colors ${
+                  !editStatus || isSaving ? 'opacity-50 cursor-not-allowed' : 'hover:bg-indigo-700'
+                }`}
               >
-                Save
+                {isSaving ? 'Saving…' : 'Save'}
               </button>
             </div>
           </div>

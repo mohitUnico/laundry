@@ -3,8 +3,8 @@
  * Handles business logic for service catalog management
  */
 
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+// IMPORTANT: Use the shared Prisma client from config/database to avoid exhausting the DB pool.
+const prisma = require('../config/database');
 const logger = require('../utils/logger');
 const { AppError, ValidationError, NotFoundError } = require('../utils/errors');
 

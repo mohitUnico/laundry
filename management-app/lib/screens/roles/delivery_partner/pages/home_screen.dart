@@ -39,6 +39,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<_HomeStatsUi> _statsFuture = Future.value(const _HomeStatsUi(inProgress: 0, completed: 0));
   Future<List<_AcceptedTaskUi>> _acceptedFuture = Future.value(const <_AcceptedTaskUi>[]);
 
+  // Cache the latest UI data so we don't "blank" the screen on every refresh.
+  _HomeStatsUi _statsCache = const _HomeStatsUi(inProgress: 0, completed: 0);
+  List<_AcceptedTaskUi> _acceptedCache = const <_AcceptedTaskUi>[];
+  bool _refreshingStats = false;
+  bool _refreshingAccepted = false;
+
   Timer? _locationTimer;
   StreamSubscription<DeliverySseEvent>? _eventsSub;
   OverlayEntry? _incomingOverlay;
@@ -69,8 +75,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.initState();
     // Always fetch fresh data when home screen initializes
     _userFuture = _loadStoredUser();
-    _statsFuture = _loadStats();
-    _acceptedFuture = _loadAcceptedOrders();
+    _statsFuture = _loadStats().then((v) {
+      if (mounted) {
+        setState(() {
+          _statsCache = v;
+        });
+      }
+      return v;
+    });
+    _acceptedFuture = _loadAcceptedOrders().then((v) {
+      if (mounted) {
+        setState(() {
+          _acceptedCache = v;
+        });
+      }
+      return v;
+    });
 
     WidgetsBinding.instance.addObserver(this);
     if (_isShiftActive) {
@@ -115,16 +135,88 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _refreshHomeData() {
     if (!mounted) return;
-    setState(() {
-      _statsFuture = _loadStats();
-      _acceptedFuture = _loadAcceptedOrders();
-    });
+    // Refresh in-place: keep existing UI list and only merge new/updated items.
+    _refreshStatsInPlace();
+    _refreshAcceptedInPlace();
   }
 
   void _scheduleHomeRefresh() {
     _lastRealtimeEventAt = DateTime.now();
     _refreshDebounce?.cancel();
     _refreshDebounce = Timer(const Duration(milliseconds: 400), _refreshHomeData);
+  }
+
+  Future<void> _refreshStatsInPlace() async {
+    if (_refreshingStats) return;
+    _refreshingStats = true;
+    try {
+      final next = await _loadStats();
+      if (!mounted) return;
+      setState(() {
+        _statsCache = next;
+      });
+    } catch (_) {
+      // Keep old stats on failure (avoid screen jitter).
+    } finally {
+      _refreshingStats = false;
+    }
+  }
+
+  static String _acceptedTaskKey(_AcceptedTaskUi t) {
+    final deliveryId = t.deliveryId.trim();
+    if (deliveryId.isNotEmpty) return 'd:$deliveryId';
+    final orderId = t.orderId.trim();
+    return 'o:$orderId:${t.taskType}';
+  }
+
+  void _mergeAcceptedTasks(List<_AcceptedTaskUi> fresh) {
+    if (_acceptedCache.isEmpty) {
+      _acceptedCache = fresh;
+      return;
+    }
+
+    final existingKeys = <String>{};
+    for (final t in _acceptedCache) {
+      existingKeys.add(_acceptedTaskKey(t));
+    }
+
+    final freshByKey = <String, _AcceptedTaskUi>{};
+    for (final t in fresh) {
+      freshByKey[_acceptedTaskKey(t)] = t;
+    }
+
+    // Update existing items in-place (preserve order).
+    final updatedExisting = _acceptedCache.map((t) {
+      final next = freshByKey[_acceptedTaskKey(t)];
+      return next ?? t;
+    }).toList(growable: false);
+
+    // Prepend any new items (keep order as returned by API: newest first).
+    final newOnes = <_AcceptedTaskUi>[];
+    for (final t in fresh) {
+      final k = _acceptedTaskKey(t);
+      if (!existingKeys.contains(k)) {
+        newOnes.add(t);
+      }
+    }
+
+    _acceptedCache = [...newOnes, ...updatedExisting];
+  }
+
+  Future<void> _refreshAcceptedInPlace() async {
+    if (_refreshingAccepted) return;
+    _refreshingAccepted = true;
+    try {
+      final fresh = await _loadAcceptedOrders();
+      if (!mounted) return;
+      setState(() {
+        _mergeAcceptedTasks(fresh);
+      });
+    } catch (_) {
+      // Keep old list on failure (avoid reloading the whole screen).
+    } finally {
+      _refreshingAccepted = false;
+    }
   }
 
   static double? _parseDouble(Object? raw) {
@@ -796,7 +888,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   FutureBuilder<_HomeStatsUi>(
                     future: _statsFuture,
                     builder: (context, snapshot) {
-                      final stats = snapshot.data ?? const _HomeStatsUi(inProgress: 0, completed: 0);
+                      final stats = snapshot.data ?? _statsCache;
                       return Row(
                         children: [
                           OrderSummaryCard(
@@ -928,13 +1020,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return FutureBuilder<List<_AcceptedTaskUi>>(
       future: _acceptedFuture,
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        // If we already have items, keep showing them while refresh is in-flight.
+        if (snapshot.connectionState == ConnectionState.waiting && _acceptedCache.isEmpty) {
           return const Center(
             child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
           );
         }
 
-        if (snapshot.hasError) {
+        if (snapshot.hasError && _acceptedCache.isEmpty) {
           return Center(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -947,7 +1040,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           );
         }
 
-        final list = snapshot.data ?? const <_AcceptedTaskUi>[];
+        final list = _acceptedCache.isNotEmpty ? _acceptedCache : (snapshot.data ?? const <_AcceptedTaskUi>[]);
         if (list.isEmpty) {
           return Center(
             child: Text(
@@ -958,6 +1051,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         }
 
         return ListView.builder(
+          key: const PageStorageKey<String>('delivery_partner_home_accepted_tasks'),
           padding: const EdgeInsets.symmetric(horizontal: 16),
           itemCount: list.length,
           itemBuilder: (context, index) {

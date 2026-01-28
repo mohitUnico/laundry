@@ -98,10 +98,24 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
               if (newStatus == null) return;
               final mappedIndex = _mapStatusToStepIndex(newStatus, _orderType);
               if (!mounted) return;
+              
+              final oldStatus = _backendStatus?.toLowerCase().trim() ?? '';
+              final statusLower = newStatus.toLowerCase().trim();
+              
+              // Check if driver was just assigned (pickup_assigned or dispatch_assigned)
+              final driverJustAssigned = (statusLower == 'pickup_assigned' || statusLower == 'dispatch_assigned') &&
+                  oldStatus != 'pickup_assigned' && oldStatus != 'dispatch_assigned';
+              
               setState(() {
                 _activeIndex = mappedIndex;
                 _backendStatus = newStatus;
               });
+              
+              // If driver was just assigned, reload tracking data and subscribe to driver location immediately
+              // This ensures realtime tracking starts regardless of scheduled pickup time
+              if (driverJustAssigned) {
+                _loadTracking();
+              }
             },
           )
           .subscribe();
@@ -440,7 +454,14 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                                 const SizedBox(height: 12),
                                 _RiderCard(
                                   name: _activeLeg(t)?.staff?.fullName ?? 'Driver not assigned',
-                                  role: (_activeLeg(t)?.staffId ?? '').isEmpty ? 'Not assigned' : 'Delivery Partner',
+                                  role: (() {
+                                    final leg = _activeLeg(t);
+                                    final staffId = leg?.staffId ?? '';
+                                    if (staffId.isEmpty) return 'Not assigned';
+                                    final type = (leg?.deliveryType ?? '').toLowerCase().trim();
+                                    if (type == 'pickup') return 'Pickup Partner';
+                                    return 'Delivery Partner';
+                                  })(),
                                 ),
                               ],
                             ),

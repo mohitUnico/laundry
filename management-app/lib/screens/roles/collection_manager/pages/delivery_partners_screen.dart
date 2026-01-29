@@ -6,6 +6,7 @@ import '../../../../theme/app_colors.dart';
 import '../../../../theme/app_text_styles.dart';
 import '../../../../services/admin_delivery_staff_service.dart';
 import '../../../../services/collection_manager_orders_service.dart';
+import '../../../common/widgets/success_popup.dart';
 
 class DeliveryPartnersScreen extends StatefulWidget {
   final String orderId;
@@ -240,10 +241,8 @@ class _DeliveryPartnersScreenState extends State<DeliveryPartnersScreen> {
                               );
 
                               if (!mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Pickup assigned successfully')),
-                              );
                               Navigator.pop(context, true);
+                              showSuccessPopup(context, message: 'Pickup assigned successfully ✓');
                             } catch (e) {
                               if (!mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(

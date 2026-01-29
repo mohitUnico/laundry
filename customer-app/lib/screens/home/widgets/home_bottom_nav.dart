@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import 'home_colors.dart';
+import '../../../providers/cart_provider.dart';
 
 class HomeBottomNav extends StatelessWidget {
   final int currentIndex;
@@ -14,6 +16,10 @@ class HomeBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Get cart item count from CartProvider
+    final cart = context.watch<CartProvider>();
+    final cartItemCount = cart.items.fold<int>(0, (sum, item) => sum + item.totalQuantity);
+    
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     const barHeight = 82.0;
     const topRadius = Radius.circular(36);
@@ -99,6 +105,7 @@ class HomeBottomNav extends StatelessWidget {
                             label: 'Cart',
                             isActive: currentIndex == 2,
                             onTap: () => onTap?.call(2),
+                            badgeCount: cartItemCount > 0 ? cartItemCount : null,
                           ),
                           _Item(
                             iconAsset:
@@ -126,17 +133,22 @@ class _Item extends StatelessWidget {
   final String label;
   final bool isActive;
   final VoidCallback onTap;
+  final int? badgeCount;
 
   const _Item({
     required this.iconAsset,
     required this.label,
     required this.isActive,
     required this.onTap,
+    this.badgeCount,
   });
 
   @override
   Widget build(BuildContext context) {
     final color = isActive ? HomeColors.primary : const Color(0xFF98A0B5);
+    final badgeColor = isActive ? Colors.white : HomeColors.primary;
+    final badgeTextColor = isActive ? HomeColors.primary : Colors.white;
+    
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(18),
@@ -148,11 +160,47 @@ class _Item extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Image.asset(
-                iconAsset,
-                width: 22,
-                height: 22,
-                color: color,
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Image.asset(
+                    iconAsset,
+                    width: 22,
+                    height: 22,
+                    color: color,
+                  ),
+                  // Badge positioned at top-right of icon
+                  if (badgeCount != null && badgeCount! > 0)
+                    Positioned(
+                      right: -8,
+                      top: -6,
+                      child: Container(
+                        padding: badgeCount! > 9
+                            ? const EdgeInsets.symmetric(horizontal: 4, vertical: 2)
+                            : const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: badgeColor,
+                          shape: badgeCount! > 9 ? BoxShape.rectangle : BoxShape.circle,
+                          borderRadius: badgeCount! > 9 ? BorderRadius.circular(8) : null,
+                        ),
+                        constraints: const BoxConstraints(
+                          minWidth: 16,
+                          minHeight: 16,
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          badgeCount! > 99 ? '99+' : badgeCount.toString(),
+                          style: TextStyle(
+                            color: badgeTextColor,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            height: 1.0,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(height: 4),
               Text(

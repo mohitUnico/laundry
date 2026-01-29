@@ -379,7 +379,6 @@ enum OrderStatus {
   services_completed // All services completed
   dispatch_assigned // Delivery partner assigned for delivery
   out_for_delivery // Out for delivery to customer
-  payment_pending // Delivered, waiting for payment
   delivered // Delivered and payment confirmed
   closed // Order closed
   cancelled // Order cancelled

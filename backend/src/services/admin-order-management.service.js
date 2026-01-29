@@ -15,7 +15,6 @@ const ORDER_STATUSES = [
     'services_completed',
     'dispatch_assigned',
     'out_for_delivery',
-    'payment_pending',
     'delivered',
     'closed',
     'cancelled',

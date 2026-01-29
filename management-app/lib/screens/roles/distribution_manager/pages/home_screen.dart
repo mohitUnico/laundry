@@ -6,6 +6,7 @@ import '../../../../routes/app_routes.dart';
 import '../../../../utils/auth_storage.dart';
 import '../../../../utils/role_manager.dart';
 import '../../../../services/distribution_manager_orders_service.dart';
+import '../../../common/widgets/success_popup.dart';
 import 'delivery_partners_screen.dart';
 import 'history_screen.dart';
 
@@ -158,9 +159,7 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
     try {
       await _ordersService.verifyOrder(orderId: orderId);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Order verified')),
-      );
+      showSuccessPopup(context, message: 'Order verified ✓');
       // Refresh both lists so the order moves to dispatch tab.
       await Future.wait([_refreshReady(), _refreshVerified()]);
     } catch (e) {
@@ -175,9 +174,7 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
     try {
       await _ordersService.submitToCustomer(orderId: orderId);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Order submitted to customer')),
-      );
+      showSuccessPopup(context, message: 'Order submitted to customer ✓');
       await _refreshVerified();
     } catch (e) {
       if (!mounted) return;

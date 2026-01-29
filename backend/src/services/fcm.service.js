@@ -102,7 +102,6 @@ function _humanizeOrderStatus(status) {
         services_completed: 'Services Completed',
         dispatch_assigned: 'Dispatch Assigned',
         out_for_delivery: 'Out for Delivery',
-        payment_pending: 'Payment Pending',
         delivered: 'Delivered',
         closed: 'Closed',
         cancelled: 'Cancelled',

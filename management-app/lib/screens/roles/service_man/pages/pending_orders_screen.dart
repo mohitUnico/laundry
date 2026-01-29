@@ -5,6 +5,7 @@ import '../../../../routes/app_routes.dart';
 import '../../../../utils/auth_storage.dart';
 import '../../../../utils/role_manager.dart';
 import '../../../../services/service_man_queue_service.dart';
+import '../../../common/widgets/success_popup.dart';
 
 class PendingOrdersServicemenScreen extends StatefulWidget {
   const PendingOrdersServicemenScreen({super.key});
@@ -257,9 +258,7 @@ class _PendingOrdersServicemenScreenState extends State<PendingOrdersServicemenS
     try {
       await _bulkUpdateQueueItems(queueIds: queueIds, action: 'in_progress');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Marked in progress')),
-      );
+      showSuccessPopup(context, message: 'Marked in progress ✓');
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -272,9 +271,7 @@ class _PendingOrdersServicemenScreenState extends State<PendingOrdersServicemenS
     try {
       await _bulkUpdateQueueItems(queueIds: queueIds, action: 'completed');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Marked completed')),
-      );
+      showSuccessPopup(context, message: 'Marked completed ✓');
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

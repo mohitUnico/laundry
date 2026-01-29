@@ -16,6 +16,7 @@ import '../../../../utils/auth_storage.dart';
 import '../../../common/widgets/order_summary_card.dart';
 import '../../../common/widgets/task_card.dart';
 import '../../../common/widgets/bottom_nav_bar.dart';
+import '../../../common/widgets/success_popup.dart';
 
 class HomeScreen extends StatefulWidget {
   final bool showBottomNav;
@@ -441,64 +442,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   /// Shows a success popup message matching app theme
-  void _showSuccessPopup(BuildContext context, {required String message, IconData icon = Icons.check_circle}) {
-    showDialog<void>(
-      context: context,
-      barrierDismissible: true,
-      barrierColor: Colors.black.withOpacity(0.3),
-      builder: (dialogContext) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: AppColors.success.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    icon,
-                    color: AppColors.success,
-                    size: 32,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  message,
-                  style: AppTextStyles.subtitle(
-                    color: AppColors.textPrimary,
-                  ).copyWith(fontWeight: FontWeight.w600),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-    // Auto-close after 2 seconds
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted && Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
-      }
-    });
+  /// Uses the reusable success popup widget
+  void _showSuccessPopup(BuildContext context, {required String message, IconData icon = Icons.check_circle_outline}) {
+    showSuccessPopup(context, message: message, icon: icon);
   }
 
   void _stopLiveLocation() {
@@ -1153,10 +1099,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         }
 
         final allList = _acceptedCache.isNotEmpty ? _acceptedCache : (snapshot.data ?? const <_AcceptedTaskUi>[]);
-        // Filter out completed orders (submitted_to_cm status) from today's list
+        // Filter out completed orders (submitted_to_cm and delivered status) from today's list
         final list = allList.where((t) {
-          // Keep only orders that are NOT submitted to collection manager
-          return t.orderStatus != 'submitted_to_cm';
+          // Keep only orders that are NOT submitted to collection manager AND NOT delivered
+          return t.orderStatus != 'submitted_to_cm' && t.orderStatus != 'delivered';
         }).toList();
         
         if (list.isEmpty) {
@@ -1242,9 +1188,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       future: _acceptedFuture,
       builder: (context, snapshot) {
         final allList = _acceptedCache.isNotEmpty ? _acceptedCache : (snapshot.data ?? const <_AcceptedTaskUi>[]);
-        // Filter only completed orders (submitted_to_cm status)
+        // Filter only completed orders (submitted_to_cm and delivered status)
         final completedList = allList.where((t) {
-          return t.orderStatus == 'submitted_to_cm';
+          return t.orderStatus == 'submitted_to_cm' || t.orderStatus == 'delivered';
         }).toList();
 
         if (completedList.isEmpty) {
@@ -1744,6 +1690,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                         Navigator.of(dialogContext).pop();
                                         _showSuccessPopup(context, message: 'Pickup Confirmed ✓');
                                       }
+                                      // Refresh data to update button text
+                                      _refreshHomeData();
                                     } else {
                                       await _deliveryStaffAppService.markDeliveredWithProof(
                                         deliveryId: deliveryId,
@@ -1753,9 +1701,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                         Navigator.of(dialogContext).pop();
                                         _showSuccessPopup(context, message: 'Delivery Confirmed ✓');
                                       }
+                                      // Refresh data to move order from today's list to completed
+                                      _refreshHomeData();
+                                      // If on today's tab, switch to completed tab to show the moved order
+                                      if (mounted && _selectedTabIndex == 0) {
+                                        setState(() {
+                                          _selectedTabIndex = 1;
+                                        });
+                                      }
                                     }
-
-                                    _refreshHomeData();
                                   } catch (e) {
                                     if (mounted) {
                                       ScaffoldMessenger.of(context).showSnackBar(

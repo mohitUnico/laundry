@@ -18,11 +18,15 @@ class OrderConfirmationArgs {
   final DeliveryOptionType deliveryOption;
   final String dateLabel;
   final String timeLabel;
+  final String? deliveryDateLabel; // For "both" orders
+  final String? deliveryTimeLabel; // For "both" orders
 
   const OrderConfirmationArgs({
     required this.deliveryOption,
     required this.dateLabel,
     required this.timeLabel,
+    this.deliveryDateLabel,
+    this.deliveryTimeLabel,
   });
 }
 
@@ -160,10 +164,40 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
       final pickupTimeFromIso = pickupDateTimeLocal.toUtc().toIso8601String();
       final pickupTimeToIso = pickupTimeFromIso;
 
-      // For pickup & delivery orders, set a simple delivery window as pickup + 24h
+      // For pickup & delivery orders, parse delivery date/time from args
       String? deliveryTimeFromIso;
       String? deliveryTimeToIso;
-      if (orderType == 'both') {
+      if (orderType == 'both' && args.deliveryDateLabel != null && args.deliveryTimeLabel != null) {
+        // Parse delivery date/time from labels (local timezone)
+        final deliveryTimeParts = args.deliveryTimeLabel!.split(' ');
+        final deliveryTimeValue = deliveryTimeParts[0].split(':');
+        final deliveryHour = int.parse(deliveryTimeValue[0]);
+        final deliveryMinute = int.parse(deliveryTimeValue[1]);
+        final deliveryIsPM = deliveryTimeParts.length > 1 && deliveryTimeParts[1].toUpperCase() == 'PM';
+
+        int deliveryHour24;
+        if (deliveryIsPM) {
+          deliveryHour24 = deliveryHour == 12 ? 12 : deliveryHour + 12;
+        } else {
+          deliveryHour24 = deliveryHour == 12 ? 0 : deliveryHour;
+        }
+
+        final deliveryDateParts = args.deliveryDateLabel!.split(' ');
+        final deliveryMonthName = deliveryDateParts[0];
+        final deliveryDay = int.parse(deliveryDateParts[1]);
+
+        final deliveryMonth = monthMap[deliveryMonthName] ?? now.month;
+        int deliveryYear = now.year;
+        final deliveryBaseDate = DateTime(deliveryYear, deliveryMonth, deliveryDay);
+        if (deliveryBaseDate.isBefore(DateTime(now.year, now.month, now.day))) {
+          deliveryYear = now.year + 1;
+        }
+
+        final deliveryDateTimeLocal = DateTime(deliveryYear, deliveryMonth, deliveryDay, deliveryHour24, deliveryMinute);
+        deliveryTimeFromIso = deliveryDateTimeLocal.toUtc().toIso8601String();
+        deliveryTimeToIso = deliveryTimeFromIso;
+      } else if (orderType == 'both') {
+        // Fallback: delivery window as pickup + 24h if not provided
         final deliveryFromLocal = pickupDateTimeLocal.add(const Duration(hours: 24));
         deliveryTimeFromIso = deliveryFromLocal.toUtc().toIso8601String();
         deliveryTimeToIso = deliveryTimeFromIso;
@@ -211,6 +245,8 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
               orderType: orderType,
               dateLabel: args.dateLabel,
               timeLabel: args.timeLabel,
+              deliveryDateLabel: args.deliveryDateLabel,
+              deliveryTimeLabel: args.deliveryTimeLabel,
               placedAt: placedAt,
               placedDateLabel: placedDateLabel,
               placedTimeLabel: placedTimeLabel,

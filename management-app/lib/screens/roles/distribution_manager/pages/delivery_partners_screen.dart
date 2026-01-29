@@ -6,6 +6,7 @@ import '../../../../theme/app_colors.dart';
 import '../../../../theme/app_text_styles.dart';
 import '../../../../services/admin_delivery_staff_service.dart';
 import '../../../../services/distribution_manager_orders_service.dart';
+import '../../../common/widgets/success_popup.dart';
 
 class DistributionDeliveryPartnersScreen extends StatefulWidget {
   final String orderId;
@@ -239,10 +240,8 @@ class _DistributionDeliveryPartnersScreenState extends State<DistributionDeliver
                               );
 
                               if (!mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Delivery assigned successfully')),
-                              );
                               Navigator.pop(context, true);
+                              showSuccessPopup(context, message: 'Delivery assigned successfully ✓');
                             } catch (e) {
                               if (!mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(

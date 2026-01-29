@@ -458,9 +458,55 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           final pickupTimeFromIso = pickupDateTimeLocal.toUtc().toIso8601String();
                           final pickupTimeToIso = pickupTimeFromIso;
 
+                          // Parse delivery date/time for "both" orders
                           String? deliveryTimeFromIso;
                           String? deliveryTimeToIso;
-                          if (orderType == 'both') {
+                          final deliveryDateLabel = args?['deliveryDateLabel'] as String?;
+                          final deliveryTimeLabel = args?['deliveryTimeLabel'] as String?;
+                          if (orderType == 'both' && deliveryDateLabel != null && deliveryTimeLabel != null) {
+                            try {
+                              final deliveryNow = DateTime.now();
+                              final deliveryTimeParts = deliveryTimeLabel.split(' ');
+                              final deliveryTimeValue = deliveryTimeParts[0].split(':');
+                              final deliveryHour = int.parse(deliveryTimeValue[0]);
+                              final deliveryMinute = int.parse(deliveryTimeValue[1]);
+                              final deliveryIsPM = deliveryTimeParts.length > 1 && deliveryTimeParts[1].toUpperCase() == 'PM';
+
+                              int deliveryHour24;
+                              if (deliveryIsPM) {
+                                deliveryHour24 = deliveryHour == 12 ? 12 : deliveryHour + 12;
+                              } else {
+                                deliveryHour24 = deliveryHour == 12 ? 0 : deliveryHour;
+                              }
+
+                              final deliveryDateParts = deliveryDateLabel.split(' ');
+                              final deliveryMonthName = deliveryDateParts[0];
+                              final deliveryDay = int.parse(deliveryDateParts[1]);
+
+                              const months = [
+                                'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                                'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+                              ];
+                              final deliveryMonthIndex = months.indexOf(deliveryMonthName);
+                              final deliveryMonth = deliveryMonthIndex >= 0 ? deliveryMonthIndex + 1 : deliveryNow.month;
+
+                              int deliveryYear = deliveryNow.year;
+                              final deliveryBaseDate = DateTime(deliveryYear, deliveryMonth, deliveryDay);
+                              if (deliveryBaseDate.isBefore(DateTime(deliveryNow.year, deliveryNow.month, deliveryNow.day))) {
+                                deliveryYear = deliveryNow.year + 1;
+                              }
+
+                              final deliveryDateTimeLocal = DateTime(deliveryYear, deliveryMonth, deliveryDay, deliveryHour24, deliveryMinute);
+                              deliveryTimeFromIso = deliveryDateTimeLocal.toUtc().toIso8601String();
+                              deliveryTimeToIso = deliveryTimeFromIso;
+                            } catch (_) {
+                              // Fallback: delivery window as pickup + 24h
+                              final deliveryFromLocal = pickupDateTimeLocal.add(const Duration(hours: 24));
+                              deliveryTimeFromIso = deliveryFromLocal.toUtc().toIso8601String();
+                              deliveryTimeToIso = deliveryTimeFromIso;
+                            }
+                          } else if (orderType == 'both') {
+                            // Fallback: delivery window as pickup + 24h
                             final deliveryFromLocal = pickupDateTimeLocal.add(const Duration(hours: 24));
                             deliveryTimeFromIso = deliveryFromLocal.toUtc().toIso8601String();
                             deliveryTimeToIso = deliveryTimeFromIso;
@@ -483,7 +529,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           );
 
                           if (!mounted) return;
-                          Navigator.of(context).pop(); // Close loading
+                          // Keep loading dialog open until navigation - don't close it here
 
                           // Calculate fees for passing to success screen
                           final totalItems = items.fold<int>(0, (a, x) => a + x.totalQuantity);
@@ -608,6 +654,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           await cart.clearAfterOrderPlaced();
 
                           if (!mounted) return;
+                          
+                          // Close loading dialog before navigation
+                          Navigator.of(context).pop(); // Close loading
                           
                           // Navigate based on whether payment was processed
                           if (hasKgWiseItems) {

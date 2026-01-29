@@ -7,6 +7,7 @@ import '../../../../utils/auth_storage.dart';
 import '../../../../utils/role_manager.dart';
 import '../../../../services/collection_manager_orders_service.dart';
 import '../../../common/widgets/bottom_nav_bar.dart';
+import '../../../common/widgets/success_popup.dart';
 import 'delivery_partners_screen.dart';
 import 'history_screen.dart';
 
@@ -150,9 +151,7 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
       try {
         await _ordersService.generateInvoice(orderId: orderId);
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Order received and invoice generated')),
-        );
+        showSuccessPopup(context, message: 'Order received and invoice generated ✓');
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -175,9 +174,7 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
     try {
       await _ordersService.submitToServices(orderId: orderId);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Order submitted to service men')),
-      );
+      showSuccessPopup(context, message: 'Order submitted to service men ✓');
       await _refreshReceived();
     } catch (e) {
       if (!mounted) return;
@@ -191,9 +188,7 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
     try {
       await _ordersService.generateInvoice(orderId: orderId);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Invoice generated successfully')),
-      );
+      showSuccessPopup(context, message: 'Invoice generated successfully ✓');
       await _refreshReceived();
     } catch (e) {
       if (!mounted) return;

@@ -34,6 +34,7 @@ class ScheduleDateTimeScreen extends StatefulWidget {
 class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
   int _selectedDayIndex = 2; // Center selected like the screenshot
 
+  // Pickup time
   int _fromAmPm = 1; // 0 = AM, 1 = PM
   int _fromHour = 6; // 1..12
   int _fromMinute = 30; // 0..59
@@ -41,6 +42,16 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
   int _toAmPm = 1; // PM
   int _toHour = 9; // 1..12
   int _toMinute = 0; // 0..59
+
+  // Delivery time (for "both" orders)
+  int _deliverySelectedDayIndex = 3; // Default to day after pickup
+  int _deliveryFromAmPm = 1; // 0 = AM, 1 = PM
+  int _deliveryFromHour = 6; // 1..12
+  int _deliveryFromMinute = 30; // 0..59
+
+  int _deliveryToAmPm = 1; // PM
+  int _deliveryToHour = 9; // 1..12
+  int _deliveryToMinute = 0; // 0..59
 
   int _to24Hour(int hour12, int amPm) {
     // amPm: 0=AM, 1=PM
@@ -304,12 +315,12 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
     return Scaffold(
       backgroundColor: HomeColors.background,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Column(
-            children: [
-              const SizedBox(height: 10),
-              Row(
+        child: Column(
+          children: [
+            // Header (fixed at top)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: Row(
                 children: [
                   InkWell(
                     onTap: () => Navigator.of(context).maybePop(),
@@ -340,55 +351,214 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                   const SizedBox(width: 44, height: 44),
                 ],
               ),
-              const SizedBox(height: 16),
-              _DateChipRow(
-                dates: days,
-                selectedIndex: _selectedDayIndex,
-                onSelect: (i) => setState(() => _selectedDayIndex = i),
-                labelFor: (d, isSelected) => _dateLabel(d, isSelected),
-              ),
-              const SizedBox(height: 14),
-              _TimeCard(
-                fromText: fromText,
-                toText: toText,
-                fromPicker: _TimePickerRow(
-                  amPmValues: fromAmPmValues,
-                  hourValues: fromHourValues,
-                  minuteValues: fromMinuteValues,
-                  amPmIndex: (_fromAmPm == 0 ? 'AM' : 'PM') == 'AM'
-                      ? fromAmPmValues.indexOf('AM').clamp(0, fromAmPmValues.length - 1)
-                      : fromAmPmValues.indexOf('PM').clamp(0, fromAmPmValues.length - 1),
-                  hourIndex: fromHourValues.indexOf(_fromHour.toString().padLeft(2, '0')).clamp(0, fromHourValues.length - 1),
-                  minuteIndex: fromMinuteValues.indexOf(_fromMinute.toString().padLeft(2, '0')).clamp(0, fromMinuteValues.length - 1),
-                  onAmPmChanged: (label) => setState(() => _fromAmPm = label == 'AM' ? 0 : 1),
-                  onHourChanged: (label) => setState(() => _fromHour = int.tryParse(label) ?? _fromHour),
-                  onMinuteChanged: (label) => setState(() => _fromMinute = int.tryParse(label) ?? _fromMinute),
+            ),
+            // Scrollable content
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 16),
+                    _DateChipRow(
+                      dates: days,
+                      selectedIndex: _selectedDayIndex,
+                      onSelect: (i) {
+                        setState(() {
+                          _selectedDayIndex = i;
+                          // If delivery date is now before pickup date, adjust it
+                          if (option == DeliveryOptionType.pickupAndDelivery) {
+                            final newPickupDate = days[i];
+                            final currentDeliveryDate = days[_deliverySelectedDayIndex.clamp(0, days.length - 1)];
+                            if (currentDeliveryDate.isBefore(newPickupDate)) {
+                              // Set delivery date to the same as pickup date (minimum)
+                              _deliverySelectedDayIndex = i;
+                            }
+                          }
+                        });
+                      },
+                      labelFor: (d, isSelected) => _dateLabel(d, isSelected),
+                    ),
+                    const SizedBox(height: 14),
+                    // Pickup Time Section
+                    Text(
+                      'Pickup Time',
+                      style: AppTextStyles.header(color: HomeColors.text),
+                    ),
+                    const SizedBox(height: 8),
+                    _TimeCard(
+                      fromText: fromText,
+                      toText: toText,
+                      fromPicker: _TimePickerRow(
+                        amPmValues: fromAmPmValues,
+                        hourValues: fromHourValues,
+                        minuteValues: fromMinuteValues,
+                        amPmIndex: (_fromAmPm == 0 ? 'AM' : 'PM') == 'AM'
+                            ? fromAmPmValues.indexOf('AM').clamp(0, fromAmPmValues.length - 1)
+                            : fromAmPmValues.indexOf('PM').clamp(0, fromAmPmValues.length - 1),
+                        hourIndex: fromHourValues.indexOf(_fromHour.toString().padLeft(2, '0')).clamp(0, fromHourValues.length - 1),
+                        minuteIndex: fromMinuteValues.indexOf(_fromMinute.toString().padLeft(2, '0')).clamp(0, fromMinuteValues.length - 1),
+                        onAmPmChanged: (label) => setState(() => _fromAmPm = label == 'AM' ? 0 : 1),
+                        onHourChanged: (label) => setState(() => _fromHour = int.tryParse(label) ?? _fromHour),
+                        onMinuteChanged: (label) => setState(() => _fromMinute = int.tryParse(label) ?? _fromMinute),
+                      ),
+                      toPicker: _TimePickerRow(
+                        amPmValues: toAmPmValues,
+                        hourValues: toHourValues,
+                        minuteValues: toMinuteValues,
+                        amPmIndex: (_toAmPm == 0 ? 'AM' : 'PM') == 'AM'
+                            ? toAmPmValues.indexOf('AM').clamp(0, toAmPmValues.length - 1)
+                            : toAmPmValues.indexOf('PM').clamp(0, toAmPmValues.length - 1),
+                        hourIndex: toHourValues.indexOf(_toHour.toString().padLeft(2, '0')).clamp(0, toHourValues.length - 1),
+                        minuteIndex: toMinuteValues.indexOf(_toMinute.toString().padLeft(2, '0')).clamp(0, toMinuteValues.length - 1),
+                        onAmPmChanged: (label) => setState(() => _toAmPm = label == 'AM' ? 0 : 1),
+                        onHourChanged: (label) => setState(() => _toHour = int.tryParse(label) ?? _toHour),
+                        onMinuteChanged: (label) => setState(() => _toMinute = int.tryParse(label) ?? _toMinute),
+                      ),
+                    ),
+                    // Delivery Time Section (only for "both" orders)
+                    if (option == DeliveryOptionType.pickupAndDelivery) ...[
+                      const SizedBox(height: 20),
+                      Text(
+                        'Delivery Time',
+                        style: AppTextStyles.header(color: HomeColors.text),
+                      ),
+                      const SizedBox(height: 8),
+                      Builder(
+                        builder: (context) {
+                          // Filter delivery dates to only include dates >= pickup date
+                          final pickupDate = selectedDate;
+                          final availableDeliveryDates = days.where((date) {
+                            // Include dates that are on or after the pickup date
+                            return !date.isBefore(pickupDate);
+                          }).toList();
+                          
+                          // Ensure delivery date index is valid
+                          if (availableDeliveryDates.isEmpty) {
+                            // Fallback: use all dates if somehow no dates are available
+                            availableDeliveryDates.addAll(days);
+                          }
+                          
+                          // Find the current delivery date in the available dates list
+                          final currentDeliveryDate = days[_deliverySelectedDayIndex.clamp(0, days.length - 1)];
+                          int deliveryIndexInAvailable = availableDeliveryDates.indexWhere(
+                            (d) => DateUtils.isSameDay(d, currentDeliveryDate),
+                          );
+                          
+                          // If current delivery date is before pickup, select the first available date
+                          if (deliveryIndexInAvailable < 0 || currentDeliveryDate.isBefore(pickupDate)) {
+                            deliveryIndexInAvailable = 0;
+                            // Update the state to reflect the valid date
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (mounted) {
+                                final newIndex = days.indexWhere((d) => DateUtils.isSameDay(d, availableDeliveryDates[0]));
+                                if (newIndex >= 0) {
+                                  setState(() => _deliverySelectedDayIndex = newIndex);
+                                }
+                              }
+                            });
+                          }
+                          
+                          return _DateChipRow(
+                            dates: availableDeliveryDates,
+                            selectedIndex: deliveryIndexInAvailable.clamp(0, availableDeliveryDates.length - 1),
+                            onSelect: (i) {
+                              if (i < 0 || i >= availableDeliveryDates.length) return;
+                              final selectedDeliveryDate = availableDeliveryDates[i];
+                              // Find the index in the original days list
+                              final indexInDays = days.indexWhere((d) => DateUtils.isSameDay(d, selectedDeliveryDate));
+                              if (indexInDays >= 0) {
+                                setState(() => _deliverySelectedDayIndex = indexInDays);
+                              }
+                            },
+                            labelFor: (d, isSelected) => _dateLabel(d, isSelected),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      Builder(
+                        builder: (context) {
+                          final deliverySelectedDate = days[_deliverySelectedDayIndex.clamp(0, days.length - 1)];
+                          final deliveryMinFromMinutes = _minMinutesForSelectedDay(deliverySelectedDate);
+                          final deliveryFromAmPmValues = _allowedAmPmValues(deliveryMinFromMinutes);
+                          final deliveryFromHourValues = _allowedHourValues(
+                            minMinutes: deliveryMinFromMinutes,
+                            selectedAmPm: _deliveryFromAmPm == 0 ? 'AM' : 'PM',
+                          );
+                          final deliveryFromMinuteValues = _allowedMinuteValues(
+                            minMinutes: deliveryMinFromMinutes,
+                            selectedHour12: _deliveryFromHour,
+                            selectedAmPm: _deliveryFromAmPm,
+                          );
+
+                          final deliveryFromMinutes = _toMinutesSinceMidnight(_deliveryFromHour, _deliveryFromMinute, _deliveryFromAmPm);
+                          final deliveryMinToMinutes = (deliveryFromMinutes + _minuteStep()).clamp(0, 24 * 60 - 1);
+                          final deliveryEffectiveMinTo = (deliveryMinToMinutes > deliveryMinFromMinutes) ? deliveryMinToMinutes : deliveryMinFromMinutes;
+
+                          final deliveryToAmPmValues = _allowedAmPmValues(deliveryEffectiveMinTo);
+                          final deliveryToHourValues = _allowedHourValues(
+                            minMinutes: deliveryEffectiveMinTo,
+                            selectedAmPm: _deliveryToAmPm == 0 ? 'AM' : 'PM',
+                          );
+                          final deliveryToMinuteValues = _allowedMinuteValues(
+                            minMinutes: deliveryEffectiveMinTo,
+                            selectedHour12: _deliveryToHour,
+                            selectedAmPm: _deliveryToAmPm,
+                          );
+
+                          final deliveryFromText = _formatTime(_deliveryFromHour, _deliveryFromMinute, _deliveryFromAmPm);
+                          final deliveryToText = _formatTime(_deliveryToHour, _deliveryToMinute, _deliveryToAmPm);
+
+                          return _TimeCard(
+                            fromText: deliveryFromText,
+                            toText: deliveryToText,
+                            fromPicker: _TimePickerRow(
+                              amPmValues: deliveryFromAmPmValues,
+                              hourValues: deliveryFromHourValues,
+                              minuteValues: deliveryFromMinuteValues,
+                              amPmIndex: (_deliveryFromAmPm == 0 ? 'AM' : 'PM') == 'AM'
+                                  ? deliveryFromAmPmValues.indexOf('AM').clamp(0, deliveryFromAmPmValues.length - 1)
+                                  : deliveryFromAmPmValues.indexOf('PM').clamp(0, deliveryFromAmPmValues.length - 1),
+                              hourIndex: deliveryFromHourValues.indexOf(_deliveryFromHour.toString().padLeft(2, '0')).clamp(0, deliveryFromHourValues.length - 1),
+                              minuteIndex: deliveryFromMinuteValues.indexOf(_deliveryFromMinute.toString().padLeft(2, '0')).clamp(0, deliveryFromMinuteValues.length - 1),
+                              onAmPmChanged: (label) => setState(() => _deliveryFromAmPm = label == 'AM' ? 0 : 1),
+                              onHourChanged: (label) => setState(() => _deliveryFromHour = int.tryParse(label) ?? _deliveryFromHour),
+                              onMinuteChanged: (label) => setState(() => _deliveryFromMinute = int.tryParse(label) ?? _deliveryFromMinute),
+                            ),
+                            toPicker: _TimePickerRow(
+                              amPmValues: deliveryToAmPmValues,
+                              hourValues: deliveryToHourValues,
+                              minuteValues: deliveryToMinuteValues,
+                              amPmIndex: (_deliveryToAmPm == 0 ? 'AM' : 'PM') == 'AM'
+                                  ? deliveryToAmPmValues.indexOf('AM').clamp(0, deliveryToAmPmValues.length - 1)
+                                  : deliveryToAmPmValues.indexOf('PM').clamp(0, deliveryToAmPmValues.length - 1),
+                              hourIndex: deliveryToHourValues.indexOf(_deliveryToHour.toString().padLeft(2, '0')).clamp(0, deliveryToHourValues.length - 1),
+                              minuteIndex: deliveryToMinuteValues.indexOf(_deliveryToMinute.toString().padLeft(2, '0')).clamp(0, deliveryToMinuteValues.length - 1),
+                              onAmPmChanged: (label) => setState(() => _deliveryToAmPm = label == 'AM' ? 0 : 1),
+                              onHourChanged: (label) => setState(() => _deliveryToHour = int.tryParse(label) ?? _deliveryToHour),
+                              onMinuteChanged: (label) => setState(() => _deliveryToMinute = int.tryParse(label) ?? _deliveryToMinute),
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 20), // Extra spacing before button
+                    ] else ...[
+                      const SizedBox(height: 20), // Spacing when no delivery section
+                    ],
+                  ],
                 ),
-                toPicker: _TimePickerRow(
-                  amPmValues: toAmPmValues,
-                  hourValues: toHourValues,
-                  minuteValues: toMinuteValues,
-                  amPmIndex: (_toAmPm == 0 ? 'AM' : 'PM') == 'AM'
-                      ? toAmPmValues.indexOf('AM').clamp(0, toAmPmValues.length - 1)
-                      : toAmPmValues.indexOf('PM').clamp(0, toAmPmValues.length - 1),
-                  hourIndex: toHourValues.indexOf(_toHour.toString().padLeft(2, '0')).clamp(0, toHourValues.length - 1),
-                  minuteIndex: toMinuteValues.indexOf(_toMinute.toString().padLeft(2, '0')).clamp(0, toMinuteValues.length - 1),
-                  onAmPmChanged: (label) => setState(() => _toAmPm = label == 'AM' ? 0 : 1),
-                  onHourChanged: (label) => setState(() => _toHour = int.tryParse(label) ?? _toHour),
-                  onMinuteChanged: (label) => setState(() => _toMinute = int.tryParse(label) ?? _toMinute),
-                ),
               ),
-              const Spacer(),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: () async {
-                        // Validate schedule (local timezone):
+            ),
+            // Button (fixed at bottom)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+              child: SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () async {
+                        // Validate pickup schedule (local timezone):
                         // - must be >= now + 1.5 hours (for today)
                         // - To time must be after From time
                         final fromDt = _asLocalDateTime(selectedDate, _fromHour, _fromMinute, _fromAmPm);
@@ -402,9 +572,45 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                         }
                         if (!toDt.isAfter(fromDt)) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('To time must be after From time')),
+                            const SnackBar(content: Text('Pickup To time must be after From time')),
                           );
                           return;
+                        }
+
+                        String? deliveryDateLabel;
+                        String? deliveryTimeLabel;
+
+                        // Validate delivery schedule for "both" orders
+                        if (option == DeliveryOptionType.pickupAndDelivery) {
+                          final deliverySelectedDate = days[_deliverySelectedDayIndex.clamp(0, days.length - 1)];
+                          final deliveryFromDt = _asLocalDateTime(deliverySelectedDate, _deliveryFromHour, _deliveryFromMinute, _deliveryFromAmPm);
+                          final deliveryToDt = _asLocalDateTime(deliverySelectedDate, _deliveryToHour, _deliveryToMinute, _deliveryToAmPm);
+
+                          // Delivery date must be on or after pickup date
+                          if (deliverySelectedDate.isBefore(selectedDate)) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Delivery date cannot be earlier than pickup date')),
+                            );
+                            return;
+                          }
+                          
+                          // If same day, delivery time must be after pickup time
+                          if (DateUtils.isSameDay(deliverySelectedDate, selectedDate) && deliveryFromDt.isBefore(toDt)) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Delivery time must be after pickup time')),
+                            );
+                            return;
+                          }
+
+                          if (!deliveryToDt.isAfter(deliveryFromDt)) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Delivery To time must be after From time')),
+                            );
+                            return;
+                          }
+
+                          deliveryDateLabel = '${_monthShort(deliverySelectedDate.month)} ${deliverySelectedDate.day}';
+                          deliveryTimeLabel = _formatTime12h(_deliveryFromHour, _deliveryFromMinute, _deliveryFromAmPm);
                         }
 
                         final dateLabel = '${_monthShort(selectedDate.month)} ${selectedDate.day}';
@@ -455,6 +661,8 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                               deliveryOption: option,
                               dateLabel: dateLabel,
                               timeLabel: timeLabel,
+                              deliveryDateLabel: deliveryDateLabel,
+                              deliveryTimeLabel: deliveryTimeLabel,
                             ),
                           );
                         } else {
@@ -466,37 +674,38 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                             arguments: {
                               'dateLabel': dateLabel,
                               'timeLabel': timeLabel,
+                              'deliveryDateLabel': deliveryDateLabel,
+                              'deliveryTimeLabel': deliveryTimeLabel,
                               'deliveryOption': option.name,
                             },
                           );
                         }
-                      },
-                      borderRadius: BorderRadius.circular(18),
-                      child: Ink(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(18),
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF2437B6), Color(0xFF2C3CA5)],
-                            begin: Alignment.centerLeft,
-                            end: Alignment.centerRight,
-                          ),
+                    },
+                    borderRadius: BorderRadius.circular(18),
+                    child: Ink(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(18),
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF2437B6), Color(0xFF2C3CA5)],
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
                         ),
-                        child: Center(
-                          child: Text(
-                            args?.orderId != null ? 'Update Schedule' : 'Confirm Order',
-                            style: AppTextStyles.header(color: Colors.white)
-                                .copyWith(fontSize: 14),
-                          ),
+                      ),
+                      child: Center(
+                        child: Text(
+                          args?.orderId != null ? 'Update Schedule' : 'Confirm Order',
+                          style: AppTextStyles.header(color: Colors.white)
+                              .copyWith(fontSize: 14),
                         ),
                       ),
                     ),
                   ),
                 ),
               ),
+            ),
             ],
           ),
         ),
-      ),
     );
   }
 }

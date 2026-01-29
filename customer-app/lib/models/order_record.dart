@@ -14,8 +14,10 @@ class OrderRecord {
   // NOTE: kept nullable so hot-reload / older in-memory objects don't crash when this field
   // is introduced. Always use [orderTypeOrBoth] when reading it.
   final String? orderType;
-  final String dateLabel; // Scheduled date e.g. Dec 20
-  final String timeLabel; // Scheduled time e.g. 2:30 PM
+  final String dateLabel; // Scheduled pickup date e.g. Dec 20
+  final String timeLabel; // Scheduled pickup time e.g. 2:30 PM
+  final String? deliveryDateLabel; // Scheduled delivery date e.g. Dec 21 (null for pickup_only/drop_only)
+  final String? deliveryTimeLabel; // Scheduled delivery time e.g. 3:00 PM (null for pickup_only/drop_only)
   final DateTime placedAt; // When order was placed
   final String placedDateLabel; // e.g. Dec 20, 2024
   final String placedTimeLabel; // e.g. 2:30 PM
@@ -38,6 +40,8 @@ class OrderRecord {
     this.orderType,
     required this.dateLabel,
     required this.timeLabel,
+    this.deliveryDateLabel,
+    this.deliveryTimeLabel,
     required this.placedAt,
     required this.placedDateLabel,
     required this.placedTimeLabel,
@@ -60,6 +64,8 @@ class OrderRecord {
     String? orderType,
     String? dateLabel,
     String? timeLabel,
+    String? deliveryDateLabel,
+    String? deliveryTimeLabel,
     DateTime? placedAt,
     String? placedDateLabel,
     String? placedTimeLabel,
@@ -81,6 +87,8 @@ class OrderRecord {
       orderType: orderType ?? this.orderType,
       dateLabel: dateLabel ?? this.dateLabel,
       timeLabel: timeLabel ?? this.timeLabel,
+      deliveryDateLabel: deliveryDateLabel ?? this.deliveryDateLabel,
+      deliveryTimeLabel: deliveryTimeLabel ?? this.deliveryTimeLabel,
       placedAt: placedAt ?? this.placedAt,
       placedDateLabel: placedDateLabel ?? this.placedDateLabel,
       placedTimeLabel: placedTimeLabel ?? this.placedTimeLabel,

@@ -508,7 +508,7 @@ exports.updateAcceptedOrderStatus = async ({ staffId, deliveryId, action, proofU
         //   - pickup leg: marks drop-at-laundry + completes delivery + sets order submitted_to_cm
         // - dropped:
         //   - pickup leg: marks drop-at-laundry + completes delivery
-        //   - drop leg: marks customer drop + completes delivery + sets order payment_pending
+        //   - drop leg: marks customer drop + completes delivery + sets order delivered
 
         if (action === 'start_delivery') {
             await tx.delivery.update({
@@ -616,10 +616,10 @@ exports.updateAcceptedOrderStatus = async ({ staffId, deliveryId, action, proofU
             if (delivery.delivery_type === 'drop') {
                 await tx.order.update({
                     where: { order_id: delivery.order_id },
-                    data: { order_status: 'payment_pending' },
+                    data: { order_status: 'delivered' },
                 });
                 orderIdToNotify = delivery.order_id;
-                statusToNotify = 'payment_pending';
+                statusToNotify = 'delivered';
             }
         }
 

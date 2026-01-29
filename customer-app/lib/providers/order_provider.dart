@@ -158,6 +158,20 @@ class OrderProvider with ChangeNotifier {
         timeLabel = 'TBD';
       }
 
+      // Parse delivery date/time (for "both" orders)
+      String? deliveryDateLabel;
+      String? deliveryTimeLabel;
+      if (orderType == 'both' && deliveryTimeFrom != null) {
+        try {
+          final deliveryDateTime = DateTime.parse(deliveryTimeFrom).toLocal();
+          deliveryDateLabel = _formatDateLabel(deliveryDateTime);
+          deliveryTimeLabel = _formatTimeLabel(deliveryDateTime);
+        } catch (_) {
+          deliveryDateLabel = 'TBD';
+          deliveryTimeLabel = 'TBD';
+        }
+      }
+
       // Map items to CartItems
       final cartItems = <CartItem>[];
       String? title;
@@ -335,6 +349,8 @@ class OrderProvider with ChangeNotifier {
         orderType: orderType.isEmpty ? 'both' : orderType,
         dateLabel: dateLabel,
         timeLabel: timeLabel,
+        deliveryDateLabel: deliveryDateLabel,
+        deliveryTimeLabel: deliveryTimeLabel,
         placedAt: placedAt ?? DateTime.now(),
         placedDateLabel: placedDateLabel,
         placedTimeLabel: placedTimeLabel,

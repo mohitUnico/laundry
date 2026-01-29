@@ -4,6 +4,7 @@ const { NotFoundError, ValidationError, ConflictError, AppError } = require('../
 const { getSupabaseClient } = require('../config/supabase');
 const { uploadDeliveryProofImage } = require('./delivery-staff-media.service');
 const { v4: uuidv4 } = require('uuid');
+const { notifyOrderStatusChange } = require('./fcm.service');
 
 const UUID_REGEX =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -363,8 +364,6 @@ exports.getProfile = async ({ staffId }) => {
             address: true,
             current_latitude: true,
             current_longitude: true,
-            vehicle_type: true,
-            vehicle_number: true,
             profile_image_url: true,
             id_proof_type: true,
             id_proof_url: true,
@@ -486,7 +485,10 @@ exports.updateAcceptedOrderStatus = async ({ staffId, deliveryId, action, proofU
 
     const now = new Date();
 
-    return prisma.$transaction(async (tx) => {
+    let orderIdToNotify = null;
+    let statusToNotify = null;
+
+    const result = await prisma.$transaction(async (tx) => {
         const delivery = await tx.delivery.findUnique({
             where: { delivery_id: deliveryId },
             include: { pickup: true, drop: true },
@@ -528,6 +530,8 @@ exports.updateAcceptedOrderStatus = async ({ staffId, deliveryId, action, proofU
                     where: { order_id: delivery.order_id },
                     data: { order_status: 'out_for_delivery' },
                 });
+                orderIdToNotify = delivery.order_id;
+                statusToNotify = 'out_for_delivery';
             }
         }
 
@@ -550,6 +554,8 @@ exports.updateAcceptedOrderStatus = async ({ staffId, deliveryId, action, proofU
                     where: { order_id: delivery.order_id },
                     data: { order_status: 'picked_up' },
                 });
+                orderIdToNotify = delivery.order_id;
+                statusToNotify = 'picked_up';
             } else {
                 // drop leg: picked up from laundry -> out for delivery
                 await tx.delivery.update({
@@ -560,6 +566,8 @@ exports.updateAcceptedOrderStatus = async ({ staffId, deliveryId, action, proofU
                     where: { order_id: delivery.order_id },
                     data: { order_status: 'out_for_delivery' },
                 });
+                orderIdToNotify = delivery.order_id;
+                statusToNotify = 'out_for_delivery';
             }
         }
 
@@ -586,6 +594,8 @@ exports.updateAcceptedOrderStatus = async ({ staffId, deliveryId, action, proofU
                 where: { order_id: delivery.order_id },
                 data: { order_status: 'submitted_to_cm' },
             });
+            orderIdToNotify = delivery.order_id;
+            statusToNotify = 'submitted_to_cm';
         }
 
         if (action === 'dropped') {
@@ -608,6 +618,8 @@ exports.updateAcceptedOrderStatus = async ({ staffId, deliveryId, action, proofU
                     where: { order_id: delivery.order_id },
                     data: { order_status: 'payment_pending' },
                 });
+                orderIdToNotify = delivery.order_id;
+                statusToNotify = 'payment_pending';
             }
         }
 
@@ -628,6 +640,13 @@ exports.updateAcceptedOrderStatus = async ({ staffId, deliveryId, action, proofU
         logger.info('Delivery staff app updated delivery status', { staffId, deliveryId, action });
         return mapDeliveryToOrderCard(refreshed);
     });
+
+    // Push notify after transaction commits (non-blocking)
+    if (orderIdToNotify && statusToNotify) {
+        notifyOrderStatusChange({ orderId: orderIdToNotify, status: statusToNotify }).catch(() => {});
+    }
+
+    return result;
 };
 
 exports.markPickedUpWithProof = async ({ staffId, deliveryId, file }) => {

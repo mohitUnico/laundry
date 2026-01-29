@@ -8,8 +8,12 @@ const routes = require('./routes');
 const { errorHandler, notFoundHandler } = require('./middleware/error.middleware');
 const { requestLogger } = require('./middleware/logger.middleware');
 const logger = require('./utils/logger');
+const { initFirebaseAdmin } = require('./services/fcm.service');
 
 const app = express();
+
+// Initialize Firebase Admin early (safe no-op when FIREBASE_ENABLED != true)
+initFirebaseAdmin();
 
 // Trust proxy for accurate IP addresses
 app.set('trust proxy', 1);

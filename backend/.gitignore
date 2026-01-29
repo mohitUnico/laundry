@@ -9,6 +9,10 @@ yarn.lock
 .env.production
 .env.test
 
+# Firebase Admin service account JSON (never commit)
+src/config/firebase-service-account.json
+src/config/*firebase-adminsdk*.json
+
 # Logs
 logs/
 *.log

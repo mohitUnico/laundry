@@ -59,6 +59,8 @@ model Customer {
   phone             String?           @db.VarChar(20)
   password          String?           @db.VarChar(255)
   profile_image_url String?           @db.VarChar(500)
+  // Firebase Cloud Messaging token (one device token for now; can be extended to a separate table later)
+  fcm_token         String?           @db.VarChar(255)
   is_active         Boolean           @default(true)
   total_orders      Int               @default(0)
   total_spent       Decimal           @default(0) @db.Decimal(10, 2)

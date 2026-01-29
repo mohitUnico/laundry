@@ -1,6 +1,7 @@
 const { Prisma } = require('@prisma/client');
 const prisma = require('../config/database');
 const deliveryOperationsService = require('./delivery-operations.service');
+const { notifyOrderStatusChange } = require('./fcm.service');
 const { NotFoundError, ValidationError, ConflictError } = require('../utils/errors');
 
 const normalizePagination = ({ page = 1, limit = 20 } = {}) => {
@@ -198,7 +199,7 @@ exports.markOrderReceived = async ({ staffId, orderId }) => {
 
     const now = new Date();
 
-    return prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
         const order = await tx.order.findUnique({
             where: { order_id: orderId },
             select: { order_id: true, order_status: true },
@@ -225,6 +226,10 @@ exports.markOrderReceived = async ({ staffId, orderId }) => {
             receivedAt: updated.received_at,
         };
     });
+
+    // Push notify after transaction commits (non-blocking)
+    notifyOrderStatusChange({ orderId: result.orderId, status: result.orderStatus }).catch(() => {});
+    return result;
 };
 
 exports.createPickupAssignment = async ({ orderId, radiusKm, limit, expiresInSeconds }) => {
@@ -320,7 +325,7 @@ exports.submitOrderToServices = async ({ staffId, orderId }) => {
     if (!orderId) throw new ValidationError('orderId is required');
     const now = new Date();
 
-    return prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
         const order = await tx.order.findUnique({
             where: { order_id: orderId },
             include: {
@@ -409,6 +414,10 @@ exports.submitOrderToServices = async ({ staffId, orderId }) => {
             submittedByStaffId: staffId,
         };
     });
+
+    // Push notify after transaction commits (non-blocking)
+    notifyOrderStatusChange({ orderId, status: 'submitted_to_services' }).catch(() => {});
+    return result;
 };
 
 exports.generateInvoice = async ({ staffId, orderId }) => {
@@ -463,11 +472,11 @@ exports.generateInvoice = async ({ staffId, orderId }) => {
         });
 
         if (!order) throw new NotFoundError('Order');
-        // Invoice should only be generated after delivery staff has submitted the order
-        // to the collection centre (submitted_to_cm). This ensures all per-kg weights
-        // are recorded and the order is fully in collection custody.
-        if (order.order_status !== 'submitted_to_cm') {
-            throw new ConflictError('Invoice can only be generated after order is submitted to collection manager (submitted_to_cm)');
+        // Invoice should only be generated after the collection manager has
+        // verified and received the order at the collection centre.
+        // At this point all per-kg weights should be recorded.
+        if (order.order_status !== 'received_by_collection') {
+            throw new ConflictError('Invoice can only be generated after order is received by collection manager (received_by_collection)');
         }
         if (!order.order_items || order.order_items.length === 0) {
             throw new ValidationError('Order has no items');

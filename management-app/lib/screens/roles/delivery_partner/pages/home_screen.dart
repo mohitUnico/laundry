@@ -145,6 +145,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _refreshAcceptedInPlace();
   }
 
+  void _optimisticallyMarkPickupSubmitted(String deliveryId) {
+    // Update local cache so button text changes immediately after marking pickup.
+    setState(() {
+      _acceptedCache = _acceptedCache.map((task) {
+        if (task.deliveryId != deliveryId) return task;
+        return _AcceptedTaskUi(
+          deliveryId: task.deliveryId,
+          orderId: task.orderId,
+          taskType: task.taskType,
+          scheduledTime: task.scheduledTime,
+          customerName: task.customerName,
+          address: task.address,
+          phoneNumber: task.phoneNumber,
+          itemCount: task.itemCount,
+          amount: task.amount,
+          buttonText: task.taskType == 'Pickup' ? 'Mark Submitted' : task.buttonText,
+          iconPath: task.iconPath,
+          destinationLat: task.destinationLat,
+          destinationLng: task.destinationLng,
+          orderStatus: 'picked_up',
+        );
+      }).toList(growable: false);
+    });
+  }
+
   void _scheduleHomeRefresh() {
     _lastRealtimeEventAt = DateTime.now();
     _refreshDebounce?.cancel();
@@ -918,30 +943,48 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             // Task Filter Tabs
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Container(
-                height: 46,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE4E0FF),
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _buildTabButton(
-                        label: "Today's Tasks",
-                        isSelected: _selectedTabIndex == 0,
-                        onTap: () => setState(() => _selectedTabIndex = 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      height: 46,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE4E0FF),
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _buildTabButton(
+                              label: "Today's Tasks",
+                              isSelected: _selectedTabIndex == 0,
+                              onTap: () => setState(() => _selectedTabIndex = 0),
+                            ),
+                          ),
+                          Expanded(
+                            child: _buildTabButton(
+                              label: 'Completed',
+                              isSelected: _selectedTabIndex == 1,
+                              onTap: () => setState(() => _selectedTabIndex = 1),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    Expanded(
-                      child: _buildTabButton(
-                        label: 'Completed',
-                        isSelected: _selectedTabIndex == 1,
-                        onTap: () => setState(() => _selectedTabIndex = 1),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.refresh_rounded, size: 22),
+                    splashRadius: 20,
+                    color: AppColors.primary,
+                    tooltip: 'Refresh',
+                    onPressed: _isShiftActive
+                        ? () {
+                            _refreshHomeData();
+                          }
+                        : null,
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 16),
@@ -1291,39 +1334,44 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         child: StatefulBuilder(
                           builder: (context, setInnerState) {
                             bool isSaving = false;
+
                             Future<void> handleSave() async {
                               if (isSaving) return;
                               setInnerState(() => isSaving = true);
-                              try {
-                            // Validate all weights are entered
-                            bool allValid = true;
-                            final itemsToUpdate = <Map<String, dynamic>>[];
-                            
-                            for (final item in perKgItems!) {
-                              final itemId = (item['orderItemId'] ?? '').toString();
-                              final controller = weightControllers[itemId];
-                              final weightStr = controller?.text.trim() ?? '';
-                              final weight = double.tryParse(weightStr);
-                              
-                              if (weight == null || weight <= 0) {
-                                allValid = false;
-                                break;
-                              }
-                              
-                              itemsToUpdate.add({
-                                'orderItemId': itemId,
-                                'weightKg': weight,
-                              });
-                            }
-                            
-                            if (!allValid || itemsToUpdate.isEmpty) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Please enter valid weights for all items')),
-                              );
-                              return;
-                            }
 
-                              // Save weights
+                              // Validate all weights are entered
+                              bool allValid = true;
+                              final itemsToUpdate = <Map<String, dynamic>>[];
+
+                              for (final item in perKgItems!) {
+                                final itemId = (item['orderItemId'] ?? '').toString();
+                                final controller = weightControllers[itemId];
+                                final weightStr = controller?.text.trim() ?? '';
+                                final weight = double.tryParse(weightStr);
+
+                                if (weight == null || weight <= 0) {
+                                  allValid = false;
+                                  break;
+                                }
+
+                                itemsToUpdate.add({
+                                  'orderItemId': itemId,
+                                  'weightKg': weight,
+                                });
+                              }
+
+                              if (!allValid || itemsToUpdate.isEmpty) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Please enter valid weights for all items'),
+                                    ),
+                                  );
+                                }
+                                setInnerState(() => isSaving = false);
+                                return;
+                              }
+
                               try {
                                 await _deliveryStaffAppService.updatePerKgWeights(
                                   orderId: orderId,
@@ -1331,14 +1379,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 );
                                 if (mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Weights saved successfully')),
+                                    const SnackBar(
+                                      content: Text('Weights saved successfully'),
+                                    ),
                                   );
                                 }
                                 setState(() => weightsSaved = true);
                               } catch (e) {
                                 if (mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+                                    SnackBar(
+                                      content: Text(
+                                        e.toString().replaceFirst('Exception: ', ''),
+                                      ),
+                                    ),
                                   );
                                 }
                                 setState(() => weightsSaved = false);
@@ -1513,6 +1567,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                         deliveryId: deliveryId,
                                         file: pickedImage!,
                                       );
+                                      // Optimistically update UI so button becomes "Mark Submitted"
+                                      _optimisticallyMarkPickupSubmitted(deliveryId);
                                     } else {
                                       await _deliveryStaffAppService.markDeliveredWithProof(
                                         deliveryId: deliveryId,

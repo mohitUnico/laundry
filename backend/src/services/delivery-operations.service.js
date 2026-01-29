@@ -1,6 +1,7 @@
 const prisma = require('../config/database');
 const logger = require('../utils/logger');
 const realtimeService = require('./realtime.service');
+const { notifyOrderStatusChange } = require('./fcm.service');
 const { NotFoundError, ValidationError, ConflictError } = require('../utils/errors');
 
 const DEFAULT_ASSIGNMENT_EXPIRES_SECONDS = 120;
@@ -747,6 +748,9 @@ exports.directAssignDelivery = async ({
         assignedBy,
     });
 
+    // Push notify after transaction commits (non-blocking)
+    notifyOrderStatusChange({ orderId, status: requiredOrderStatus }).catch(() => {});
+
     return {
         orderId,
         deliveryId: result.deliveryId,
@@ -885,11 +889,11 @@ exports.respondToAssignmentRequest = async ({ staffId, requestId, action, reject
         });
 
         realtimeService.emitToDeliveryStaff(staffId, 'assignment_rejected', { requestId });
-        return { requestId, status: 'rejected' };
+    return { requestId, status: 'rejected' };
     }
 
     // accept (one master request + many recipients: first-accept wins; cancel other recipients)
-    return prisma.$transaction(async (tx) => {
+    const txResult = await prisma.$transaction(async (tx) => {
         const reqRow = await tx.deliveryAssignmentRequest.findUnique({
             where: { request_id: requestId },
         });
@@ -1056,7 +1060,18 @@ exports.respondToAssignmentRequest = async ({ staffId, requestId, action, reject
             deliveryId: delivery.delivery_id,
             status: 'accepted',
             notificationId: notification.notification_id,
+            _orderId: reqRow.order_id,
+            _statusToNotify: reqRow.delivery_type === 'pickup' ? 'pickup_assigned' : 'dispatch_assigned',
         };
     });
+
+    // Push notify after transaction commits (non-blocking)
+    notifyOrderStatusChange({ orderId: txResult._orderId, status: txResult._statusToNotify }).catch(() => {});
+
+    // Do not leak internal helper fields
+    const publicResult = { ...txResult };
+    delete publicResult._orderId;
+    delete publicResult._statusToNotify;
+    return publicResult;
 };
 

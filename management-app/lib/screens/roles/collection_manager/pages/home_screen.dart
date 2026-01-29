@@ -136,12 +136,23 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
 
   Future<void> _markReceivedAndRefresh(String orderId) async {
     try {
+      // Step 1: Mark order as verified & received
       await _ordersService.markOrderReceived(orderId: orderId);
+
+      // Step 2: Generate invoice immediately from the same screen
+      await _ordersService.generateInvoice(orderId: orderId);
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Order marked as received')),
+        const SnackBar(content: Text('Order received and invoice generated')),
       );
-      await _refreshIncoming();
+
+      // Refresh both incoming and received lists so the order moves
+      // from the incoming list into the received list.
+      await Future.wait([
+        _refreshIncoming(),
+        _refreshReceived(),
+      ]);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

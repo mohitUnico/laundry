@@ -21,6 +21,7 @@ const distributionManagerAppRoutes = require('./distribution-manager-app.routes'
 const serviceManAppRoutes = require('./service-man-app.routes');
 const couponsRoutes = require('./coupons.routes');
 const configRoutes = require('./config.routes');
+const notificationRoutes = require('./notification.routes');
 
 const router = express.Router();
 
@@ -100,6 +101,7 @@ router.use('/staff-app/collection-manager', collectionManagerAppRoutes);
 router.use('/staff-app/distribution-manager', distributionManagerAppRoutes);
 router.use('/staff-app/service-man', serviceManAppRoutes);
 router.use('/config', configRoutes);
+router.use('/notifications', notificationRoutes);
 
 module.exports = router;
 

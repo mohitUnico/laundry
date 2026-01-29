@@ -247,24 +247,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           },
         ),
       ),
-      bottomNavigationBar: BottomNavBar(
-        currentIndex: 3,
-        onTap: (index) {
-          switch (index) {
-            case 0:
-              Navigator.pushReplacementNamed(context, AppRoutes.home);
-              break;
-            case 1:
-              Navigator.pushReplacementNamed(context, AppRoutes.orders);
-              break;
-            case 2:
-              Navigator.pushReplacementNamed(context, AppRoutes.help);
-              break;
-            case 3:
-              break;
-          }
-        },
-      ),
       bottomNavigationBar: widget.showBottomNav
           ? BottomNavBar(
               currentIndex: 3,

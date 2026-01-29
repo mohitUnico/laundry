@@ -206,7 +206,19 @@ exports.markOrderReceived = async ({ staffId, orderId }) => {
         });
         if (!order) throw new NotFoundError('Order');
 
-        if (!['picked_up', 'submitted_to_cm', 'pickup_assigned'].includes(order.order_status)) {
+        // Idempotency: if already received, return without error (prevents UI double-tap issues)
+        if (order.order_status === 'received_by_collection') {
+            return {
+                orderId: order.order_id,
+                orderStatus: order.order_status,
+                receivedAt: now,
+            };
+        }
+
+        // Allow marking received from:
+        // - pickup flow statuses (picked_up / submitted_to_cm / pickup_assigned)
+        // - placed (for drop-only or manual drop scenarios)
+        if (!['placed', 'picked_up', 'submitted_to_cm', 'pickup_assigned'].includes(order.order_status)) {
             throw new ConflictError(`Order cannot be marked received from status ${order.order_status}`);
         }
 
@@ -481,9 +493,9 @@ exports.generateInvoice = async ({ staffId, orderId }) => {
         if (!order.order_items || order.order_items.length === 0) {
             throw new ValidationError('Order has no items');
         }
-        if (order.bill && order.bill.payment_status === 'completed') {
-            throw new ConflictError('Cannot regenerate invoice after payment is completed');
-        }
+        // NOTE:
+        // Even if payment is already completed (per-piece orders can be paid before CM generates invoice),
+        // we still allow invoice generation and preserve bill.payment_status as completed.
 
         // Recompute item subtotals for BOTH per_unit and per_kg items.
         // This is required because when pricing_model is per_kg (mixed orders),
@@ -556,6 +568,8 @@ exports.generateInvoice = async ({ staffId, orderId }) => {
         });
 
         // Create or update bill totals. Keep delivery/tax/discount as 0 for now.
+        const existingPaymentStatus = order.bill?.payment_status;
+        const normalizedPaymentStatus = existingPaymentStatus === 'completed' ? 'completed' : 'pending';
         const billData = {
             subtotal: newSubtotal,
             delivery_fee: new Prisma.Decimal(0),
@@ -565,7 +579,7 @@ exports.generateInvoice = async ({ staffId, orderId }) => {
             payment_method: (order.bill?.payment_method && order.bill.payment_method.length > 0)
                 ? order.bill.payment_method
                 : 'pending',
-            payment_status: 'pending',
+            payment_status: normalizedPaymentStatus,
         };
 
         const bill = await tx.bill.upsert({

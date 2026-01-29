@@ -139,20 +139,30 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
       // Step 1: Mark order as verified & received
       await _ordersService.markOrderReceived(orderId: orderId);
 
-      // Step 2: Generate invoice immediately from the same screen
-      await _ordersService.generateInvoice(orderId: orderId);
-
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Order received and invoice generated')),
-      );
 
       // Refresh both incoming and received lists so the order moves
       // from the incoming list into the received list.
-      await Future.wait([
-        _refreshIncoming(),
-        _refreshReceived(),
-      ]);
+      await Future.wait([_refreshIncoming(), _refreshReceived()]);
+
+      // Step 2: Generate invoice (best-effort). Even if invoice generation fails
+      // (e.g. kg-weights missing), we still want the order to move to Received.
+      try {
+        await _ordersService.generateInvoice(orderId: orderId);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Order received and invoice generated')),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Order received. Invoice not generated: ${e.toString().replaceFirst('Exception: ', '').trim()}',
+            ),
+          ),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

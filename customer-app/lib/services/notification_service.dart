@@ -83,10 +83,10 @@ class NotificationService {
       FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
       // Handle foreground messages
-      _firebaseMessaging!.onMessage.listen(_handleForegroundMessage);
+      FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
 
       // Handle notification taps when app is in background
-      _firebaseMessaging!.onMessageOpenedApp.listen(_handleNotificationTap);
+      FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationTap);
 
       // Check if app was opened from a notification
       final RemoteMessage? initialMessage =

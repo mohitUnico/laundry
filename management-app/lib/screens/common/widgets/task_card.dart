@@ -11,7 +11,7 @@ class TaskCard extends StatelessWidget {
   final int itemCount;
   final String amount;
   final String buttonText;
-  final VoidCallback onButtonPressed;
+  final VoidCallback? onButtonPressed;
   final VoidCallback onMapPressed;
   final String iconPath;
 
@@ -25,7 +25,7 @@ class TaskCard extends StatelessWidget {
     required this.itemCount,
     required this.amount,
     required this.buttonText,
-    required this.onButtonPressed,
+    this.onButtonPressed,
     required this.onMapPressed,
     required this.iconPath,
   });
@@ -191,32 +191,35 @@ class TaskCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Container(
-                    height: 48,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                        colors: [
-                          Color(0xFF283897),
-                          Color(0xFF0F73F7),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: onButtonPressed,
+                  child: Opacity(
+                    opacity: onButtonPressed == null ? 0.6 : 1.0,
+                    child: Container(
+                      height: 48,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: [
+                            Color(0xFF283897),
+                            Color(0xFF0F73F7),
+                          ],
+                        ),
                         borderRadius: BorderRadius.circular(30),
-                        child: Center(
-                          child: Text(
-                            buttonText,
-                            style: AppTextStyles.button(
-                              color: Colors.white,
-                            ).copyWith(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: onButtonPressed,
+                          borderRadius: BorderRadius.circular(30),
+                          child: Center(
+                            child: Text(
+                              buttonText,
+                              style: AppTextStyles.button(
+                                color: Colors.white,
+                              ).copyWith(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                         ),

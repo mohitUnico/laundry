@@ -3,6 +3,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:geolocator/geolocator.dart';
 import 'dart:async';
+import 'dart:io';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../../theme/app_colors.dart';
 import '../../../../theme/app_text_styles.dart';
@@ -437,6 +438,68 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final nav = Navigator.of(context, rootNavigator: true);
       if (nav.canPop()) nav.pop();
     };
+  }
+
+  /// Shows a success popup message matching app theme
+  void _showSuccessPopup(BuildContext context, {required String message, IconData icon = Icons.check_circle}) {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black.withOpacity(0.3),
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    icon,
+                    color: AppColors.success,
+                    size: 32,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  message,
+                  style: AppTextStyles.subtitle(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    // Auto-close after 2 seconds
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+    });
   }
 
   void _stopLiveLocation() {
@@ -1090,7 +1153,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           );
         }
 
-        final list = _acceptedCache.isNotEmpty ? _acceptedCache : (snapshot.data ?? const <_AcceptedTaskUi>[]);
+        final allList = _acceptedCache.isNotEmpty ? _acceptedCache : (snapshot.data ?? const <_AcceptedTaskUi>[]);
+        // Filter out completed orders (submitted_to_cm status) from today's list
+        final list = allList.where((t) {
+          // Keep only orders that are NOT submitted to collection manager
+          return t.orderStatus != 'submitted_to_cm';
+        }).toList();
+        
         if (list.isEmpty) {
           return Center(
             child: Text(
@@ -1126,7 +1195,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     try {
                       await _deliveryStaffAppService.markSubmittedToCm(deliveryId: t.deliveryId);
                       closeLoader();
-                      _refreshHomeData();
+                      // Show success popup
+                      if (mounted) {
+                        _showSuccessPopup(context, message: 'Marked as Submitted ✓');
+                      }
+                      // Refresh data to move order from today's list to completed
+                      await _refreshHomeData();
+                      // If on today's tab, switch to completed tab to show the moved order
+                      if (mounted && _selectedTabIndex == 0) {
+                        setState(() {
+                          _selectedTabIndex = 1;
+                        });
+                      }
                     } catch (e) {
                       closeLoader();
                       if (mounted) {
@@ -1159,13 +1239,58 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildCompletedTasks() {
-    return Center(
-      child: Text(
-        'No completed tasks',
-        style: AppTextStyles.subtitle(
-          color: AppColors.textSecondary,
-        ),
-      ),
+    return FutureBuilder<List<_AcceptedTaskUi>>(
+      future: _acceptedFuture,
+      builder: (context, snapshot) {
+        final allList = _acceptedCache.isNotEmpty ? _acceptedCache : (snapshot.data ?? const <_AcceptedTaskUi>[]);
+        // Filter only completed orders (submitted_to_cm status)
+        final completedList = allList.where((t) {
+          return t.orderStatus == 'submitted_to_cm';
+        }).toList();
+
+        if (completedList.isEmpty) {
+          return Center(
+            child: Text(
+              'No completed tasks',
+              style: AppTextStyles.subtitle(
+                color: AppColors.textSecondary,
+              ),
+            ),
+          );
+        }
+
+        return ListView.builder(
+          key: const PageStorageKey<String>('delivery_partner_home_completed_tasks'),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          itemCount: completedList.length,
+          itemBuilder: (context, index) {
+            final t = completedList[index];
+            return TaskCard(
+              taskType: t.taskType,
+              scheduledTime: t.scheduledTime,
+              customerName: t.customerName,
+              address: t.address,
+              phoneNumber: t.phoneNumber,
+              itemCount: t.itemCount,
+              amount: t.amount,
+              buttonText: 'Completed',
+              iconPath: t.iconPath,
+              onButtonPressed: null, // Disable button for completed tasks
+              onMapPressed: () {
+                final lat = t.destinationLat;
+                final lng = t.destinationLng;
+                if (lat == null || lng == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Location coordinates not available for this order')),
+                  );
+                  return;
+                }
+                _openDirectionsTo(destinationLat: lat, destinationLng: lng);
+              },
+            );
+          },
+        );
+      },
     );
   }
 
@@ -1440,91 +1565,138 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      InkWell(
-                        borderRadius: BorderRadius.circular(18),
-                        onTap: () async {
-                          final status = await Permission.camera.request();
-                          if (!status.isGranted) {
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Camera permission is required to take photos'),
-                                ),
-                              );
-                            }
-                            return;
-                          }
-                          final image = await _imagePicker.pickImage(
-                            source: ImageSource.camera,
-                            imageQuality: 80,
-                          );
-                          if (image != null) {
-                            setState(() => pickedImage = image);
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Photo captured successfully'),
-                                ),
-                              );
-                            }
-                          }
-                        },
-                        child: Container(
-                          width: double.infinity,
-                          height: 140,
-                          decoration: BoxDecoration(
-                            color: AppColors.surface,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: AppColors.divider.withOpacity(0.4),
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.03),
-                                blurRadius: 8,
-                                offset: const Offset(0, 3),
-                              ),
-                            ],
+                      Container(
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: AppColors.surface,
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: AppColors.divider.withOpacity(0.4),
                           ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Container(
-                                width: 48,
-                                height: 48,
-                                decoration: BoxDecoration(
-                                  color: AppColors.surface,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.06),
-                                      blurRadius: 6,
-                                      offset: const Offset(0, 3),
-                                    ),
-                                  ],
-                                  border: Border.all(
-                                    color: AppColors.divider.withOpacity(0.8),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.03),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: pickedImage == null
+                            ? InkWell(
+                                borderRadius: BorderRadius.circular(18),
+                                onTap: () async {
+                                  final status = await Permission.camera.request();
+                                  if (!status.isGranted) {
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Camera permission is required to take photos'),
+                                        ),
+                                      );
+                                    }
+                                    return;
+                                  }
+                                  final image = await _imagePicker.pickImage(
+                                    source: ImageSource.camera,
+                                    imageQuality: 80,
+                                  );
+                                  if (image != null) {
+                                    setState(() => pickedImage = image);
+                                  }
+                                },
+                                child: Container(
+                                  width: double.infinity,
+                                  height: 140,
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Container(
+                                        width: 48,
+                                        height: 48,
+                                        decoration: BoxDecoration(
+                                          color: AppColors.surface,
+                                          shape: BoxShape.circle,
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black.withOpacity(0.06),
+                                              blurRadius: 6,
+                                              offset: const Offset(0, 3),
+                                            ),
+                                          ],
+                                          border: Border.all(
+                                            color: AppColors.divider.withOpacity(0.8),
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          Icons.photo_camera_outlined,
+                                          color: AppColors.primary,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      Text(
+                                        'Take a Photo',
+                                        style: AppTextStyles.subtitle(
+                                          color: AppColors.textSecondary,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                child: Icon(
-                                  pickedImage == null
-                                      ? Icons.photo_camera_outlined
-                                      : Icons.check,
-                                  color: AppColors.primary,
+                              )
+                            : Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(12),
+                                      child: Image.file(
+                                        File(pickedImage!.path),
+                                        width: double.infinity,
+                                        height: 200,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        ElevatedButton.icon(
+                                          onPressed: () async {
+                                            final status = await Permission.camera.request();
+                                            if (!status.isGranted) {
+                                              if (mounted) {
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  const SnackBar(
+                                                    content: Text('Camera permission is required to take photos'),
+                                                  ),
+                                                );
+                                              }
+                                              return;
+                                            }
+                                            final image = await _imagePicker.pickImage(
+                                              source: ImageSource.camera,
+                                              imageQuality: 80,
+                                            );
+                                            if (image != null) {
+                                              setState(() => pickedImage = image);
+                                            }
+                                          },
+                                          icon: const Icon(Icons.camera_alt, size: 18),
+                                          label: const Text('Retake Photo'),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: AppColors.primary,
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
                                 ),
                               ),
-                              const SizedBox(height: 10),
-                              Text(
-                                pickedImage == null
-                                    ? 'Take a Photo'
-                                    : 'Photo Added',
-                                style: AppTextStyles.subtitle(
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
                       ),
                       const SizedBox(height: 20),
                       SizedBox(
@@ -1569,21 +1741,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                       );
                                       // Optimistically update UI so button becomes "Mark Submitted"
                                       _optimisticallyMarkPickupSubmitted(deliveryId);
+                                      if (mounted) {
+                                        Navigator.of(dialogContext).pop();
+                                        _showSuccessPopup(context, message: 'Pickup Confirmed ✓');
+                                      }
                                     } else {
                                       await _deliveryStaffAppService.markDeliveredWithProof(
                                         deliveryId: deliveryId,
                                         file: pickedImage!,
                                       );
+                                      if (mounted) {
+                                        Navigator.of(dialogContext).pop();
+                                        _showSuccessPopup(context, message: 'Delivery Confirmed ✓');
+                                      }
                                     }
 
-                                    if (mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text(isPickup ? 'Pickup marked successfully' : 'Delivered successfully')),
-                                      );
-                                    }
-
-                                    Navigator.of(dialogContext).pop();
-                                    _refreshHomeData();
+                                    await _refreshHomeData();
                                   } catch (e) {
                                     if (mounted) {
                                       ScaffoldMessenger.of(context).showSnackBar(

@@ -104,6 +104,8 @@ class OrderProvider with ChangeNotifier {
       final orderStatus = orderStatusRaw.isEmpty ? 'placed' : orderStatusRaw;
       final createdAt = data['created_at'] as String?;
       final pickupDate = data['pickup_date'] as String?;
+      final pickupTimeFrom = data['pickup_time_from'] as String?;
+      final deliveryTimeFrom = data['delivery_time_from'] as String?;
       final pickupAddressMap = data['pickup_address'] as Map<String, dynamic>?;
       final totalAmount = (data['total_amount'] ?? '0') as String;
       final items = (data['items'] as List?) ?? [];
@@ -136,14 +138,17 @@ class OrderProvider with ChangeNotifier {
         placedTimeLabel = _formatTimeLabel(placedAt);
       }
 
-      // Parse pickup date
+      // Parse schedule window:
+      // Prefer pickup_time_from when available; fallback to pickup_date.
       String dateLabel = '';
       String timeLabel = '';
-      if (pickupDate != null) {
+      DateTime? scheduleDt;
+      final scheduleSource = pickupTimeFrom ?? pickupDate;
+      if (scheduleSource != null) {
         try {
-          final pickupDateTime = DateTime.parse(pickupDate).toLocal();
-          dateLabel = _formatDateLabel(pickupDateTime);
-          timeLabel = _formatTimeLabel(pickupDateTime);
+          scheduleDt = DateTime.parse(scheduleSource).toLocal();
+          dateLabel = _formatDateLabel(scheduleDt);
+          timeLabel = _formatTimeLabel(scheduleDt);
         } catch (_) {
           dateLabel = 'TBD';
           timeLabel = 'TBD';

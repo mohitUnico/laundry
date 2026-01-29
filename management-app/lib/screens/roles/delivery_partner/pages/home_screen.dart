@@ -484,8 +484,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   message,
                   style: AppTextStyles.subtitle(
                     color: AppColors.textPrimary,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  ).copyWith(fontWeight: FontWeight.w600),
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -1200,7 +1199,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         _showSuccessPopup(context, message: 'Marked as Submitted ✓');
                       }
                       // Refresh data to move order from today's list to completed
-                      await _refreshHomeData();
+                      _refreshHomeData();
                       // If on today's tab, switch to completed tab to show the moved order
                       if (mounted && _selectedTabIndex == 0) {
                         setState(() {
@@ -1756,7 +1755,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                       }
                                     }
 
-                                    await _refreshHomeData();
+                                    _refreshHomeData();
                                   } catch (e) {
                                     if (mounted) {
                                       ScaffoldMessenger.of(context).showSnackBar(

@@ -49,6 +49,10 @@ class OrderService {
     String? pickupDate,
     String? deliveryDate,
     String? specialInstructions,
+    String? pickupTimeFrom,
+    String? pickupTimeTo,
+    String? deliveryTimeFrom,
+    String? deliveryTimeTo,
   }) async {
     try {
       final payload = <String, dynamic>{
@@ -66,6 +70,18 @@ class OrderService {
       }
       if (specialInstructions != null && specialInstructions.isNotEmpty) {
         payload['special_instructions'] = specialInstructions;
+      }
+      if (pickupTimeFrom != null && pickupTimeFrom.isNotEmpty) {
+        payload['pickup_time_from'] = pickupTimeFrom;
+      }
+      if (pickupTimeTo != null && pickupTimeTo.isNotEmpty) {
+        payload['pickup_time_to'] = pickupTimeTo;
+      }
+      if (deliveryTimeFrom != null && deliveryTimeFrom.isNotEmpty) {
+        payload['delivery_time_from'] = deliveryTimeFrom;
+      }
+      if (deliveryTimeTo != null && deliveryTimeTo.isNotEmpty) {
+        payload['delivery_time_to'] = deliveryTimeTo;
       }
 
       final res = await _api.post(

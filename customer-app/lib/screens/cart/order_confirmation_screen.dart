@@ -118,44 +118,56 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
           break;
       }
 
-      // Parse date and time from labels
+      // Parse date and time from labels (local timezone)
       // The dateLabel is in format "Jan 21" and timeLabel is in format "11:35 AM"
-      // We need to reconstruct the full DateTime
-      // For simplicity, we'll use the current date and parse the time
       final now = DateTime.now();
       final timeParts = args.timeLabel.split(' ');
       final timeValue = timeParts[0].split(':');
       final hour = int.parse(timeValue[0]);
       final minute = int.parse(timeValue[1]);
       final isPM = timeParts.length > 1 && timeParts[1].toUpperCase() == 'PM';
-      
+
       int hour24;
       if (isPM) {
         hour24 = hour == 12 ? 12 : hour + 12;
       } else {
         hour24 = hour == 12 ? 0 : hour;
       }
-      
+
       // Parse date from "Jan 21" format
       final dateParts = args.dateLabel.split(' ');
       final monthName = dateParts[0];
       final day = int.parse(dateParts[1]);
-      
+
       final monthMap = {
         'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
         'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12,
       };
       final month = monthMap[monthName] ?? now.month;
-      
+
       // Use current year, or next year if the date has passed
       int year = now.year;
       final pickupDate = DateTime(year, month, day);
       if (pickupDate.isBefore(DateTime(now.year, now.month, now.day))) {
         year = now.year + 1;
       }
-      
-      final pickupDateTime = DateTime(year, month, day, hour24, minute);
-      final pickupDateIso = pickupDateTime.toUtc().toIso8601String();
+
+      final pickupDateTimeLocal = DateTime(year, month, day, hour24, minute);
+      final pickupDateIso = pickupDateTimeLocal.toUtc().toIso8601String();
+
+      // For now, treat the selected time as the start of the pickup window.
+      // Use the same instant for pickup_time_from and pickup_time_to (point slot).
+      final pickupTimeFromIso = pickupDateTimeLocal.toUtc().toIso8601String();
+      final pickupTimeToIso = pickupTimeFromIso;
+
+      // For pickup & delivery orders, set a simple delivery window as pickup + 24h
+      String? deliveryTimeFromIso;
+      String? deliveryTimeToIso;
+      if (orderType == 'both') {
+        final deliveryFromLocal = pickupDateTimeLocal.add(const Duration(hours: 24));
+        deliveryTimeFromIso = deliveryFromLocal.toUtc().toIso8601String();
+        deliveryTimeToIso = deliveryTimeFromIso;
+      }
 
       // Create order via backend
       final orderRepo = OrderRepository();
@@ -167,6 +179,10 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
         pickupDate: pickupDateIso,
         deliveryDate: null,
         specialInstructions: null,
+        pickupTimeFrom: pickupTimeFromIso,
+        pickupTimeTo: pickupTimeToIso,
+        deliveryTimeFrom: deliveryTimeFromIso,
+        deliveryTimeTo: deliveryTimeToIso,
       );
 
       if (!mounted) return;

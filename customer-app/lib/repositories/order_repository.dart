@@ -13,6 +13,10 @@ class OrderRepository {
     String? pickupDate,
     String? deliveryDate,
     String? specialInstructions,
+    String? pickupTimeFrom,
+    String? pickupTimeTo,
+    String? deliveryTimeFrom,
+    String? deliveryTimeTo,
   }) {
     return _service.createOrder(
       cartId: cartId,
@@ -22,6 +26,10 @@ class OrderRepository {
       pickupDate: pickupDate,
       deliveryDate: deliveryDate,
       specialInstructions: specialInstructions,
+      pickupTimeFrom: pickupTimeFrom,
+      pickupTimeTo: pickupTimeTo,
+      deliveryTimeFrom: deliveryTimeFrom,
+      deliveryTimeTo: deliveryTimeTo,
     );
   }
 

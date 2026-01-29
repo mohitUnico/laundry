@@ -409,16 +409,62 @@ class _PaymentScreenState extends State<PaymentScreen> {
                               break;
                           }
 
-                          // Parse date/time from arguments or use current time + 1 day as default
-                          DateTime pickupDateTime;
-                          try {
-                            // Try to parse from dateLabel and timeLabel
-                            // For simplicity, use current time + 1 day as default
-                            pickupDateTime = DateTime.now().add(const Duration(days: 1));
-                          } catch (_) {
-                            pickupDateTime = DateTime.now().add(const Duration(days: 1));
+                          // Parse date/time from schedule arguments (local timezone)
+                          final scheduleDateLabel = args?['dateLabel'] as String?;
+                          final scheduleTimeLabel = args?['timeLabel'] as String?;
+                          DateTime pickupDateTimeLocal;
+                          if (scheduleDateLabel != null && scheduleTimeLabel != null) {
+                            try {
+                              final now = DateTime.now();
+                              final timeParts = scheduleTimeLabel.split(' ');
+                              final timeValue = timeParts[0].split(':');
+                              final hour = int.parse(timeValue[0]);
+                              final minute = int.parse(timeValue[1]);
+                              final isPM = timeParts.length > 1 && timeParts[1].toUpperCase() == 'PM';
+
+                              int hour24;
+                              if (isPM) {
+                                hour24 = hour == 12 ? 12 : hour + 12;
+                              } else {
+                                hour24 = hour == 12 ? 0 : hour;
+                              }
+
+                              final dateParts = scheduleDateLabel.split(' ');
+                              final monthName = dateParts[0];
+                              final day = int.parse(dateParts[1]);
+
+                              const months = [
+                                'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                                'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+                              ];
+                              final monthIndex = months.indexOf(monthName);
+                              final month = monthIndex >= 0 ? monthIndex + 1 : now.month;
+
+                              int year = now.year;
+                              final baseDate = DateTime(year, month, day);
+                              if (baseDate.isBefore(DateTime(now.year, now.month, now.day))) {
+                                year = now.year + 1;
+                              }
+
+                              pickupDateTimeLocal = DateTime(year, month, day, hour24, minute);
+                            } catch (_) {
+                              pickupDateTimeLocal = DateTime.now().add(const Duration(days: 1));
+                            }
+                          } else {
+                            pickupDateTimeLocal = DateTime.now().add(const Duration(days: 1));
                           }
-                          final pickupDateIso = pickupDateTime.toIso8601String();
+
+                          final pickupDateIso = pickupDateTimeLocal.toUtc().toIso8601String();
+                          final pickupTimeFromIso = pickupDateTimeLocal.toUtc().toIso8601String();
+                          final pickupTimeToIso = pickupTimeFromIso;
+
+                          String? deliveryTimeFromIso;
+                          String? deliveryTimeToIso;
+                          if (orderType == 'both') {
+                            final deliveryFromLocal = pickupDateTimeLocal.add(const Duration(hours: 24));
+                            deliveryTimeFromIso = deliveryFromLocal.toUtc().toIso8601String();
+                            deliveryTimeToIso = deliveryTimeFromIso;
+                          }
 
                           // Create order via backend
                           final orderRepo = OrderRepository();
@@ -430,6 +476,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
                             pickupDate: pickupDateIso,
                             deliveryDate: null,
                             specialInstructions: null,
+                            pickupTimeFrom: pickupTimeFromIso,
+                            pickupTimeTo: pickupTimeToIso,
+                            deliveryTimeFrom: deliveryTimeFromIso,
+                            deliveryTimeTo: deliveryTimeToIso,
                           );
 
                           if (!mounted) return;

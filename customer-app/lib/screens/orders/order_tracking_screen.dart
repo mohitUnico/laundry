@@ -95,26 +95,47 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
               if (updatedId == null || updatedId != id) return;
 
               final newStatus = payload.newRecord['order_status'] as String?;
-              if (newStatus == null) return;
-              final mappedIndex = _mapStatusToStepIndex(newStatus, _orderType);
+              if (newStatus == null || newStatus.isEmpty) return;
               if (!mounted) return;
               
               final oldStatus = _backendStatus?.toLowerCase().trim() ?? '';
               final statusLower = newStatus.toLowerCase().trim();
               
-              // Check if driver was just assigned (pickup_assigned or dispatch_assigned)
-              final driverJustAssigned = (statusLower == 'pickup_assigned' || statusLower == 'dispatch_assigned') &&
-                  oldStatus != 'pickup_assigned' && oldStatus != 'dispatch_assigned';
-              
+              // Update status in UI directly from realtime (no API call needed)
+              // This reduces egress requests by avoiding polling
+              final mappedIndex = _mapStatusToStepIndex(newStatus, _orderType);
               setState(() {
                 _activeIndex = mappedIndex;
                 _backendStatus = newStatus;
+                // Update tracking data status if it exists (in-place update, no API call)
+                if (_tracking != null) {
+                  _tracking = OrderTrackingData(
+                    orderId: _tracking!.orderId,
+                    orderStatus: newStatus,
+                    orderType: _tracking!.orderType,
+                    shopName: _tracking!.shopName,
+                    shop: _tracking!.shop,
+                    pickup: _tracking!.pickup,
+                    delivery: _tracking!.delivery,
+                    pickupLeg: _tracking!.pickupLeg,
+                    dropLeg: _tracking!.dropLeg,
+                  );
+                }
               });
               
-              // If driver was just assigned, reload tracking data and subscribe to driver location immediately
-              // This ensures realtime tracking starts regardless of scheduled pickup time
+              // Only fetch full tracking data when driver is first assigned
+              // This is necessary to get delivery leg info and staff details for map tracking
+              final driverJustAssigned = (statusLower == 'pickup_assigned' || statusLower == 'dispatch_assigned') &&
+                  oldStatus != 'pickup_assigned' && oldStatus != 'dispatch_assigned';
+              
               if (driverJustAssigned) {
+                // Only fetch when we need delivery leg info (driver assignment)
+                // This is the only case where we need to make an API call
                 _loadTracking();
+              } else if (_tracking != null) {
+                // For other status updates, just update driver location subscription if needed
+                // No API call - just refresh driver realtime subscription
+                _subscribeToDriverRealtime();
               }
             },
           )

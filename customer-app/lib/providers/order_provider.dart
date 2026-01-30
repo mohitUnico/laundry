@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../models/order_record.dart';
@@ -11,6 +13,9 @@ class OrderProvider with ChangeNotifier {
   String? _error;
   bool _isFetching = false; // Prevent concurrent fetches
 
+  Timer? _reconcileDebounce;
+  static const Duration _reconcileDebounceWindow = Duration(milliseconds: 500);
+
   OrderProvider({OrderRepository? repo}) : _repo = repo ?? OrderRepository();
 
   List<OrderRecord> get orders => List.unmodifiable(_orders);
@@ -20,6 +25,85 @@ class OrderProvider with ChangeNotifier {
   void addOrder(OrderRecord order) {
     _orders.insert(0, order);
     notifyListeners();
+  }
+
+  /// Apply Supabase Realtime payload to local orders list without fetching.
+  /// Reduces egress by updating in-place from Realtime events instead of polling.
+  void applyOrdersRealtimeChange({
+    required String eventType,
+    required Map<String, dynamic>? newRow,
+    required Map<String, dynamic>? oldRow,
+  }) {
+    final type = eventType.toLowerCase();
+
+    if (type == 'delete') {
+      final orderId = _readString(oldRow, 'order_id');
+      if (orderId.isNotEmpty) {
+        _orders.removeWhere((o) => o.id == orderId);
+        notifyListeners();
+      }
+      return;
+    }
+
+    // INSERT / UPDATE
+    final row = newRow ?? const <String, dynamic>{};
+    if (row.isEmpty) {
+      _scheduleReconcile();
+      return;
+    }
+
+    final orderId = _readString(row, 'order_id');
+    if (orderId.isEmpty) return;
+
+    final orderStatus = _readString(row, 'order_status');
+    if (orderStatus.isEmpty && type == 'insert') {
+      _scheduleReconcile();
+      return;
+    }
+
+    final idx = _orders.indexWhere((o) => o.id == orderId);
+
+    if (type == 'insert') {
+      // New order - schedule debounced fetch to get full order with items
+      _scheduleReconcile();
+      return;
+    }
+
+    if (type == 'update' && idx >= 0) {
+      // Update existing order in-place from payload (no fetch - reduces egress)
+      final existing = _orders[idx];
+      final newStatus = _mapOrderStatus(orderStatus);
+      final totalAmountStr = _readString(row, 'total_amount');
+      final parsedTotal = double.tryParse(totalAmountStr);
+      final totalInr = parsedTotal != null ? parsedTotal.toInt() : null;
+
+      final updated = existing.copyWith(
+        status: newStatus,
+        backendStatus:
+            orderStatus.isEmpty ? existing.backendStatus : orderStatus,
+        totalInr: totalInr,
+      );
+      _orders[idx] = updated;
+      notifyListeners();
+    }
+  }
+
+  String _readString(Map<String, dynamic>? map, String key) {
+    final v = map?[key];
+    return v == null ? '' : v.toString().trim();
+  }
+
+  void _scheduleReconcile() {
+    _reconcileDebounce?.cancel();
+    _reconcileDebounce = Timer(_reconcileDebounceWindow, () {
+      fetchOrders(page: 1, limit: 10);
+    });
+  }
+
+  @override
+  void dispose() {
+    _reconcileDebounce?.cancel();
+    super.dispose();
   }
 
   void updateOrderSchedule(String orderId, String dateLabel, String timeLabel) {
@@ -38,7 +122,8 @@ class OrderProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> fetchOrders({int page = 1, int limit = 10, String? status}) async {
+  Future<void> fetchOrders(
+      {int page = 1, int limit = 10, String? status}) async {
     // Prevent concurrent fetches
     if (_isFetching) {
       debugPrint('Order fetch already in progress, skipping...');
@@ -51,22 +136,24 @@ class OrderProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      final result = await _repo.getOrders(page: page, limit: limit, status: status);
+      final result =
+          await _repo.getOrders(page: page, limit: limit, status: status);
       final ordersList = (result['orders'] as List?) ?? [];
-      
+
       // Only clear orders if fetch was successful
       // This prevents clearing orders if there's a network issue or error
       final newOrders = <OrderRecord>[];
       for (final orderData in ordersList) {
-        final order = _mapBackendOrderToOrderRecord(orderData as Map<String, dynamic>);
+        final order =
+            _mapBackendOrderToOrderRecord(orderData as Map<String, dynamic>);
         if (order != null) {
           newOrders.add(order);
         }
       }
-      
+
       // Store previous orders count for validation
       final hadPreviousOrders = _orders.isNotEmpty;
-      
+
       // Only update orders list if we successfully fetched data
       // If we get an empty response but previously had orders, it might be a temporary backend issue
       // In that case, we'll keep the existing orders to prevent flickering "no orders" state
@@ -79,9 +166,10 @@ class OrderProvider with ChangeNotifier {
       } else {
         // If we had orders before but got empty response, log it but don't clear
         // This handles cases where backend might return empty temporarily
-        debugPrint('Received empty orders list but had previous orders. Keeping existing orders to prevent flickering.');
+        debugPrint(
+            'Received empty orders list but had previous orders. Keeping existing orders to prevent flickering.');
       }
-      
+
       _error = null;
     } catch (e) {
       _error = e.toString();
@@ -111,9 +199,8 @@ class OrderProvider with ChangeNotifier {
       final items = (data['items'] as List?) ?? [];
       final bill = data['bill'] as Map<String, dynamic>?;
       final billingStatus = (data['billing_status'] ?? '') as String;
-      final billPaymentStatus = bill != null
-          ? (bill['payment_status'] ?? '') as String
-          : '';
+      final billPaymentStatus =
+          bill != null ? (bill['payment_status'] ?? '') as String : '';
 
       // Map order status
       final status = _mapOrderStatus(orderStatus);
@@ -182,7 +269,8 @@ class OrderProvider with ChangeNotifier {
         final pricingType = (item['pricing_type'] ?? '') as String;
         final selections = (item['selections'] as List?) ?? [];
         final categoryName = selections.isNotEmpty
-            ? (selections.first as Map<String, dynamic>)['category_name'] as String?
+            ? (selections.first as Map<String, dynamic>)['category_name']
+                as String?
             : null;
 
         if (categoryName != null && title == null) {
@@ -220,7 +308,8 @@ class OrderProvider with ChangeNotifier {
 
           if (quantities.isNotEmpty) {
             final serviceName = selections.isNotEmpty
-                ? (selections.first as Map<String, dynamic>)['service_name'] as String?
+                ? (selections.first as Map<String, dynamic>)['service_name']
+                    as String?
                 : 'Service';
             cartItems.add(
               CartItem(
@@ -237,37 +326,42 @@ class OrderProvider with ChangeNotifier {
           // Per-kg items - extract quantities from selections (similar to cart)
           final quantities = <String, int>{};
           final clothIdByItemName = <String, String>{};
-          
+
           // Get service name and category from item level (fallback) or from selections
           final serviceNameFromItem = item['service_name'] as String?;
           final categoryNameFromItem = item['category_name'] as String?;
-          
+
           // Extract service name and category from first selection (preferred)
           String? serviceName;
           String? finalCategoryName = categoryName;
-          
+
           for (final sel in selections) {
             final selection = sel as Map<String, dynamic>;
             final clothName = (selection['cloth_name'] ?? '') as String;
             final qty = (selection['quantity'] ?? 0) as int;
-            
+
             // Extract service name and category from first valid selection
             if (serviceName == null && clothName.isNotEmpty) {
               serviceName = selection['service_name'] as String?;
-              finalCategoryName = selection['category_name'] as String? ?? categoryName;
+              finalCategoryName =
+                  selection['category_name'] as String? ?? categoryName;
             }
-            
+
             // Aggregate quantities by cloth name
             if (clothName.isNotEmpty && qty > 0) {
               quantities[clothName] = (quantities[clothName] ?? 0) + qty;
               totalItems += qty;
             }
           }
-          
+
           // Use service name from selections first, then from item level, then fallback
-          final finalServiceName = serviceName ?? serviceNameFromItem ?? 'Service';
-          final finalCategory = finalCategoryName ?? categoryNameFromItem ?? categoryName ?? 'Unknown';
-          
+          final finalServiceName =
+              serviceName ?? serviceNameFromItem ?? 'Service';
+          final finalCategory = finalCategoryName ??
+              categoryNameFromItem ??
+              categoryName ??
+              'Unknown';
+
           // Always add the item, even if quantities are empty (for display purposes)
           // This ensures service name and category are shown
           cartItems.add(
@@ -275,7 +369,8 @@ class OrderProvider with ChangeNotifier {
               id: (item['item_id'] ?? '') as String,
               category: finalCategory,
               serviceName: finalServiceName,
-              quantities: quantities, // Include quantities for kg-wise items to show cloth items
+              quantities:
+                  quantities, // Include quantities for kg-wise items to show cloth items
               clothIdByItemName: clothIdByItemName,
               isPerPiece: false,
               weightKg: (item['weight_kg'] as String?) != null
@@ -296,7 +391,8 @@ class OrderProvider with ChangeNotifier {
         final paymentMethodStr = (bill['payment_method'] ?? '') as String;
         if (paymentMethodStr == 'cod') {
           paymentMethod = PaymentMethod.cod;
-        } else if (paymentMethodStr.contains('visa') || paymentMethodStr.contains('card')) {
+        } else if (paymentMethodStr.contains('visa') ||
+            paymentMethodStr.contains('card')) {
           paymentMethod = PaymentMethod.visa;
         } else if (paymentMethodStr.contains('mastercard')) {
           paymentMethod = PaymentMethod.mastercard;
@@ -324,8 +420,14 @@ class OrderProvider with ChangeNotifier {
       if (title != null && title.trim().isNotEmpty) {
         computedTitle = title.trim();
       } else {
-        final serviceNames = cartItems.map((c) => c.serviceName.trim()).where((s) => s.isNotEmpty).toSet();
-        final categories = cartItems.map((c) => c.category.trim()).where((s) => s.isNotEmpty).toSet();
+        final serviceNames = cartItems
+            .map((c) => c.serviceName.trim())
+            .where((s) => s.isNotEmpty)
+            .toSet();
+        final categories = cartItems
+            .map((c) => c.category.trim())
+            .where((s) => s.isNotEmpty)
+            .toSet();
         final hasMultipleServices = serviceNames.length > 1;
         final hasMultipleCategories = categories.length > 1;
 
@@ -396,11 +498,13 @@ class OrderProvider with ChangeNotifier {
 
       // Cancelled status - should NOT show in active orders
       case 'cancelled':
-        return OrderStatus.delivered; // Map to delivered so it's excluded from active orders
+        return OrderStatus
+            .delivered; // Map to delivered so it's excluded from active orders
 
       // Draft status - not an active order yet
       case 'draft':
-        return OrderStatus.inProgress; // Draft orders can be considered in progress
+        return OrderStatus
+            .inProgress; // Draft orders can be considered in progress
 
       // Unknown status - default to inProgress
       default:

@@ -20,7 +20,6 @@ import 'widgets/service_tile.dart';
 import '../../models/service_item.dart';
 import '../../utils/supabase_config.dart';
 import '../../repositories/customer_info_repository.dart';
-import '../../services/customer_info_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -41,7 +40,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       // Force refresh so newly added categories in Supabase show up even if we have cached data.
-      context.read<ServiceCatalogProvider>().fetchServiceCategories(isActive: true, force: true);
+      context
+          .read<ServiceCatalogProvider>()
+          .fetchServiceCategories(isActive: true, force: true);
       // Fetch coupons for home screen offers
       context.read<CouponsProvider>().fetchApplicableCoupons(force: true);
       // Fetch active orders for the home screen
@@ -113,13 +114,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _ordersChannel = client
           .channel('public:orders')
           .onPostgresChanges(
-            event: PostgresChangeEvent.update,
+            event: PostgresChangeEvent.all,
             schema: 'public',
             table: 'orders',
             callback: (payload) {
-              // Whenever any order row updates, refresh active orders.
               if (!mounted) return;
-              _refreshActiveOrders();
+              final eventType = payload.eventType.name;
+              final newRow =
+                  (payload.newRecord as Map?)?.cast<String, dynamic>();
+              final oldRow =
+                  (payload.oldRecord as Map?)?.cast<String, dynamic>();
+              context.read<OrderProvider>().applyOrdersRealtimeChange(
+                    eventType: eventType,
+                    newRow: newRow,
+                    oldRow: oldRow,
+                  );
             },
           )
           .subscribe();
@@ -145,11 +154,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             callback: (payload) {
               if (!mounted) return;
               if (kDebugMode) {
-                debugPrint('[HomeScreen] coupons realtime payload event=${payload.eventType}');
+                debugPrint(
+                    '[HomeScreen] coupons realtime payload event=${payload.eventType}');
               }
               final eventType = payload.eventType.name;
-              final newRow = (payload.newRecord as Map?)?.cast<String, dynamic>();
-              final oldRow = (payload.oldRecord as Map?)?.cast<String, dynamic>();
+              final newRow =
+                  (payload.newRecord as Map?)?.cast<String, dynamic>();
+              final oldRow =
+                  (payload.oldRecord as Map?)?.cast<String, dynamic>();
               context.read<CouponsProvider>().applyRealtimeChange(
                     eventType: eventType,
                     newRow: newRow,
@@ -180,7 +192,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     // Otherwise, try to pick by the fallback's index in the default list.
     final idx = defaults.indexOf(fallback);
-    if (idx >= 0 && idx < normalizedCandidates.length) return normalizedCandidates[idx];
+    if (idx >= 0 && idx < normalizedCandidates.length)
+      return normalizedCandidates[idx];
 
     return normalizedCandidates.first;
   }
@@ -192,10 +205,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }) {
     final lowerTitle = title.trim().toLowerCase();
     for (var i = 0; i < availableNames.length; i++) {
-      if (availableNames[i].trim().toLowerCase() == lowerTitle) return availableIds[i];
+      if (availableNames[i].trim().toLowerCase() == lowerTitle)
+        return availableIds[i];
     }
     for (var i = 0; i < availableNames.length; i++) {
-      if (availableNames[i].trim().toLowerCase().contains(lowerTitle)) return availableIds[i];
+      if (availableNames[i].trim().toLowerCase().contains(lowerTitle))
+        return availableIds[i];
     }
     return null;
   }
@@ -204,7 +219,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final catalog = context.watch<ServiceCatalogProvider>();
-    final categories = [...catalog.categories]..sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
+    final categories = [...catalog.categories]
+      ..sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
     final names = categories.map((c) => c.categoryName).toList();
     final ids = categories.map((c) => c.categoryId).toList();
 
@@ -215,10 +231,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       'Luxury Care',
     ];
 
-    final regularWashTitle = _pickCategoryName(defaultNames, names, defaultNames[0]);
-    final proCleanTitle = _pickCategoryName(defaultNames, names, defaultNames[1]);
-    final homeLinensTitle = _pickCategoryName(defaultNames, names, defaultNames[2]);
-    final luxuryCareTitle = _pickCategoryName(defaultNames, names, defaultNames[3]);
+    final regularWashTitle =
+        _pickCategoryName(defaultNames, names, defaultNames[0]);
+    final proCleanTitle =
+        _pickCategoryName(defaultNames, names, defaultNames[1]);
+    final homeLinensTitle =
+        _pickCategoryName(defaultNames, names, defaultNames[2]);
+    final luxuryCareTitle =
+        _pickCategoryName(defaultNames, names, defaultNames[3]);
 
     final regularWashCategoryId = _findCategoryIdForTitle(
       availableNames: names,
@@ -255,7 +275,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 notificationCount: 12,
                 profileImageUrl: auth.profileImageUrl,
                 onLocationTap: () async {
-                  await Navigator.of(context).pushNamed(AppRoutes.selectLocation);
+                  await Navigator.of(context)
+                      .pushNamed(AppRoutes.selectLocation);
                   await _refreshDefaultAddress();
                 },
               ),
@@ -338,7 +359,9 @@ class _HomeContent extends StatelessWidget {
               String headlineFor(String discountType, num discountValue) {
                 final t = discountType.toLowerCase();
                 if (t.contains('percent')) {
-                  final pct = discountValue <= 1 ? (discountValue * 100) : discountValue;
+                  final pct = discountValue <= 1
+                      ? (discountValue * 100)
+                      : discountValue;
                   return '${pct.round()}% OFF';
                 }
                 final amount = discountValue.round();
@@ -350,7 +373,8 @@ class _HomeContent extends StatelessWidget {
                   .map(
                     (c) => OfferBannerData(
                       headline: headlineFor(c.discountType, c.discountValue),
-                      subhead: (c.description == null || c.description!.trim().isEmpty)
+                      subhead: (c.description == null ||
+                              c.description!.trim().isEmpty)
                           ? 'Limited time offer'
                           : c.description!.trim(),
                       code: c.code,
@@ -396,7 +420,9 @@ class _HomeContent extends StatelessWidget {
                     imageAsset: 'assets/images/home/regular_wash.png',
                     onTap: () async {
                       if (regularWashCategoryId != null) {
-                        await context.read<ServiceCatalogProvider>().fetchServicesForCategory(
+                        await context
+                            .read<ServiceCatalogProvider>()
+                            .fetchServicesForCategory(
                               categoryId: regularWashCategoryId!,
                               isActive: true,
                               force: true,
@@ -404,11 +430,14 @@ class _HomeContent extends StatelessWidget {
                       }
                       final categoryId = regularWashCategoryId;
                       final provider = context.read<ServiceCatalogProvider>();
-                      final services = categoryId == null ? const <ServiceItem>[] : provider.servicesForCategory(categoryId).toList();
+                      final services = categoryId == null
+                          ? const <ServiceItem>[]
+                          : provider.servicesForCategory(categoryId).toList();
                       final sel = await RegularWashBottomSheet.show(
                         context,
                         services: services,
-                        isLoading: categoryId != null && provider.isLoadingServices(categoryId),
+                        isLoading: categoryId != null &&
+                            provider.isLoadingServices(categoryId),
                       );
                       if (!context.mounted || sel == null) return;
                       final route = switch (sel.serviceName) {
@@ -438,19 +467,27 @@ class _HomeContent extends StatelessWidget {
                         imageSize: 132,
                         onTap: () async {
                           if (proCleanCategoryId != null) {
-                            await context.read<ServiceCatalogProvider>().fetchServicesForCategory(
+                            await context
+                                .read<ServiceCatalogProvider>()
+                                .fetchServicesForCategory(
                                   categoryId: proCleanCategoryId!,
                                   isActive: true,
                                   force: true,
                                 );
                           }
                           final categoryId = proCleanCategoryId;
-                          final provider = context.read<ServiceCatalogProvider>();
-                          final services = categoryId == null ? const <ServiceItem>[] : provider.servicesForCategory(categoryId).toList();
+                          final provider =
+                              context.read<ServiceCatalogProvider>();
+                          final services = categoryId == null
+                              ? const <ServiceItem>[]
+                              : provider
+                                  .servicesForCategory(categoryId)
+                                  .toList();
                           final sel = await ProCleanBottomSheet.show(
                             context,
                             services: services,
-                            isLoading: categoryId != null && provider.isLoadingServices(categoryId),
+                            isLoading: categoryId != null &&
+                                provider.isLoadingServices(categoryId),
                           );
                           if (!context.mounted || sel == null) return;
                           // IMPORTANT:
@@ -472,7 +509,8 @@ class _HomeContent extends StatelessWidget {
                           } else {
                             route = AppRoutes.proClean;
                           }
-                          Navigator.of(context).pushNamed(route, arguments: sel);
+                          Navigator.of(context)
+                              .pushNamed(route, arguments: sel);
                         },
                       ),
                     ),
@@ -496,13 +534,19 @@ class _HomeContent extends StatelessWidget {
                           }
 
                           final categoryId = homeLinensCategoryId;
-                          final provider = context.read<ServiceCatalogProvider>();
-                          final services = categoryId == null ? const <ServiceItem>[] : provider.servicesForCategory(categoryId).toList();
+                          final provider =
+                              context.read<ServiceCatalogProvider>();
+                          final services = categoryId == null
+                              ? const <ServiceItem>[]
+                              : provider
+                                  .servicesForCategory(categoryId)
+                                  .toList();
 
                           final sel = await RegularWashBottomSheet.show(
                             context,
                             services: services,
-                            isLoading: categoryId != null && provider.isLoadingServices(categoryId),
+                            isLoading: categoryId != null &&
+                                provider.isLoadingServices(categoryId),
                           );
                           if (!context.mounted || sel == null) return;
                           Navigator.of(context).pushNamed(
@@ -527,7 +571,9 @@ class _HomeContent extends StatelessWidget {
               imageAsset: 'assets/images/home/luxury_care.png',
               onTap: () async {
                 if (luxuryCareCategoryId != null) {
-                  await context.read<ServiceCatalogProvider>().fetchServicesForCategory(
+                  await context
+                      .read<ServiceCatalogProvider>()
+                      .fetchServicesForCategory(
                         categoryId: luxuryCareCategoryId!,
                         isActive: true,
                         force: true,
@@ -535,11 +581,14 @@ class _HomeContent extends StatelessWidget {
                 }
                 final categoryId = luxuryCareCategoryId;
                 final provider = context.read<ServiceCatalogProvider>();
-                final services = categoryId == null ? const <ServiceItem>[] : provider.servicesForCategory(categoryId).toList();
+                final services = categoryId == null
+                    ? const <ServiceItem>[]
+                    : provider.servicesForCategory(categoryId).toList();
                 final sel = await LuxuryCareBottomSheet.show(
                   context,
                   services: services,
-                  isLoading: categoryId != null && provider.isLoadingServices(categoryId),
+                  isLoading: categoryId != null &&
+                      provider.isLoadingServices(categoryId),
                 );
                 if (!context.mounted || sel == null) return;
                 Navigator.of(context)

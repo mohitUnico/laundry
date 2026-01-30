@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../home/widgets/home_colors.dart';
 import '../../theme/app_text_styles.dart';
@@ -11,9 +12,9 @@ import 'order_invoice_screen.dart';
 import '../../utils/pricing.dart';
 import '../../routes/app_routes.dart';
 import '../../routes/route_args.dart';
+import '../../utils/supabase_config.dart';
 import '../cart/delivery_options_screen.dart';
 import '../cart/schedule_date_time_screen.dart';
-import 'order_invoice_screen.dart';
 
 enum _OrdersFilter { all, active, completed }
 
@@ -29,8 +30,10 @@ class OrdersListScreen extends StatefulWidget {
   State<OrdersListScreen> createState() => _OrdersListScreenState();
 }
 
-class _OrdersListScreenState extends State<OrdersListScreen> with WidgetsBindingObserver {
+class _OrdersListScreenState extends State<OrdersListScreen>
+    with WidgetsBindingObserver {
   _OrdersFilter _filter = _OrdersFilter.all;
+  RealtimeChannel? _ordersChannel;
 
   @override
   void initState() {
@@ -39,13 +42,46 @@ class _OrdersListScreenState extends State<OrdersListScreen> with WidgetsBinding
     // Fetch orders from backend when screen loads
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _fetchOrders();
+      _subscribeToOrdersRealtime();
     });
   }
 
   @override
   void dispose() {
+    _ordersChannel?.unsubscribe();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  void _subscribeToOrdersRealtime() {
+    if (!SupabaseConfig.isEnabled) return;
+
+    try {
+      final client = Supabase.instance.client;
+      _ordersChannel = client
+          .channel('orders_list:orders')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'orders',
+            callback: (payload) {
+              if (!mounted) return;
+              final eventType = payload.eventType.name;
+              final newRow =
+                  (payload.newRecord as Map?)?.cast<String, dynamic>();
+              final oldRow =
+                  (payload.oldRecord as Map?)?.cast<String, dynamic>();
+              context.read<OrderProvider>().applyOrdersRealtimeChange(
+                    eventType: eventType,
+                    newRow: newRow,
+                    oldRow: oldRow,
+                  );
+            },
+          )
+          .subscribe();
+    } catch (_) {
+      // Ignore; rely on manual refresh
+    }
   }
 
   @override
@@ -65,15 +101,15 @@ class _OrdersListScreenState extends State<OrdersListScreen> with WidgetsBinding
 
   Future<void> _fetchOrders() async {
     if (!mounted) return;
-    
+
     final orderProvider = context.read<OrderProvider>();
-    
+
     // Prevent rapid successive fetches
     if (orderProvider.isLoading) {
       debugPrint('Order fetch already in progress, skipping...');
       return;
     }
-    
+
     try {
       // Always fetch the full list once; filtering for Active/Completed is done
       // purely on the frontend using the mapped OrderStatus field.
@@ -113,7 +149,9 @@ class _OrdersListScreenState extends State<OrdersListScreen> with WidgetsBinding
               const SizedBox(height: 10),
               _TopBar(
                 title: 'Select Location',
-                onBack: widget.showBack ? () => Navigator.of(context).maybePop() : null,
+                onBack: widget.showBack
+                    ? () => Navigator.of(context).maybePop()
+                    : null,
               ),
               const SizedBox(height: 14),
               _OrdersFilterRow(
@@ -136,13 +174,14 @@ class _OrdersListScreenState extends State<OrdersListScreen> with WidgetsBinding
                   DeliveryOptionType? option;
 
                   for (final o in active) {
-                    final backend = (o.backendStatus ?? '').toLowerCase();
+                    final backend = o.backendStatus.toLowerCase();
                     final type = o.orderTypeOrBoth;
 
                     // Show upcoming cards ONLY when order is in:
                     // - placed  -> upcoming pickup
                     // - services_completed -> upcoming delivery
-                    if (backend != 'placed' && backend != 'services_completed') {
+                    if (backend != 'placed' &&
+                        backend != 'services_completed') {
                       continue;
                     }
 
@@ -180,7 +219,10 @@ class _OrdersListScreenState extends State<OrdersListScreen> with WidgetsBinding
                     }
                   }
 
-                  if (cardOrder == null || title == null || subtitle == null || option == null) {
+                  if (cardOrder == null ||
+                      title == null ||
+                      subtitle == null ||
+                      option == null) {
                     return const SizedBox.shrink();
                   }
 
@@ -188,7 +230,8 @@ class _OrdersListScreenState extends State<OrdersListScreen> with WidgetsBinding
                     children: [
                       _UpcomingPickupCard(
                         order: cardOrder,
-                        timeLabel: '${cardOrder.dateLabel} at ${cardOrder.timeLabel}',
+                        timeLabel:
+                            '${cardOrder.dateLabel} at ${cardOrder.timeLabel}',
                         title: title,
                         subtitle: subtitle,
                         option: option,
@@ -218,7 +261,8 @@ class _OrdersListScreenState extends State<OrdersListScreen> with WidgetsBinding
                             children: [
                               Text(
                                 'Failed to load orders',
-                                style: AppTextStyles.body(color: const Color(0xFF98A0B5))
+                                style: AppTextStyles.body(
+                                        color: const Color(0xFF98A0B5))
                                     .copyWith(fontSize: 13),
                               ),
                               const SizedBox(height: 8),
@@ -242,7 +286,8 @@ class _OrdersListScreenState extends State<OrdersListScreen> with WidgetsBinding
                               child: Center(
                                 child: Text(
                                   'No orders yet',
-                                  style: AppTextStyles.body(color: const Color(0xFF98A0B5))
+                                  style: AppTextStyles.body(
+                                          color: const Color(0xFF98A0B5))
                                       .copyWith(fontSize: 13),
                                 ),
                               ),
@@ -260,17 +305,20 @@ class _OrdersListScreenState extends State<OrdersListScreen> with WidgetsBinding
                           final order = list[index];
                           return _OrderCard(
                             data: order,
-                            onViewDetails: () => _showOrderDetailsDialog(context, order),
+                            onViewDetails: () =>
+                                _showOrderDetailsDialog(context, order),
                             // Navigate immediately to invoice screen; it will show its own loader
                             // while fetching invoice details, avoiding delay before navigation.
                             onPayBill: () {
                               Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => OrderInvoiceScreen(orderId: order.id),
+                                  builder: (_) =>
+                                      OrderInvoiceScreen(orderId: order.id),
                                 ),
                               );
                             },
-                            onTrackLaundry: () => Navigator.of(context).pushNamed(
+                            onTrackLaundry: () =>
+                                Navigator.of(context).pushNamed(
                               AppRoutes.orderTracking,
                               arguments: OrderTrackingArgs(
                                 orderId: order.id,
@@ -516,18 +564,21 @@ class _UpcomingPickupCard extends StatelessWidget {
                         ),
                         title: Text(
                           'Cancel Order',
-                          style: AppTextStyles.header(color: const Color(0xFF1B1F2A)),
+                          style: AppTextStyles.header(
+                              color: const Color(0xFF1B1F2A)),
                         ),
                         content: Text(
                           'Contact supervisor for further help',
-                          style: AppTextStyles.body(color: const Color(0xFF1B1F2A)),
+                          style: AppTextStyles.body(
+                              color: const Color(0xFF1B1F2A)),
                         ),
                         actions: [
                           TextButton(
                             onPressed: () => Navigator.of(context).pop(),
                             child: Text(
                               'OK',
-                              style: AppTextStyles.header(color: HomeColors.primary),
+                              style: AppTextStyles.header(
+                                  color: HomeColors.primary),
                             ),
                           ),
                         ],
@@ -708,7 +759,8 @@ class _OrderCard extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  if (data.dateLabel.isNotEmpty && data.timeLabel.isNotEmpty) ...[
+                  if (data.dateLabel.isNotEmpty &&
+                      data.timeLabel.isNotEmpty) ...[
                     Text(
                       'Schedule date & time',
                       style: AppTextStyles.body(color: const Color(0xFF98A0B5))
@@ -751,10 +803,13 @@ class _OrderCard extends StatelessWidget {
                     height: 54,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     decoration: BoxDecoration(
-                      color: isBillPaid ? const Color(0xFF16A34A) : Colors.white,
+                      color:
+                          isBillPaid ? const Color(0xFF16A34A) : Colors.white,
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(
-                        color: isBillPaid ? const Color(0xFF16A34A) : HomeColors.borderSoft,
+                        color: isBillPaid
+                            ? const Color(0xFF16A34A)
+                            : HomeColors.borderSoft,
                       ),
                     ),
                     alignment: Alignment.center,
@@ -871,56 +926,14 @@ void _showOrderDetailsDialog(BuildContext context, OrderRecord order) {
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(color: HomeColors.borderSoft),
                 ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Order ID: ${order.shortId}',
-                    style: AppTextStyles.header(color: HomeColors.text)
-                        .copyWith(fontSize: 14),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Placed on',
-                              style: AppTextStyles.body(color: HomeColors.muted)
-                                  .copyWith(fontSize: 10),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              order.placedDateLabel,
-                              style: AppTextStyles.body(color: HomeColors.text)
-                                  .copyWith(fontSize: 12, fontWeight: FontWeight.w600),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Time',
-                            style: AppTextStyles.body(color: HomeColors.muted)
-                                .copyWith(fontSize: 10),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            order.placedTimeLabel,
-                            style: AppTextStyles.body(color: HomeColors.text)
-                                .copyWith(fontSize: 12, fontWeight: FontWeight.w600),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  if (order.dateLabel.isNotEmpty && order.timeLabel.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    Divider(height: 1, thickness: 1, color: HomeColors.borderSoft),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Order ID: ${order.shortId}',
+                      style: AppTextStyles.header(color: HomeColors.text)
+                          .copyWith(fontSize: 14),
+                    ),
                     const SizedBox(height: 12),
                     Row(
                       children: [
@@ -929,24 +942,82 @@ void _showOrderDetailsDialog(BuildContext context, OrderRecord order) {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Schedule date & time',
-                                style: AppTextStyles.body(color: HomeColors.muted)
-                                    .copyWith(fontSize: 12, fontWeight: FontWeight.w500),
+                                'Placed on',
+                                style:
+                                    AppTextStyles.body(color: HomeColors.muted)
+                                        .copyWith(fontSize: 10),
                               ),
-                              const SizedBox(height: 6),
+                              const SizedBox(height: 4),
                               Text(
-                                '${order.dateLabel} at ${order.timeLabel}',
-                                style: AppTextStyles.body(color: HomeColors.text)
-                                    .copyWith(fontSize: 14, fontWeight: FontWeight.w700),
+                                order.placedDateLabel,
+                                style:
+                                    AppTextStyles.body(color: HomeColors.text)
+                                        .copyWith(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600),
                               ),
                             ],
                           ),
                         ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Time',
+                              style: AppTextStyles.body(color: HomeColors.muted)
+                                  .copyWith(fontSize: 10),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              order.placedTimeLabel,
+                              style: AppTextStyles.body(color: HomeColors.text)
+                                  .copyWith(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
+                    if (order.dateLabel.isNotEmpty &&
+                        order.timeLabel.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Divider(
+                          height: 1,
+                          thickness: 1,
+                          color: HomeColors.borderSoft),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Schedule date & time',
+                                  style: AppTextStyles.body(
+                                          color: HomeColors.muted)
+                                      .copyWith(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  '${order.dateLabel} at ${order.timeLabel}',
+                                  style:
+                                      AppTextStyles.body(color: HomeColors.text)
+                                          .copyWith(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w700),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
-                ],
-              ),
+                ),
               ),
             ),
             const SizedBox(height: 20),
@@ -968,7 +1039,8 @@ void _showOrderDetailsDialog(BuildContext context, OrderRecord order) {
             const SizedBox(height: 16),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 18),
-              child: Divider(height: 1, thickness: 1, color: HomeColors.borderSoft),
+              child: Divider(
+                  height: 1, thickness: 1, color: HomeColors.borderSoft),
             ),
             const SizedBox(height: 16),
             Padding(
@@ -1055,9 +1127,11 @@ Widget _buildItemsList(OrderRecord order) {
                       if (item.unitPricesInr != null) ...[
                         const SizedBox(width: 8),
                         Text(
-                          Pricing.inr((item.unitPricesInr![qtyEntry.key] ?? 0) * qtyEntry.value),
+                          Pricing.inr((item.unitPricesInr![qtyEntry.key] ?? 0) *
+                              qtyEntry.value),
                           style: AppTextStyles.body(color: HomeColors.text)
-                              .copyWith(fontSize: 12, fontWeight: FontWeight.w600),
+                              .copyWith(
+                                  fontSize: 12, fontWeight: FontWeight.w600),
                         ),
                       ],
                     ],

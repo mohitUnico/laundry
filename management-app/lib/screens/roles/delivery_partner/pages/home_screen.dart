@@ -217,8 +217,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       freshByKey[_acceptedTaskKey(t)] = t;
     }
 
-    // Update existing items in-place (preserve order).
-    final updatedExisting = _acceptedCache.map((t) {
+    // Update existing items in-place, but only keep items that are still in fresh list
+    // OR items that are not completed (submitted_to_cm or delivered)
+    final updatedExisting = _acceptedCache.where((t) {
+      final k = _acceptedTaskKey(t);
+      final isInFresh = freshByKey.containsKey(k);
+      // If item is in fresh list, keep it (will be updated)
+      if (isInFresh) return true;
+      // If item is not in fresh list but is completed, remove it
+      if (t.orderStatus == 'submitted_to_cm' || t.orderStatus == 'delivered') {
+        return false;
+      }
+      // Otherwise keep it (might be a temporary network issue)
+      return true;
+    }).map((t) {
       final next = freshByKey[_acceptedTaskKey(t)];
       return next ?? t;
     }).toList(growable: false);
@@ -1140,12 +1152,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     try {
                       await _deliveryStaffAppService.markSubmittedToCm(deliveryId: t.deliveryId);
                       closeLoader();
+                      // Immediately update cache status to submitted_to_cm so it moves to completed tab
+                      if (mounted) {
+                        setState(() {
+                          _acceptedCache = _acceptedCache.map((task) {
+                            if (task.deliveryId == t.deliveryId) {
+                              return _AcceptedTaskUi(
+                                deliveryId: task.deliveryId,
+                                orderId: task.orderId,
+                                taskType: task.taskType,
+                                scheduledTime: task.scheduledTime,
+                                customerName: task.customerName,
+                                address: task.address,
+                                phoneNumber: task.phoneNumber,
+                                itemCount: task.itemCount,
+                                amount: task.amount,
+                                buttonText: task.buttonText,
+                                iconPath: task.iconPath,
+                                destinationLat: task.destinationLat,
+                                destinationLng: task.destinationLng,
+                                orderStatus: 'submitted_to_cm', // Update status
+                              );
+                            }
+                            return task;
+                          }).toList(growable: false);
+                        });
+                      }
                       // Show success popup
                       if (mounted) {
                         _showSuccessPopup(context, message: 'Marked as Submitted ✓');
                       }
-                      // Refresh data to move order from today's list to completed
-                      _refreshHomeData();
+                      // Wait a bit for backend cache to expire, then refresh
+                      await Future.delayed(const Duration(milliseconds: 500));
+                      // Refresh data to ensure sync with backend
+                      if (mounted) {
+                        _refreshHomeData();
+                      }
                       // If on today's tab, switch to completed tab to show the moved order
                       if (mounted && _selectedTabIndex == 0) {
                         setState(() {
@@ -1701,8 +1743,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                         Navigator.of(dialogContext).pop();
                                         _showSuccessPopup(context, message: 'Delivery Confirmed ✓');
                                       }
-                                      // Refresh data to move order from today's list to completed
-                                      _refreshHomeData();
+                                      // Immediately update cache status to delivered so it moves to completed tab
+                                      if (mounted) {
+                                        setState(() {
+                                          _acceptedCache = _acceptedCache.map((task) {
+                                            if (task.deliveryId == deliveryId) {
+                                              return _AcceptedTaskUi(
+                                                deliveryId: task.deliveryId,
+                                                orderId: task.orderId,
+                                                taskType: task.taskType,
+                                                scheduledTime: task.scheduledTime,
+                                                customerName: task.customerName,
+                                                address: task.address,
+                                                phoneNumber: task.phoneNumber,
+                                                itemCount: task.itemCount,
+                                                amount: task.amount,
+                                                buttonText: task.buttonText,
+                                                iconPath: task.iconPath,
+                                                destinationLat: task.destinationLat,
+                                                destinationLng: task.destinationLng,
+                                                orderStatus: 'delivered', // Update status
+                                              );
+                                            }
+                                            return task;
+                                          }).toList(growable: false);
+                                        });
+                                      }
+                                      // Wait a bit for backend cache to expire, then refresh
+                                      await Future.delayed(const Duration(milliseconds: 500));
+                                      // Refresh data to ensure sync with backend
+                                      if (mounted) {
+                                        _refreshHomeData();
+                                      }
                                       // If on today's tab, switch to completed tab to show the moved order
                                       if (mounted && _selectedTabIndex == 0) {
                                         setState(() {

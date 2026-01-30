@@ -22,6 +22,7 @@ const serviceManAppRoutes = require('./service-man-app.routes');
 const couponsRoutes = require('./coupons.routes');
 const configRoutes = require('./config.routes');
 const notificationRoutes = require('./notification.routes');
+const pickupAssignmentWebhookRoutes = require('./pickup-assignment-webhook.routes');
 
 const router = express.Router();
 
@@ -102,6 +103,7 @@ router.use('/staff-app/distribution-manager', distributionManagerAppRoutes);
 router.use('/staff-app/service-man', serviceManAppRoutes);
 router.use('/config', configRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/webhooks/pickup-assignment', pickupAssignmentWebhookRoutes);
 
 module.exports = router;
 

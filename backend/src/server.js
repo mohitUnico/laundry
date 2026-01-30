@@ -56,7 +56,17 @@ const server = app.listen(PORT, () => {
     logger.info(`🏥 Health: http://localhost:${PORT}/health`);
     startCleanupJob();
     startDailyMetricsJob();
-    startPickupAssignmentJob();
+    
+    // Only start polling job if webhook-based assignment is disabled
+    // When using database triggers/webhooks, the polling job is not needed
+    const useWebhookAssignment = process.env.USE_WEBHOOK_PICKUP_ASSIGNMENT === 'true';
+    if (!useWebhookAssignment) {
+        logger.info('📋 Starting pickup assignment polling job (webhook mode disabled)');
+        startPickupAssignmentJob();
+    } else {
+        logger.info('🔗 Pickup assignment webhook mode enabled - polling job disabled');
+        logger.info('   Ensure database triggers and pg_cron are configured');
+    }
 });
 
 // Listen for termination signals

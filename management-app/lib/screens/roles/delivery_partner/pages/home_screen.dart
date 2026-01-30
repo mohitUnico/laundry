@@ -19,6 +19,7 @@ import '../../../common/widgets/order_summary_card.dart';
 import '../../../common/widgets/task_card.dart';
 import '../../../common/widgets/bottom_nav_bar.dart';
 import '../../../common/widgets/success_popup.dart';
+import '../../../common/widgets/assignment_request_popup.dart';
 
 class HomeScreen extends StatefulWidget {
   final bool showBottomNav;
@@ -58,6 +59,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   StreamSubscription<DeliverySseEvent>? _eventsSub;
   OverlayEntry? _incomingOverlay;
   bool _eventsConnecting = false;
+  bool _isProcessingAssignment = false;
+  String? _currentRequestId;
   Timer? _refreshDebounce;
   DateTime? _lastRealtimeEventAt;
   Position? _lastPosition;
@@ -755,8 +758,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _showIncomingRequestPopup(Map<String, dynamic> notification) {
     _removeIncomingPopup();
 
-    // notification payload comes from backend delivery-operations service
-    final payload = (notification['payload'] is Map) ? (notification['payload'] as Map).cast<String, dynamic>() : <String, dynamic>{};
+    // Extract requestId from notification payload
+    // Backend sends: { type: 'assignment_request', payload: { requestId: ..., ... } }
+    final payload = (notification['payload'] is Map) 
+        ? (notification['payload'] as Map).cast<String, dynamic>() 
+        : <String, dynamic>{};
+    final requestId = (payload['requestId'] ?? '').toString();
+    
+    if (requestId.isEmpty) {
+      debugPrint('Warning: assignment_request notification missing requestId in payload: $notification');
+      return;
+    }
+
+    // Extract data from notification payload (already extracted above)
     final deliveryType = (payload['deliveryType'] ?? '').toString(); // pickup/drop
     final itemCountRaw = payload['itemCount'];
     final itemCount = (itemCountRaw is num) ? itemCountRaw.toInt() : int.tryParse(itemCountRaw?.toString() ?? '') ?? 0;
@@ -769,6 +783,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final customerName = 'New request';
     final taskType = deliveryType == 'pickup' ? 'Pickup' : 'Delivery';
 
+    _currentRequestId = requestId;
+
     final entry = OverlayEntry(
       builder: (context) {
         return Positioned(
@@ -779,19 +795,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             color: Colors.transparent,
             child: _TopSlidePopup(
               onClose: _removeIncomingPopup,
-              child: TaskCard(
+              child: AssignmentRequestPopup(
                 taskType: taskType,
-                scheduledTime: 'Now',
                 customerName: customerName,
-                address: (address ?? '').isNotEmpty ? address! : '—',
-                phoneNumber: '—',
+                address: (address ?? '').isNotEmpty ? address! : 'Address not available',
                 itemCount: itemCount,
-                amount: '',
-                buttonText: 'OK',
                 iconPath: deliveryType == 'pickup' ? 'assets/icons/pickup.png' : 'assets/icons/out_for_delivery.png',
-                onButtonPressed: _removeIncomingPopup,
+                isProcessing: _isProcessingAssignment,
+                onAccept: () => _handleAcceptRequest(requestId),
+                onReject: () => _handleRejectRequest(requestId),
                 onMapPressed: () {
                   // TODO: map navigation using payload coordinates
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Map navigation coming soon')),
+                  );
                 },
               ),
             ),
@@ -803,10 +820,96 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     Overlay.of(context, rootOverlay: true).insert(entry);
     _incomingOverlay = entry;
 
-    // Auto-dismiss after 10 seconds
-    Future.delayed(const Duration(seconds: 10), () {
-      if (mounted) _removeIncomingPopup();
+    // Auto-dismiss after 30 seconds (longer for user to decide)
+    Future.delayed(const Duration(seconds: 30), () {
+      if (mounted && !_isProcessingAssignment) {
+        _removeIncomingPopup();
+      }
     });
+  }
+
+  Future<void> _handleAcceptRequest(String requestId) async {
+    if (_isProcessingAssignment) return;
+
+    setState(() {
+      _isProcessingAssignment = true;
+    });
+
+    try {
+      await _deliveryStaffAppService.acceptAssignmentRequest(requestId: requestId);
+      
+      if (mounted) {
+        _removeIncomingPopup();
+        _currentRequestId = null;
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Assignment accepted successfully!'),
+            backgroundColor: AppColors.success,
+            duration: Duration(seconds: 2),
+          ),
+        );
+
+        // Refresh home data to show the new accepted order
+        _scheduleHomeRefresh(forceApiCall: true);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to accept: ${e.toString()}'),
+            backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessingAssignment = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _handleRejectRequest(String requestId) async {
+    if (_isProcessingAssignment) return;
+
+    setState(() {
+      _isProcessingAssignment = true;
+    });
+
+    try {
+      await _deliveryStaffAppService.rejectAssignmentRequest(requestId: requestId);
+      
+      if (mounted) {
+        _removeIncomingPopup();
+        _currentRequestId = null;
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Assignment rejected'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to reject: ${e.toString()}'),
+            backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessingAssignment = false;
+        });
+      }
+    }
   }
 
   Future<_HomeStatsUi> _loadStats() async {

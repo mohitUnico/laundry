@@ -170,6 +170,34 @@ class DeliveryStaffAppService {
       throw Exception(_extractErrorMessage(e, fallback: 'Failed to mark submitted'));
     }
   }
+
+  Future<Map<String, dynamic>> acceptAssignmentRequest({required String requestId}) async {
+    try {
+      final res = await _api.post('/delivery-staff/assignment-requests/$requestId/accept');
+      final body = res.data;
+      if (body is Map<String, dynamic>) return body;
+      throw Exception('Unexpected response format');
+    } catch (e) {
+      throw Exception(_extractErrorMessage(e, fallback: 'Failed to accept assignment request'));
+    }
+  }
+
+  Future<Map<String, dynamic>> rejectAssignmentRequest({
+    required String requestId,
+    String? rejectionNote,
+  }) async {
+    try {
+      final res = await _api.post(
+        '/delivery-staff/assignment-requests/$requestId/reject',
+        data: rejectionNote != null ? {'rejectionNote': rejectionNote} : {},
+      );
+      final body = res.data;
+      if (body is Map<String, dynamic>) return body;
+      throw Exception('Unexpected response format');
+    } catch (e) {
+      throw Exception(_extractErrorMessage(e, fallback: 'Failed to reject assignment request'));
+    }
+  }
 }
 
 

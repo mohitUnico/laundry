@@ -1,7 +1,7 @@
 const prisma = require('../config/database');
 const logger = require('../utils/logger');
 const realtimeService = require('./realtime.service');
-const { notifyOrderStatusChange } = require('./fcm.service');
+const { notifyOrderStatusChange, sendToToken } = require('./fcm.service');
 const { NotFoundError, ValidationError, ConflictError } = require('../utils/errors');
 
 const DEFAULT_ASSIGNMENT_EXPIRES_SECONDS = 120;
@@ -492,7 +492,20 @@ exports.createAssignmentRequest = async ({
 
     const { delivery, request, recipients, notifications, targetStaffIds } = created;
 
-    // Emit SSE notifications after transaction commits
+    // Fetch FCM tokens for all recipient staff members
+    const staffWithTokens = await prisma.deliveryStaff.findMany({
+        where: {
+            staff_id: { in: targetStaffIds },
+            fcm_token: { not: null },
+        },
+        select: {
+            staff_id: true,
+            fcm_token: true,
+            full_name: true,
+        },
+    });
+
+    // Emit SSE notifications and send Firebase push notifications after transaction commits
     for (const n of notifications) {
         await _notifyDeliveryStaff(n.staff_id, {
             notificationId: n.notification_id,
@@ -502,6 +515,30 @@ exports.createAssignmentRequest = async ({
             payload: n.payload,
             createdAt: n.created_at,
         });
+
+        // Send Firebase push notification
+        const staffToken = staffWithTokens.find((s) => s.staff_id === n.staff_id);
+        if (staffToken?.fcm_token) {
+            await sendToToken({
+                token: staffToken.fcm_token,
+                title: n.title,
+                body: n.body,
+                data: {
+                    type: 'assignment_request',
+                    requestId: request.request_id,
+                    orderId,
+                    deliveryId: delivery.delivery_id,
+                    deliveryType,
+                    recipientId: recipients.find((r) => r.staff_id === n.staff_id)?.recipient_id || '',
+                    expiresAt: request.expires_at?.toISOString() || '',
+                },
+            }).catch((error) => {
+                logger.warn('Failed to send FCM notification for assignment request', {
+                    staffId: n.staff_id,
+                    error: error?.message || String(error),
+                });
+            });
+        }
     }
 
     logger.info('Delivery assignment request created', {
@@ -511,6 +548,7 @@ exports.createAssignmentRequest = async ({
         staffIds: targetStaffIds,
         deliveryType,
         expiresAt,
+        fcmNotificationsSent: staffWithTokens.length,
     });
 
     return {
@@ -749,7 +787,7 @@ exports.directAssignDelivery = async ({
     });
 
     // Push notify after transaction commits (non-blocking)
-    notifyOrderStatusChange({ orderId, status: requiredOrderStatus }).catch(() => {});
+    notifyOrderStatusChange({ orderId, status: requiredOrderStatus }).catch(() => { });
 
     return {
         orderId,
@@ -889,7 +927,7 @@ exports.respondToAssignmentRequest = async ({ staffId, requestId, action, reject
         });
 
         realtimeService.emitToDeliveryStaff(staffId, 'assignment_rejected', { requestId });
-    return { requestId, status: 'rejected' };
+        return { requestId, status: 'rejected' };
     }
 
     // accept (one master request + many recipients: first-accept wins; cancel other recipients)
@@ -1066,7 +1104,7 @@ exports.respondToAssignmentRequest = async ({ staffId, requestId, action, reject
     });
 
     // Push notify after transaction commits (non-blocking)
-    notifyOrderStatusChange({ orderId: txResult._orderId, status: txResult._statusToNotify }).catch(() => {});
+    notifyOrderStatusChange({ orderId: txResult._orderId, status: txResult._statusToNotify }).catch(() => { });
 
     // Do not leak internal helper fields
     const publicResult = { ...txResult };

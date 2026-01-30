@@ -1,6 +1,7 @@
 const logger = require('../utils/logger');
 const prisma = require('../config/database');
 const deliveryOperationsService = require('../services/delivery-operations.service');
+const { getPickupAssignmentConfig } = require('../config/delivery-assignment.config');
 
 let jobIntervalHandle = null;
 
@@ -51,7 +52,7 @@ const checkAndCreatePickupAssignments = async () => {
                 pickup_time_from: true,
                 pickup_time_to: true,
             },
-            take: 50, // Process in batches
+            take: getPickupAssignmentConfig().batchSize, // Process in batches (configurable)
         });
 
         if (ordersReadyForPickup.length === 0) {
@@ -67,12 +68,15 @@ const checkAndCreatePickupAssignments = async () => {
         const results = await Promise.allSettled(
             ordersReadyForPickup.map(async (order) => {
                 try {
+                    // Get configuration from config module (allows easy adjustment via env vars)
+                    const config = getPickupAssignmentConfig();
+
                     const result = await deliveryOperationsService.createAssignmentRequest({
                         orderId: order.order_id,
                         deliveryType: 'pickup',
-                        radiusKm: 5, // Default radius
-                        limit: 10, // Default limit for nearby staff
-                        expiresInSeconds: 120, // Default expiry
+                        sendToAll: config.sendToAll, // Configurable: send to all or use distance-based filtering
+                        limit: config.maxStaffLimit, // Maximum number of staff to notify (configurable)
+                        expiresInSeconds: config.expirySeconds, // Request expiry time (configurable)
                     });
 
                     logger.info('Pickup assignment request created', {
@@ -118,8 +122,9 @@ const schedule = () => {
         clearInterval(jobIntervalHandle);
     }
 
-    // Run every minute to check for orders ready for pickup
-    const intervalMs = 60 * 1000; // 1 minute
+    // Get configurable interval from config module
+    const config = getPickupAssignmentConfig();
+    const intervalMs = config.jobIntervalMs; // Configurable interval (default: 1 minute)
 
     // Run immediately on start, then schedule interval
     checkAndCreatePickupAssignments().catch((error) => {
@@ -139,6 +144,12 @@ const schedule = () => {
     logger.info('Pickup assignment job scheduled', {
         intervalMs,
         nextRunInMs: intervalMs,
+        config: {
+            sendToAll: config.sendToAll,
+            maxStaffLimit: config.maxStaffLimit,
+            expirySeconds: config.expirySeconds,
+            batchSize: config.batchSize,
+        },
     });
 };
 

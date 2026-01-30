@@ -3,6 +3,7 @@ const logger = require('../utils/logger');
 const realtimeService = require('./realtime.service');
 const { notifyOrderStatusChange, sendToToken } = require('./fcm.service');
 const { NotFoundError, ValidationError, ConflictError } = require('../utils/errors');
+const { getDefaultAssignmentConfig, validateAssignmentParams } = require('../config/delivery-assignment.config');
 
 const DEFAULT_ASSIGNMENT_EXPIRES_SECONDS = 120;
 
@@ -221,6 +222,52 @@ exports.updateLiveLocation = async ({ staffId, latitude, longitude }) => {
     return shift;
 };
 
+/**
+ * Get all active delivery staff (no distance filtering)
+ * Returns all verified, active staff with active shifts
+ */
+exports.getAllActiveDeliveryStaff = async ({ limit = 100 } = {}) => {
+    const take = parseInt(limit, 10);
+    if (!Number.isInteger(take) || take < 1 || take > 500) {
+        throw new ValidationError('limit must be between 1 and 500');
+    }
+
+    const rows = await prisma.$queryRaw`
+        SELECT
+            ds.staff_id,
+            ds.full_name,
+            ds.email,
+            ds.phone,
+            ds.current_latitude,
+            ds.current_longitude,
+            NULL::float8 AS distance_km
+        FROM delivery_staffs ds
+        WHERE ds.is_active = TRUE
+          AND ds.is_verified_by_admin = TRUE
+          AND EXISTS (
+              SELECT 1
+              FROM delivery_staff_shifts s
+              WHERE s.staff_id = ds.staff_id
+                AND s.is_active = TRUE
+                AND s.ended_at IS NULL
+          )
+        ORDER BY ds.created_at DESC
+        LIMIT ${take}::int;
+    `;
+
+    return (rows || []).map((r0) => ({
+        staffId: r0.staff_id,
+        fullName: r0.full_name,
+        email: r0.email,
+        phone: r0.phone,
+        currentCoordinates: {
+            latitude: r0.current_latitude,
+            longitude: r0.current_longitude,
+        },
+        distanceKm: null, // No distance when getting all staff
+    }));
+};
+
 exports.searchNearbyDeliveryStaff = async ({ latitude, longitude, radiusKm = 5, limit = 10 }) => {
     const lat = toNumber(latitude);
     const lng = toNumber(longitude);
@@ -293,12 +340,26 @@ exports.createAssignmentRequest = async ({
     orderId,
     deliveryType,
     staffId = null,
-    radiusKm = 5,
-    limit = 10,
-    expiresInSeconds = DEFAULT_ASSIGNMENT_EXPIRES_SECONDS,
+    radiusKm = null, // null means send to all active staff (when sendToAll is true)
+    limit = null, // Will use default from config if not provided
+    expiresInSeconds = null, // Will use default from config if not provided
+    sendToAll = null, // Will use default from config if not provided
 }) => {
     if (!orderId) throw new ValidationError('orderId is required');
     if (!['pickup', 'drop'].includes(deliveryType)) throw new ValidationError('deliveryType must be pickup or drop');
+
+    // Get default configuration and merge with provided parameters
+    const defaultConfig = getDefaultAssignmentConfig();
+    const params = {
+        radiusKm: radiusKm !== null && radiusKm !== undefined ? radiusKm : defaultConfig.radiusKm,
+        limit: limit !== null && limit !== undefined ? limit : defaultConfig.limit,
+        expiresInSeconds: expiresInSeconds !== null && expiresInSeconds !== undefined ? expiresInSeconds : defaultConfig.expiresInSeconds,
+        sendToAll: sendToAll !== null && sendToAll !== undefined ? sendToAll : defaultConfig.sendToAll,
+    };
+
+    // Validate and clamp parameters against configuration limits
+    const validatedParams = validateAssignmentParams(params);
+    const { radiusKm: validatedRadiusKm, limit: validatedLimit, expiresInSeconds: validatedExpiresInSeconds, sendToAll: validatedSendToAll } = validatedParams;
 
     const [order, laundry] = await Promise.all([_getOrderForAssignment(orderId), _getActiveLaundryConfig()]);
 
@@ -307,7 +368,7 @@ exports.createAssignmentRequest = async ({
     }
 
     const leg = _buildLeg({ deliveryType, order, laundry });
-    const expiresAt = new Date(Date.now() + Math.max(30, parseInt(expiresInSeconds, 10) || 0) * 1000);
+    const expiresAt = new Date(Date.now() + Math.max(30, parseInt(validatedExpiresInSeconds, 10) || 0) * 1000);
 
     const needsWeightMachine = (order.order_items || []).some((i) => i.pricing_type === 'per_kg');
     const itemCount = Array.isArray(order.order_items)
@@ -391,6 +452,13 @@ exports.createAssignmentRequest = async ({
 
         if (staffId) {
             targetStaffIds = [staffId];
+        } else if (validatedSendToAll || validatedRadiusKm === null || validatedRadiusKm === undefined) {
+            // Send to all active delivery staff (no distance limit)
+            const candidates = await exports.getAllActiveDeliveryStaff({ limit: validatedLimit });
+            if (candidates.length === 0) {
+                throw new NotFoundError('Active DeliveryStaff');
+            }
+            targetStaffIds = candidates.map((c) => c.staffId);
         } else {
             // Fan-out: send the request to top-N nearby staff.
             // Use pickup_for_delivery as origin (pickup leg coordinate) as requested.
@@ -399,8 +467,8 @@ exports.createAssignmentRequest = async ({
             const candidates = await exports.searchNearbyDeliveryStaff({
                 latitude: origin.latitude,
                 longitude: origin.longitude,
-                radiusKm,
-                limit,
+                radiusKm: validatedRadiusKm,
+                limit: validatedLimit,
             });
 
             if (candidates.length === 0) {

@@ -20,6 +20,19 @@ class DeliveryShiftService {
     return fallback;
   }
 
+  /// GET /api/v1/delivery-staff/shift/status
+  /// Returns { success, data: null | { shiftId, staffId, startedAt, isActive, ... }, message }
+  Future<Map<String, dynamic>> getShiftStatus() async {
+    try {
+      final res = await _api.get('/delivery-staff/shift/status');
+      final body = res.data;
+      if (body is Map<String, dynamic>) return body;
+      throw Exception('Unexpected response format');
+    } catch (e) {
+      throw Exception(_extractErrorMessage(e, fallback: 'Failed to get shift status'));
+    }
+  }
+
   Future<Map<String, dynamic>> startShift() async {
     try {
       final res = await _api.post('/delivery-staff/shift/start');

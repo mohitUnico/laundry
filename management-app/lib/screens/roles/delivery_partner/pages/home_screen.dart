@@ -42,8 +42,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final DeliveryLocationService _locationService = DeliveryLocationService();
   final DeliveryEventsService _eventsService = DeliveryEventsService();
 
-  bool _isShiftActive = true;
+  bool _isShiftActive = false; // Driven by GET /delivery-staff/shift/status; default Start Shift
   bool _isShiftToggling = false;
+  bool _shiftStatusLoaded = false; // true after first shift status fetch
   String? _currentShiftId; // Track active shift ID for Supabase location inserts
   Future<Map<String, dynamic>?> _userFuture = _loadStoredUser();
   Future<_HomeStatsUi> _statsFuture = Future.value(const _HomeStatsUi(inProgress: 0, completed: 0));
@@ -107,10 +108,39 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
 
     WidgetsBinding.instance.addObserver(this);
-    if (_isShiftActive) {
-      _startLiveLocation();
-      _startEvents();
-      _subscribeToRealtime();
+    // Fetch shift status and then start location/events/realtime if shift is active
+    _loadShiftStatus();
+  }
+
+  /// Load GET /delivery-staff/shift/status and set _isShiftActive, _currentShiftId.
+  /// If data is null or isActive is false → show Start Shift; else show Stop Shift and start services.
+  Future<void> _loadShiftStatus() async {
+    try {
+      final body = await _shiftService.getShiftStatus();
+      if (!mounted) return;
+      final data = body['data'];
+      final isActive = (data is Map) ? data['isActive'] : null;
+      final hasActiveShift = isActive == true && data is Map;
+      final shiftId = hasActiveShift
+          ? ((data['shiftId'] ?? '').toString().trim())
+          : '';
+      setState(() {
+        _shiftStatusLoaded = true;
+        _isShiftActive = hasActiveShift;
+        _currentShiftId = shiftId.isNotEmpty ? shiftId : null;
+      });
+      if (_isShiftActive) {
+        _startLiveLocation();
+        _startEvents();
+        _subscribeToRealtime();
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _shiftStatusLoaded = true;
+        _isShiftActive = false;
+        _currentShiftId = null;
+      });
     }
   }
 
@@ -1186,19 +1216,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                   fit: BoxFit.contain,
                                 ),
                                 const SizedBox(width: 12),
-                                _isShiftToggling
+                                (_isShiftToggling || !_shiftStatusLoaded)
                                     ? const SizedBox(
                                         width: 18,
                                         height: 18,
                                         child: CircularProgressIndicator(
                                           strokeWidth: 2,
-                                          valueColor: AlwaysStoppedAnimation<Color>(AppColors.error),
+                                          valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
                                         ),
                                       )
                                     : Text(
-                                        _isShiftActive ? 'End Shift' : 'Start Shift',
+                                        _isShiftActive ? 'Stop Shift' : 'Start Shift',
                                         style: AppTextStyles.button(
-                                          color: _isShiftActive ? AppColors.error : AppColors.primary,
+                                          color: _isShiftActive ? AppColors.error : AppColors.success,
                                         ).copyWith(
                                           fontSize: 15,
                                           fontWeight: FontWeight.w600,

@@ -213,11 +213,11 @@ BEGIN
 END;
 $$;
 
--- Create trigger on orders table
-DROP TRIGGER IF EXISTS trg_orders_pickup_time_assignment ON "Order";
+-- Create trigger on orders table (table name is "orders" per @@map in schema)
+DROP TRIGGER IF EXISTS trg_orders_pickup_time_assignment ON "orders";
 CREATE TRIGGER trg_orders_pickup_time_assignment
     AFTER INSERT OR UPDATE OF pickup_time_from, order_status
-    ON "Order"
+    ON "orders"
     FOR EACH ROW
     EXECUTE FUNCTION trg_orders_pickup_time_assignment();
 

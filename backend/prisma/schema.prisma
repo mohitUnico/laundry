@@ -99,6 +99,8 @@ model DeliveryStaff {
   full_name                    String                        @db.VarChar(255)
   phone                        String?                       @db.VarChar(20)
   email                        String                        @unique @db.VarChar(255)
+  // Firebase Cloud Messaging token for push notifications
+  fcm_token                    String?                       @db.VarChar(255)
   // Delivery partner current address & location (captured during registration)
   address                      String?                       @db.VarChar(500)
   current_latitude             Decimal?                      @db.Decimal(10, 8)

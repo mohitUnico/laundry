@@ -173,7 +173,8 @@ class _LoginScreenState extends State<LoginScreen> {
         throw Exception('Role not selected');
       }
 
-      final isNewUser = await context.read<AuthProvider>().verifyOtpForRole(
+      final auth = context.read<AuthProvider>();
+      final isNewUser = await auth.verifyOtpForRole(
             role: role,
             email: email,
             otp: _otp,
@@ -181,7 +182,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       if (isNewUser) {
         if (role == RoleConstants.deliveryPartner) {
-        Navigator.of(context).pushReplacementNamed(AppRoutes.userDetails);
+          Navigator.of(context).pushReplacementNamed(AppRoutes.userDetails);
         } else if (role == RoleConstants.collectionManager ||
             role == RoleConstants.distributionManager ||
             role == RoleConstants.serviceMan) {
@@ -196,7 +197,11 @@ class _LoginScreenState extends State<LoginScreen> {
           await _showNewUserDialog();
         }
       } else {
-        Navigator.of(context).pushNamedAndRemoveUntil(AppRoutes.home, (route) => false);
+        final isAdminVerified = auth.isAdminVerified;
+        final targetRoute = (role == RoleConstants.deliveryPartner && !isAdminVerified)
+            ? AppRoutes.verificationPending
+            : AppRoutes.home;
+        Navigator.of(context).pushNamedAndRemoveUntil(targetRoute, (route) => false);
       }
     } catch (e) {
       if (!mounted) return;

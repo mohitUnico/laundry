@@ -77,9 +77,8 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
     final now = DateTime.now(); // local
     if (!DateUtils.isSameDay(selectedDate, now)) return 0;
 
-    // Keep an operational buffer so pickup scheduling is realistic.
-    // User can only select a time >= current time + 1.5 hours.
-    final next = now.add(const Duration(minutes: 90));
+    // Earliest selectable time is "now" (rounded to the nearest step).
+    final next = now;
     final roundedMinute = _roundUpToStep(next.minute, _minuteStep());
     final carryHour = roundedMinute >= 60 ? 1 : 0;
     final minute = roundedMinute % 60;
@@ -93,7 +92,7 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
 
   void _showInvalidTimeSnack(BuildContext context) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Please select a time at least 1.5 hours from now')),
+      const SnackBar(content: Text('Please select a time from the current time onwards')),
     );
   }
 
@@ -268,7 +267,7 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
     final now = DateTime.now();
     final days = List.generate(5, (i) => DateTime(now.year, now.month, now.day + i));
     var selectedDate = days[_selectedDayIndex.clamp(0, days.length - 1)];
-    // If today has no valid time slots left after the 1.5hr buffer, force tomorrow.
+    // If today has no valid time slots left from "now", force tomorrow.
     final minForSelected = _minMinutesForSelectedDay(selectedDate);
     if (DateUtils.isSameDay(selectedDate, now) && minForSelected >= 24 * 60 && days.length > 1) {
       selectedDate = days[1];
@@ -559,13 +558,19 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                   child: InkWell(
                     onTap: () async {
                         // Validate pickup schedule (local timezone):
-                        // - must be >= now + 1.5 hours (for today)
+                        // - must be >= current time for today
                         // - To time must be after From time
                         final fromDt = _asLocalDateTime(selectedDate, _fromHour, _fromMinute, _fromAmPm);
                         final toDt = _asLocalDateTime(selectedDate, _toHour, _toMinute, _toAmPm);
-                        final minAllowed = DateUtils.isSameDay(selectedDate, DateTime.now())
-                            ? DateTime.now().add(const Duration(minutes: 90))
-                            : DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
+                        // Use the same minimum logic as the pickers (based on _minMinutesForSelectedDay)
+                        final minFromMinutes = _minMinutesForSelectedDay(selectedDate);
+                        final minAllowed = DateTime(
+                          selectedDate.year,
+                          selectedDate.month,
+                          selectedDate.day,
+                          (minFromMinutes ~/ 60).clamp(0, 23),
+                          (minFromMinutes % 60).clamp(0, 59),
+                        );
                         if (fromDt.isBefore(minAllowed)) {
                           _showInvalidTimeSnack(context);
                           return;

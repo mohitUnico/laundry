@@ -28,6 +28,7 @@ const validateUuidParam = (paramName) => {
  * Delivery Staff Operations Routes
  *
  * Endpoints:
+ * - GET   /api/v1/delivery-staff/shift/status
  * - POST  /api/v1/delivery-staff/shift/start
  * - POST  /api/v1/delivery-staff/shift/stop
  * - PATCH /api/v1/delivery-staff/location
@@ -37,6 +38,7 @@ const validateUuidParam = (paramName) => {
  * - GET   /api/v1/delivery-staff/events (SSE)
  */
 
+router.get('/shift/status', authenticateJWT, authorize('delivery_staff'), deliveryStaffOperationsController.getShiftStatus);
 router.post('/shift/start', authenticateJWT, authorize('delivery_staff'), deliveryStaffOperationsController.startShift);
 router.post('/shift/stop', authenticateJWT, authorize('delivery_staff'), deliveryStaffOperationsController.stopShift);
 

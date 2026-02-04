@@ -176,6 +176,18 @@ exports.stopShift = async ({ staffId }) => {
     });
 };
 
+/**
+ * Get current shift status for a delivery staff (active shift if any).
+ * Returns null if no active shift.
+ */
+exports.getShiftStatus = async ({ staffId }) => {
+    const shift = await prisma.deliveryStaffShift.findFirst({
+        where: { staff_id: staffId, is_active: true, ended_at: null },
+        orderBy: { started_at: 'desc' },
+    });
+    return shift;
+};
+
 exports.updateLiveLocation = async ({ staffId, latitude, longitude }) => {
     const lat = toNumber(latitude);
     const lng = toNumber(longitude);

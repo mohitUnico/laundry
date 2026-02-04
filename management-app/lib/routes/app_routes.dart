@@ -7,6 +7,7 @@ import '../screens/auth/delivery/vehicle_details_screen.dart';
 import '../screens/auth/delivery/driving_license_screen.dart';
 import '../screens/auth/profile_location_screen.dart';
 import '../screens/auth/register_success_screen.dart';
+import '../screens/auth/verification_pending_screen.dart';
 import '../screens/bootstrap/bootstrap_screen.dart';
 // Role-specific screens
 import '../screens/roles/delivery_partner/pages/home_screen.dart';
@@ -33,6 +34,7 @@ class AppRoutes {
   static const String drivingLicense = '/driving-license';
   static const String profileLocation = '/profile-location';
   static const String registerSuccess = '/register-success';
+  static const String verificationPending = '/verification-pending';
   static const String home = '/home';
   static const String orders = '/orders';
   static const String pendingOrdersServicemen = '/pending-orders-servicemen';
@@ -52,6 +54,7 @@ class AppRoutes {
       drivingLicense: (context) => const DrivingLicenseScreen(),
       profileLocation: (context) => const ProfileLocationScreen(),
       registerSuccess: (context) => const RegisterSuccessScreen(),
+      verificationPending: (context) => const VerificationPendingScreen(),
       home: (context) => _buildRoleBasedHome(context),
       orders: (context) => const OrdersScreen(),
       pendingOrdersServicemen: (context) => const PendingOrdersServicemenScreen(),

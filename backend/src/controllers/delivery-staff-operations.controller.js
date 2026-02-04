@@ -4,6 +4,7 @@ const logger = require('../utils/logger');
 
 /**
  * Delivery Staff Operations Controller
+ * - GET   /api/v1/delivery-staff/shift/status
  * - POST  /api/v1/delivery-staff/shift/start
  * - POST  /api/v1/delivery-staff/shift/stop
  * - PATCH /api/v1/delivery-staff/location
@@ -12,6 +13,32 @@ const logger = require('../utils/logger');
  * - POST  /api/v1/delivery-staff/assignment-requests/:requestId/reject
  * - GET   /api/v1/delivery-staff/events (SSE)
  */
+
+exports.getShiftStatus = async (req, res, next) => {
+    try {
+        const staffId = req.user?.user_id;
+        logger.info('Delivery staff getShiftStatus', { staffId });
+
+        const shift = await deliveryOperationsService.getShiftStatus({ staffId });
+        res.status(200).json({
+            success: true,
+            data: shift
+                ? {
+                    shiftId: shift.shift_id,
+                    staffId: shift.staff_id,
+                    startedAt: shift.started_at,
+                    isActive: shift.is_active,
+                    lastLatitude: shift.last_latitude != null ? Number(shift.last_latitude) : null,
+                    lastLongitude: shift.last_longitude != null ? Number(shift.last_longitude) : null,
+                    lastLocationAt: shift.last_location_at,
+                }
+                : null,
+            message: shift ? 'Shift status retrieved' : 'No active shift',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
 
 exports.startShift = async (req, res, next) => {
     try {

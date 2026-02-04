@@ -36,6 +36,25 @@ class AuthProvider with ChangeNotifier {
   String? get error => _error;
   DeliveryRegistrationDraft? get deliveryDraft => _deliveryDraft;
 
+  bool get isAdminVerified {
+    return _computeAdminVerified(_currentUser ?? _partner);
+  }
+
+  bool _computeAdminVerified(Map<String, dynamic>? user) {
+    if (user == null) return false;
+    final raw = user['is_verified_by_admin'] ??
+        user['isVerifiedByAdmin'] ??
+        user['is_admin_verified'];
+
+    if (raw is bool) return raw;
+    if (raw is num) return raw != 0;
+    if (raw is String) {
+      final v = raw.toLowerCase().trim();
+      return v == 'true' || v == '1' || v == 'yes' || v == 'verified';
+    }
+    return false;
+  }
+
   Future<void> _hydrateFromStorage() async {
     try {
       final token = await AuthStorage.getToken();
@@ -45,7 +64,7 @@ class AuthProvider with ChangeNotifier {
       _currentUser = await AuthStorage.getCurrentUser();
       _partner = await AuthStorage.getDeliveryStaff();
       _isAuthenticated = true;
-      _isVerified = true;
+      _isVerified = _computeAdminVerified(_currentUser ?? _partner);
       notifyListeners();
     } catch (_) {
       // ignore: app can still proceed with manual login
@@ -157,7 +176,7 @@ class AuthProvider with ChangeNotifier {
       await AuthStorage.saveToken(token);
 
       _isAuthenticated = true;
-      _isVerified = true;
+      _isVerified = _computeAdminVerified(_currentUser ?? _partner);
       _deliveryDraft = null;
       notifyListeners();
       return false;
@@ -227,7 +246,7 @@ class AuthProvider with ChangeNotifier {
       await AuthStorage.saveToken(token);
 
       _isAuthenticated = true;
-      _isVerified = true;
+      _isVerified = _computeAdminVerified(_currentUser);
       notifyListeners();
       return false;
     } catch (e) {
@@ -379,7 +398,7 @@ class AuthProvider with ChangeNotifier {
       await AuthStorage.saveToken(token);
 
       _isAuthenticated = true;
-      _isVerified = true;
+      _isVerified = _computeAdminVerified(_currentUser ?? _partner);
       _deliveryDraft = null;
       notifyListeners();
     } catch (e) {

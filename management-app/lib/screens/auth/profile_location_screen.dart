@@ -224,7 +224,7 @@ class _ProfileLocationScreenState extends State<ProfileLocationScreen> {
 
       await auth.completeDeliveryRegistration();
       if (!mounted) return;
-      Navigator.of(context).pushReplacementNamed(AppRoutes.registerSuccess);
+      Navigator.of(context).pushReplacementNamed(AppRoutes.verificationPending);
     } catch (e) {
       if (!mounted) return;
       setState(() {

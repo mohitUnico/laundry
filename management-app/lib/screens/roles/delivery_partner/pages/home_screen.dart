@@ -147,11 +147,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Refresh data when screen becomes visible after first build (e.g., navigating back from orders screen)
-    // This ensures fresh data is always shown, not cached from other screens
+    // When shift is active and screen is visible, ensure SSE is subscribed so real-time notifications show
     if (!_isFirstBuild && _isShiftActive) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
+        if (mounted && _isShiftActive) {
+          _startEvents(); // no-op if already subscribed
           _refreshHomeData();
         }
       });
@@ -390,73 +390,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _startLiveLocation() {
     _stopLiveLocation();
+    if (!_isShiftActive) return;
 
-    // Send one immediately so tracking starts right away.
-    () async {
+    // Send first location immediately, then every 2 seconds via PATCH /api/v1/delivery-staff/location
+    Future<void> sendLocationUpdate() async {
       if (!_isShiftActive) return;
       try {
         await _ensureLocationPermission();
         final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-        await _sendLocationIfNeeded(pos, force: true);
         _lastPosition = pos;
         _lastPositionAt = DateTime.now();
-      } catch (_) {
-        // ignore
-      }
-    }();
-
-    // Send location periodically while shift is active, but throttled to avoid rate limiting.
-    // Also skip sending if driver hasn't moved enough.
-    _locationTimer = Timer.periodic(const Duration(seconds: 25), (_) async {
-      if (!_isShiftActive) return;
-      try {
-        await _ensureLocationPermission();
-        final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-        await _sendLocationIfNeeded(pos);
-        _lastPosition = pos;
-        _lastPositionAt = DateTime.now();
-      } catch (_) {
-        // keep silent to avoid spamming; user will see errors when needed elsewhere
-      }
-    });
-  }
-
-  Future<void> _sendLocationIfNeeded(Position pos, {bool force = false}) async {
-    final now = DateTime.now();
-    final lastAt = _lastSentAt;
-    final lastPos = _lastSentPosition;
-
-    if (!force) {
-      // Time-based throttle: never send more frequently than every 20 seconds.
-      if (lastAt != null && now.difference(lastAt) < const Duration(seconds: 20)) {
-        return;
-      }
-
-      // Distance-based throttle: if we have a previous sent position, only send after moving ~25m.
-      if (lastPos != null) {
-        final meters = Geolocator.distanceBetween(
-          lastPos.latitude,
-          lastPos.longitude,
-          pos.latitude,
-          pos.longitude,
+        await _deliveryStaffAppService.updateLiveLocation(
+          latitude: pos.latitude,
+          longitude: pos.longitude,
         );
-        if (meters < 25) return;
+        _lastSentPosition = pos;
+        _lastSentAt = DateTime.now();
+      } catch (_) {
+        // Fire-and-forget; avoid spamming user
       }
     }
 
-    // Get staffId from current user
-    final user = await _userFuture;
-    final staffId = (user?['userId'] ?? '').toString().trim();
-    if (staffId.isEmpty) return; // Can't update location without staffId
+    sendLocationUpdate();
 
-    await _locationService.updateLocation(
-      staffId: staffId,
-      shiftId: _currentShiftId,
-      latitude: pos.latitude,
-      longitude: pos.longitude,
-    );
-    _lastSentPosition = pos;
-    _lastSentAt = now;
+    _locationTimer = Timer.periodic(const Duration(seconds: 2), (_) => sendLocationUpdate());
   }
 
   /// Shows a small blocking loader overlay; returns a function to close it safely.
@@ -513,7 +470,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _locationTimer = null;
   }
 
+  /// Subscribes to GET /api/v1/delivery-staff/events (Accept: text/event-stream, Bearer token).
+  /// Only runs when shift is active. Ensures real-time notifications are shown in the app.
   void _startEvents() {
+    if (!_isShiftActive) return;
     if (_eventsSub != null || _eventsConnecting) return;
     _eventsConnecting = true;
 
@@ -521,36 +481,86 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       (evt) {
         _lastRealtimeEventAt = DateTime.now();
 
-        // Known events emitted by backend realtime hub:
+        // Known events from backend SSE:
         // - connected
         // - notification (type: assignment_request, direct_assignment, assignment_cancelled, ...)
-        // - direct_assignment
-        // - assignment_accepted
-        // - assignment_cancelled
+        // - direct_assignment, assignment_accepted, assignment_cancelled
         if (evt.event == 'notification') {
           final type = (evt.data['type'] ?? '').toString();
           if (type == 'assignment_request') {
             _showIncomingRequestPopup(evt.data);
-            // New assignment - need to fetch full order details via API
             _scheduleHomeRefresh(forceApiCall: true);
             return;
           }
-          if (type == 'direct_assignment' || type == 'assignment_cancelled') {
-            // Direct assignment or cancellation - need full data
+          if (type == 'direct_assignment') {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('You have been assigned a new delivery'),
+                  duration: Duration(seconds: 3),
+                ),
+              );
+            }
             _scheduleHomeRefresh(forceApiCall: true);
             return;
           }
+          if (type == 'assignment_cancelled') {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('An assignment was cancelled'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            }
+            _scheduleHomeRefresh(forceApiCall: true);
+            return;
+          }
+          // Any other notification type - show generic message and refresh
+          _showRealtimeNotificationSnackBar(evt.data);
+          _scheduleHomeRefresh(forceApiCall: true);
           return;
         }
 
-        if (evt.event == 'direct_assignment' ||
-            evt.event == 'assignment_accepted' ||
-            evt.event == 'assignment_cancelled') {
-          // These events indicate changes that need full data fetch
+        if (evt.event == 'direct_assignment') {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('You have been assigned a new delivery'),
+                duration: Duration(seconds: 3),
+              ),
+            );
+          }
+          _scheduleHomeRefresh(forceApiCall: true);
+        } else if (evt.event == 'assignment_accepted') {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Assignment confirmed'),
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+          _scheduleHomeRefresh(forceApiCall: true);
+        } else if (evt.event == 'assignment_cancelled') {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('An assignment was cancelled'),
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
           _scheduleHomeRefresh(forceApiCall: true);
         } else if (evt.event == 'connected') {
-          // Just reconnected - no need to fetch, realtime will update
-          // Only refresh if we haven't received realtime updates recently
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Connected to delivery updates'),
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
           final lastEvent = _lastRealtimeEventAt;
           if (lastEvent == null || DateTime.now().difference(lastEvent).inSeconds > 30) {
             _scheduleHomeRefresh(forceApiCall: true);
@@ -785,6 +795,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _incomingOverlay = null;
   }
 
+  /// Shows a short SnackBar for real-time SSE notifications that don't have a dedicated UI.
+  void _showRealtimeNotificationSnackBar(Map<String, dynamic> data) {
+    if (!mounted) return;
+    final title = (data['title'] ?? '').toString().trim();
+    final body = (data['body'] ?? '').toString().trim();
+    final message = title.isNotEmpty
+        ? (body.isNotEmpty ? '$title — $body' : title)
+        : (body.isNotEmpty ? body : 'New update');
+    if (message.isEmpty) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
   void _showIncomingRequestPopup(Map<String, dynamic> notification) {
     _removeIncomingPopup();
 
@@ -809,9 +836,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final address = (deliveryType == 'pickup')
         ? (pickup is Map ? pickup['address'] : null)?.toString()
         : (drop is Map ? drop['address'] : null)?.toString();
+    final expiresAtRaw = payload['expiresAt'];
+    final expiresAt = expiresAtRaw is DateTime
+        ? expiresAtRaw
+        : (expiresAtRaw is String && expiresAtRaw.toString().isNotEmpty
+            ? DateTime.tryParse(expiresAtRaw.toString())
+            : null);
 
     final customerName = 'New request';
     final taskType = deliveryType == 'pickup' ? 'Pickup' : 'Delivery';
+    final scheduledTimeStr = expiresAt != null
+        ? _formatTime(expiresAt)
+        : null;
 
     _currentRequestId = requestId;
 
@@ -830,16 +866,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 customerName: customerName,
                 address: (address ?? '').isNotEmpty ? address! : 'Address not available',
                 itemCount: itemCount,
-                iconPath: deliveryType == 'pickup' ? 'assets/icons/pickup.png' : 'assets/icons/out_for_delivery.png',
                 isProcessing: _isProcessingAssignment,
                 onAccept: () => _handleAcceptRequest(requestId),
                 onReject: () => _handleRejectRequest(requestId),
-                onMapPressed: () {
-                  // TODO: map navigation using payload coordinates
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Map navigation coming soon')),
-                  );
-                },
+                title: 'Notification for delivery boy, to Accept or Reject order',
+                scheduledTime: scheduledTimeStr,
+                amount: null, // Optional: pass from payload if backend sends it
               ),
             ),
           ),
@@ -1067,7 +1099,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _isShiftActive = isActive is bool ? isActive : true;
           _currentShiftId = shiftId?.isNotEmpty == true ? shiftId : null;
         });
-        // Start continuous location updates + SSE events stream until end shift.
+        // Subscribe to SSE event-stream to receive assignment_request notifications; keep until end shift.
         _startLiveLocation();
         _startEvents();
       }

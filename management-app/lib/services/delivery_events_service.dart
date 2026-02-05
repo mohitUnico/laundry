@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import '../services/api_service.dart';
 import '../utils/auth_storage.dart';
 
+/// Single SSE event from GET /api/v1/delivery-staff/events.
 class DeliverySseEvent {
   final String event;
   final Map<String, dynamic> data;
@@ -13,6 +14,12 @@ class DeliverySseEvent {
   const DeliverySseEvent({required this.event, required this.data});
 }
 
+/// Subscribes to the delivery-staff SSE event stream (text/event-stream).
+/// Used after the delivery staff starts their shift to listen for assignment
+/// requests. Each new assignment is sent as event "notification" with
+/// type "assignment_request" and data: { notificationId, type, title, body,
+/// payload: { requestId, orderId, deliveryId, deliveryType, itemCount,
+/// pickup, drop, expiresAt, recipientId }, createdAt }.
 class DeliveryEventsService {
   // We can't use ApiService directly for SSE because we need ResponseType.stream + Accept header.
   late final Dio _dio;
@@ -40,18 +47,10 @@ class DeliveryEventsService {
     );
   }
 
-  /// Connects to `/delivery-staff/events` and emits parsed SSE events.
-  /// Only works for delivery_staff role. Returns empty stream for other roles.
+  /// Connects to GET /api/v1/delivery-staff/events with Authorization Bearer token
+  /// and Accept: text/event-stream. Emits parsed SSE events (e.g. "connected", "notification").
+  /// Backend returns 403 if the token is not for delivery_staff.
   Stream<DeliverySseEvent> connect() async* {
-    // Check if user is delivery staff before connecting
-    // Backend uses 'delivery_staff' as the role value
-    final user = await AuthStorage.getCurrentUser();
-    final role = user?['role']?.toString()?.toLowerCase();
-    if (role != 'delivery_staff') {
-      // Return empty stream for non-delivery-staff roles
-      return;
-    }
-
     final response = await _dio.get<ResponseBody>(
       '/delivery-staff/events',
       options: Options(responseType: ResponseType.stream),

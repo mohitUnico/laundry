@@ -171,6 +171,24 @@ class DeliveryStaffAppService {
     }
   }
 
+  /// PATCH /api/v1/delivery-staff/location - update current device location (call every 2s when shift active).
+  Future<Map<String, dynamic>> updateLiveLocation({
+    required double latitude,
+    required double longitude,
+  }) async {
+    try {
+      final res = await _api.patch(
+        '/delivery-staff/location',
+        data: {'latitude': latitude, 'longitude': longitude},
+      );
+      final body = res.data;
+      if (body is Map<String, dynamic>) return body;
+      throw Exception('Unexpected response format');
+    } catch (e) {
+      throw Exception(_extractErrorMessage(e, fallback: 'Failed to update location'));
+    }
+  }
+
   Future<Map<String, dynamic>> acceptAssignmentRequest({required String requestId}) async {
     try {
       final res = await _api.post('/delivery-staff/assignment-requests/$requestId/accept');

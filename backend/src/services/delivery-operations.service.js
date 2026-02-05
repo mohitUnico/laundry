@@ -53,7 +53,7 @@ async function _getOrderForAssignment(orderId) {
                     longitude: true,
                 },
             },
-            bill: { select: { delivery_fee: true } },
+            bill: { select: { delivery_fee: true, payment_status: true } },
             order_items: { select: { pricing_type: true, quantity: true } },
         },
     });
@@ -558,6 +558,8 @@ exports.createAssignmentRequest = async ({
                             deliveryId: delivery.delivery_id,
                             deliveryType,
                             itemCount,
+                            pricingModel: order.pricing_model,
+                            paymentStatus: order.bill?.payment_status ?? null,
                             pickup: leg.pickup,
                             drop: leg.drop,
                             expiresAt: request.expires_at,
@@ -823,6 +825,8 @@ exports.directAssignDelivery = async ({
                 deliveryType,
                 assignedAt: result.assignedAt,
                 itemCount,
+                pricingModel: order.pricing_model,
+                paymentStatus: order.bill?.payment_status ?? null,
                 assignedBy: assignedBy || null,
             },
         },
@@ -844,6 +848,8 @@ exports.directAssignDelivery = async ({
         deliveryType,
         assignedAt: result.assignedAt,
         itemCount,
+        pricingModel: order.pricing_model,
+        paymentStatus: order.bill?.payment_status ?? null,
         mode: 'direct',
     });
 
@@ -854,6 +860,8 @@ exports.directAssignDelivery = async ({
         orderId,
         deliveryType,
         itemCount,
+        pricingModel: order.pricing_model,
+        paymentStatus: order.bill?.payment_status ?? null,
         mode: 'direct',
     });
 

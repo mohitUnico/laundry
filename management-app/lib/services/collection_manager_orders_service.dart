@@ -72,6 +72,34 @@ class CollectionManagerOrdersService {
     }
   }
 
+  Future<Map<String, dynamic>> getPerKgItems({required String orderId}) async {
+    try {
+      final res = await _api.get('/staff-app/collection-manager/orders/$orderId/items/weights');
+      final body = res.data;
+      if (body is Map<String, dynamic>) return body;
+      throw Exception('Unexpected response format');
+    } catch (e) {
+      throw Exception(_extractErrorMessage(e, fallback: 'Failed to fetch per-kg items'));
+    }
+  }
+
+  Future<Map<String, dynamic>> updatePerKgWeights({
+    required String orderId,
+    required List<Map<String, dynamic>> items,
+  }) async {
+    try {
+      final res = await _api.patch(
+        '/staff-app/collection-manager/orders/$orderId/items/weights',
+        data: {'items': items},
+      );
+      final body = res.data;
+      if (body is Map<String, dynamic>) return body;
+      throw Exception('Unexpected response format');
+    } catch (e) {
+      throw Exception(_extractErrorMessage(e, fallback: 'Failed to update weights'));
+    }
+  }
+
   Future<Map<String, dynamic>> getOrderItems({required String orderId}) async {
     try {
       final res = await _api.get('/staff-app/collection-manager/orders/$orderId/items');

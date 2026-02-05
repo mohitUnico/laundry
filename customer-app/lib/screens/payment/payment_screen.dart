@@ -412,57 +412,85 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           // Parse date/time from schedule arguments (local timezone)
                           final scheduleDateLabel = args?['dateLabel'] as String?;
                           final scheduleTimeLabel = args?['timeLabel'] as String?;
-                          DateTime pickupDateTimeLocal;
-                          if (scheduleDateLabel != null && scheduleTimeLabel != null) {
-                            try {
-                              final now = DateTime.now();
-                              final timeParts = scheduleTimeLabel.split(' ');
-                              final timeValue = timeParts[0].split(':');
-                              final hour = int.parse(timeValue[0]);
-                              final minute = int.parse(timeValue[1]);
-                              final isPM = timeParts.length > 1 && timeParts[1].toUpperCase() == 'PM';
-
-                              int hour24;
-                              if (isPM) {
-                                hour24 = hour == 12 ? 12 : hour + 12;
-                              } else {
-                                hour24 = hour == 12 ? 0 : hour;
-                              }
-
-                              final dateParts = scheduleDateLabel.split(' ');
-                              final monthName = dateParts[0];
-                              final day = int.parse(dateParts[1]);
-
-                              const months = [
-                                'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                                'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-                              ];
-                              final monthIndex = months.indexOf(monthName);
-                              final month = monthIndex >= 0 ? monthIndex + 1 : now.month;
-
-                              int year = now.year;
-                              final baseDate = DateTime(year, month, day);
-                              if (baseDate.isBefore(DateTime(now.year, now.month, now.day))) {
-                                year = now.year + 1;
-                              }
-
-                              pickupDateTimeLocal = DateTime(year, month, day, hour24, minute);
-                            } catch (_) {
-                              pickupDateTimeLocal = DateTime.now().add(const Duration(days: 1));
-                            }
-                          } else {
-                            pickupDateTimeLocal = DateTime.now().add(const Duration(days: 1));
-                          }
-
-                          final pickupDateIso = pickupDateTimeLocal.toUtc().toIso8601String();
-                          final pickupTimeFromIso = pickupDateTimeLocal.toUtc().toIso8601String();
-                          final pickupTimeToIso = pickupTimeFromIso;
-
-                          // Parse delivery date/time for "both" orders
-                          String? deliveryTimeFromIso;
-                          String? deliveryTimeToIso;
                           final deliveryDateLabel = args?['deliveryDateLabel'] as String?;
                           final deliveryTimeLabel = args?['deliveryTimeLabel'] as String?;
+
+                          String? pickupDateIso;
+                          String? pickupTimeFromIso;
+                          String? pickupTimeToIso;
+                          String? deliveryTimeFromIso;
+                          String? deliveryTimeToIso;
+                          DateTime? pickupDateTimeLocal;
+
+                          if (orderType == 'drop_only') {
+                            // Delivery only: dateLabel/timeLabel = delivery slot
+                            if (scheduleDateLabel != null && scheduleTimeLabel != null) {
+                              try {
+                                final now = DateTime.now();
+                                final timeParts = scheduleTimeLabel.split(' ');
+                                final timeValue = timeParts[0].split(':');
+                                final hour = int.parse(timeValue[0]);
+                                final minute = int.parse(timeValue[1]);
+                                final isPM = timeParts.length > 1 && timeParts[1].toUpperCase() == 'PM';
+                                int hour24 = isPM ? (hour == 12 ? 12 : hour + 12) : (hour == 12 ? 0 : hour);
+                                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                                final dateParts = scheduleDateLabel.split(' ');
+                                final month = months.indexOf(dateParts[0]) >= 0 ? months.indexOf(dateParts[0]) + 1 : now.month;
+                                final day = int.parse(dateParts[1]);
+                                int year = now.year;
+                                final deliveryDate = DateTime(year, month, day);
+                                if (deliveryDate.isBefore(DateTime(now.year, now.month, now.day))) {
+                                  year = now.year + 1;
+                                }
+                                final deliveryDateTimeLocal = DateTime(year, month, day, hour24, minute);
+                                deliveryTimeFromIso = deliveryDateTimeLocal.toUtc().toIso8601String();
+                                deliveryTimeToIso = deliveryTimeFromIso;
+                              } catch (_) {
+                                final fallback = DateTime.now().add(const Duration(days: 1));
+                                deliveryTimeFromIso = fallback.toUtc().toIso8601String();
+                                deliveryTimeToIso = deliveryTimeFromIso;
+                              }
+                            } else {
+                              final fallback = DateTime.now().add(const Duration(days: 1));
+                              deliveryTimeFromIso = fallback.toUtc().toIso8601String();
+                              deliveryTimeToIso = deliveryTimeFromIso;
+                            }
+                            pickupDateIso = null;
+                            pickupTimeFromIso = null;
+                            pickupTimeToIso = null;
+                          } else {
+                            // Pickup only or both: dateLabel/timeLabel = pickup slot
+                            if (scheduleDateLabel != null && scheduleTimeLabel != null) {
+                              try {
+                                final now = DateTime.now();
+                                final timeParts = scheduleTimeLabel.split(' ');
+                                final timeValue = timeParts[0].split(':');
+                                final hour = int.parse(timeValue[0]);
+                                final minute = int.parse(timeValue[1]);
+                                final isPM = timeParts.length > 1 && timeParts[1].toUpperCase() == 'PM';
+                                int hour24 = isPM ? (hour == 12 ? 12 : hour + 12) : (hour == 12 ? 0 : hour);
+                                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                                final dateParts = scheduleDateLabel.split(' ');
+                                final month = months.indexOf(dateParts[0]) >= 0 ? months.indexOf(dateParts[0]) + 1 : now.month;
+                                final day = int.parse(dateParts[1]);
+                                int year = now.year;
+                                final baseDate = DateTime(year, month, day);
+                                if (baseDate.isBefore(DateTime(now.year, now.month, now.day))) {
+                                  year = now.year + 1;
+                                }
+                                pickupDateTimeLocal = DateTime(year, month, day, hour24, minute);
+                              } catch (_) {
+                                pickupDateTimeLocal = DateTime.now().add(const Duration(days: 1));
+                              }
+                            } else {
+                              pickupDateTimeLocal = DateTime.now().add(const Duration(days: 1));
+                            }
+                            pickupDateIso = pickupDateTimeLocal.toUtc().toIso8601String();
+                            pickupTimeFromIso = pickupDateTimeLocal.toUtc().toIso8601String();
+                            pickupTimeToIso = pickupTimeFromIso;
+                          }
+
+                          // Parse delivery date/time for "both" orders (pickupDateTimeLocal set in else branch)
                           if (orderType == 'both' && deliveryDateLabel != null && deliveryTimeLabel != null) {
                             try {
                               final deliveryNow = DateTime.now();
@@ -501,13 +529,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
                               deliveryTimeToIso = deliveryTimeFromIso;
                             } catch (_) {
                               // Fallback: delivery window as pickup + 24h
-                              final deliveryFromLocal = pickupDateTimeLocal.add(const Duration(hours: 24));
+                              final deliveryFromLocal = (pickupDateTimeLocal ?? DateTime.now().add(const Duration(days: 1))).add(const Duration(hours: 24));
                               deliveryTimeFromIso = deliveryFromLocal.toUtc().toIso8601String();
                               deliveryTimeToIso = deliveryTimeFromIso;
                             }
                           } else if (orderType == 'both') {
                             // Fallback: delivery window as pickup + 24h
-                            final deliveryFromLocal = pickupDateTimeLocal.add(const Duration(hours: 24));
+                            final deliveryFromLocal = (pickupDateTimeLocal ?? DateTime.now().add(const Duration(days: 1))).add(const Duration(hours: 24));
                             deliveryTimeFromIso = deliveryFromLocal.toUtc().toIso8601String();
                             deliveryTimeToIso = deliveryTimeFromIso;
                           }

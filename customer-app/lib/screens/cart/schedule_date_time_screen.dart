@@ -358,27 +358,29 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                 child: Column(
                   children: [
                     const SizedBox(height: 16),
-                    _DateChipRow(
-                      dates: days,
-                      selectedIndex: _selectedDayIndex,
-                      onSelect: (i) {
-                        setState(() {
-                          _selectedDayIndex = i;
-                          // If delivery date is now before pickup date, adjust it
-                          if (option == DeliveryOptionType.pickupAndDelivery) {
-                            final newPickupDate = days[i];
-                            final currentDeliveryDate = days[_deliverySelectedDayIndex.clamp(0, days.length - 1)];
-                            if (currentDeliveryDate.isBefore(newPickupDate)) {
-                              // Set delivery date to the same as pickup date (minimum)
-                              _deliverySelectedDayIndex = i;
+                    // Date chips: for delivery_only, only the Delivery section has date row; for others, this is pickup date
+                    if (option != DeliveryOptionType.deliveryOnly)
+                      _DateChipRow(
+                        dates: days,
+                        selectedIndex: _selectedDayIndex,
+                        onSelect: (i) {
+                          setState(() {
+                            _selectedDayIndex = i;
+                            // If delivery date is now before pickup date, adjust it (only for both)
+                            if (option == DeliveryOptionType.pickupAndDelivery) {
+                              final newPickupDate = days[i];
+                              final currentDeliveryDate = days[_deliverySelectedDayIndex.clamp(0, days.length - 1)];
+                              if (currentDeliveryDate.isBefore(newPickupDate)) {
+                                _deliverySelectedDayIndex = i;
+                              }
                             }
-                          }
-                        });
-                      },
-                      labelFor: (d, isSelected) => _dateLabel(d, isSelected),
-                    ),
-                    const SizedBox(height: 14),
-                    // Pickup Time Section
+                          });
+                        },
+                        labelFor: (d, isSelected) => _dateLabel(d, isSelected),
+                      ),
+                    if (option != DeliveryOptionType.deliveryOnly) const SizedBox(height: 14),
+                    // Pickup Time Section (not shown for delivery_only - no pickup from customer)
+                    if (option != DeliveryOptionType.deliveryOnly) ...[
                     Text(
                       'Pickup Time',
                       style: AppTextStyles.header(color: HomeColors.text),
@@ -414,8 +416,10 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                         onMinuteChanged: (label) => setState(() => _toMinute = int.tryParse(label) ?? _toMinute),
                       ),
                     ),
-                    // Delivery Time Section (only for "both" orders)
-                    if (option == DeliveryOptionType.pickupAndDelivery) ...[
+                    ],
+                    // Delivery Time Section (for "both" and "delivery_only" - when we deliver to customer)
+                    if (option == DeliveryOptionType.pickupAndDelivery ||
+                        option == DeliveryOptionType.deliveryOnly) ...[
                       const SizedBox(height: 20),
                       Text(
                         'Delivery Time',
@@ -424,10 +428,11 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                       const SizedBox(height: 8),
                       Builder(
                         builder: (context) {
-                          // Filter delivery dates to only include dates >= pickup date
-                          final pickupDate = selectedDate;
+                          // Filter delivery dates: for "both", must be >= pickup date; for delivery_only, all dates
+                          final pickupDate = option == DeliveryOptionType.pickupAndDelivery
+                              ? selectedDate
+                              : DateTime(1900, 1, 1); // No constraint for delivery_only
                           final availableDeliveryDates = days.where((date) {
-                            // Include dates that are on or after the pickup date
                             return !date.isBefore(pickupDate);
                           }).toList();
                           
@@ -444,7 +449,9 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                           );
                           
                           // If current delivery date is before pickup, select the first available date
-                          if (deliveryIndexInAvailable < 0 || currentDeliveryDate.isBefore(pickupDate)) {
+                          if (deliveryIndexInAvailable < 0 ||
+                              (option == DeliveryOptionType.pickupAndDelivery &&
+                                  currentDeliveryDate.isBefore(pickupDate))) {
                             deliveryIndexInAvailable = 0;
                             // Update the state to reflect the valid date
                             WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -557,36 +564,68 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                   color: Colors.transparent,
                   child: InkWell(
                     onTap: () async {
-                        // Validate pickup schedule (local timezone):
-                        // - must be >= current time for today
-                        // - To time must be after From time
-                        final fromDt = _asLocalDateTime(selectedDate, _fromHour, _fromMinute, _fromAmPm);
-                        final toDt = _asLocalDateTime(selectedDate, _toHour, _toMinute, _toAmPm);
-                        // Use the same minimum logic as the pickers (based on _minMinutesForSelectedDay)
-                        final minFromMinutes = _minMinutesForSelectedDay(selectedDate);
-                        final minAllowed = DateTime(
-                          selectedDate.year,
-                          selectedDate.month,
-                          selectedDate.day,
-                          (minFromMinutes ~/ 60).clamp(0, 23),
-                          (minFromMinutes % 60).clamp(0, 59),
-                        );
-                        if (fromDt.isBefore(minAllowed)) {
-                          _showInvalidTimeSnack(context);
-                          return;
-                        }
-                        if (!toDt.isAfter(fromDt)) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Pickup To time must be after From time')),
-                          );
-                          return;
-                        }
-
+                        String dateLabel;
+                        String timeLabel;
                         String? deliveryDateLabel;
                         String? deliveryTimeLabel;
 
-                        // Validate delivery schedule for "both" orders
-                        if (option == DeliveryOptionType.pickupAndDelivery) {
+                        if (option == DeliveryOptionType.deliveryOnly) {
+                          // Delivery only: validate delivery time only (no pickup)
+                          final deliverySelectedDate = days[_deliverySelectedDayIndex.clamp(0, days.length - 1)];
+                          final deliveryFromDt = _asLocalDateTime(deliverySelectedDate, _deliveryFromHour, _deliveryFromMinute, _deliveryFromAmPm);
+                          final deliveryToDt = _asLocalDateTime(deliverySelectedDate, _deliveryToHour, _deliveryToMinute, _deliveryToAmPm);
+
+                          final deliveryMinFromMinutes = _minMinutesForSelectedDay(deliverySelectedDate);
+                          final minAllowed = DateTime(
+                            deliverySelectedDate.year,
+                            deliverySelectedDate.month,
+                            deliverySelectedDate.day,
+                            (deliveryMinFromMinutes ~/ 60).clamp(0, 23),
+                            (deliveryMinFromMinutes % 60).clamp(0, 59),
+                          );
+                          if (deliveryFromDt.isBefore(minAllowed)) {
+                            _showInvalidTimeSnack(context);
+                            return;
+                          }
+                          if (!deliveryToDt.isAfter(deliveryFromDt)) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Delivery To time must be after From time')),
+                            );
+                            return;
+                          }
+
+                          dateLabel = '${_monthShort(deliverySelectedDate.month)} ${deliverySelectedDate.day}';
+                          timeLabel = _formatTime12h(_deliveryFromHour, _deliveryFromMinute, _deliveryFromAmPm);
+                          deliveryDateLabel = dateLabel;
+                          deliveryTimeLabel = timeLabel;
+                        } else {
+                          // Pickup only or both: validate pickup schedule
+                          final fromDt = _asLocalDateTime(selectedDate, _fromHour, _fromMinute, _fromAmPm);
+                          final toDt = _asLocalDateTime(selectedDate, _toHour, _toMinute, _toAmPm);
+                          final minFromMinutes = _minMinutesForSelectedDay(selectedDate);
+                          final minAllowed = DateTime(
+                            selectedDate.year,
+                            selectedDate.month,
+                            selectedDate.day,
+                            (minFromMinutes ~/ 60).clamp(0, 23),
+                            (minFromMinutes % 60).clamp(0, 59),
+                          );
+                          if (fromDt.isBefore(minAllowed)) {
+                            _showInvalidTimeSnack(context);
+                            return;
+                          }
+                          if (!toDt.isAfter(fromDt)) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Pickup To time must be after From time')),
+                            );
+                            return;
+                          }
+
+                          dateLabel = '${_monthShort(selectedDate.month)} ${selectedDate.day}';
+                          timeLabel = _formatTime12h(_fromHour, _fromMinute, _fromAmPm);
+
+                          // Validate delivery schedule for "both" orders
+                          if (option == DeliveryOptionType.pickupAndDelivery) {
                           final deliverySelectedDate = days[_deliverySelectedDayIndex.clamp(0, days.length - 1)];
                           final deliveryFromDt = _asLocalDateTime(deliverySelectedDate, _deliveryFromHour, _deliveryFromMinute, _deliveryFromAmPm);
                           final deliveryToDt = _asLocalDateTime(deliverySelectedDate, _deliveryToHour, _deliveryToMinute, _deliveryToAmPm);
@@ -614,12 +653,10 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                             return;
                           }
 
-                          deliveryDateLabel = '${_monthShort(deliverySelectedDate.month)} ${deliverySelectedDate.day}';
-                          deliveryTimeLabel = _formatTime12h(_deliveryFromHour, _deliveryFromMinute, _deliveryFromAmPm);
+                            deliveryDateLabel = '${_monthShort(deliverySelectedDate.month)} ${deliverySelectedDate.day}';
+                            deliveryTimeLabel = _formatTime12h(_deliveryFromHour, _deliveryFromMinute, _deliveryFromAmPm);
+                          }
                         }
-
-                        final dateLabel = '${_monthShort(selectedDate.month)} ${selectedDate.day}';
-                        final timeLabel = _formatTime12h(_fromHour, _fromMinute, _fromAmPm);
 
                         // If orderId is provided, update existing order
                         if (args?.orderId != null) {

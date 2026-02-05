@@ -21,6 +21,51 @@ exports.listIncomingOrders = async (req, res, next) => {
     }
 };
 
+exports.getPerKgItems = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'collection_manager') {
+            throw new AuthorizationError('Only collection managers can access this endpoint');
+        }
+
+        const { orderId } = req.params;
+        const data = await collectionManagerAppService.getPerKgItems({ orderId });
+
+        res.status(200).json({
+            success: true,
+            data: data || { perKgItems: [] },
+            message: 'Per-kg items fetched successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.updatePerKgWeights = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'collection_manager') {
+            throw new AuthorizationError('Only collection managers can access this endpoint');
+        }
+
+        const staffId = req.user.user_id;
+        const { orderId } = req.params;
+        const { items } = req.body;
+
+        const data = await collectionManagerAppService.updatePerKgWeights({
+            staffId,
+            orderId,
+            items,
+        });
+
+        res.status(200).json({
+            success: true,
+            data,
+            message: 'Weights updated successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 exports.getOrderItems = async (req, res, next) => {
     try {
         if (req.user.role !== 'collection_manager') {

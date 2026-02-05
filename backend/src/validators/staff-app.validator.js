@@ -15,6 +15,19 @@ exports.directAssignDeliverySchema = Joi.object({
     deliveryStaffId: Joi.string().uuid().required(),
 });
 
+exports.updatePerKgWeightsSchema = Joi.object({
+    items: Joi.array()
+        .items(
+            Joi.object({
+                orderItemId: Joi.string().uuid().required(),
+                weightKg: Joi.number().min(0.01).max(500).precision(2).required(),
+            })
+        )
+        .min(1)
+        .unique('orderItemId')
+        .required(),
+});
+
 exports.serviceManQueueQuerySchema = Joi.object({
     // comma separated statuses
     status: Joi.string()

@@ -4,7 +4,12 @@ const collectionManagerAppController = require('../controllers/collection-manage
 const { authenticateJWT, authorize } = require('../middleware/auth.middleware');
 const { validate, validateQuery } = require('../middleware/validation.middleware');
 const { validateUuidParam } = require('../middleware/delivery-staff-app.middleware');
-const { listPaginationQuerySchema, assignDeliverySchema, directAssignDeliverySchema } = require('../validators/staff-app.validator');
+const {
+    listPaginationQuerySchema,
+    assignDeliverySchema,
+    directAssignDeliverySchema,
+    updatePerKgWeightsSchema,
+} = require('../validators/staff-app.validator');
 
 const router = express.Router();
 
@@ -24,6 +29,25 @@ router.get(
     authorize('collection_manager'),
     validateUuidParam('orderId'),
     collectionManagerAppController.getOrderItems
+);
+
+// GET per-kg items for weight entry (delivery_only / drop-only orders)
+router.get(
+    '/orders/:orderId/items/weights',
+    authenticateJWT,
+    authorize('collection_manager'),
+    validateUuidParam('orderId'),
+    collectionManagerAppController.getPerKgItems
+);
+
+// PATCH update per-kg weights (for delivery_only orders - no pickup, CM enters weights)
+router.patch(
+    '/orders/:orderId/items/weights',
+    authenticateJWT,
+    authorize('collection_manager'),
+    validateUuidParam('orderId'),
+    validate(updatePerKgWeightsSchema),
+    collectionManagerAppController.updatePerKgWeights
 );
 
 // POST create pickup assignment request (only pickup_only/both)

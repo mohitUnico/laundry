@@ -16,10 +16,23 @@ const normalizePagination = ({ page = 1, limit = 20 } = {}) => {
 
 const mapOrderRow = (o) => {
     const pickupDelivery = Array.isArray(o.deliveries) ? o.deliveries[0] : null;
+    // For per_kg orders: check if all per_kg items have weights set (collection manager flow)
+    let perKgWeightsComplete = true;
+    const perKgItems = Array.isArray(o.order_items) ? o.order_items : [];
+    if (perKgItems.length > 0) {
+        perKgWeightsComplete = perKgItems.every((item) => {
+            const w = item.weight_kg;
+            if (w == null) return false;
+            const n = Number(w);
+            return !Number.isNaN(n) && n > 0;
+        });
+    }
     return {
         orderId: o.order_id,
         orderStatus: o.order_status,
         orderType: o.order_type,
+        pricingModel: o.pricing_model,
+        perKgWeightsComplete,
         createdAt: o.created_at,
         pickupDate: o.pickup_date,
         deliveryDate: o.delivery_date,
@@ -87,6 +100,10 @@ exports.listIncomingOrders = async ({ page, limit } = {}) => {
                     include: {
                         staff: { select: { staff_id: true, full_name: true, phone: true } },
                     },
+                },
+                order_items: {
+                    where: { pricing_type: 'per_kg' },
+                    select: { weight_kg: true },
                 },
             },
         }),
@@ -430,6 +447,163 @@ exports.submitOrderToServices = async ({ staffId, orderId }) => {
     // Push notify after transaction commits (non-blocking)
     notifyOrderStatusChange({ orderId, status: 'submitted_to_services' }).catch(() => {});
     return result;
+};
+
+const coalesce = (v, fallback) => (v != null && v !== '' ? v : fallback);
+
+exports.getPerKgItems = async ({ orderId }) => {
+    if (!orderId) throw new ValidationError('orderId is required');
+
+    const order = await prisma.order.findUnique({
+        where: { order_id: orderId },
+        select: {
+            order_id: true,
+            pricing_model: true,
+            total_amount: true,
+            updated_at: true,
+        },
+    });
+
+    if (!order) throw new NotFoundError('Order');
+
+    const perKgItems = await prisma.orderItem.findMany({
+        where: { order_id: orderId, pricing_type: 'per_kg' },
+        orderBy: { created_at: 'asc' },
+        select: {
+            item_id: true,
+            service_id: true,
+            pricing_type: true,
+            weight_kg: true,
+            unit_price: true,
+            subtotal: true,
+            updated_at: true,
+            service: {
+                select: {
+                    service_name: true,
+                    category: { select: { category_name: true } },
+                },
+            },
+        },
+    });
+
+    if (!perKgItems || perKgItems.length === 0) {
+        return null;
+    }
+
+    return {
+        orderId: order.order_id,
+        pricingModel: order.pricing_model,
+        totalAmount: coalesce(order.total_amount?.toString?.(), String(order.total_amount)),
+        orderUpdatedAt: order.updated_at,
+        perKgItems: perKgItems.map((x) => ({
+            orderItemId: x.item_id,
+            serviceId: x.service_id,
+            serviceName: x.service?.service_name || null,
+            categoryName: x.service?.category?.category_name || null,
+            pricingType: x.pricing_type,
+            weightKg: x.weight_kg ? coalesce(x.weight_kg.toString?.(), String(x.weight_kg)) : null,
+            unitPrice: coalesce(x.unit_price?.toString?.(), String(x.unit_price)),
+            subtotal: coalesce(x.subtotal?.toString?.(), String(x.subtotal)),
+            updatedAt: x.updated_at,
+        })),
+    };
+};
+
+exports.updatePerKgWeights = async ({ staffId, orderId, items }) => {
+    if (!orderId) throw new ValidationError('orderId is required');
+    if (!Array.isArray(items) || items.length === 0) {
+        throw new ValidationError('items must be a non-empty array');
+    }
+
+    for (const it of items) {
+        if (!it || typeof it !== 'object') throw new ValidationError('items must be an array of objects');
+        if (!it.orderItemId || typeof it.orderItemId !== 'string') throw new ValidationError('orderItemId is required');
+        if (typeof it.weightKg !== 'number' || Number.isNaN(it.weightKg)) {
+            throw new ValidationError('weightKg must be a number');
+        }
+    }
+
+    return prisma.$transaction(async (tx) => {
+        const order = await tx.order.findUnique({
+            where: { order_id: orderId },
+            select: {
+                order_id: true,
+                order_status: true,
+                pricing_model: true,
+            },
+        });
+
+        if (!order) throw new NotFoundError('Order');
+        if (order.pricing_model !== 'per_kg') {
+            throw new ConflictError("Order pricing_model must be 'per_kg' to update weights");
+        }
+
+        if (!['placed', 'pickup_assigned', 'picked_up', 'submitted_to_cm'].includes(order.order_status)) {
+            throw new ConflictError(
+                `Cannot update weights: order must be in placed/pickup_assigned/picked_up/submitted_to_cm status (current: ${order.order_status})`
+            );
+        }
+
+        const perKgItems = await tx.orderItem.findMany({
+            where: { order_id: orderId, pricing_type: 'per_kg' },
+            select: {
+                item_id: true,
+                unit_price: true,
+                weight_kg: true,
+                subtotal: true,
+                service_id: true,
+            },
+        });
+
+        if (perKgItems.length === 0) {
+            throw new ConflictError('No per_kg order items found to update');
+        }
+
+        const perKgItemIds = new Set(perKgItems.map((i) => i.item_id));
+        const requestIds = new Set(items.map((i) => i.orderItemId));
+
+        const missing = [...perKgItemIds].filter((id) => !requestIds.has(id));
+        const extra = [...requestIds].filter((id) => !perKgItemIds.has(id));
+
+        if (missing.length) {
+            throw new ValidationError(`Missing weight updates for per_kg order items: ${missing.join(', ')}`);
+        }
+        if (extra.length) {
+            throw new ValidationError(`Provided orderItemId(s) are not per_kg items of this order: ${extra.join(', ')}`);
+        }
+
+        const weightById = new Map(items.map((i) => [i.orderItemId, i.weightKg]));
+
+        for (const oi of perKgItems) {
+            const weightKg = weightById.get(oi.item_id);
+            const newSubtotal = oi.unit_price.mul(weightKg);
+
+            await tx.orderItem.update({
+                where: { item_id: oi.item_id },
+                data: {
+                    weight_kg: weightKg,
+                    subtotal: newSubtotal,
+                },
+            });
+        }
+
+        const agg = await tx.orderItem.aggregate({
+            where: { order_id: orderId },
+            _sum: { subtotal: true },
+        });
+
+        const newTotal = agg._sum.subtotal || 0;
+
+        await tx.order.update({
+            where: { order_id: orderId },
+            data: { total_amount: newTotal },
+        });
+
+        return {
+            orderId,
+            message: 'Weights updated successfully',
+        };
+    });
 };
 
 exports.generateInvoice = async ({ staffId, orderId }) => {

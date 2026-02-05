@@ -170,6 +170,255 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
     }
   }
 
+  Future<void> _handleUpdateWeights(BuildContext ctx, String orderId) async {
+    final completed = await _showWeightDialog(ctx, orderId);
+    if (completed && mounted) _refreshIncoming();
+  }
+
+  Future<void> _handleVerifiedAndReceived(
+    BuildContext ctx,
+    String orderId,
+    bool isPerKg,
+    bool perKgWeightsComplete,
+  ) async {
+    if (isPerKg && !perKgWeightsComplete) {
+      final completed = await _showWeightDialog(ctx, orderId);
+      if (!completed || !mounted) return;
+    }
+    await _markReceivedAndRefresh(orderId);
+  }
+
+  Future<bool> _showWeightDialog(BuildContext ctx, String orderId) async {
+    List<Map<String, dynamic>>? perKgItems;
+    try {
+      final body = await _ordersService.getPerKgItems(orderId: orderId);
+      final data = body['data'];
+      if (data is Map) {
+        final items = data['perKgItems'];
+        if (items is List && items.isNotEmpty) {
+          perKgItems = items.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList();
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(content: Text('Failed to load items: ${e.toString().replaceFirst('Exception: ', '')}')),
+        );
+      }
+      return false;
+    }
+
+    if (perKgItems == null || perKgItems.isEmpty) {
+      // No per_kg items - proceed without weight dialog
+      return true;
+    }
+
+    final Map<String, TextEditingController> weightControllers = {};
+    for (final item in perKgItems) {
+      final itemId = (item['orderItemId'] ?? '').toString();
+      final currentWeight = item['weightKg'];
+      final weightStr = (currentWeight is num)
+          ? currentWeight.toString()
+          : (currentWeight?.toString() ?? '');
+      weightControllers[itemId] = TextEditingController(text: weightStr);
+    }
+
+    final result = await showDialog<bool>(
+      context: ctx,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Dialog(
+              backgroundColor: AppColors.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(ctx).size.height * 0.7,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Enter Weights (kg)',
+                              style: AppTextStyles.header(color: AppColors.textPrimary),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.close),
+                              splashRadius: 20,
+                              onPressed: () => Navigator.of(dialogContext).pop(false),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Enter weight for each per-kg item before marking as received.',
+                          style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                        ),
+                        const SizedBox(height: 18),
+                        ...perKgItems!.map((item) {
+                          final itemId = (item['orderItemId'] ?? '').toString();
+                          final serviceName = (item['serviceName'] ?? 'Item').toString();
+                          final categoryName = (item['categoryName'] ?? '').toString();
+                          final itemName =
+                              categoryName.isNotEmpty ? '$categoryName • $serviceName' : serviceName;
+                          final controller = weightControllers[itemId] ?? TextEditingController();
+
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  itemName,
+                                  style: AppTextStyles.body(color: AppColors.textPrimary)
+                                      .copyWith(fontWeight: FontWeight.w600),
+                                ),
+                                const SizedBox(height: 6),
+                                TextField(
+                                  controller: controller,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  decoration: InputDecoration(
+                                    hintText: 'Enter weight in kg',
+                                    filled: true,
+                                    fillColor: AppColors.background,
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 12,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(18),
+                                      borderSide: BorderSide.none,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: StatefulBuilder(
+                            builder: (context, setInnerState) {
+                              bool isSaving = false;
+
+                              Future<void> handleSave() async {
+                                if (isSaving) return;
+                                setInnerState(() => isSaving = true);
+
+                                bool allValid = true;
+                                final itemsToUpdate = <Map<String, dynamic>>[];
+
+                                for (final item in perKgItems!) {
+                                  final itemId = (item['orderItemId'] ?? '').toString();
+                                  final controller = weightControllers[itemId];
+                                  final weightStr = controller?.text.trim() ?? '';
+                                  final weight = double.tryParse(weightStr);
+
+                                  if (weight == null || weight <= 0) {
+                                    allValid = false;
+                                    break;
+                                  }
+                                  itemsToUpdate.add({
+                                    'orderItemId': itemId,
+                                    'weightKg': weight,
+                                  });
+                                }
+
+                                if (!allValid || itemsToUpdate.isEmpty) {
+                                  if (ctx.mounted) {
+                                    ScaffoldMessenger.of(ctx).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Please enter valid weights for all items'),
+                                      ),
+                                    );
+                                  }
+                                  setInnerState(() => isSaving = false);
+                                  return;
+                                }
+
+                                try {
+                                  await _ordersService.updatePerKgWeights(
+                                    orderId: orderId,
+                                    items: itemsToUpdate,
+                                  );
+                                  if (ctx.mounted) {
+                                    ScaffoldMessenger.of(ctx).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Weights saved successfully'),
+                                      ),
+                                    );
+                                  }
+                                  Navigator.of(dialogContext).pop(true);
+                                } catch (e) {
+                                  if (ctx.mounted) {
+                                    ScaffoldMessenger.of(ctx).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          e.toString().replaceFirst('Exception: ', ''),
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                } finally {
+                                  if (ctx.mounted) {
+                                    setInnerState(() => isSaving = false);
+                                  }
+                                }
+                              }
+
+                              return ElevatedButton(
+                                onPressed: isSaving ? null : handleSave,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.primary,
+                                  disabledBackgroundColor: AppColors.primary.withOpacity(0.7),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(18),
+                                  ),
+                                ),
+                                child: isSaving
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(Colors.white),
+                                        ),
+                                      )
+                                    : Text(
+                                        'Save Weights & Continue',
+                                        style: AppTextStyles.button(color: Colors.white),
+                                      ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    return result ?? false;
+  }
+
   Future<void> _submitToServicesAndRefresh(String orderId) async {
     try {
       await _ordersService.submitToServices(orderId: orderId);
@@ -249,6 +498,10 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
         }
       }
 
+      final orderType = (o['orderType'] ?? '').toString().trim();
+      final pricingModel = (o['pricingModel'] ?? '').toString().trim().toLowerCase();
+      final perKgWeightsComplete = o['perKgWeightsComplete'] == true;
+
       return _IncomingOrderUi(
         backendOrderId: orderId,
         orderIdDisplay: _formatOrderId(orderId),
@@ -260,6 +513,9 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
         deliveryPerson: deliveryPerson,
         deliveryPersonId: deliveryPersonId,
         items: items,
+        orderType: orderType,
+        pricingModel: pricingModel,
+        perKgWeightsComplete: perKgWeightsComplete,
       );
     }
 
@@ -725,10 +981,14 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
                     time: o.time,
                     itemCount: o.itemCount,
                     isAssigned: o.isAssigned,
+                    isDeliveryOnly: o.isDeliveryOnly,
+                    isPerKg: o.isPerKg,
+                    perKgWeightsComplete: o.perKgWeightsComplete,
                     deliveryPerson: o.deliveryPerson,
                     deliveryPersonId: o.deliveryPersonId,
                     items: o.items,
-                    onMarkReceived: _markReceivedAndRefresh,
+                    onUpdateWeights: _handleUpdateWeights,
+                    onVerifiedAndReceived: _handleVerifiedAndReceived,
                     onAssigned: _refreshIncoming,
                   ),
                   const SizedBox(height: 12),
@@ -882,6 +1142,9 @@ class _IncomingOrderUi {
   final String? deliveryPerson;
   final String? deliveryPersonId;
   final List<_OrderItem> items;
+  final String orderType;
+  final String pricingModel;
+  final bool perKgWeightsComplete;
 
   const _IncomingOrderUi({
     required this.backendOrderId,
@@ -894,7 +1157,15 @@ class _IncomingOrderUi {
     required this.deliveryPerson,
     required this.deliveryPersonId,
     required this.items,
+    this.orderType = '',
+    this.pricingModel = '',
+    this.perKgWeightsComplete = true,
   });
+
+  bool get isDeliveryOnly =>
+      orderType == 'drop_only' || orderType == 'delivery_only';
+
+  bool get isPerKg => pricingModel == 'per_kg';
 }
 
 class _ReceivedOrderUi {
@@ -929,11 +1200,15 @@ class _NewOrderCard extends StatefulWidget {
   final String time;
   final int itemCount;
   final bool isAssigned;
+  final bool isDeliveryOnly;
+  final bool isPerKg;
+  final bool perKgWeightsComplete;
   final String? deliveryPerson;
   final String? deliveryPersonId;
   final List<_OrderItem> items;
   final bool isExpanded;
-  final Future<void> Function(String orderId)? onMarkReceived;
+  final Future<void> Function(BuildContext context, String orderId)? onUpdateWeights;
+  final Future<void> Function(BuildContext context, String orderId, bool isPerKg, bool perKgWeightsComplete)? onVerifiedAndReceived;
   final VoidCallback? onAssigned;
 
   const _NewOrderCard({
@@ -944,11 +1219,15 @@ class _NewOrderCard extends StatefulWidget {
     required this.time,
     required this.itemCount,
     required this.isAssigned,
+    this.isDeliveryOnly = false,
+    this.isPerKg = false,
+    this.perKgWeightsComplete = true,
     this.deliveryPerson,
     this.deliveryPersonId,
     required this.items,
     this.isExpanded = false,
-    this.onMarkReceived,
+    this.onUpdateWeights,
+    this.onVerifiedAndReceived,
     this.onAssigned,
   });
 
@@ -1221,8 +1500,10 @@ class _NewOrderCardState extends State<_NewOrderCard> {
             ],
           ),
           const SizedBox(height: 16),
-          // Action Buttons
-          if (!widget.isAssigned)
+          // Action Buttons: For delivery_only orders, no pickup.
+          // For delivery_only + per_kg: step 1 = Update Weights, step 2 = Verified & Received.
+          // For pickup orders: show Assign Delivery when not assigned, else Verified & Received.
+          if (!widget.isAssigned && !widget.isDeliveryOnly)
             SizedBox(
               width: double.infinity,
               height: 48,
@@ -1258,78 +1539,113 @@ class _NewOrderCardState extends State<_NewOrderCard> {
           else
             Column(
               children: [
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Assigned: ${widget.deliveryPerson ?? 'Staff'}',
-                    style: AppTextStyles.subtitle(color: AppColors.success).copyWith(
-                      fontWeight: FontWeight.w700,
+                if (!widget.isDeliveryOnly)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Assigned: ${widget.deliveryPerson ?? 'Staff'}',
+                      style: AppTextStyles.subtitle(color: AppColors.success).copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  )
+                else
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Drop-off / delivery only (no pickup)',
+                      style: AppTextStyles.subtitle(color: AppColors.textSecondary).copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                ),
                 const SizedBox(height: 10),
                 Row(
                   children: [
                     Expanded(
                       child: SizedBox(
                         height: 48,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              begin: Alignment.centerLeft,
-                              end: Alignment.centerRight,
-                              colors: [
-                                Color(0xFF283897),
-                                Color(0xFF0F73F7),
-                              ],
-                            ),
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                          child: TextButton(
-                            style: TextButton.styleFrom(
-                              padding: EdgeInsets.zero,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
+                        child: Builder(
+                          builder: (context) {
+                            final showUpdateWeights = widget.isDeliveryOnly &&
+                                widget.isPerKg &&
+                                !widget.perKgWeightsComplete;
+                            final buttonLabel =
+                                showUpdateWeights ? 'Update Weights' : 'Verified & Received';
+                            return DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  begin: Alignment.centerLeft,
+                                  end: Alignment.centerRight,
+                                  colors: [
+                                    Color(0xFF283897),
+                                    Color(0xFF0F73F7),
+                                  ],
+                                ),
                                 borderRadius: BorderRadius.circular(18),
                               ),
-                            ),
-                            onPressed: _isMarkingReceived
-                                ? null
-                                : () async {
-                                    final handler = widget.onMarkReceived;
-                                    if (handler == null) return;
-                                    setState(() {
-                                      _isMarkingReceived = true;
-                                    });
-                                    try {
-                                      await handler(widget.backendOrderId);
-                                    } finally {
-                                      if (mounted) {
-                                        setState(() {
-                                          _isMarkingReceived = false;
-                                        });
-                                      }
-                                    }
-                                  },
-                            child: _isMarkingReceived
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                    ),
-                                  )
-                                : Text(
-                                    'Verified & Received',
-                                    style: AppTextStyles.button(
-                                      color: Colors.white,
-                                    ).copyWith(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                              child: TextButton(
+                                style: TextButton.styleFrom(
+                                  padding: EdgeInsets.zero,
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(18),
                                   ),
-                          ),
+                                ),
+                                onPressed: _isMarkingReceived
+                                    ? null
+                                    : () async {
+                                        if (showUpdateWeights) {
+                                          final handler = widget.onUpdateWeights;
+                                          if (handler == null) return;
+                                          setState(() => _isMarkingReceived = true);
+                                          try {
+                                            await handler(context, widget.backendOrderId);
+                                          } finally {
+                                            if (mounted) {
+                                              setState(() => _isMarkingReceived = false);
+                                            }
+                                          }
+                                        } else {
+                                          final handler = widget.onVerifiedAndReceived;
+                                          if (handler == null) return;
+                                          setState(() => _isMarkingReceived = true);
+                                          try {
+                                            await handler(
+                                              context,
+                                              widget.backendOrderId,
+                                              widget.isPerKg,
+                                              widget.perKgWeightsComplete,
+                                            );
+                                          } finally {
+                                            if (mounted) {
+                                              setState(() => _isMarkingReceived = false);
+                                            }
+                                          }
+                                        }
+                                      },
+                                child: _isMarkingReceived
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(Colors.white),
+                                        ),
+                                      )
+                                    : Text(
+                                        buttonLabel,
+                                        style: AppTextStyles.button(
+                                          color: Colors.white,
+                                        ).copyWith(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                              ),
+                            );
+                          },
                         ),
                       ),
                     ),

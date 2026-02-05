@@ -63,7 +63,12 @@ class _OrderSuccessfulScreenState extends State<OrderSuccessfulScreen>
           children: [
             const SizedBox(height: 10),
             _TopBar(
-              onBack: () => Navigator.of(context).maybePop(),
+              onBack: () {
+                Navigator.of(context).pushNamedAndRemoveUntil(
+                  AppRoutes.orders,
+                  (route) => false,
+                );
+              },
             ),
             Expanded(
               child: SingleChildScrollView(

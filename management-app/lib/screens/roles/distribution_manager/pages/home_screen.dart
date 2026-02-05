@@ -400,14 +400,12 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
                   // Log Out Button
                   InkWell(
                     onTap: () async {
-                      // Get role before clearing, then navigate to login with role argument
-                      final role = await RoleManager.getRole();
                       await RoleManager.clearRole();
+                      await AuthStorage.clearAll();
                       if (context.mounted) {
                         Navigator.of(context).pushNamedAndRemoveUntil(
-                          AppRoutes.login,
+                          AppRoutes.roleSelection,
                           (route) => false,
-                          arguments: {'role': role},
                         );
                       }
                     },

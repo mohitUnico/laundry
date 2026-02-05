@@ -318,6 +318,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// Used by pull-to-refresh: reload stats and accepted orders.
+  Future<void> _onPullToRefresh() async {
+    await _refreshStatsInPlace();
+    await _refreshAcceptedInPlace();
+  }
+
   static double? _parseDouble(Object? raw) {
     if (raw is num) return raw.toDouble();
     if (raw is String && raw.isNotEmpty) return double.tryParse(raw);
@@ -1517,50 +1523,71 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildTodaysTasks() {
-    return FutureBuilder<List<_AcceptedTaskUi>>(
-      future: _acceptedFuture,
-      builder: (context, snapshot) {
-        // If we already have items, keep showing them while refresh is in-flight.
-        if (snapshot.connectionState == ConnectionState.waiting && _acceptedCache.isEmpty) {
-          return const Center(
-            child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
-          );
-        }
-
-        if (snapshot.hasError && _acceptedCache.isEmpty) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                snapshot.error.toString().replaceFirst('Exception: ', ''),
-                style: AppTextStyles.subtitle(color: AppColors.textSecondary),
-                textAlign: TextAlign.center,
+    return RefreshIndicator(
+      onRefresh: _onPullToRefresh,
+      child: FutureBuilder<List<_AcceptedTaskUi>>(
+        future: _acceptedFuture,
+        builder: (context, snapshot) {
+          // If we already have items, keep showing them while refresh is in-flight.
+          if (snapshot.connectionState == ConnectionState.waiting && _acceptedCache.isEmpty) {
+            return const SingleChildScrollView(
+              physics: AlwaysScrollableScrollPhysics(),
+              child: SizedBox(
+                height: 300,
+                child: Center(
+                  child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
+                ),
               ),
-            ),
-          );
-        }
+            );
+          }
 
-        final allList = _acceptedCache.isNotEmpty ? _acceptedCache : (snapshot.data ?? const <_AcceptedTaskUi>[]);
-        // Filter out completed orders (submitted_to_cm and delivered status) from today's list
-        final list = allList.where((t) {
-          // Keep only orders that are NOT submitted to collection manager AND NOT delivered
-          return t.orderStatus != 'submitted_to_cm' && t.orderStatus != 'delivered';
-        }).toList();
-        
-        if (list.isEmpty) {
-          return Center(
-            child: Text(
-              'No accepted orders',
-              style: AppTextStyles.subtitle(color: AppColors.textSecondary),
-            ),
-          );
-        }
+          if (snapshot.hasError && _acceptedCache.isEmpty) {
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: SizedBox(
+                height: 300,
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      snapshot.error.toString().replaceFirst('Exception: ', ''),
+                      style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }
 
-        return ListView.builder(
-          key: const PageStorageKey<String>('delivery_partner_home_accepted_tasks'),
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          itemCount: list.length,
-          itemBuilder: (context, index) {
+          final allList = _acceptedCache.isNotEmpty ? _acceptedCache : (snapshot.data ?? const <_AcceptedTaskUi>[]);
+          // Filter out completed orders (submitted_to_cm and delivered status) from today's list
+          final list = allList.where((t) {
+            // Keep only orders that are NOT submitted to collection manager AND NOT delivered
+            return t.orderStatus != 'submitted_to_cm' && t.orderStatus != 'delivered';
+          }).toList();
+          
+          if (list.isEmpty) {
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: SizedBox(
+                height: 300,
+                child: Center(
+                  child: Text(
+                    'No accepted orders',
+                    style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                  ),
+                ),
+              ),
+            );
+          }
+
+          return ListView.builder(
+            key: const PageStorageKey<String>('delivery_partner_home_accepted_tasks'),
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: list.length,
+            itemBuilder: (context, index) {
             final t = list[index];
             return GestureDetector(
               onTap: () => _showTaskDialog(t.deliveryId, t.orderId, t.customerName, t.taskType == 'Pickup'),
@@ -1652,35 +1679,45 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           },
         );
       },
+    ),
     );
   }
 
   Widget _buildCompletedTasks() {
-    return FutureBuilder<List<_AcceptedTaskUi>>(
-      future: _acceptedFuture,
-      builder: (context, snapshot) {
-        final allList = _acceptedCache.isNotEmpty ? _acceptedCache : (snapshot.data ?? const <_AcceptedTaskUi>[]);
-        // Filter only completed orders (submitted_to_cm and delivered status)
-        final completedList = allList.where((t) {
-          return t.orderStatus == 'submitted_to_cm' || t.orderStatus == 'delivered';
-        }).toList();
+    return RefreshIndicator(
+      onRefresh: _onPullToRefresh,
+      child: FutureBuilder<List<_AcceptedTaskUi>>(
+        future: _acceptedFuture,
+        builder: (context, snapshot) {
+          final allList = _acceptedCache.isNotEmpty ? _acceptedCache : (snapshot.data ?? const <_AcceptedTaskUi>[]);
+          // Filter only completed orders (submitted_to_cm and delivered status)
+          final completedList = allList.where((t) {
+            return t.orderStatus == 'submitted_to_cm' || t.orderStatus == 'delivered';
+          }).toList();
 
-        if (completedList.isEmpty) {
-          return Center(
-            child: Text(
-              'No completed tasks',
-              style: AppTextStyles.subtitle(
-                color: AppColors.textSecondary,
+          if (completedList.isEmpty) {
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: SizedBox(
+                height: 300,
+                child: Center(
+                  child: Text(
+                    'No completed tasks',
+                    style: AppTextStyles.subtitle(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
               ),
-            ),
-          );
-        }
+            );
+          }
 
-        return ListView.builder(
-          key: const PageStorageKey<String>('delivery_partner_home_completed_tasks'),
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          itemCount: completedList.length,
-          itemBuilder: (context, index) {
+          return ListView.builder(
+            key: const PageStorageKey<String>('delivery_partner_home_completed_tasks'),
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: completedList.length,
+            itemBuilder: (context, index) {
             final t = completedList[index];
             return TaskCard(
               taskType: t.taskType,
@@ -1708,6 +1745,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           },
         );
       },
+    ),
     );
   }
 

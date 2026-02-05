@@ -88,6 +88,13 @@ class _OrdersScreenState extends State<OrdersScreen> {
     return 'ORDER';
   }
 
+  Future<void> _refresh() async {
+    setState(() {
+      _future = _load(page: 1, limit: 20);
+    });
+    await _future;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -102,74 +109,92 @@ class _OrdersScreenState extends State<OrdersScreen> {
               },
             ),
             Expanded(
-              child: FutureBuilder<List<_OrderHistoryUi>>(
-                future: _future,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                      child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
-                    );
-                  }
+              child: RefreshIndicator(
+                onRefresh: _refresh,
+                child: FutureBuilder<List<_OrderHistoryUi>>(
+                  future: _future,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const SingleChildScrollView(
+                        physics: AlwaysScrollableScrollPhysics(),
+                        child: SizedBox(
+                          height: 300,
+                          child: Center(
+                            child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
+                          ),
+                        ),
+                      );
+                    }
 
-                  if (snapshot.hasError) {
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.error_outline, color: AppColors.error),
-                            const SizedBox(height: 10),
-                            Text(
-                              snapshot.error.toString().replaceFirst('Exception: ', ''),
-                              style: AppTextStyles.subtitle(color: AppColors.textSecondary),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 10),
-                            TextButton(
-                              onPressed: () {
-                                setState(() {
-                                  _future = _load(page: 1, limit: 20);
-                                });
-                              },
-                              child: Text(
-                                'Retry',
-                                style: AppTextStyles.subtitle(color: AppColors.primary).copyWith(fontWeight: FontWeight.w700),
+                    if (snapshot.hasError) {
+                      return SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        child: SizedBox(
+                          height: 300,
+                          child: Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.error_outline, color: AppColors.error),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    snapshot.error.toString().replaceFirst('Exception: ', ''),
+                                    style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 10),
+                                  TextButton(
+                                    onPressed: () => _refresh(),
+                                    child: Text(
+                                      'Retry',
+                                      style: AppTextStyles.subtitle(color: AppColors.primary).copyWith(fontWeight: FontWeight.w700),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                          ],
+                          ),
                         ),
-                      ),
-                    );
-                  }
-
-                  final list = snapshot.data ?? const <_OrderHistoryUi>[];
-                  if (list.isEmpty) {
-                    return Center(
-                      child: Text(
-                        'No order history found',
-                        style: AppTextStyles.subtitle(color: AppColors.textSecondary),
-                      ),
-                    );
-                  }
-
-                  return ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    itemCount: list.length,
-                    itemBuilder: (context, index) {
-                      final o = list[index];
-                      return _OrderCard(
-                        orderId: o.orderId,
-                        name: o.name,
-                        date: o.date,
-                        items: o.items,
-                        status: o.status,
-                        serviceType: o.serviceType,
-                        amount: o.amount,
                       );
-                    },
-                  );
-                },
+                    }
+
+                    final list = snapshot.data ?? const <_OrderHistoryUi>[];
+                    if (list.isEmpty) {
+                      return SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        child: SizedBox(
+                          height: 300,
+                          child: Center(
+                            child: Text(
+                              'No order history found',
+                              style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+
+                    return ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      itemCount: list.length,
+                      itemBuilder: (context, index) {
+                        final o = list[index];
+                        return _OrderCard(
+                          orderId: o.orderId,
+                          name: o.name,
+                          date: o.date,
+                          items: o.items,
+                          status: o.status,
+                          serviceType: o.serviceType,
+                          amount: o.amount,
+                        );
+                      },
+                    );
+                  },
+                ),
               ),
             ),
           ],

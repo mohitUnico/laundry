@@ -179,9 +179,10 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
     BuildContext ctx,
     String orderId,
     bool isPerKg,
-    bool perKgWeightsComplete,
-  ) async {
-    if (isPerKg && !perKgWeightsComplete) {
+    bool perKgWeightsComplete, {
+    bool skipWeightDialog = false,
+  }) async {
+    if (!skipWeightDialog && isPerKg && !perKgWeightsComplete) {
       final completed = await _showWeightDialog(ctx, orderId);
       if (!completed || !mounted) return;
     }
@@ -762,14 +763,12 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
                   // Log Out Button
                   InkWell(
                     onTap: () async {
-                      // Get role before clearing, then navigate to login with role argument
-                      final role = await RoleManager.getRole();
                       await RoleManager.clearRole();
+                      await AuthStorage.clearAll();
                       if (context.mounted) {
                         Navigator.of(context).pushNamedAndRemoveUntil(
-                          AppRoutes.login,
+                          AppRoutes.roleSelection,
                           (route) => false,
-                          arguments: {'role': role},
                         );
                       }
                     },
@@ -1208,7 +1207,13 @@ class _NewOrderCard extends StatefulWidget {
   final List<_OrderItem> items;
   final bool isExpanded;
   final Future<void> Function(BuildContext context, String orderId)? onUpdateWeights;
-  final Future<void> Function(BuildContext context, String orderId, bool isPerKg, bool perKgWeightsComplete)? onVerifiedAndReceived;
+  final Future<void> Function(
+    BuildContext context,
+    String orderId,
+    bool isPerKg,
+    bool perKgWeightsComplete, {
+    bool skipWeightDialog,
+  })? onVerifiedAndReceived;
   final VoidCallback? onAssigned;
 
   const _NewOrderCard({
@@ -1616,6 +1621,7 @@ class _NewOrderCardState extends State<_NewOrderCard> {
                                               widget.backendOrderId,
                                               widget.isPerKg,
                                               widget.perKgWeightsComplete,
+                                              skipWeightDialog: widget.isDeliveryOnly,
                                             );
                                           } finally {
                                             if (mounted) {

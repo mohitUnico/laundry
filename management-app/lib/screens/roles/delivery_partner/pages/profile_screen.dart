@@ -5,7 +5,6 @@ import '../../../../theme/app_colors.dart';
 import '../../../../theme/app_text_styles.dart';
 import '../../../../utils/auth_storage.dart';
 import '../../../../utils/role_manager.dart';
-import '../../../../utils/role_constants.dart';
 import '../../../../services/delivery_staff_app_service.dart';
 import '../../../common/widgets/bottom_nav_bar.dart';
 
@@ -80,7 +79,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _logout(BuildContext context) async {
-    final role = await RoleManager.getRole();
     await Future.wait([
       RoleManager.clearRole(),
       AuthStorage.clearAll(),
@@ -88,10 +86,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (!context.mounted) return;
     Navigator.of(context).pushNamedAndRemoveUntil(
-      AppRoutes.login,
+      AppRoutes.roleSelection,
       (route) => false,
-      arguments: {'role': role ?? RoleConstants.deliveryPartner},
     );
+  }
+
+  Future<void> _refreshProfile() async {
+    setState(() {
+      _profileFuture = _loadProfile();
+      _statsFuture = _loadStats();
+    });
+    await _profileFuture;
+    await _statsFuture;
   }
 
   @override
@@ -136,9 +142,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
               children: [
                 const _AccountHeader(),
                 Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    children: [
+                  child: RefreshIndicator(
+                    onRefresh: _refreshProfile,
+                    child: ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      children: [
                       const SizedBox(height: 16),
                       _AccountSummaryCard(
                         staffId: staffId,
@@ -240,6 +249,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       const SizedBox(height: 24),
                     ],
+                    ),
                   ),
                 ),
               ],

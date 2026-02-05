@@ -42,9 +42,10 @@ class _PendingOrdersServicemenScreenState extends State<PendingOrdersServicemenS
 
   Future<void> _handleLogout() async {
     await RoleManager.clearRole();
+    await AuthStorage.clearAll();
     if (!mounted) return;
     Navigator.of(context).pushNamedAndRemoveUntil(
-      AppRoutes.login,
+      AppRoutes.roleSelection,
       (route) => false,
     );
   }
@@ -292,10 +293,14 @@ class _PendingOrdersServicemenScreenState extends State<PendingOrdersServicemenS
               queueFuture: _queueFuture,
               userFuture: _userFuture,
               onLogout: _handleLogout,
+              onRefresh: _refreshQueue,
               onInProgress: _markInProgress,
               onMarkComplete: _markCompleted,
             ),
-            _CompletedOrdersView(completedFuture: _completedFuture),
+            _CompletedOrdersView(
+              completedFuture: _completedFuture,
+              onRefresh: _refreshCompleted,
+            ),
           ],
         ),
       ),
@@ -315,6 +320,7 @@ class _PendingOrdersView extends StatelessWidget {
   final Future<List<_QueueOrderUi>> queueFuture;
   final Future<Map<String, dynamic>?> userFuture;
   final VoidCallback onLogout;
+  final Future<void> Function() onRefresh;
   final Future<void> Function(List<String> queueIds) onInProgress;
   final Future<void> Function(List<String> queueIds) onMarkComplete;
 
@@ -322,6 +328,7 @@ class _PendingOrdersView extends StatelessWidget {
     required this.queueFuture,
     required this.userFuture,
     required this.onLogout,
+    required this.onRefresh,
     required this.onInProgress,
     required this.onMarkComplete,
   });
@@ -467,18 +474,30 @@ class _PendingOrdersView extends StatelessWidget {
             ],
           ),
         ),
-        // Title Section
+        // Title Section – category/service name from profile
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
           child: Center(
-            child: Text(
-              'Category: Wash & Fold',
-              style: AppTextStyles.header(
-                color: AppColors.textPrimary,
-              ).copyWith(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
+            child: FutureBuilder<Map<String, dynamic>?>(
+              future: userFuture,
+              builder: (context, snapshot) {
+                final user = snapshot.data;
+                final serviceName = (user?['serviceName'] ?? user?['service_name'] ?? '')
+                    .toString()
+                    .trim();
+                final categoryLabel = serviceName.isNotEmpty
+                    ? 'Category: $serviceName'
+                    : 'Category: Wash & Fold';
+                return Text(
+                  categoryLabel,
+                  style: AppTextStyles.header(
+                    color: AppColors.textPrimary,
+                  ).copyWith(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                );
+              },
             ),
           ),
         ),
@@ -491,65 +510,95 @@ class _PendingOrdersView extends StatelessWidget {
   }
 
   Widget _buildPendingOrdersList() {
-    return FutureBuilder<List<_QueueOrderUi>>(
-      future: queueFuture,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
-          );
-        }
-
-        if (snapshot.hasError) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                snapshot.error.toString().replaceFirst('Exception: ', ''),
-                style: AppTextStyles.subtitle(color: AppColors.textSecondary),
-                textAlign: TextAlign.center,
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: FutureBuilder<List<_QueueOrderUi>>(
+        future: queueFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const SingleChildScrollView(
+              physics: AlwaysScrollableScrollPhysics(),
+              child: SizedBox(
+                height: 300,
+                child: Center(
+                  child: SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
               ),
-            ),
-          );
-        }
-
-        final list = snapshot.data ?? const <_QueueOrderUi>[];
-        if (list.isEmpty) {
-          return Center(
-            child: Text(
-              'No pending items',
-              style: AppTextStyles.subtitle(color: AppColors.textSecondary),
-            ),
-          );
-        }
-
-        return ListView.separated(
-          padding: const EdgeInsets.symmetric(horizontal: 18),
-          itemCount: list.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 12),
-          itemBuilder: (context, index) {
-            final o = list[index];
-            return _OrderCard(
-              orderId: o.orderIdDisplay,
-              customerName: o.customerName,
-              date: o.date,
-              time: o.time,
-              itemCount: o.itemCount,
-              items: o.items,
-              onInProgress: () => onInProgress(o.queueIds),
-              onMarkComplete: () => onMarkComplete(o.queueIds),
             );
-          },
-        );
-      },
+          }
+
+          if (snapshot.hasError) {
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: SizedBox(
+                height: 300,
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      snapshot.error.toString().replaceFirst('Exception: ', ''),
+                      style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }
+
+          final list = snapshot.data ?? const <_QueueOrderUi>[];
+          if (list.isEmpty) {
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: SizedBox(
+                height: 300,
+                child: Center(
+                  child: Text(
+                    'No pending items',
+                    style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                  ),
+                ),
+              ),
+            );
+          }
+
+          return ListView.separated(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            itemCount: list.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              final o = list[index];
+              return _OrderCard(
+                orderId: o.orderIdDisplay,
+                customerName: o.customerName,
+                date: o.date,
+                time: o.time,
+                itemCount: o.itemCount,
+                items: o.items,
+                onInProgress: () => onInProgress(o.queueIds),
+                onMarkComplete: () => onMarkComplete(o.queueIds),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }
 
 class _CompletedOrdersView extends StatelessWidget {
   final Future<List<_CompletedOrderUi>> completedFuture;
+  final Future<void> Function() onRefresh;
 
-  const _CompletedOrdersView({required this.completedFuture});
+  const _CompletedOrdersView({
+    required this.completedFuture,
+    required this.onRefresh,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -579,56 +628,82 @@ class _CompletedOrdersView extends StatelessWidget {
   }
 
   Widget _buildCompletedOrdersList() {
-    return FutureBuilder<List<_CompletedOrderUi>>(
-      future: completedFuture,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
-          );
-        }
-
-        if (snapshot.hasError) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                snapshot.error.toString().replaceFirst('Exception: ', ''),
-                style: AppTextStyles.subtitle(color: AppColors.textSecondary),
-                textAlign: TextAlign.center,
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: FutureBuilder<List<_CompletedOrderUi>>(
+        future: completedFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const SingleChildScrollView(
+              physics: AlwaysScrollableScrollPhysics(),
+              child: SizedBox(
+                height: 300,
+                child: Center(
+                  child: SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
               ),
-            ),
-          );
-        }
-
-        final list = snapshot.data ?? const <_CompletedOrderUi>[];
-        if (list.isEmpty) {
-          return Center(
-            child: Text(
-              'No completed items',
-              style: AppTextStyles.subtitle(color: AppColors.textSecondary),
-            ),
-          );
-        }
-
-        return ListView.separated(
-          padding: const EdgeInsets.symmetric(horizontal: 18),
-          itemCount: list.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 12),
-          itemBuilder: (context, index) {
-            final o = list[index];
-            return _CompletedOrderCard(
-              orderId: o.orderIdDisplay,
-              customerName: o.customerName,
-              addedDate: o.addedDate,
-              addedTime: o.addedTime,
-              completedDate: o.completedDate,
-              completedTime: o.completedTime,
-              itemCount: o.itemCount,
             );
-          },
-        );
-      },
+          }
+
+          if (snapshot.hasError) {
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: SizedBox(
+                height: 300,
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      snapshot.error.toString().replaceFirst('Exception: ', ''),
+                      style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }
+
+          final list = snapshot.data ?? const <_CompletedOrderUi>[];
+          if (list.isEmpty) {
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: SizedBox(
+                height: 300,
+                child: Center(
+                  child: Text(
+                    'No completed items',
+                    style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                  ),
+                ),
+              ),
+            );
+          }
+
+          return ListView.separated(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            itemCount: list.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              final o = list[index];
+              return _CompletedOrderCard(
+                orderId: o.orderIdDisplay,
+                customerName: o.customerName,
+                addedDate: o.addedDate,
+                addedTime: o.addedTime,
+                completedDate: o.completedDate,
+                completedTime: o.completedTime,
+                itemCount: o.itemCount,
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }

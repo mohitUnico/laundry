@@ -10,7 +10,6 @@ class VerificationPendingScreen extends StatelessWidget {
   const VerificationPendingScreen({super.key});
 
   Future<void> _logout(BuildContext context) async {
-    final role = await RoleManager.getRole();
     await Future.wait([
       RoleManager.clearRole(),
       AuthStorage.clearAll(),
@@ -18,9 +17,8 @@ class VerificationPendingScreen extends StatelessWidget {
 
     if (!context.mounted) return;
     Navigator.of(context).pushNamedAndRemoveUntil(
-      AppRoutes.login,
+      AppRoutes.roleSelection,
       (route) => false,
-      arguments: {'role': role},
     );
   }
 

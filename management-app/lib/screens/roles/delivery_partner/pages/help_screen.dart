@@ -41,9 +41,14 @@ class HelpScreen extends StatelessWidget {
           children: [
             const _HelpHeader(),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                children: [
+              child: RefreshIndicator(
+                onRefresh: () async {
+                  // Help content is static; pull-to-refresh for consistency.
+                },
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  children: [
                   const _SectionTitle('Contact Support'),
                   const SizedBox(height: 18),
                   _ContactCard(
@@ -133,6 +138,7 @@ class HelpScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 24),
                 ],
+                ),
               ),
             ),
           ],

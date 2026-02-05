@@ -10,6 +10,7 @@ const {
     listAssignmentRequestsQuerySchema,
     rejectAssignmentSchema,
 } = require('../validators/delivery-staff-operations.validator');
+const { saveFcmTokenSchema } = require('../validators/notification.validator');
 
 const router = express.Router();
 
@@ -36,7 +37,16 @@ const validateUuidParam = (paramName) => {
  * - POST  /api/v1/delivery-staff/assignment-requests/:requestId/accept
  * - POST  /api/v1/delivery-staff/assignment-requests/:requestId/reject
  * - GET   /api/v1/delivery-staff/events (SSE)
+ * - POST  /api/v1/delivery-staff/fcm-token (FCM token for push when app closed)
  */
+
+router.post(
+    '/fcm-token',
+    authenticateJWT,
+    authorize('delivery_staff'),
+    validate(saveFcmTokenSchema),
+    deliveryStaffOperationsController.saveFcmToken
+);
 
 router.get('/shift/status', authenticateJWT, authorize('delivery_staff'), deliveryStaffOperationsController.getShiftStatus);
 router.post('/shift/start', authenticateJWT, authorize('delivery_staff'), deliveryStaffOperationsController.startShift);

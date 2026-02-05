@@ -16,6 +16,10 @@ class AssignmentRequestPopup extends StatelessWidget {
   final String? scheduledTime;
   /// Optional amount/earning (e.g. "\$12.00" or "₹120").
   final String? amount;
+  /// Optional note shown in the card (e.g. "Need to carry weight machine" for pickup + per_kg).
+  final String? extraNote;
+  /// When true, show item count (per_unit/per_piece orders). When false (per_kg), hide item count.
+  final bool showItemCount;
 
   const AssignmentRequestPopup({
     super.key,
@@ -29,6 +33,8 @@ class AssignmentRequestPopup extends StatelessWidget {
     this.title,
     this.scheduledTime,
     this.amount,
+    this.extraNote,
+    this.showItemCount = true,
   });
 
   @override
@@ -159,23 +165,49 @@ class AssignmentRequestPopup extends StatelessWidget {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.inventory_2_outlined,
-                                size: 16,
-                                color: AppColors.textSecondary,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                '$itemCount ${itemCount == 1 ? 'item' : 'items'}',
-                                style: AppTextStyles.subtitle(
+                          if (showItemCount) ...[
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.inventory_2_outlined,
+                                  size: 16,
                                   color: AppColors.textSecondary,
-                                ).copyWith(fontSize: 13),
-                              ),
-                            ],
-                          ),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '$itemCount ${itemCount == 1 ? 'item' : 'items'}',
+                                  style: AppTextStyles.subtitle(
+                                    color: AppColors.textSecondary,
+                                  ).copyWith(fontSize: 13),
+                                ),
+                              ],
+                            ),
+                          ],
+                          if (extraNote != null && extraNote!.isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.scale_outlined,
+                                  size: 16,
+                                  color: AppColors.warning,
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    extraNote!,
+                                    style: AppTextStyles.subtitle(
+                                      color: AppColors.warning,
+                                    ).copyWith(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
                     ),

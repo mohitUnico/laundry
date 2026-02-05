@@ -1,6 +1,8 @@
+const prisma = require('../config/database');
 const deliveryOperationsService = require('../services/delivery-operations.service');
 const realtimeService = require('../services/realtime.service');
 const logger = require('../utils/logger');
+const { ValidationError } = require('../utils/errors');
 
 /**
  * Delivery Staff Operations Controller
@@ -12,6 +14,7 @@ const logger = require('../utils/logger');
  * - POST  /api/v1/delivery-staff/assignment-requests/:requestId/accept
  * - POST  /api/v1/delivery-staff/assignment-requests/:requestId/reject
  * - GET   /api/v1/delivery-staff/events (SSE)
+ * - POST  /api/v1/delivery-staff/fcm-token (register FCM for push when app closed)
  */
 
 exports.getShiftStatus = async (req, res, next) => {
@@ -193,6 +196,33 @@ exports.events = async (req, res, next) => {
         logger.info('Delivery staff SSE connect', { staffId });
 
         realtimeService.subscribeDeliveryStaff({ staffId, res });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * Save/update the delivery staff's FCM token for push notifications (e.g. assignment requests when app is closed).
+ */
+exports.saveFcmToken = async (req, res, next) => {
+    try {
+        const staffId = req.user?.user_id;
+        const fcmToken = req.body?.fcmToken;
+
+        if (!staffId) throw new ValidationError('Missing delivery staff identity');
+        if (!fcmToken || typeof fcmToken !== 'string') throw new ValidationError('fcmToken is required');
+
+        await prisma.deliveryStaff.update({
+            where: { staff_id: staffId },
+            data: { fcm_token: fcmToken.trim() },
+            select: { staff_id: true },
+        });
+
+        logger.info('Delivery staff FCM token saved', { staffId });
+        res.status(200).json({
+            success: true,
+            message: 'FCM token saved',
+        });
     } catch (error) {
         next(error);
     }

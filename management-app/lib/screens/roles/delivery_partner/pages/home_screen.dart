@@ -13,6 +13,7 @@ import '../../../../services/delivery_shift_service.dart';
 import '../../../../services/delivery_staff_app_service.dart';
 import '../../../../services/delivery_location_service.dart';
 import '../../../../services/delivery_events_service.dart';
+import '../../../../services/notification_service.dart';
 import '../../../../utils/auth_storage.dart';
 import '../../../../utils/supabase_config.dart';
 import '../../../common/widgets/order_summary_card.dart';
@@ -20,6 +21,7 @@ import '../../../common/widgets/task_card.dart';
 import '../../../common/widgets/bottom_nav_bar.dart';
 import '../../../common/widgets/success_popup.dart';
 import '../../../common/widgets/assignment_request_popup.dart';
+import '../../../common/widgets/direct_assignment_popup.dart';
 
 class HomeScreen extends StatefulWidget {
   final bool showBottomNav;
@@ -59,6 +61,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Timer? _locationTimer;
   StreamSubscription<DeliverySseEvent>? _eventsSub;
   OverlayEntry? _incomingOverlay;
+  OverlayEntry? _directAssignmentOverlay;
   bool _eventsConnecting = false;
   bool _isProcessingAssignment = false;
   String? _currentRequestId;
@@ -108,6 +111,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
 
     WidgetsBinding.instance.addObserver(this);
+    // Register FCM token so backend can send assignment request push when app is closed
+    NotificationService().refreshAndSaveToken();
     // Fetch shift status and then start location/events/realtime if shift is active
     _loadShiftStatus();
   }
@@ -167,6 +172,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _refreshDebounce?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _removeIncomingPopup();
+    _removeDirectAssignmentPopup();
     super.dispose();
   }
 
@@ -493,14 +499,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             return;
           }
           if (type == 'direct_assignment') {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('You have been assigned a new delivery'),
-                  duration: Duration(seconds: 3),
-                ),
-              );
-            }
+            _showDirectAssignmentPopup(evt.data);
             _scheduleHomeRefresh(forceApiCall: true);
             return;
           }
@@ -523,14 +522,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         }
 
         if (evt.event == 'direct_assignment') {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('You have been assigned a new delivery'),
-                duration: Duration(seconds: 3),
-              ),
-            );
-          }
+          _showDirectAssignmentPopup(evt.data);
           _scheduleHomeRefresh(forceApiCall: true);
         } else if (evt.event == 'assignment_accepted') {
           if (mounted) {
@@ -795,6 +787,62 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _incomingOverlay = null;
   }
 
+  void _removeDirectAssignmentPopup() {
+    _directAssignmentOverlay?.remove();
+    _directAssignmentOverlay = null;
+  }
+
+  /// Shows popup for direct assignment (manager assigned pickup/delivery). No accept/reject — OK to dismiss.
+  void _showDirectAssignmentPopup(Map<String, dynamic> data) {
+    if (!mounted) return;
+    _removeDirectAssignmentPopup();
+    // Payload may be in data.payload (notification) or data itself (event)
+    final payload = (data['payload'] is Map)
+        ? (data['payload'] as Map).cast<String, dynamic>()
+        : data;
+    final deliveryType = (payload['deliveryType'] ?? '').toString();
+    final taskType = deliveryType == 'pickup' ? 'Pickup' : 'Delivery';
+    final assignedAtRaw = payload['assignedAt'];
+    final assignedAt = assignedAtRaw is DateTime
+        ? assignedAtRaw
+        : (assignedAtRaw is String && assignedAtRaw.toString().isNotEmpty
+            ? DateTime.tryParse(assignedAtRaw.toString())
+            : null);
+    final assignedAtStr = assignedAt != null ? _formatTime(assignedAt) : '—';
+    final itemCountRaw = payload['itemCount'];
+    final itemCount = (itemCountRaw is num)
+        ? itemCountRaw.toInt()
+        : int.tryParse(itemCountRaw?.toString() ?? '') ?? 0;
+    final pricingModel = (payload['pricingModel'] ?? '').toString().toLowerCase();
+    final bool isPickupPerKg = deliveryType == 'pickup' && pricingModel == 'per_kg';
+    final String? extraNote = isPickupPerKg ? 'Need to carry weight machine' : null;
+
+    final entry = OverlayEntry(
+      builder: (context) {
+        return Positioned(
+          top: 12,
+          left: 12,
+          right: 12,
+          child: Material(
+            color: Colors.transparent,
+            child: _TopSlidePopup(
+              onClose: _removeDirectAssignmentPopup,
+              child: DirectAssignmentPopup(
+                taskType: taskType,
+                assignedAtFormatted: assignedAtStr,
+                itemCount: itemCount,
+                extraNote: extraNote,
+                onDismiss: _removeDirectAssignmentPopup,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    Overlay.of(context, rootOverlay: true).insert(entry);
+    _directAssignmentOverlay = entry;
+  }
+
   /// Shows a short SnackBar for real-time SSE notifications that don't have a dedicated UI.
   void _showRealtimeNotificationSnackBar(Map<String, dynamic> data) {
     if (!mounted) return;
@@ -848,6 +896,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final scheduledTimeStr = expiresAt != null
         ? _formatTime(expiresAt)
         : null;
+    final pricingModel = (payload['pricingModel'] ?? '').toString().toLowerCase();
+    final bool isPickupPerKg = deliveryType == 'pickup' && pricingModel == 'per_kg';
+    final String? extraNote = isPickupPerKg ? 'Need to carry weight machine' : null;
+    // Only show item count for per_unit/per_piece; for per_kg don't show "0 items"
+    final bool showItemCount = pricingModel == 'per_unit' || pricingModel == 'per_piece';
 
     _currentRequestId = requestId;
 
@@ -872,6 +925,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 title: 'Notification for delivery boy, to Accept or Reject order',
                 scheduledTime: scheduledTimeStr,
                 amount: null, // Optional: pass from payload if backend sends it
+                extraNote: extraNote,
+                showItemCount: showItemCount,
               ),
             ),
           ),
@@ -882,8 +937,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     Overlay.of(context, rootOverlay: true).insert(entry);
     _incomingOverlay = entry;
 
-    // Auto-dismiss after 30 seconds (longer for user to decide)
-    Future.delayed(const Duration(seconds: 30), () {
+    // Auto-dismiss after 2 minutes (matches backend assignment request expiry)
+    Future.delayed(const Duration(seconds: 120), () {
       if (mounted && !_isProcessingAssignment) {
         _removeIncomingPopup();
       }

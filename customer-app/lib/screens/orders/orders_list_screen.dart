@@ -163,81 +163,129 @@ class _OrdersListScreenState extends State<OrdersListScreen>
               const SizedBox(height: 14),
               Consumer<OrderProvider>(
                 builder: (context, orders, _) {
+                  // Only show upcoming pickup/delivery card on All or Active tab
+                  if (_filter == _OrdersFilter.completed) {
+                    return const SizedBox.shrink();
+                  }
                   final active = orders.orders
                       .where((o) => o.status == OrderStatus.inProgress)
                       .toList(growable: false);
                   if (active.isEmpty) return const SizedBox.shrink();
 
-                  OrderRecord? cardOrder;
-                  String? title;
-                  String? subtitle;
-                  DeliveryOptionType? option;
+                  // Collect all upcoming pickups and deliveries; show all, sorted by schedule.
+                  final now = DateTime.now();
+                  final List<({OrderRecord order, String title, String subtitle, DeliveryOptionType option})> pickupCards = [];
+                  final List<({OrderRecord order, String title, String subtitle, DeliveryOptionType option})> deliveryCards = [];
 
                   for (final o in active) {
                     final backend = o.backendStatus.toLowerCase();
                     final type = o.orderTypeOrBoth;
 
-                    // Show upcoming cards ONLY when order is in:
-                    // - placed  -> upcoming pickup
-                    // - services_completed -> upcoming delivery
-                    if (backend != 'placed' &&
-                        backend != 'services_completed') {
+                    if (backend != 'placed' && backend != 'services_completed') {
                       continue;
                     }
 
                     if (type == 'pickup_only') {
                       if (backend == 'placed') {
-                        cardOrder = o;
-                        title = 'Upcoming Pickup';
-                        subtitle = 'Pickup scheduled';
-                        option = DeliveryOptionType.pickupOnly;
-                        break;
+                        final at = o.scheduledPickupAt;
+                        if (at == null || at.isAfter(now)) {
+                          pickupCards.add((
+                            order: o,
+                            title: 'Upcoming Pickup',
+                            subtitle: 'Pickup scheduled',
+                            option: DeliveryOptionType.pickupOnly,
+                          ));
+                        }
                       }
                     } else if (type == 'drop_only') {
                       if (backend == 'services_completed') {
-                        cardOrder = o;
-                        title = 'Upcoming Delivery';
-                        subtitle = 'Delivery scheduled';
-                        option = DeliveryOptionType.deliveryOnly;
-                        break;
+                        final at = o.scheduledDeliveryAt ?? o.scheduledPickupAt;
+                        if (at == null || at.isAfter(now)) {
+                          deliveryCards.add((
+                            order: o,
+                            title: 'Upcoming Delivery',
+                            subtitle: 'Delivery scheduled',
+                            option: DeliveryOptionType.deliveryOnly,
+                          ));
+                        }
                       }
                     } else {
-                      // both pickup & delivery
+                      // both
                       if (backend == 'placed') {
-                        cardOrder = o;
-                        title = 'Upcoming Pickup';
-                        subtitle = 'Pickup scheduled';
-                        option = DeliveryOptionType.pickupAndDelivery;
-                        break;
+                        final at = o.scheduledPickupAt;
+                        if (at == null || at.isAfter(now)) {
+                          pickupCards.add((
+                            order: o,
+                            title: 'Upcoming Pickup',
+                            subtitle: 'Pickup scheduled',
+                            option: DeliveryOptionType.pickupAndDelivery,
+                          ));
+                        }
                       } else if (backend == 'services_completed') {
-                        cardOrder = o;
-                        title = 'Upcoming Delivery';
-                        subtitle = 'Delivery scheduled';
-                        option = DeliveryOptionType.pickupAndDelivery;
-                        break;
+                        final at = o.scheduledDeliveryAt ?? o.scheduledPickupAt;
+                        if (at == null || at.isAfter(now)) {
+                          deliveryCards.add((
+                            order: o,
+                            title: 'Upcoming Delivery',
+                            subtitle: 'Delivery scheduled',
+                            option: DeliveryOptionType.pickupAndDelivery,
+                          ));
+                        }
                       }
                     }
                   }
 
-                  if (cardOrder == null ||
-                      title == null ||
-                      subtitle == null ||
-                      option == null) {
-                    return const SizedBox.shrink();
+                  // Sort by scheduled time (soonest first; nulls last)
+                  pickupCards.sort((a, b) {
+                    final atA = a.order.scheduledPickupAt;
+                    final atB = b.order.scheduledPickupAt;
+                    if (atA == null && atB == null) return 0;
+                    if (atA == null) return 1;
+                    if (atB == null) return -1;
+                    return atA.compareTo(atB);
+                  });
+                  deliveryCards.sort((a, b) {
+                    final atA = a.order.scheduledDeliveryAt ?? a.order.scheduledPickupAt;
+                    final atB = b.order.scheduledDeliveryAt ?? b.order.scheduledPickupAt;
+                    if (atA == null && atB == null) return 0;
+                    if (atA == null) return 1;
+                    if (atB == null) return -1;
+                    return atA.compareTo(atB);
+                  });
+
+                  final allCards = <Widget>[];
+                  for (final entry in pickupCards) {
+                    allCards.add(
+                      _UpcomingPickupCard(
+                        order: entry.order,
+                        timeLabel: '${entry.order.dateLabel} at ${entry.order.timeLabel}',
+                        title: entry.title,
+                        subtitle: entry.subtitle,
+                        option: entry.option,
+                      ),
+                    );
+                    allCards.add(const SizedBox(height: 12));
+                  }
+                  for (final entry in deliveryCards) {
+                    allCards.add(
+                      _UpcomingPickupCard(
+                        order: entry.order,
+                        timeLabel: entry.order.deliveryDateLabel != null && entry.order.deliveryTimeLabel != null
+                            ? '${entry.order.deliveryDateLabel} at ${entry.order.deliveryTimeLabel}'
+                            : '${entry.order.dateLabel} at ${entry.order.timeLabel}',
+                        title: entry.title,
+                        subtitle: entry.subtitle,
+                        option: entry.option,
+                      ),
+                    );
+                    allCards.add(const SizedBox(height: 12));
                   }
 
+                  if (allCards.isEmpty) return const SizedBox.shrink();
+
                   return Column(
-                    children: [
-                      _UpcomingPickupCard(
-                        order: cardOrder,
-                        timeLabel:
-                            '${cardOrder.dateLabel} at ${cardOrder.timeLabel}',
-                        title: title,
-                        subtitle: subtitle,
-                        option: option,
-                      ),
-                      const SizedBox(height: 12),
-                    ],
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: allCards,
                   );
                 },
               ),

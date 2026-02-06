@@ -206,7 +206,7 @@ class OrderProvider with ChangeNotifier {
       final status = _mapOrderStatus(orderStatus);
 
       // Parse dates
-      DateTime? placedAt;
+      late final DateTime placedAt;
       String placedDateLabel = '';
       String placedTimeLabel = '';
       if (createdAt != null) {
@@ -248,11 +248,13 @@ class OrderProvider with ChangeNotifier {
       // Parse delivery date/time (for "both" orders)
       String? deliveryDateLabel;
       String? deliveryTimeLabel;
+      DateTime? scheduledDeliveryAt;
       if (orderType == 'both' && deliveryTimeFrom != null) {
         try {
           final deliveryDateTime = DateTime.parse(deliveryTimeFrom).toLocal();
           deliveryDateLabel = _formatDateLabel(deliveryDateTime);
           deliveryTimeLabel = _formatTimeLabel(deliveryDateTime);
+          scheduledDeliveryAt = deliveryDateTime;
         } catch (_) {
           deliveryDateLabel = 'TBD';
           deliveryTimeLabel = 'TBD';
@@ -453,7 +455,9 @@ class OrderProvider with ChangeNotifier {
         timeLabel: timeLabel,
         deliveryDateLabel: deliveryDateLabel,
         deliveryTimeLabel: deliveryTimeLabel,
-        placedAt: placedAt ?? DateTime.now(),
+        scheduledPickupAt: scheduleDt,
+        scheduledDeliveryAt: scheduledDeliveryAt,
+        placedAt: placedAt,
         placedDateLabel: placedDateLabel,
         placedTimeLabel: placedTimeLabel,
         status: status,

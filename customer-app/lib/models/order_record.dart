@@ -18,6 +18,10 @@ class OrderRecord {
   final String timeLabel; // Scheduled pickup time e.g. 2:30 PM
   final String? deliveryDateLabel; // Scheduled delivery date e.g. Dec 21 (null for pickup_only/drop_only)
   final String? deliveryTimeLabel; // Scheduled delivery time e.g. 3:00 PM (null for pickup_only/drop_only)
+  /// Parsed pickup schedule for sorting (soonest first). Null if TBD or not set.
+  final DateTime? scheduledPickupAt;
+  /// Parsed delivery schedule for "both" orders. Null if TBD or not set.
+  final DateTime? scheduledDeliveryAt;
   final DateTime placedAt; // When order was placed
   final String placedDateLabel; // e.g. Dec 20, 2024
   final String placedTimeLabel; // e.g. 2:30 PM
@@ -42,6 +46,8 @@ class OrderRecord {
     required this.timeLabel,
     this.deliveryDateLabel,
     this.deliveryTimeLabel,
+    this.scheduledPickupAt,
+    this.scheduledDeliveryAt,
     required this.placedAt,
     required this.placedDateLabel,
     required this.placedTimeLabel,
@@ -66,6 +72,8 @@ class OrderRecord {
     String? timeLabel,
     String? deliveryDateLabel,
     String? deliveryTimeLabel,
+    DateTime? scheduledPickupAt,
+    DateTime? scheduledDeliveryAt,
     DateTime? placedAt,
     String? placedDateLabel,
     String? placedTimeLabel,
@@ -89,6 +97,8 @@ class OrderRecord {
       timeLabel: timeLabel ?? this.timeLabel,
       deliveryDateLabel: deliveryDateLabel ?? this.deliveryDateLabel,
       deliveryTimeLabel: deliveryTimeLabel ?? this.deliveryTimeLabel,
+      scheduledPickupAt: scheduledPickupAt ?? this.scheduledPickupAt,
+      scheduledDeliveryAt: scheduledDeliveryAt ?? this.scheduledDeliveryAt,
       placedAt: placedAt ?? this.placedAt,
       placedDateLabel: placedDateLabel ?? this.placedDateLabel,
       placedTimeLabel: placedTimeLabel ?? this.placedTimeLabel,

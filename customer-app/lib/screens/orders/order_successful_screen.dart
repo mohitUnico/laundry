@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../home/widgets/home_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../routes/app_routes.dart';
+import '../../routes/route_args.dart';
 
 class OrderSuccessfulScreen extends StatefulWidget {
   const OrderSuccessfulScreen({super.key});
@@ -56,6 +57,10 @@ class _OrderSuccessfulScreenState extends State<OrderSuccessfulScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Order ID is passed when navigating from payment after order creation.
+    final orderId = ModalRoute.of(context)?.settings.arguments as String?;
+    final orderIdTrimmed = (orderId ?? '').trim();
+
     return Scaffold(
       backgroundColor: const Color(0xFFF3F4F7),
       body: SafeArea(
@@ -115,9 +120,17 @@ class _OrderSuccessfulScreenState extends State<OrderSuccessfulScreen>
                 top: false,
                 child: _TrackButton(
                   onTap: () {
+                    if (orderIdTrimmed.isEmpty) {
+                      Navigator.of(context).pushNamedAndRemoveUntil(
+                        AppRoutes.orders,
+                        (r) => false,
+                      );
+                      return;
+                    }
                     Navigator.of(context).pushNamedAndRemoveUntil(
                       AppRoutes.orderTracking,
                       (r) => false,
+                      arguments: OrderTrackingArgs(orderId: orderIdTrimmed),
                     );
                   },
                 ),

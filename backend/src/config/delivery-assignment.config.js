@@ -145,10 +145,10 @@ const deliveryAssignmentConfig = {
     /**
      * Job run interval in milliseconds
      * Environment: PICKUP_ASSIGNMENT_JOB_INTERVAL_MS
-     * Default: 60000 (1 minute)
+     * Default: 120000 (2 minutes)
      * Min: 10000, Max: 600000
      */
-    pickupAssignmentJobIntervalMs: parseEnvInt('PICKUP_ASSIGNMENT_JOB_INTERVAL_MS', 60000, 10000, 600000),
+    pickupAssignmentJobIntervalMs: parseEnvInt('PICKUP_ASSIGNMENT_JOB_INTERVAL_MS', 120000, 10000, 600000),
 };
 
 /**

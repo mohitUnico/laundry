@@ -3,7 +3,7 @@ const logger = require('./utils/logger');
 const prisma = require('./config/database');
 const { startCleanupJob } = require('./services/portal-auth.service');
 const { startDailyMetricsJob } = require('./jobs/daily-metrics.job');
-const { startPickupAssignmentJob } = require('./jobs/pickup-assignment.job');
+const { startPickupAssignmentJob, stopPickupAssignmentJob } = require('./jobs/pickup-assignment.job');
 
 const PORT = process.env.PORT || 5000;
 
@@ -28,6 +28,7 @@ process.on('unhandledRejection', (reason, promise) => {
 // Graceful shutdown
 const gracefulShutdown = async (signal) => {
     logger.info(`${signal} received. Starting graceful shutdown...`);
+    stopPickupAssignmentJob();
 
     server.close(async () => {
         logger.info('✅ HTTP server closed');

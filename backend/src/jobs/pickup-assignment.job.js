@@ -13,7 +13,10 @@ const isJobEnabled = () => {
 
 /**
  * Check for orders that have reached their preferred pickup time
- * and create assignment requests for pickup if not already assigned
+ * and create assignment requests for pickup if not already assigned.
+ * This is the automatic counterpart to POST /api/v1/admin/delivery-ops/assignment-requests:
+ * it finds eligible orders and triggers the same createAssignmentRequest flow, which broadcasts
+ * SSE events (and FCM) to all active delivery staff.
  */
 const checkAndCreatePickupAssignments = async () => {
     try {

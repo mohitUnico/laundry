@@ -161,134 +161,6 @@ class _OrdersListScreenState extends State<OrdersListScreen>
                 },
               ),
               const SizedBox(height: 14),
-              Consumer<OrderProvider>(
-                builder: (context, orders, _) {
-                  // Only show upcoming pickup/delivery card on All or Active tab
-                  if (_filter == _OrdersFilter.completed) {
-                    return const SizedBox.shrink();
-                  }
-                  final active = orders.orders
-                      .where((o) => o.status == OrderStatus.inProgress)
-                      .toList(growable: false);
-                  if (active.isEmpty) return const SizedBox.shrink();
-
-                  // Collect all upcoming pickups and deliveries; show all, sorted by schedule.
-                  final now = DateTime.now();
-                  final List<({OrderRecord order, String title, String subtitle, DeliveryOptionType option})> pickupCards = [];
-                  final List<({OrderRecord order, String title, String subtitle, DeliveryOptionType option})> deliveryCards = [];
-
-                  for (final o in active) {
-                    final backend = o.backendStatus.toLowerCase();
-                    final type = o.orderTypeOrBoth;
-
-                    if (backend != 'placed' && backend != 'services_completed') {
-                      continue;
-                    }
-
-                    if (type == 'pickup_only') {
-                      if (backend == 'placed') {
-                        final at = o.scheduledPickupAt;
-                        if (at == null || at.isAfter(now)) {
-                          pickupCards.add((
-                            order: o,
-                            title: 'Upcoming Pickup',
-                            subtitle: 'Pickup scheduled',
-                            option: DeliveryOptionType.pickupOnly,
-                          ));
-                        }
-                      }
-                    } else if (type == 'drop_only') {
-                      if (backend == 'services_completed') {
-                        final at = o.scheduledDeliveryAt ?? o.scheduledPickupAt;
-                        if (at == null || at.isAfter(now)) {
-                          deliveryCards.add((
-                            order: o,
-                            title: 'Upcoming Delivery',
-                            subtitle: 'Delivery scheduled',
-                            option: DeliveryOptionType.deliveryOnly,
-                          ));
-                        }
-                      }
-                    } else {
-                      // both
-                      if (backend == 'placed') {
-                        final at = o.scheduledPickupAt;
-                        if (at == null || at.isAfter(now)) {
-                          pickupCards.add((
-                            order: o,
-                            title: 'Upcoming Pickup',
-                            subtitle: 'Pickup scheduled',
-                            option: DeliveryOptionType.pickupAndDelivery,
-                          ));
-                        }
-                      } else if (backend == 'services_completed') {
-                        final at = o.scheduledDeliveryAt ?? o.scheduledPickupAt;
-                        if (at == null || at.isAfter(now)) {
-                          deliveryCards.add((
-                            order: o,
-                            title: 'Upcoming Delivery',
-                            subtitle: 'Delivery scheduled',
-                            option: DeliveryOptionType.pickupAndDelivery,
-                          ));
-                        }
-                      }
-                    }
-                  }
-
-                  // Sort by scheduled time (soonest first; nulls last)
-                  pickupCards.sort((a, b) {
-                    final atA = a.order.scheduledPickupAt;
-                    final atB = b.order.scheduledPickupAt;
-                    if (atA == null && atB == null) return 0;
-                    if (atA == null) return 1;
-                    if (atB == null) return -1;
-                    return atA.compareTo(atB);
-                  });
-                  deliveryCards.sort((a, b) {
-                    final atA = a.order.scheduledDeliveryAt ?? a.order.scheduledPickupAt;
-                    final atB = b.order.scheduledDeliveryAt ?? b.order.scheduledPickupAt;
-                    if (atA == null && atB == null) return 0;
-                    if (atA == null) return 1;
-                    if (atB == null) return -1;
-                    return atA.compareTo(atB);
-                  });
-
-                  final allCards = <Widget>[];
-                  for (final entry in pickupCards) {
-                    allCards.add(
-                      _UpcomingPickupCard(
-                        order: entry.order,
-                        timeLabel: '${entry.order.dateLabel} at ${entry.order.timeLabel}',
-                        title: entry.title,
-                        subtitle: entry.subtitle,
-                        option: entry.option,
-                      ),
-                    );
-                    allCards.add(const SizedBox(height: 12));
-                  }
-                  for (final entry in deliveryCards) {
-                    allCards.add(
-                      _UpcomingPickupCard(
-                        order: entry.order,
-                        timeLabel: entry.order.deliveryDateLabel != null && entry.order.deliveryTimeLabel != null
-                            ? '${entry.order.deliveryDateLabel} at ${entry.order.deliveryTimeLabel}'
-                            : '${entry.order.dateLabel} at ${entry.order.timeLabel}',
-                        title: entry.title,
-                        subtitle: entry.subtitle,
-                        option: entry.option,
-                      ),
-                    );
-                    allCards.add(const SizedBox(height: 12));
-                  }
-
-                  if (allCards.isEmpty) return const SizedBox.shrink();
-
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: allCards,
-                  );
-                },
-              ),
               Expanded(
                 child: RefreshIndicator(
                   onRefresh: () async {
@@ -296,38 +168,187 @@ class _OrdersListScreenState extends State<OrdersListScreen>
                   },
                   child: Consumer<OrderProvider>(
                     builder: (context, orders, _) {
+                      // Loading state with full-screen loader
                       if (orders.isLoading && orders.orders.isEmpty) {
                         return const Center(
                           child: CircularProgressIndicator(),
                         );
                       }
 
+                      // Error state when nothing is cached
                       if (orders.error != null && orders.orders.isEmpty) {
-                        return Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                'Failed to load orders',
-                                style: AppTextStyles.body(
-                                        color: const Color(0xFF98A0B5))
-                                    .copyWith(fontSize: 13),
+                        return ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          children: [
+                            SizedBox(
+                              height: MediaQuery.of(context).size.height * 0.3,
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    'Failed to load orders',
+                                    style: AppTextStyles.body(
+                                      color: const Color(0xFF98A0B5),
+                                    ).copyWith(fontSize: 13),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  TextButton(
+                                    onPressed: _fetchOrders,
+                                    child: const Text('Retry'),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(height: 8),
-                              TextButton(
-                                onPressed: _fetchOrders,
-                                child: const Text('Retry'),
-                              ),
-                            ],
-                          ),
+                            ),
+                          ],
                         );
                       }
 
+                      final children = <Widget>[];
+
+                      // Upcoming pickup/delivery cards are only shown on All/Active tabs
+                      if (_filter != _OrdersFilter.completed) {
+                        final active = orders.orders
+                            .where((o) => o.status == OrderStatus.inProgress)
+                            .toList(growable: false);
+
+                        if (active.isNotEmpty) {
+                          // Collect all upcoming pickups and deliveries; show all, sorted by schedule.
+                          final now = DateTime.now();
+                          final List<
+                              ({
+                                OrderRecord order,
+                                String title,
+                                String subtitle,
+                                DeliveryOptionType option
+                              })> pickupCards = [];
+                          final List<
+                              ({
+                                OrderRecord order,
+                                String title,
+                                String subtitle,
+                                DeliveryOptionType option
+                              })> deliveryCards = [];
+
+                          for (final o in active) {
+                            final backend = o.backendStatus.toLowerCase();
+                            final type = o.orderTypeOrBoth;
+
+                            if (backend != 'placed' &&
+                                backend != 'services_completed') {
+                              continue;
+                            }
+
+                            if (type == 'pickup_only') {
+                              if (backend == 'placed') {
+                                final at = o.scheduledPickupAt;
+                                if (at == null || at.isAfter(now)) {
+                                  pickupCards.add((
+                                    order: o,
+                                    title: 'Upcoming Pickup',
+                                    subtitle: 'Pickup scheduled',
+                                    option: DeliveryOptionType.pickupOnly,
+                                  ));
+                                }
+                              }
+                            } else if (type == 'drop_only') {
+                              if (backend == 'services_completed') {
+                                final at =
+                                    o.scheduledDeliveryAt ?? o.scheduledPickupAt;
+                                if (at == null || at.isAfter(now)) {
+                                  deliveryCards.add((
+                                    order: o,
+                                    title: 'Upcoming Delivery',
+                                    subtitle: 'Delivery scheduled',
+                                    option: DeliveryOptionType.deliveryOnly,
+                                  ));
+                                }
+                              }
+                            } else {
+                              // both
+                              if (backend == 'placed') {
+                                final at = o.scheduledPickupAt;
+                                if (at == null || at.isAfter(now)) {
+                                  pickupCards.add((
+                                    order: o,
+                                    title: 'Upcoming Pickup',
+                                    subtitle: 'Pickup scheduled',
+                                    option: DeliveryOptionType.pickupAndDelivery,
+                                  ));
+                                }
+                              } else if (backend == 'services_completed') {
+                                final at =
+                                    o.scheduledDeliveryAt ?? o.scheduledPickupAt;
+                                if (at == null || at.isAfter(now)) {
+                                  deliveryCards.add((
+                                    order: o,
+                                    title: 'Upcoming Delivery',
+                                    subtitle: 'Delivery scheduled',
+                                    option: DeliveryOptionType.pickupAndDelivery,
+                                  ));
+                                }
+                              }
+                            }
+                          }
+
+                          // Sort by scheduled time (soonest first; nulls last)
+                          pickupCards.sort((a, b) {
+                            final atA = a.order.scheduledPickupAt;
+                            final atB = b.order.scheduledPickupAt;
+                            if (atA == null && atB == null) return 0;
+                            if (atA == null) return 1;
+                            if (atB == null) return -1;
+                            return atA.compareTo(atB);
+                          });
+                          deliveryCards.sort((a, b) {
+                            final atA = a.order.scheduledDeliveryAt ??
+                                a.order.scheduledPickupAt;
+                            final atB = b.order.scheduledDeliveryAt ??
+                                b.order.scheduledPickupAt;
+                            if (atA == null && atB == null) return 0;
+                            if (atA == null) return 1;
+                            if (atB == null) return -1;
+                            return atA.compareTo(atB);
+                          });
+
+                          for (final entry in pickupCards) {
+                            children.add(
+                              _UpcomingPickupCard(
+                                order: entry.order,
+                                timeLabel:
+                                    '${entry.order.dateLabel} at ${entry.order.timeLabel}',
+                                title: entry.title,
+                                subtitle: entry.subtitle,
+                                option: entry.option,
+                              ),
+                            );
+                            children.add(const SizedBox(height: 12));
+                          }
+                          for (final entry in deliveryCards) {
+                            children.add(
+                              _UpcomingPickupCard(
+                                order: entry.order,
+                                timeLabel: entry.order.deliveryDateLabel !=
+                                            null &&
+                                        entry.order.deliveryTimeLabel != null
+                                    ? '${entry.order.deliveryDateLabel} at ${entry.order.deliveryTimeLabel}'
+                                    : '${entry.order.dateLabel} at ${entry.order.timeLabel}',
+                                title: entry.title,
+                                subtitle: entry.subtitle,
+                                option: entry.option,
+                              ),
+                            );
+                            children.add(const SizedBox(height: 12));
+                          }
+                        }
+                      }
+
                       final list = _filteredOrders(orders.orders);
-                      if (list.isEmpty) {
+
+                      if (list.isEmpty && children.isEmpty) {
                         // Return scrollable widget for RefreshIndicator to work
                         return ListView(
                           physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.only(bottom: 16),
                           children: [
                             SizedBox(
                               height: MediaQuery.of(context).size.height * 0.3,
@@ -335,8 +356,8 @@ class _OrdersListScreenState extends State<OrdersListScreen>
                                 child: Text(
                                   'No orders yet',
                                   style: AppTextStyles.body(
-                                          color: const Color(0xFF98A0B5))
-                                      .copyWith(fontSize: 13),
+                                    color: const Color(0xFF98A0B5),
+                                  ).copyWith(fontSize: 13),
                                 ),
                               ),
                             ),
@@ -344,41 +365,67 @@ class _OrdersListScreenState extends State<OrdersListScreen>
                         );
                       }
 
-                      return ListView.separated(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.only(bottom: 16),
-                        itemCount: list.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 12),
-                        itemBuilder: (context, index) {
-                          final order = list[index];
-                          return _OrderCard(
-                            data: order,
-                            onViewDetails: () =>
-                                _showOrderDetailsDialog(context, order),
-                            // Navigate immediately to invoice screen; it will show its own loader
-                            // while fetching invoice details, avoiding delay before navigation.
-                            onPayBill: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      OrderInvoiceScreen(orderId: order.id),
+                      // Append the main orders list below the upcoming cards (if any)
+                      if (list.isNotEmpty) {
+                        if (children.isNotEmpty) {
+                          children.add(const SizedBox(height: 8));
+                        }
+
+                        for (final order in list) {
+                          children.add(
+                            _OrderCard(
+                              data: order,
+                              onViewDetails: () =>
+                                  _showOrderDetailsDialog(context, order),
+                              // Navigate immediately to invoice screen; it will show its own loader
+                              // while fetching invoice details, avoiding delay before navigation.
+                              onPayBill: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        OrderInvoiceScreen(orderId: order.id),
+                                  ),
+                                );
+                              },
+                              onTrackLaundry: () =>
+                                  Navigator.of(context).pushNamed(
+                                AppRoutes.orderTracking,
+                                arguments: OrderTrackingArgs(
+                                  orderId: order.id,
+                                  pickupAddress: order.pickupAddress,
+                                  pickupLat: order.pickupLat,
+                                  pickupLng: order.pickupLng,
+                                  backendStatus: order.backendStatus,
+                                  orderType: order.orderTypeOrBoth,
                                 ),
-                              );
-                            },
-                            onTrackLaundry: () =>
-                                Navigator.of(context).pushNamed(
-                              AppRoutes.orderTracking,
-                              arguments: OrderTrackingArgs(
-                                orderId: order.id,
-                                pickupAddress: order.pickupAddress,
-                                pickupLat: order.pickupLat,
-                                pickupLng: order.pickupLng,
-                                backendStatus: order.backendStatus,
-                                orderType: order.orderTypeOrBoth,
                               ),
                             ),
                           );
-                        },
+                          children.add(const SizedBox(height: 12));
+                        }
+                      }
+
+                      // Fallback to avoid returning an empty list (should not normally happen)
+                      if (children.isEmpty) {
+                        children.add(
+                          SizedBox(
+                            height: MediaQuery.of(context).size.height * 0.3,
+                            child: Center(
+                              child: Text(
+                                'No orders yet',
+                                style: AppTextStyles.body(
+                                  color: const Color(0xFF98A0B5),
+                                ).copyWith(fontSize: 13),
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+
+                      return ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.only(bottom: 16),
+                        children: children,
                       );
                     },
                   ),

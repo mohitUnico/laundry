@@ -183,6 +183,31 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
+  /// Display timezone: Asia/Kolkata (IST), same as backend `SET TIME ZONE 'Asia/Kolkata'`.
+  static const Duration _istOffset = Duration(hours: 5, minutes: 30);
+
+  /// Parses backend ISO date/time string to UTC [DateTime].
+  /// If the string has no timezone (no Z or offset), treats it as UTC (API convention).
+  DateTime? _parseBackendDateTime(String? iso) {
+    if (iso == null || iso.trim().isEmpty) return null;
+    final s = iso.trim();
+    try {
+      final hasOffset = s.endsWith('Z') ||
+          RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(s) ||
+          RegExp(r'[+-]\d{2}$').hasMatch(s);
+      final toParse = hasOffset ? s : '$s${s.endsWith('Z') ? '' : 'Z'}';
+      final parsed = DateTime.parse(toParse);
+      return parsed.toUtc();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Converts UTC instant to IST wall-clock for display (Asia/Kolkata).
+  DateTime _utcToIst(DateTime utc) {
+    return utc.toUtc().add(_istOffset);
+  }
+
   OrderRecord? _mapBackendOrderToOrderRecord(Map<String, dynamic> data) {
     try {
       final orderId = (data['order_id'] ?? '') as String;
@@ -205,25 +230,15 @@ class OrderProvider with ChangeNotifier {
       // Map order status
       final status = _mapOrderStatus(orderStatus);
 
-      // Parse dates
+      // Parse dates (backend sends UTC/ISO); display in Asia/Kolkata (IST)
       late final DateTime placedAt;
       String placedDateLabel = '';
       String placedTimeLabel = '';
-      if (createdAt != null) {
-        try {
-          placedAt = DateTime.parse(createdAt).toLocal();
-          placedDateLabel = _formatDateLabel(placedAt);
-          placedTimeLabel = _formatTimeLabel(placedAt);
-        } catch (_) {
-          placedAt = DateTime.now();
-          placedDateLabel = _formatDateLabel(placedAt);
-          placedTimeLabel = _formatTimeLabel(placedAt);
-        }
-      } else {
-        placedAt = DateTime.now();
-        placedDateLabel = _formatDateLabel(placedAt);
-        placedTimeLabel = _formatTimeLabel(placedAt);
-      }
+      final placedAtParsed = _parseBackendDateTime(createdAt);
+      final placedUtc = placedAtParsed ?? DateTime.now().toUtc();
+      placedAt = placedAtParsed ?? DateTime.now();
+      placedDateLabel = _formatDateLabelIst(placedUtc);
+      placedTimeLabel = _formatTimeLabelIst(placedUtc);
 
       // Parse schedule window:
       // Prefer pickup_time_from when available; fallback to pickup_date.
@@ -231,15 +246,11 @@ class OrderProvider with ChangeNotifier {
       String timeLabel = '';
       DateTime? scheduleDt;
       final scheduleSource = pickupTimeFrom ?? pickupDate;
-      if (scheduleSource != null) {
-        try {
-          scheduleDt = DateTime.parse(scheduleSource).toLocal();
-          dateLabel = _formatDateLabel(scheduleDt);
-          timeLabel = _formatTimeLabel(scheduleDt);
-        } catch (_) {
-          dateLabel = 'TBD';
-          timeLabel = 'TBD';
-        }
+      final scheduleParsed = _parseBackendDateTime(scheduleSource);
+      if (scheduleParsed != null) {
+        scheduleDt = scheduleParsed;
+        dateLabel = _formatDateLabelIst(scheduleParsed);
+        timeLabel = _formatTimeLabelIst(scheduleParsed);
       } else {
         dateLabel = 'TBD';
         timeLabel = 'TBD';
@@ -250,12 +261,12 @@ class OrderProvider with ChangeNotifier {
       String? deliveryTimeLabel;
       DateTime? scheduledDeliveryAt;
       if (orderType == 'both' && deliveryTimeFrom != null) {
-        try {
-          final deliveryDateTime = DateTime.parse(deliveryTimeFrom).toLocal();
-          deliveryDateLabel = _formatDateLabel(deliveryDateTime);
-          deliveryTimeLabel = _formatTimeLabel(deliveryDateTime);
-          scheduledDeliveryAt = deliveryDateTime;
-        } catch (_) {
+        final deliveryParsed = _parseBackendDateTime(deliveryTimeFrom);
+        if (deliveryParsed != null) {
+          scheduledDeliveryAt = deliveryParsed;
+          deliveryDateLabel = _formatDateLabelIst(deliveryParsed);
+          deliveryTimeLabel = _formatTimeLabelIst(deliveryParsed);
+        } else {
           deliveryDateLabel = 'TBD';
           deliveryTimeLabel = 'TBD';
         }
@@ -516,30 +527,22 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
-  String _formatDateLabel(DateTime date) {
-    final d = date.toLocal();
+  /// Formats UTC instant as date in Asia/Kolkata (IST).
+  String _formatDateLabelIst(DateTime utc) {
+    final d = _utcToIst(utc);
     const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec'
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
     ];
     return '${months[d.month - 1]} ${d.day}';
   }
 
-  String _formatTimeLabel(DateTime date) {
-    final d = date.toLocal();
+  /// Formats UTC instant as time in Asia/Kolkata (IST), e.g. "6:30 PM IST".
+  String _formatTimeLabelIst(DateTime utc) {
+    final d = _utcToIst(utc);
     final hour = d.hour > 12 ? d.hour - 12 : (d.hour == 0 ? 12 : d.hour);
     final minute = d.minute.toString().padLeft(2, '0');
     final amPm = d.hour >= 12 ? 'PM' : 'AM';
-    return '$hour:$minute $amPm';
+    return '$hour:$minute $amPm IST';
   }
 }

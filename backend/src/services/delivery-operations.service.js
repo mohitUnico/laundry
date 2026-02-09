@@ -389,6 +389,9 @@ exports.createAssignmentRequest = async ({
 
     // Prefer using an existing Delivery leg created when the order is confirmed.
     // Fallback: if missing (older orders), create the delivery leg + pickup/drop rows here.
+    // Use a longer timeout: this transaction does many queries and may run under load (e.g. job processing many orders).
+    const TX_TIMEOUT_MS = Number(process.env.DELIVERY_ASSIGNMENT_TX_TIMEOUT_MS) || 20000;
+    const TX_MAX_WAIT_MS = Number(process.env.DELIVERY_ASSIGNMENT_TX_MAX_WAIT_MS) || 10000;
     const created = await prisma.$transaction(async (tx) => {
         let delivery = await tx.delivery.findFirst({
             where: { order_id: orderId, delivery_type: deliveryType },
@@ -570,7 +573,7 @@ exports.createAssignmentRequest = async ({
         );
 
         return { delivery, request, recipients, notifications, targetStaffIds };
-    });
+    }, { timeout: TX_TIMEOUT_MS, maxWait: TX_MAX_WAIT_MS });
 
     const { delivery, request, recipients, notifications, targetStaffIds } = created;
 

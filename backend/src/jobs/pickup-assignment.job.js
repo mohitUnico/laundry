@@ -83,40 +83,36 @@ const checkAndCreatePickupAssignments = async () => {
             orderIds: ordersReadyForPickup.map((o) => o.order_id),
         });
 
-        // Create assignment requests for each order
-        const results = await Promise.allSettled(
-            ordersReadyForPickup.map(async (order) => {
-                try {
-                    // Get configuration from config module (allows easy adjustment via env vars)
-                    const config = getPickupAssignmentConfig();
+        // Process orders sequentially to avoid transaction timeouts and DB contention.
+        // Each createAssignmentRequest runs a long Prisma transaction; parallel runs exhaust the pool and exceed the default 5s timeout.
+        const config = getPickupAssignmentConfig();
+        let successful = 0;
+        let failed = 0;
 
-                    const result = await deliveryOperationsService.createAssignmentRequest({
-                        orderId: order.order_id,
-                        deliveryType: 'pickup',
-                        sendToAll: config.sendToAll, // Configurable: send to all or use distance-based filtering
-                        limit: config.maxStaffLimit, // Maximum number of staff to notify (configurable)
-                        expiresInSeconds: config.expirySeconds, // Request expiry time (configurable)
-                    });
+        for (const order of ordersReadyForPickup) {
+            try {
+                const result = await deliveryOperationsService.createAssignmentRequest({
+                    orderId: order.order_id,
+                    deliveryType: 'pickup',
+                    sendToAll: config.sendToAll,
+                    limit: config.maxStaffLimit,
+                    expiresInSeconds: config.expirySeconds,
+                });
 
-                    logger.info('Pickup assignment request created', {
-                        orderId: order.order_id,
-                        requestId: result.request?.request_id,
-                        recipientCount: result.recipients?.length || 0,
-                    });
-
-                    return { orderId: order.order_id, success: true, result };
-                } catch (error) {
-                    logger.error('Failed to create pickup assignment request', {
-                        orderId: order.order_id,
-                        error: error?.message || String(error),
-                    });
-                    return { orderId: order.order_id, success: false, error: error?.message };
-                }
-            })
-        );
-
-        const successful = results.filter((r) => r.status === 'fulfilled' && r.value.success).length;
-        const failed = results.length - successful;
+                logger.info('Pickup assignment request created', {
+                    orderId: order.order_id,
+                    requestId: result.request?.request_id,
+                    recipientCount: result.recipients?.length || 0,
+                });
+                successful += 1;
+            } catch (error) {
+                logger.error('Failed to create pickup assignment request', {
+                    orderId: order.order_id,
+                    error: error?.message || String(error),
+                });
+                failed += 1;
+            }
+        }
 
         if (successful > 0 || failed > 0) {
             logger.info('Pickup assignment job completed', {

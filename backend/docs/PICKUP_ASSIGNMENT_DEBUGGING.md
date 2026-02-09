@@ -96,7 +96,17 @@ So you can see:
 
 Turn this off in production if you don’t want extra log volume.
 
-## 5. Errors when creating assignment requests
+## 5. Transaction timeout / "Unable to start a transaction"
+
+If you see **"Unable to start a transaction in the given time"** or **"Transaction already closed... timeout for this transaction was 5000 ms"**:
+
+- **Cause:** The job used to process all eligible orders in parallel. Each `createAssignmentRequest` runs a long Prisma transaction (many queries). With many orders at once, the DB is overloaded: some transactions never start in time, others run longer than the default 5s and expire.
+- **Fixes applied in code:**
+  1. **Sequential processing:** The job now processes orders one-by-one, so only one transaction runs at a time and the pool is not exhausted.
+  2. **Longer transaction timeout:** `createAssignmentRequest` uses a 20s transaction timeout (and 10s maxWait) by default, overridable via `DELIVERY_ASSIGNMENT_TX_TIMEOUT_MS` and `DELIVERY_ASSIGNMENT_TX_MAX_WAIT_MS` in `.env`.
+- If timeouts still occur under load, increase `DELIVERY_ASSIGNMENT_TX_TIMEOUT_MS` (e.g. 30000) and ensure the DB has enough connections.
+
+## 6. Errors when creating assignment requests
 
 If the status endpoint shows `eligibleOrderCount > 0` but no assignment requests appear for staff:
 
@@ -104,7 +114,7 @@ If the status endpoint shows `eligibleOrderCount > 0` but no assignment requests
 - **Active staff:** The job (and the admin “create assignment request” endpoint) notifies **active** delivery staff. If there are no active staff (e.g. no one on a shift / no one with an open SSE connection), no one will get the request. Check how “active” is defined (e.g. `getAllActiveDeliveryStaff` in delivery-operations.service) and that at least one staff is active when you test.
 - **SSE:** Staff receive the request via SSE on `/api/v1/delivery-staff/events`. Ensure the management/delivery app is connected to that SSE endpoint when you expect to see the request.
 
-## 6. Quick checklist
+## 7. Quick checklist
 
 - [ ] `USE_WEBHOOK_PICKUP_ASSIGNMENT` is not `true` (if you want the in-process job).
 - [ ] `PICKUP_ASSIGNMENT_JOB_ENABLED` is not `false`.

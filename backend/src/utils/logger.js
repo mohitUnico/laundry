@@ -11,10 +11,11 @@ if (!fs.existsSync(logsDir)) {
 }
 
 // When LOG_ONLY_PICKUP_ASSIGNMENT=true, only log messages with component === 'pickup-assignment-job'
+// logform requires a format instance: format(fn) returns a constructor, so we call it to get the instance
 const onlyPickupAssignmentFilter = winston.format((info) => {
     if (process.env.LOG_ONLY_PICKUP_ASSIGNMENT !== 'true') return info;
     return info.component === 'pickup-assignment-job' ? info : false;
-});
+})();
 
 // Custom log format
 const logFormat = printf(({ level, message, timestamp, stack, component, ...meta }) => {

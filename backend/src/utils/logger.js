@@ -10,9 +10,17 @@ if (!fs.existsSync(logsDir)) {
     fs.mkdirSync(logsDir, { recursive: true });
 }
 
+// When LOG_ONLY_PICKUP_ASSIGNMENT=true, only log messages with component === 'pickup-assignment-job'
+const onlyPickupAssignmentFilter = winston.format((info) => {
+    if (process.env.LOG_ONLY_PICKUP_ASSIGNMENT !== 'true') return info;
+    return info.component === 'pickup-assignment-job' ? info : false;
+});
+
 // Custom log format
-const logFormat = printf(({ level, message, timestamp, stack, ...meta }) => {
-    const metaStr = Object.keys(meta).length ? JSON.stringify(meta) : '';
+const logFormat = printf(({ level, message, timestamp, stack, component, ...meta }) => {
+    const rest = { ...meta };
+    if (component !== undefined) rest.component = component;
+    const metaStr = Object.keys(rest).length ? JSON.stringify(rest) : '';
     return `${timestamp} ${level}: ${stack || message} ${metaStr}`;
 });
 
@@ -21,9 +29,14 @@ const logger = winston.createLogger({
     level: process.env.LOG_LEVEL || 'info',
     format: combine(timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }), errors({ stack: true }), logFormat),
     transports: [
-        // Console transport
+        // Console transport (when LOG_ONLY_PICKUP_ASSIGNMENT=true, only pickup-assignment-job logs)
         new winston.transports.Console({
-            format: combine(colorize(), timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }), logFormat),
+            format: combine(
+                onlyPickupAssignmentFilter,
+                colorize(),
+                timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+                logFormat
+            ),
         }),
         // File transport for errors
         new winston.transports.File({

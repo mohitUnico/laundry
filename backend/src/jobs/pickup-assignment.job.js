@@ -69,6 +69,7 @@ const checkAndCreatePickupAssignments = async () => {
 
         if (isDebugLogging()) {
             logger.info('Pickup assignment job tick', {
+                component: 'pickup-assignment-job',
                 eligibleCount: ordersReadyForPickup.length,
                 orderIds: ordersReadyForPickup.map((o) => o.order_id),
             });
@@ -79,6 +80,7 @@ const checkAndCreatePickupAssignments = async () => {
         }
 
         logger.info('Found orders ready for pickup assignment', {
+            component: 'pickup-assignment-job',
             count: ordersReadyForPickup.length,
             orderIds: ordersReadyForPickup.map((o) => o.order_id),
         });
@@ -100,6 +102,7 @@ const checkAndCreatePickupAssignments = async () => {
                 });
 
                 logger.info('Pickup assignment request created', {
+                    component: 'pickup-assignment-job',
                     orderId: order.order_id,
                     requestId: result.request?.request_id,
                     recipientCount: result.recipients?.length || 0,
@@ -107,6 +110,7 @@ const checkAndCreatePickupAssignments = async () => {
                 successful += 1;
             } catch (error) {
                 logger.error('Failed to create pickup assignment request', {
+                    component: 'pickup-assignment-job',
                     orderId: order.order_id,
                     error: error?.message || String(error),
                 });
@@ -116,6 +120,7 @@ const checkAndCreatePickupAssignments = async () => {
 
         if (successful > 0 || failed > 0) {
             logger.info('Pickup assignment job completed', {
+                component: 'pickup-assignment-job',
                 total: ordersReadyForPickup.length,
                 successful,
                 failed,
@@ -123,6 +128,7 @@ const checkAndCreatePickupAssignments = async () => {
         }
     } catch (error) {
         logger.error('Pickup assignment job failed', {
+            component: 'pickup-assignment-job',
             error: error?.message || String(error),
             stack: error?.stack,
         });
@@ -144,6 +150,7 @@ const schedule = () => {
     // Run immediately on start, then schedule interval
     checkAndCreatePickupAssignments().catch((error) => {
         logger.error('Initial pickup assignment check failed', {
+            component: 'pickup-assignment-job',
             error: error?.message || String(error),
         });
     });
@@ -151,12 +158,14 @@ const schedule = () => {
     jobIntervalHandle = setInterval(() => {
         checkAndCreatePickupAssignments().catch((error) => {
             logger.error('Pickup assignment check failed', {
+                component: 'pickup-assignment-job',
                 error: error?.message || String(error),
             });
         });
     }, intervalMs);
 
     logger.info('Pickup assignment job scheduled', {
+        component: 'pickup-assignment-job',
         intervalMs,
         nextRunInMs: intervalMs,
         config: {
@@ -171,7 +180,7 @@ const schedule = () => {
 
 exports.startPickupAssignmentJob = () => {
     if (!isJobEnabled()) {
-        logger.info('Pickup assignment job disabled');
+        logger.info('Pickup assignment job disabled', { component: 'pickup-assignment-job' });
         return;
     }
 
@@ -182,7 +191,7 @@ exports.stopPickupAssignmentJob = () => {
     if (jobIntervalHandle) {
         clearInterval(jobIntervalHandle);
         jobIntervalHandle = null;
-        logger.info('Pickup assignment job stopped');
+        logger.info('Pickup assignment job stopped', { component: 'pickup-assignment-job' });
     }
 };
 

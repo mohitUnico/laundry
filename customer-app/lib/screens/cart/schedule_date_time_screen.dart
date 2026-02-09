@@ -382,7 +382,7 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                     // Pickup Time Section (not shown for delivery_only - no pickup from customer)
                     if (option != DeliveryOptionType.deliveryOnly) ...[
                     Text(
-                      'Pickup Time',
+                      'Pickup Time (IST)',
                       style: AppTextStyles.header(color: HomeColors.text),
                     ),
                     const SizedBox(height: 8),
@@ -422,7 +422,7 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                         option == DeliveryOptionType.deliveryOnly) ...[
                       const SizedBox(height: 20),
                       Text(
-                        'Delivery Time',
+                        'Delivery Time (IST)',
                         style: AppTextStyles.header(color: HomeColors.text),
                       ),
                       const SizedBox(height: 8),

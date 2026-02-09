@@ -15,6 +15,7 @@ import '../../../../services/delivery_location_service.dart';
 import '../../../../services/delivery_events_service.dart';
 import '../../../../services/notification_service.dart';
 import '../../../../utils/auth_storage.dart';
+import '../../../../utils/date_time_ist.dart';
 import '../../../../utils/supabase_config.dart';
 import '../../../common/widgets/order_summary_card.dart';
 import '../../../common/widgets/task_card.dart';
@@ -64,7 +65,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   OverlayEntry? _directAssignmentOverlay;
   bool _eventsConnecting = false;
   bool _isProcessingAssignment = false;
-  String? _currentRequestId;
+  final List<Map<String, dynamic>> _pendingAssignmentRequests = [];
+  final Set<String> _processingRequestIds = {};
+  PageController? _requestPageController;
   Timer? _refreshDebounce;
   DateTime? _lastRealtimeEventAt;
   Position? _lastPosition;
@@ -166,6 +169,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _expiryTimer?.cancel();
     _stopLiveLocation();
     _stopEvents();
     _unsubscribeFromRealtime();
@@ -791,6 +795,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _removeIncomingPopup() {
     _incomingOverlay?.remove();
     _incomingOverlay = null;
+    _requestPageController?.dispose();
+    _requestPageController = null;
+  }
+
+  void _removeExpiredFromQueue() {
+    final now = DateTime.now();
+    _pendingAssignmentRequests.removeWhere((r) {
+      final payload = (r['payload'] is Map) ? (r['payload'] as Map).cast<String, dynamic>() : <String, dynamic>{};
+      final expiresAtRaw = payload['expiresAt'];
+      final expiresAt = expiresAtRaw is DateTime
+          ? expiresAtRaw
+          : (expiresAtRaw is String && expiresAtRaw.toString().isNotEmpty ? DateTime.tryParse(expiresAtRaw.toString()) : null);
+      return expiresAt != null && expiresAt.isBefore(now);
+    });
+  }
+
+  void _removeFromQueue(String requestId) {
+    _pendingAssignmentRequests.removeWhere((r) {
+      final payload = (r['payload'] is Map) ? (r['payload'] as Map).cast<String, dynamic>() : <String, dynamic>{};
+      return (payload['requestId'] ?? '').toString() == requestId;
+    });
+  }
+
+  void _tryShowNextRequest() {
+    if (!mounted) return;
+    _removeExpiredFromQueue();
+    if (_pendingAssignmentRequests.isEmpty) {
+      _removeIncomingPopup();
+      return;
+    }
+    _showIncomingRequestPopupCarousel();
   }
 
   void _removeDirectAssignmentPopup() {
@@ -814,7 +849,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         : (assignedAtRaw is String && assignedAtRaw.toString().isNotEmpty
             ? DateTime.tryParse(assignedAtRaw.toString())
             : null);
-    final assignedAtStr = assignedAt != null ? _formatTime(assignedAt) : '—';
+    final assignedAtStr = assignedAt != null ? formatTimeIst(assignedAt) : '—';
     final itemCountRaw = payload['itemCount'];
     final itemCount = (itemCountRaw is num)
         ? itemCountRaw.toInt()
@@ -866,49 +901,50 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  /// Enqueues incoming request and shows it (or next in queue). Deduplicates by requestId.
   void _showIncomingRequestPopup(Map<String, dynamic> notification) {
-    _removeIncomingPopup();
-
-    // Extract requestId from notification payload
-    // Backend sends: { type: 'assignment_request', payload: { requestId: ..., ... } }
-    final payload = (notification['payload'] is Map) 
-        ? (notification['payload'] as Map).cast<String, dynamic>() 
+    final payload = (notification['payload'] is Map)
+        ? (notification['payload'] as Map).cast<String, dynamic>()
         : <String, dynamic>{};
     final requestId = (payload['requestId'] ?? '').toString();
-    
+
     if (requestId.isEmpty) {
       debugPrint('Warning: assignment_request notification missing requestId in payload: $notification');
       return;
     }
 
-    // Extract data from notification payload (already extracted above)
-    final deliveryType = (payload['deliveryType'] ?? '').toString(); // pickup/drop
-    final itemCountRaw = payload['itemCount'];
-    final itemCount = (itemCountRaw is num) ? itemCountRaw.toInt() : int.tryParse(itemCountRaw?.toString() ?? '') ?? 0;
-    final pickup = payload['pickup'];
-    final drop = payload['drop'];
-    final address = (deliveryType == 'pickup')
-        ? (pickup is Map ? pickup['address'] : null)?.toString()
-        : (drop is Map ? drop['address'] : null)?.toString();
-    final expiresAtRaw = payload['expiresAt'];
-    final expiresAt = expiresAtRaw is DateTime
-        ? expiresAtRaw
-        : (expiresAtRaw is String && expiresAtRaw.toString().isNotEmpty
-            ? DateTime.tryParse(expiresAtRaw.toString())
-            : null);
+    // Deduplicate: don't add if already in queue
+    final alreadyInQueue = _pendingAssignmentRequests.any((r) {
+      final p = (r['payload'] is Map) ? (r['payload'] as Map).cast<String, dynamic>() : <String, dynamic>{};
+      return (p['requestId'] ?? '').toString() == requestId;
+    });
+    if (alreadyInQueue) return;
 
-    final customerName = 'New request';
-    final taskType = deliveryType == 'pickup' ? 'Pickup' : 'Delivery';
-    final scheduledTimeStr = expiresAt != null
-        ? _formatTime(expiresAt)
-        : null;
-    final pricingModel = (payload['pricingModel'] ?? '').toString().toLowerCase();
-    final bool isPickupPerKg = deliveryType == 'pickup' && pricingModel == 'per_kg';
-    final String? extraNote = isPickupPerKg ? 'Need to carry weight machine' : null;
-    // Only show item count for per_unit/per_piece; for per_kg don't show "0 items"
-    final bool showItemCount = pricingModel == 'per_unit' || pricingModel == 'per_piece';
+    _pendingAssignmentRequests.add(notification);
+    _removeExpiredFromQueue();
 
-    _currentRequestId = requestId;
+    // If no popup is showing, show the first request in queue.
+    // If a popup is already visible (carousel), just rebuild it so the new
+    // request appears as an extra page.
+    if (_incomingOverlay == null) {
+      _tryShowNextRequest();
+    } else {
+      _incomingOverlay?.markNeedsBuild();
+    }
+  }
+
+  /// Shows all pending requests in a PageView carousel for swiping between them.
+  void _showIncomingRequestPopupCarousel() {
+    if (!mounted || _pendingAssignmentRequests.isEmpty) return;
+
+    _removeExpiredFromQueue();
+    if (_pendingAssignmentRequests.isEmpty) {
+      _removeIncomingPopup();
+      return;
+    }
+
+    _requestPageController?.dispose();
+    _requestPageController = PageController(initialPage: 0);
 
     final entry = OverlayEntry(
       builder: (context) {
@@ -919,20 +955,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           child: Material(
             color: Colors.transparent,
             child: _TopSlidePopup(
-              onClose: _removeIncomingPopup,
-              child: AssignmentRequestPopup(
-                taskType: taskType,
-                customerName: customerName,
-                address: (address ?? '').isNotEmpty ? address! : 'Address not available',
-                itemCount: itemCount,
+              onClose: () {
+                final currentIndex = _requestPageController?.page?.round() ?? 0;
+                if (currentIndex < _pendingAssignmentRequests.length) {
+                  final payload = (_pendingAssignmentRequests[currentIndex]['payload'] is Map)
+                      ? (_pendingAssignmentRequests[currentIndex]['payload'] as Map).cast<String, dynamic>()
+                      : <String, dynamic>{};
+                  final requestId = (payload['requestId'] ?? '').toString();
+                  _removeFromQueue(requestId);
+                }
+                _tryShowNextRequest();
+              },
+              child: _AssignmentRequestCarousel(
+                requests: _pendingAssignmentRequests,
+                pageController: _requestPageController!,
                 isProcessing: _isProcessingAssignment,
-                onAccept: () => _handleAcceptRequest(requestId),
-                onReject: () => _handleRejectRequest(requestId),
-                title: 'Notification for delivery boy, to Accept or Reject order',
-                scheduledTime: scheduledTimeStr,
-                amount: null, // Optional: pass from payload if backend sends it
-                extraNote: extraNote,
-                showItemCount: showItemCount,
+                onAccept: (requestId) => _handleAcceptRequest(requestId),
+                onReject: (requestId) => _handleRejectRequest(requestId),
+                onPageChanged: () {
+                  // Rebuild overlay when page changes to update request counter
+                  _incomingOverlay?.markNeedsBuild();
+                },
               ),
             ),
           ),
@@ -943,28 +986,80 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     Overlay.of(context, rootOverlay: true).insert(entry);
     _incomingOverlay = entry;
 
-    // Auto-dismiss after 2 minutes (matches backend assignment request expiry)
-    Future.delayed(const Duration(seconds: 120), () {
-      if (mounted && !_isProcessingAssignment) {
-        _removeIncomingPopup();
+    // Auto-dismiss expired requests periodically
+    _startExpiryTimer();
+  }
+
+  Timer? _expiryTimer;
+
+  void _startExpiryTimer() {
+    _expiryTimer?.cancel();
+    _expiryTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (!mounted || _pendingAssignmentRequests.isEmpty) {
+        _expiryTimer?.cancel();
+        return;
+      }
+      final beforeCount = _pendingAssignmentRequests.length;
+      _removeExpiredFromQueue();
+      if (_pendingAssignmentRequests.length != beforeCount) {
+        // Some requests expired, rebuild the carousel
+        if (_pendingAssignmentRequests.isEmpty) {
+          _removeIncomingPopup();
+        } else {
+          final currentPage = _requestPageController?.page?.round() ?? 0;
+          final newPage = currentPage >= _pendingAssignmentRequests.length
+              ? _pendingAssignmentRequests.length - 1
+              : currentPage;
+          _requestPageController?.animateToPage(
+            newPage,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+          _incomingOverlay?.markNeedsBuild();
+        }
       }
     });
   }
 
   Future<void> _handleAcceptRequest(String requestId) async {
-    if (_isProcessingAssignment) return;
+    if (_isProcessingAssignment || _processingRequestIds.contains(requestId)) return;
 
+    _processingRequestIds.add(requestId);
     setState(() {
       _isProcessingAssignment = true;
     });
 
     try {
       await _deliveryStaffAppService.acceptAssignmentRequest(requestId: requestId);
-      
+
       if (mounted) {
-        _removeIncomingPopup();
-        _currentRequestId = null;
+        _removeFromQueue(requestId);
         
+        // If carousel is showing, rebuild it; otherwise close popup
+        if (_incomingOverlay != null && _requestPageController != null) {
+          _removeExpiredFromQueue();
+          if (_pendingAssignmentRequests.isEmpty) {
+            _removeIncomingPopup();
+          } else {
+            // Adjust page if needed
+            final currentPage = _requestPageController!.page?.round() ?? 0;
+            final newPage = currentPage >= _pendingAssignmentRequests.length
+                ? _pendingAssignmentRequests.length - 1
+                : currentPage;
+            if (newPage != currentPage) {
+              _requestPageController!.animateToPage(
+                newPage,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOut,
+              );
+            }
+            _incomingOverlay?.markNeedsBuild();
+          }
+        } else {
+          _removeIncomingPopup();
+          _tryShowNextRequest();
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Assignment accepted successfully!'),
@@ -973,7 +1068,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
         );
 
-        // Refresh home data to show the new accepted order
         _scheduleHomeRefresh(forceApiCall: true);
       }
     } catch (e) {
@@ -987,6 +1081,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
       }
     } finally {
+      _processingRequestIds.remove(requestId);
       if (mounted) {
         setState(() {
           _isProcessingAssignment = false;
@@ -996,19 +1091,44 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _handleRejectRequest(String requestId) async {
-    if (_isProcessingAssignment) return;
+    if (_isProcessingAssignment || _processingRequestIds.contains(requestId)) return;
 
+    _processingRequestIds.add(requestId);
     setState(() {
       _isProcessingAssignment = true;
     });
 
     try {
       await _deliveryStaffAppService.rejectAssignmentRequest(requestId: requestId);
-      
+
       if (mounted) {
-        _removeIncomingPopup();
-        _currentRequestId = null;
+        _removeFromQueue(requestId);
         
+        // If carousel is showing, rebuild it; otherwise close popup
+        if (_incomingOverlay != null && _requestPageController != null) {
+          _removeExpiredFromQueue();
+          if (_pendingAssignmentRequests.isEmpty) {
+            _removeIncomingPopup();
+          } else {
+            // Adjust page if needed
+            final currentPage = _requestPageController!.page?.round() ?? 0;
+            final newPage = currentPage >= _pendingAssignmentRequests.length
+                ? _pendingAssignmentRequests.length - 1
+                : currentPage;
+            if (newPage != currentPage) {
+              _requestPageController!.animateToPage(
+                newPage,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOut,
+              );
+            }
+            _incomingOverlay?.markNeedsBuild();
+          }
+        } else {
+          _removeIncomingPopup();
+          _tryShowNextRequest();
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Assignment rejected'),
@@ -1027,6 +1147,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
       }
     } finally {
+      _processingRequestIds.remove(requestId);
       if (mounted) {
         setState(() {
           _isProcessingAssignment = false;
@@ -1129,8 +1250,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   static String _formatTimeRange(DateTime? from, DateTime? to, {DateTime? fallback}) {
     final start = from ?? fallback;
     if (start == null) return '--';
-    if (to == null) return _formatTime(start);
-    return '${_formatTime(start)} - ${_formatTime(to)}';
+    if (to == null) return formatTimeIst(start);
+    return '${formatTimeIst(start)} - ${formatTimeIst(to)}';
   }
 
   Future<void> _toggleShift() async {
@@ -1187,19 +1308,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   static DateTime? _parseDate(Object? raw) {
-    if (raw is DateTime) return raw;
-    if (raw is String && raw.isNotEmpty) return DateTime.tryParse(raw);
-    return null;
-  }
-
-  static String _formatTime(DateTime? dt) {
-    if (dt == null) return '--';
-    int hour = dt.hour;
-    final minute = dt.minute.toString().padLeft(2, '0');
-    final suffix = hour >= 12 ? 'PM' : 'AM';
-    hour = hour % 12;
-    if (hour == 0) hour = 12;
-    return '${hour.toString().padLeft(2, '0')}:$minute $suffix';
+    return parseUtc(raw);
   }
 
   @override
@@ -2327,6 +2436,175 @@ class _AcceptedTaskUi {
     required this.destinationLng,
     required this.orderStatus,
   });
+}
+
+/// Carousel widget that displays multiple assignment requests in a swipeable PageView.
+class _AssignmentRequestCarousel extends StatefulWidget {
+  final List<Map<String, dynamic>> requests;
+  final PageController pageController;
+  final bool isProcessing;
+  final Function(String requestId) onAccept;
+  final Function(String requestId) onReject;
+  final VoidCallback onPageChanged;
+
+  const _AssignmentRequestCarousel({
+    required this.requests,
+    required this.pageController,
+    required this.isProcessing,
+    required this.onAccept,
+    required this.onReject,
+    required this.onPageChanged,
+  });
+
+  @override
+  State<_AssignmentRequestCarousel> createState() => _AssignmentRequestCarouselState();
+}
+
+class _AssignmentRequestCarouselState extends State<_AssignmentRequestCarousel> {
+  int _currentPage = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.pageController.addListener(_onPageChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.pageController.removeListener(_onPageChanged);
+    super.dispose();
+  }
+
+  void _onPageChanged() {
+    final page = widget.pageController.page?.round() ?? 0;
+    if (page != _currentPage) {
+      setState(() {
+        _currentPage = page;
+      });
+      widget.onPageChanged();
+    }
+  }
+
+  static double? _parseDouble(Object? raw) {
+    if (raw is num) return raw.toDouble();
+    if (raw is String && raw.isNotEmpty) return double.tryParse(raw);
+    return null;
+  }
+
+  Widget _buildRequestPopup(int index) {
+    if (index >= widget.requests.length) return const SizedBox.shrink();
+    
+    final notification = widget.requests[index];
+    final payload = (notification['payload'] is Map)
+        ? (notification['payload'] as Map).cast<String, dynamic>()
+        : <String, dynamic>{};
+    final requestId = (payload['requestId'] ?? '').toString();
+    if (requestId.isEmpty) return const SizedBox.shrink();
+
+    final deliveryType = (payload['deliveryType'] ?? '').toString();
+    final itemCountRaw = payload['itemCount'];
+    final itemCount = (itemCountRaw is num) ? itemCountRaw.toInt() : int.tryParse(itemCountRaw?.toString() ?? '') ?? 0;
+    final pickup = payload['pickup'];
+    final drop = payload['drop'];
+    final pickupMap = pickup is Map ? Map<String, dynamic>.from(pickup) : <String, dynamic>{};
+    final dropMap = drop is Map ? Map<String, dynamic>.from(drop) : <String, dynamic>{};
+    final pickupAddress = (pickupMap['address'] ?? '').toString();
+    final dropAddress = (dropMap['address'] ?? '').toString();
+    final pickupLat = _parseDouble(pickupMap['latitude']);
+    final pickupLng = _parseDouble(pickupMap['longitude']);
+    final dropLat = _parseDouble(dropMap['latitude']);
+    final dropLng = _parseDouble(dropMap['longitude']);
+    String address = (deliveryType == 'pickup')
+        ? (pickupAddress.isNotEmpty ? pickupAddress : dropAddress)
+        : (dropAddress.isNotEmpty ? dropAddress : pickupAddress);
+    if (address.isEmpty) {
+      address = pickupAddress.isNotEmpty ? pickupAddress : (dropAddress.isNotEmpty ? dropAddress : 'Address not available');
+    }
+    final expiresAtRaw = payload['expiresAt'];
+    final expiresAt = expiresAtRaw is DateTime
+        ? expiresAtRaw
+        : (expiresAtRaw is String && expiresAtRaw.toString().isNotEmpty ? DateTime.tryParse(expiresAtRaw.toString()) : null);
+    final orderId = (payload['orderId'] ?? '').toString();
+
+    final taskType = deliveryType == 'pickup' ? 'Pickup' : 'Delivery';
+    final scheduledTimeStr = expiresAt != null ? formatTimeIst(expiresAt) : null;
+    final pricingModel = (payload['pricingModel'] ?? '').toString().toLowerCase();
+    final bool isPickupPerKg = deliveryType == 'pickup' && pricingModel == 'per_kg';
+    final String? extraNote = isPickupPerKg ? 'Need to carry weight machine' : null;
+    final bool showItemCount = pricingModel == 'per_unit' || pricingModel == 'per_piece';
+
+    final totalPending = widget.requests.length;
+    final requestCounter = totalPending > 1 ? '${index + 1} of $totalPending' : null;
+
+    return AssignmentRequestPopup(
+      taskType: taskType,
+      customerName: 'New request',
+      address: address.isNotEmpty ? address : 'Address not available',
+      itemCount: itemCount,
+      isProcessing: widget.isProcessing,
+      onAccept: () => widget.onAccept(requestId),
+      onReject: () => widget.onReject(requestId),
+      title: 'Accept or Reject order',
+      scheduledTime: scheduledTimeStr,
+      extraNote: extraNote,
+      showItemCount: showItemCount,
+      pickupAddress: pickupAddress.isNotEmpty ? pickupAddress : null,
+      dropAddress: dropAddress.isNotEmpty ? dropAddress : null,
+      pickupLat: pickupLat,
+      pickupLng: pickupLng,
+      dropLat: dropLat,
+      dropLng: dropLng,
+      orderId: orderId.isNotEmpty ? orderId : null,
+      requestCounter: requestCounter,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.requests.isEmpty) return const SizedBox.shrink();
+
+    // PageView requires bounded height; use ~70% of screen or fixed max
+    final maxHeight = MediaQuery.of(context).size.height * 0.7;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (widget.requests.length > 1) ...[
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(
+              widget.requests.length,
+              (index) => Container(
+                width: 8,
+                height: 8,
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _currentPage == index
+                      ? AppColors.primary
+                      : AppColors.primary.withOpacity(0.3),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        SizedBox(
+          height: maxHeight,
+          child: PageView.builder(
+            controller: widget.pageController,
+            itemCount: widget.requests.length,
+            itemBuilder: (context, index) => SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: _buildRequestPopup(index),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _TopSlidePopup extends StatefulWidget {

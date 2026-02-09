@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../theme/app_colors.dart';
 import '../../../../theme/app_text_styles.dart';
 import '../../../../services/collection_manager_orders_service.dart';
+import '../../../../utils/date_time_ist.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -74,8 +75,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
         backendOrderId: orderId,
         orderIdDisplay: _formatOrderId(orderId),
         customerName: customerName,
-        date: _formatDate(createdAt),
-        time: _formatTime(createdAt),
+        date: formatDateIst(createdAt),
+        time: formatTimeIst(createdAt),
         itemCount: itemCount,
         deliveryPerson: deliveryPerson,
         deliveryPersonId: deliveryPersonId,
@@ -88,9 +89,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   static DateTime? _parseCreatedAt(Map<String, dynamic> o) {
-    final raw = o['createdAt'];
-    if (raw is String && raw.isNotEmpty) return DateTime.tryParse(raw);
-    return null;
+    return parseUtc(o['createdAt']);
   }
 
   static String _formatOrderId(String orderId) {
@@ -98,24 +97,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (normalized.length >= 6) return 'ORD${normalized.substring(0, 6)}';
     if (normalized.isNotEmpty) return 'ORD$normalized';
     return 'ORDER';
-  }
-
-  static String _formatDate(DateTime? dt) {
-    if (dt == null) return '--';
-    final dd = dt.day.toString().padLeft(2, '0');
-    final mm = dt.month.toString().padLeft(2, '0');
-    final yyyy = dt.year.toString();
-    return '$dd-$mm-$yyyy';
-  }
-
-  static String _formatTime(DateTime? dt) {
-    if (dt == null) return '--';
-    int hour = dt.hour;
-    final minute = dt.minute.toString().padLeft(2, '0');
-    final suffix = hour >= 12 ? 'PM' : 'AM';
-    hour = hour % 12;
-    if (hour == 0) hour = 12;
-    return '${hour.toString().padLeft(2, '0')}:$minute $suffix';
   }
 
   static _ItemsUiMapping _mapItemsForUi(Object? itemsData) {

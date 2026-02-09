@@ -9,6 +9,7 @@ import '../../providers/coupons_provider.dart';
 import '../../models/order_record.dart';
 import '../../models/cart_item.dart';
 import '../../routes/app_routes.dart';
+import '../../utils/ist_timezone.dart';
 import '../../utils/pricing.dart';
 import '../../utils/order_payment_error_messages.dart';
 import '../../models/promo_code_model.dart';
@@ -409,7 +410,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                               break;
                           }
 
-                          // Parse date/time from schedule arguments (local timezone)
+                          // Parse date/time from schedule arguments as IST; send UTC to server
                           final scheduleDateLabel = args?['dateLabel'] as String?;
                           final scheduleTimeLabel = args?['timeLabel'] as String?;
                           final deliveryDateLabel = args?['deliveryDateLabel'] as String?;
@@ -420,10 +421,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           String? pickupTimeToIso;
                           String? deliveryTimeFromIso;
                           String? deliveryTimeToIso;
-                          DateTime? pickupDateTimeLocal;
+                          DateTime? pickupDateTimeUtc;
 
                           if (orderType == 'drop_only') {
-                            // Delivery only: dateLabel/timeLabel = delivery slot
+                            // Delivery only: dateLabel/timeLabel = delivery slot (IST)
                             if (scheduleDateLabel != null && scheduleTimeLabel != null) {
                               try {
                                 final now = DateTime.now();
@@ -442,24 +443,24 @@ class _PaymentScreenState extends State<PaymentScreen> {
                                 if (deliveryDate.isBefore(DateTime(now.year, now.month, now.day))) {
                                   year = now.year + 1;
                                 }
-                                final deliveryDateTimeLocal = DateTime(year, month, day, hour24, minute);
-                                deliveryTimeFromIso = deliveryDateTimeLocal.toUtc().toIso8601String();
+                                final deliveryUtc = istToUtc(year, month, day, hour24, minute);
+                                deliveryTimeFromIso = deliveryUtc.toUtc().toIso8601String();
                                 deliveryTimeToIso = deliveryTimeFromIso;
                               } catch (_) {
-                                final fallback = DateTime.now().add(const Duration(days: 1));
-                                deliveryTimeFromIso = fallback.toUtc().toIso8601String();
+                                final fallback = DateTime.now().toUtc().add(const Duration(days: 1));
+                                deliveryTimeFromIso = fallback.toIso8601String();
                                 deliveryTimeToIso = deliveryTimeFromIso;
                               }
                             } else {
-                              final fallback = DateTime.now().add(const Duration(days: 1));
-                              deliveryTimeFromIso = fallback.toUtc().toIso8601String();
+                              final fallback = DateTime.now().toUtc().add(const Duration(days: 1));
+                              deliveryTimeFromIso = fallback.toIso8601String();
                               deliveryTimeToIso = deliveryTimeFromIso;
                             }
                             pickupDateIso = null;
                             pickupTimeFromIso = null;
                             pickupTimeToIso = null;
                           } else {
-                            // Pickup only or both: dateLabel/timeLabel = pickup slot
+                            // Pickup only or both: dateLabel/timeLabel = pickup slot (IST)
                             if (scheduleDateLabel != null && scheduleTimeLabel != null) {
                               try {
                                 final now = DateTime.now();
@@ -478,19 +479,19 @@ class _PaymentScreenState extends State<PaymentScreen> {
                                 if (baseDate.isBefore(DateTime(now.year, now.month, now.day))) {
                                   year = now.year + 1;
                                 }
-                                pickupDateTimeLocal = DateTime(year, month, day, hour24, minute);
+                                pickupDateTimeUtc = istToUtc(year, month, day, hour24, minute);
                               } catch (_) {
-                                pickupDateTimeLocal = DateTime.now().add(const Duration(days: 1));
+                                pickupDateTimeUtc = DateTime.now().toUtc().add(const Duration(days: 1));
                               }
                             } else {
-                              pickupDateTimeLocal = DateTime.now().add(const Duration(days: 1));
+                              pickupDateTimeUtc = DateTime.now().toUtc().add(const Duration(days: 1));
                             }
-                            pickupDateIso = pickupDateTimeLocal.toUtc().toIso8601String();
-                            pickupTimeFromIso = pickupDateTimeLocal.toUtc().toIso8601String();
+                            pickupDateIso = pickupDateTimeUtc.toUtc().toIso8601String();
+                            pickupTimeFromIso = pickupDateTimeUtc.toUtc().toIso8601String();
                             pickupTimeToIso = pickupTimeFromIso;
                           }
 
-                          // Parse delivery date/time for "both" orders (pickupDateTimeLocal set in else branch)
+                          // Parse delivery date/time for "both" orders (IST)
                           if (orderType == 'both' && deliveryDateLabel != null && deliveryTimeLabel != null) {
                             try {
                               final deliveryNow = DateTime.now();
@@ -524,19 +525,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
                                 deliveryYear = deliveryNow.year + 1;
                               }
 
-                              final deliveryDateTimeLocal = DateTime(deliveryYear, deliveryMonth, deliveryDay, deliveryHour24, deliveryMinute);
-                              deliveryTimeFromIso = deliveryDateTimeLocal.toUtc().toIso8601String();
+                              final deliveryUtc = istToUtc(deliveryYear, deliveryMonth, deliveryDay, deliveryHour24, deliveryMinute);
+                              deliveryTimeFromIso = deliveryUtc.toUtc().toIso8601String();
                               deliveryTimeToIso = deliveryTimeFromIso;
                             } catch (_) {
-                              // Fallback: delivery window as pickup + 24h
-                              final deliveryFromLocal = (pickupDateTimeLocal ?? DateTime.now().add(const Duration(days: 1))).add(const Duration(hours: 24));
-                              deliveryTimeFromIso = deliveryFromLocal.toUtc().toIso8601String();
+                              final deliveryFromUtc = (pickupDateTimeUtc ?? DateTime.now().toUtc().add(const Duration(days: 1))).add(const Duration(hours: 24));
+                              deliveryTimeFromIso = deliveryFromUtc.toIso8601String();
                               deliveryTimeToIso = deliveryTimeFromIso;
                             }
                           } else if (orderType == 'both') {
-                            // Fallback: delivery window as pickup + 24h
-                            final deliveryFromLocal = (pickupDateTimeLocal ?? DateTime.now().add(const Duration(days: 1))).add(const Duration(hours: 24));
-                            deliveryTimeFromIso = deliveryFromLocal.toUtc().toIso8601String();
+                            final deliveryFromUtc = (pickupDateTimeUtc ?? DateTime.now().toUtc().add(const Duration(days: 1))).add(const Duration(hours: 24));
+                            deliveryTimeFromIso = deliveryFromUtc.toIso8601String();
                             deliveryTimeToIso = deliveryTimeFromIso;
                           }
 

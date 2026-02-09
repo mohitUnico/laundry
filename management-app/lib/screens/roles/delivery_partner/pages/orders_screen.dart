@@ -4,6 +4,7 @@ import '../../../../routes/app_routes.dart';
 import '../../../../theme/app_colors.dart';
 import '../../../../theme/app_text_styles.dart';
 import '../../../../services/delivery_staff_app_service.dart';
+import '../../../../utils/date_time_ist.dart';
 import '../../../common/widgets/bottom_nav_bar.dart';
 
 class OrdersScreen extends StatefulWidget {
@@ -58,7 +59,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
       return _OrderHistoryUi(
         orderId: _formatOrderId(orderId),
         name: name,
-        date: _formatDate(dt),
+        date: formatDateIst(dt),
         items: items,
         status: status,
         serviceType: deliveryType == 'pickup' ? 'Pickup' : 'Delivery',
@@ -68,17 +69,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
   }
 
   static DateTime? _parseDate(Object? raw) {
-    if (raw is DateTime) return raw;
-    if (raw is String && raw.isNotEmpty) return DateTime.tryParse(raw);
-    return null;
-  }
-
-  static String _formatDate(DateTime? dt) {
-    if (dt == null) return '--';
-    final dd = dt.day.toString().padLeft(2, '0');
-    final mm = dt.month.toString().padLeft(2, '0');
-    final yyyy = dt.year.toString();
-    return '$dd-$mm-$yyyy';
+    return parseUtc(raw);
   }
 
   static String _formatOrderId(String orderId) {

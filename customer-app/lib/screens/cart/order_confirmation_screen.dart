@@ -11,6 +11,7 @@ import '../../models/cart_item.dart';
 import '../../repositories/order_repository.dart';
 import '../../repositories/customer_info_repository.dart';
 import '../../utils/cart_error_messages.dart';
+import '../../utils/ist_timezone.dart';
 import 'delivery_options_screen.dart';
 import 'schedule_date_time_screen.dart';
 
@@ -122,8 +123,8 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
           break;
       }
 
-      // Parse date and time from labels (local timezone)
-      // The dateLabel is in format "Jan 21" and timeLabel is in format "11:35 AM"
+      // Parse date and time from labels as IST (user selects in IST); send UTC to server.
+      // dateLabel format "Jan 21", timeLabel format "11:35 AM"
       final now = DateTime.now();
       final monthMap = {
         'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
@@ -135,10 +136,10 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
       String? pickupTimeToIso;
       String? deliveryTimeFromIso;
       String? deliveryTimeToIso;
-      DateTime? pickupDateTimeLocal;
+      DateTime? pickupDateTimeUtc;
 
       if (orderType == 'drop_only') {
-        // Delivery only: no pickup from customer. dateLabel/timeLabel = delivery slot
+        // Delivery only: dateLabel/timeLabel = delivery slot (IST)
         final timeParts = args.timeLabel.split(' ');
         final timeValue = timeParts[0].split(':');
         final hour = int.parse(timeValue[0]);
@@ -158,14 +159,14 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
         if (deliveryDate.isBefore(DateTime(now.year, now.month, now.day))) {
           year = now.year + 1;
         }
-        final deliveryDateTimeLocal = DateTime(year, month, day, hour24, minute);
-        deliveryTimeFromIso = deliveryDateTimeLocal.toUtc().toIso8601String();
+        final deliveryUtc = istToUtc(year, month, day, hour24, minute);
+        deliveryTimeFromIso = deliveryUtc.toUtc().toIso8601String();
         deliveryTimeToIso = deliveryTimeFromIso;
         pickupDateIso = null;
         pickupTimeFromIso = null;
         pickupTimeToIso = null;
       } else {
-        // Pickup only or both: dateLabel/timeLabel = pickup slot
+        // Pickup only or both: dateLabel/timeLabel = pickup slot (IST)
         final timeParts = args.timeLabel.split(' ');
         final timeValue = timeParts[0].split(':');
         final hour = int.parse(timeValue[0]);
@@ -185,15 +186,14 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
         if (pickupDate.isBefore(DateTime(now.year, now.month, now.day))) {
           year = now.year + 1;
         }
-        pickupDateTimeLocal = DateTime(year, month, day, hour24, minute);
-        pickupDateIso = pickupDateTimeLocal.toUtc().toIso8601String();
-        pickupTimeFromIso = pickupDateTimeLocal.toUtc().toIso8601String();
+        pickupDateTimeUtc = istToUtc(year, month, day, hour24, minute);
+        pickupDateIso = pickupDateTimeUtc.toUtc().toIso8601String();
+        pickupTimeFromIso = pickupDateTimeUtc.toUtc().toIso8601String();
         pickupTimeToIso = pickupTimeFromIso;
       }
 
-      // For pickup & delivery orders, parse delivery date/time from args
+      // For pickup & delivery orders, parse delivery date/time from args (IST)
       if (orderType == 'both' && args.deliveryDateLabel != null && args.deliveryTimeLabel != null) {
-        // Parse delivery date/time from labels (local timezone)
         final deliveryTimeParts = args.deliveryTimeLabel!.split(' ');
         final deliveryTimeValue = deliveryTimeParts[0].split(':');
         final deliveryHour = int.parse(deliveryTimeValue[0]);
@@ -218,13 +218,14 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
           deliveryYear = now.year + 1;
         }
 
-        final deliveryDateTimeLocal = DateTime(deliveryYear, deliveryMonth, deliveryDay, deliveryHour24, deliveryMinute);
-        deliveryTimeFromIso = deliveryDateTimeLocal.toUtc().toIso8601String();
+        final deliveryUtc = istToUtc(deliveryYear, deliveryMonth, deliveryDay, deliveryHour24, deliveryMinute);
+        deliveryTimeFromIso = deliveryUtc.toUtc().toIso8601String();
         deliveryTimeToIso = deliveryTimeFromIso;
       } else if (orderType == 'both') {
         // Fallback: delivery window as pickup + 24h if not provided
-        final deliveryFromLocal = (pickupDateTimeLocal ?? DateTime.now().add(const Duration(days: 1))).add(const Duration(hours: 24));
-        deliveryTimeFromIso = deliveryFromLocal.toUtc().toIso8601String();
+        final pickupUtc = pickupDateTimeUtc ?? DateTime.now().toUtc().add(const Duration(days: 1));
+        final deliveryUtc = pickupUtc.add(const Duration(hours: 24));
+        deliveryTimeFromIso = deliveryUtc.toIso8601String();
         deliveryTimeToIso = deliveryTimeFromIso;
       }
 

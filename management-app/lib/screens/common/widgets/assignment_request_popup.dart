@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_text_styles.dart';
 
-class AssignmentRequestPopup extends StatelessWidget {
+class AssignmentRequestPopup extends StatefulWidget {
   final String taskType; // 'Pickup' or 'Delivery'
   final String customerName;
   final String address;
@@ -20,6 +21,20 @@ class AssignmentRequestPopup extends StatelessWidget {
   final String? extraNote;
   /// When true, show item count (per_unit/per_piece orders). When false (per_kg), hide item count.
   final bool showItemCount;
+  /// Optional pickup address for expanded view.
+  final String? pickupAddress;
+  /// Optional drop address for expanded view.
+  final String? dropAddress;
+  /// Optional pickup lat/lng for map URL.
+  final double? pickupLat;
+  final double? pickupLng;
+  /// Optional drop lat/lng for map URL.
+  final double? dropLat;
+  final double? dropLng;
+  /// Optional order ID for expanded view.
+  final String? orderId;
+  /// Optional request counter (e.g. "1 of 3").
+  final String? requestCounter;
 
   const AssignmentRequestPopup({
     super.key,
@@ -35,7 +50,92 @@ class AssignmentRequestPopup extends StatelessWidget {
     this.amount,
     this.extraNote,
     this.showItemCount = true,
+    this.pickupAddress,
+    this.dropAddress,
+    this.pickupLat,
+    this.pickupLng,
+    this.dropLat,
+    this.dropLng,
+    this.orderId,
+    this.requestCounter,
   });
+
+  @override
+  State<AssignmentRequestPopup> createState() => _AssignmentRequestPopupState();
+}
+
+class _AssignmentRequestPopupState extends State<AssignmentRequestPopup> {
+  bool _isExpanded = false;
+
+  bool get _hasLocationDetails =>
+      ((widget.pickupLat != null && widget.pickupLng != null) ||
+          (widget.dropLat != null && widget.dropLng != null)) &&
+      ((widget.pickupAddress != null && widget.pickupAddress!.isNotEmpty) ||
+          (widget.dropAddress != null && widget.dropAddress!.isNotEmpty));
+
+  Future<void> _openMapUrl() async {
+    final pickLat = widget.pickupLat;
+    final pickLng = widget.pickupLng;
+    final dropLat = widget.dropLat;
+    final dropLng = widget.dropLng;
+    String? url;
+    if (pickLat != null && pickLng != null && dropLat != null && dropLng != null) {
+      url = 'https://www.google.com/maps/dir/$pickLat,$pickLng/$dropLat,$dropLng';
+    } else if (pickLat != null && pickLng != null) {
+      url = 'https://www.google.com/maps?q=$pickLat,$pickLng';
+    } else if (dropLat != null && dropLng != null) {
+      url = 'https://www.google.com/maps?q=$dropLat,$dropLng';
+    }
+    if (url != null) {
+      final uri = Uri.parse(url);
+      try {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (_) {
+        try {
+          await launchUrl(uri);
+        } catch (_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Could not open Maps. Please check your device settings.'),
+              ),
+            );
+          }
+        }
+      }
+    }
+  }
+
+  Widget _buildLocationRow(IconData icon, String label, String address, Color color) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: AppTextStyles.subtitle(color: color).copyWith(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 11,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                address,
+                style: AppTextStyles.subtitle(color: AppColors.textSecondary).copyWith(fontSize: 12),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,17 +143,39 @@ class AssignmentRequestPopup extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (title != null && title!.isNotEmpty) ...[
+        if (widget.title != null && widget.title!.isNotEmpty) ...[
           Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 8),
-            child: Text(
-              title!,
-              style: AppTextStyles.body(color: AppColors.textSecondary).copyWith(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-              ),
+            padding: const EdgeInsets.only(left: 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.title!,
+                    style: AppTextStyles.body(color: AppColors.textSecondary).copyWith(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+                if (widget.requestCounter != null && widget.requestCounter!.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      widget.requestCounter!,
+                      style: AppTextStyles.subtitle(color: AppColors.primary).copyWith(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
+          const SizedBox(height: 8),
         ],
         Container(
           decoration: BoxDecoration(
@@ -81,7 +203,7 @@ class AssignmentRequestPopup extends StatelessWidget {
                 Row(
                   children: [
                     Text(
-                      taskType,
+                      widget.taskType,
                       style: AppTextStyles.stepTitle(
                         color: AppColors.primary,
                       ).copyWith(
@@ -91,7 +213,7 @@ class AssignmentRequestPopup extends StatelessWidget {
                     ),
                     const Spacer(),
                     Text(
-                      scheduledTime ?? '—',
+                      widget.scheduledTime ?? '—',
                       style: AppTextStyles.body(
                         color: AppColors.primaryLight,
                       ).copyWith(
@@ -130,7 +252,7 @@ class AssignmentRequestPopup extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            customerName,
+                            widget.customerName,
                             style: AppTextStyles.listItemTitle(
                               color: AppColors.textPrimary,
                             ).copyWith(
@@ -139,33 +261,118 @@ class AssignmentRequestPopup extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 6),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Icon(
-                                Icons.location_on_outlined,
-                                size: 16,
-                                color: AppColors.textSecondary,
-                              ),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                child: Text(
-                                  address.isNotEmpty ? address : 'Address not available',
-                                  style: AppTextStyles.subtitle(
-                                    color: AppColors.textSecondary,
-                                  ).copyWith(fontSize: 13),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
+                          GestureDetector(
+                            onTap: _hasLocationDetails ? () => setState(() => _isExpanded = !_isExpanded) : null,
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(
+                                  Icons.location_on_outlined,
+                                  size: 16,
+                                  color: AppColors.textSecondary,
                                 ),
-                              ),
-                              Icon(
-                                Icons.keyboard_arrow_down,
-                                size: 18,
-                                color: AppColors.textSecondary,
-                              ),
-                            ],
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    widget.address.isNotEmpty ? widget.address : 'Address not available',
+                                    style: AppTextStyles.subtitle(
+                                      color: AppColors.textSecondary,
+                                    ).copyWith(fontSize: 13),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                Icon(
+                                  _hasLocationDetails
+                                      ? (_isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down)
+                                      : Icons.keyboard_arrow_down,
+                                  size: 18,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ],
+                            ),
                           ),
-                          if (showItemCount) ...[
+                          if (_hasLocationDetails) ...[
+                            const SizedBox(height: 8),
+                            GestureDetector(
+                              onTap: () => setState(() => _isExpanded = !_isExpanded),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.expand_more,
+                                    size: 16,
+                                    color: AppColors.primary,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _isExpanded ? 'Hide details' : 'View pickup & drop on map',
+                                    style: AppTextStyles.subtitle(color: AppColors.primary).copyWith(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (_isExpanded) ...[
+                              const SizedBox(height: 12),
+                              if (widget.pickupAddress != null && widget.pickupAddress!.isNotEmpty)
+                                _buildLocationRow(
+                                  Icons.trip_origin,
+                                  'Pickup',
+                                  widget.pickupAddress!,
+                                  AppColors.primary,
+                                ),
+                              if (widget.dropAddress != null && widget.dropAddress!.isNotEmpty) ...[
+                                const SizedBox(height: 8),
+                                _buildLocationRow(
+                                  Icons.location_on,
+                                  'Drop',
+                                  widget.dropAddress!,
+                                  AppColors.success,
+                                ),
+                              ],
+                              if ((widget.pickupLat != null && widget.pickupLng != null) ||
+                                  (widget.dropLat != null && widget.dropLng != null)) ...[
+                                const SizedBox(height: 10),
+                                InkWell(
+                                  onTap: _openMapUrl,
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.info.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: AppColors.info.withOpacity(0.3)),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.map_outlined, size: 20, color: AppColors.info),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'Open in Google Maps',
+                                          style: AppTextStyles.subtitle(color: AppColors.info).copyWith(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              if (widget.orderId != null && widget.orderId!.isNotEmpty) ...[
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Order #${widget.orderId!.length > 8 ? widget.orderId!.substring(0, 8) : widget.orderId}',
+                                  style: AppTextStyles.subtitle(color: AppColors.textSecondary).copyWith(
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ],
+                          if (widget.showItemCount) ...[
                             const SizedBox(height: 6),
                             Row(
                               children: [
@@ -176,7 +383,7 @@ class AssignmentRequestPopup extends StatelessWidget {
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
-                                  '$itemCount ${itemCount == 1 ? 'item' : 'items'}',
+                                  '${widget.itemCount} ${widget.itemCount == 1 ? 'item' : 'items'}',
                                   style: AppTextStyles.subtitle(
                                     color: AppColors.textSecondary,
                                   ).copyWith(fontSize: 13),
@@ -184,7 +391,7 @@ class AssignmentRequestPopup extends StatelessWidget {
                               ],
                             ),
                           ],
-                          if (extraNote != null && extraNote!.isNotEmpty) ...[
+                          if (widget.extraNote != null && widget.extraNote!.isNotEmpty) ...[
                             const SizedBox(height: 10),
                             Row(
                               children: [
@@ -196,7 +403,7 @@ class AssignmentRequestPopup extends StatelessWidget {
                                 const SizedBox(width: 6),
                                 Expanded(
                                   child: Text(
-                                    extraNote!,
+                                    widget.extraNote!,
                                     style: AppTextStyles.subtitle(
                                       color: AppColors.warning,
                                     ).copyWith(
@@ -211,10 +418,10 @@ class AssignmentRequestPopup extends StatelessWidget {
                         ],
                       ),
                     ),
-                    if (amount != null && amount!.isNotEmpty) ...[
+                    if (widget.amount != null && widget.amount!.isNotEmpty) ...[
                       const SizedBox(width: 8),
                       Text(
-                        amount!,
+                        widget.amount!,
                         style: AppTextStyles.listItemTitle(
                           color: AppColors.textPrimary,
                         ).copyWith(
@@ -233,7 +440,7 @@ class AssignmentRequestPopup extends StatelessWidget {
                       child: Material(
                         color: Colors.transparent,
                         child: InkWell(
-                          onTap: isProcessing ? null : onAccept,
+                          onTap: widget.isProcessing ? null : widget.onAccept,
                           borderRadius: BorderRadius.circular(14),
                           child: Container(
                             height: 48,
@@ -257,7 +464,7 @@ class AssignmentRequestPopup extends StatelessWidget {
                               ],
                             ),
                             alignment: Alignment.center,
-                            child: isProcessing
+                            child: widget.isProcessing
                                 ? const SizedBox(
                                     width: 22,
                                     height: 22,
@@ -282,7 +489,7 @@ class AssignmentRequestPopup extends StatelessWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: isProcessing ? null : onReject,
+                        onPressed: widget.isProcessing ? null : widget.onReject,
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(

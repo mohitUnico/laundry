@@ -53,6 +53,14 @@
 	<string>We may save captured images to your photo library (optional).</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>We need location access to verify your pickup/drop location and provide accurate delivery tracking.</string>
+
+	<!-- Required for url_launcher: Open Google Maps / web URLs -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>https</string>
+		<string>http</string>
+		<string>comgooglemaps</string>
+	</array>
 </dict>
 </plist>
 

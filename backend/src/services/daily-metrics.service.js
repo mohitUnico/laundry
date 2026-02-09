@@ -165,18 +165,20 @@ class DailyMetricsService {
                 select: { metric_date: true },
             });
 
-            logger.info('Daily metrics recalculated', {
-                metricDate: metricDate.toISOString().slice(0, 10),
-                totalOrders,
-                completedOrders,
-                cancelledOrders,
-                totalRevenue: totalRevenueNumber,
-                totalCustomers,
-                newCustomers,
-                avgOrderValue,
-                completionRate,
-                avgDeliveryDuration,
-            });
+            if (process.env.DAILY_METRICS_LOGS_ENABLED !== 'false') {
+                logger.info('Daily metrics recalculated', {
+                    metricDate: metricDate.toISOString().slice(0, 10),
+                    totalOrders,
+                    completedOrders,
+                    cancelledOrders,
+                    totalRevenue: totalRevenueNumber,
+                    totalCustomers,
+                    newCustomers,
+                    avgOrderValue,
+                    completionRate,
+                    avgDeliveryDuration,
+                });
+            }
 
             return {
                 metric_date: metricDate.toISOString().slice(0, 10),
@@ -191,7 +193,9 @@ class DailyMetricsService {
                 avg_delivery_duration: avgDeliveryDuration,
             };
         } catch (error) {
-            logger.error('Failed to recalculate daily metrics', { error: error?.message || String(error) });
+            if (process.env.DAILY_METRICS_LOGS_ENABLED !== 'false') {
+                logger.error('Failed to recalculate daily metrics', { error: error?.message || String(error) });
+            }
             throw new AppError('Failed to recalculate daily metrics', 500);
         }
     }

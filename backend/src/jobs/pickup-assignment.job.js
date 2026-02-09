@@ -11,6 +11,44 @@ const isJobEnabled = () => {
     return true;
 };
 
+const isDebugLogging = () => process.env.PICKUP_ASSIGNMENT_DEBUG === 'true';
+
+/**
+ * Run the same query as the job to find orders eligible for pickup assignment.
+ * Used for debugging and by GET /admin/delivery-ops/pickup-assignment-status.
+ */
+const getEligibleOrdersQuery = () => {
+    const now = new Date();
+    return prisma.order.findMany({
+        where: {
+            order_status: 'placed',
+            pickup_time_from: {
+                lte: now,
+                not: null,
+            },
+            deliveryAssignmentRequests: {
+                none: {
+                    delivery_type: 'pickup',
+                    status: 'pending',
+                    expires_at: { gt: now },
+                },
+            },
+            deliveries: {
+                none: {
+                    delivery_type: 'pickup',
+                    delivery_status: { in: ['assigned', 'en_route', 'reached'] },
+                },
+            },
+        },
+        select: {
+            order_id: true,
+            pickup_time_from: true,
+            pickup_time_to: true,
+        },
+        take: getPickupAssignmentConfig().batchSize,
+    });
+};
+
 /**
  * Check for orders that have reached their preferred pickup time
  * and create assignment requests for pickup if not already assigned.
@@ -27,36 +65,14 @@ const checkAndCreatePickupAssignments = async () => {
         // 2. Are in 'placed' status (not yet assigned for pickup)
         // 3. Have pickup_time_from set (not null)
         // 4. Don't already have an active pickup assignment request
-        const ordersReadyForPickup = await prisma.order.findMany({
-            where: {
-                order_status: 'placed',
-                pickup_time_from: {
-                    lte: now,
-                    not: null,
-                },
-                // Ensure no active pickup assignment request exists
-                deliveryAssignmentRequests: {
-                    none: {
-                        delivery_type: 'pickup',
-                        status: 'pending',
-                        expires_at: { gt: now },
-                    },
-                },
-                // Ensure no pickup delivery is already assigned
-                deliveries: {
-                    none: {
-                        delivery_type: 'pickup',
-                        delivery_status: { in: ['assigned', 'en_route', 'reached'] },
-                    },
-                },
-            },
-            select: {
-                order_id: true,
-                pickup_time_from: true,
-                pickup_time_to: true,
-            },
-            take: getPickupAssignmentConfig().batchSize, // Process in batches (configurable)
-        });
+        const ordersReadyForPickup = await getEligibleOrdersQuery();
+
+        if (isDebugLogging()) {
+            logger.info('Pickup assignment job tick', {
+                eligibleCount: ordersReadyForPickup.length,
+                orderIds: ordersReadyForPickup.map((o) => o.order_id),
+            });
+        }
 
         if (ordersReadyForPickup.length === 0) {
             return;
@@ -118,7 +134,7 @@ const checkAndCreatePickupAssignments = async () => {
 };
 
 /**
- * Schedule the pickup assignment job to run every minute
+ * Schedule the pickup assignment job to run at the configured interval (default: 2 minutes).
  */
 const schedule = () => {
     if (jobIntervalHandle) {
@@ -153,6 +169,7 @@ const schedule = () => {
             expirySeconds: config.expirySeconds,
             batchSize: config.batchSize,
         },
+        debugHint: 'Set PICKUP_ASSIGNMENT_DEBUG=true to log every run (eligible order count).',
     });
 };
 
@@ -171,4 +188,22 @@ exports.stopPickupAssignmentJob = () => {
         jobIntervalHandle = null;
         logger.info('Pickup assignment job stopped');
     }
+};
+
+/**
+ * For debugging: return job status and current eligible orders (same query as the job).
+ * GET /api/v1/admin/delivery-ops/pickup-assignment-status uses this.
+ */
+exports.getPickupAssignmentStatus = async () => {
+    const config = getPickupAssignmentConfig();
+    const eligibleOrders = await getEligibleOrdersQuery();
+    return {
+        jobEnabled: isJobEnabled(),
+        webhookMode: process.env.USE_WEBHOOK_PICKUP_ASSIGNMENT === 'true',
+        pollingActive: jobIntervalHandle != null,
+        intervalMs: config.jobIntervalMs,
+        eligibleOrderCount: eligibleOrders.length,
+        eligibleOrderIds: eligibleOrders.map((o) => o.order_id),
+        criteria: 'order_status=placed, pickup_time_from <= now, no pending pickup request, no assigned pickup delivery',
+    };
 };

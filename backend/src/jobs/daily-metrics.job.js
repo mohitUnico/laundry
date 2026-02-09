@@ -12,6 +12,8 @@ const isJobEnabled = () => {
     return true;
 };
 
+const isLogsEnabled = () => process.env.DAILY_METRICS_LOGS_ENABLED !== 'false';
+
 const addUtcDays = (date, days) => {
     const d = new Date(date);
     d.setUTCDate(d.getUTCDate() + days);
@@ -44,7 +46,9 @@ const backfillRecentDays = async () => {
     const today = new Date();
     const start = addUtcDays(today, -safeDays + 1);
 
-    logger.info('Daily metrics backfill started', { days: safeDays, fromUtc: start.toISOString(), toUtc: today.toISOString() });
+    if (isLogsEnabled()) {
+        logger.info('Daily metrics backfill started', { days: safeDays, fromUtc: start.toISOString(), toUtc: today.toISOString() });
+    }
 
     // Sequential (avoid hammering DB)
     for (let i = 0; i < safeDays; i += 1) {
@@ -52,7 +56,9 @@ const backfillRecentDays = async () => {
         await dailyMetricsService.recalculateForUtcDate(addUtcDays(start, i));
     }
 
-    logger.info('Daily metrics backfill completed', { days: safeDays });
+    if (isLogsEnabled()) {
+        logger.info('Daily metrics backfill completed', { days: safeDays });
+    }
 };
 
 const schedule = () => {
@@ -64,31 +70,41 @@ const schedule = () => {
 
     jobTimeoutHandle = setTimeout(() => {
         runDailyRollup().catch((error) => {
-            logger.error('Daily metrics rollup failed', { error: error?.message || String(error) });
+            if (isLogsEnabled()) {
+                logger.error('Daily metrics rollup failed', { error: error?.message || String(error) });
+            }
         });
 
         jobIntervalHandle = setInterval(() => {
             runDailyRollup().catch((error) => {
-                logger.error('Daily metrics rollup failed', { error: error?.message || String(error) });
+                if (isLogsEnabled()) {
+                    logger.error('Daily metrics rollup failed', { error: error?.message || String(error) });
+                }
             });
         }, 24 * 60 * 60 * 1000);
     }, delayMs);
 
-    logger.info('Daily metrics job scheduled', {
-        nextRunInMs: delayMs,
-        nextRunAtUtc: new Date(Date.now() + delayMs).toISOString(),
-    });
+    if (isLogsEnabled()) {
+        logger.info('Daily metrics job scheduled', {
+            nextRunInMs: delayMs,
+            nextRunAtUtc: new Date(Date.now() + delayMs).toISOString(),
+        });
+    }
 };
 
 exports.startDailyMetricsJob = () => {
     if (!isJobEnabled()) {
-        logger.info('Daily metrics job disabled');
+        if (isLogsEnabled()) {
+            logger.info('Daily metrics job disabled');
+        }
         return;
     }
 
     // Startup backfill (configurable): default last 45 days, includes today.
     backfillRecentDays().catch((error) => {
-        logger.error('Daily metrics backfill failed', { error: error?.message || String(error) });
+        if (isLogsEnabled()) {
+            logger.error('Daily metrics backfill failed', { error: error?.message || String(error) });
+        }
     });
 
     schedule();

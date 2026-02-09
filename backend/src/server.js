@@ -56,7 +56,10 @@ const server = app.listen(PORT, () => {
     logger.info(`📊 API: http://localhost:${PORT}/api/v1`);
     logger.info(`🏥 Health: http://localhost:${PORT}/health`);
     startCleanupJob();
-    startDailyMetricsJob();
+    // Daily metrics job: set DAILY_METRICS_JOB_ENABLED=false to disable; set DAILY_METRICS_LOGS_ENABLED=false to disable only logs
+    if (process.env.DAILY_METRICS_JOB_ENABLED !== 'false') {
+        startDailyMetricsJob();
+    }
     
     // Only start polling job if webhook-based assignment is disabled
     // When using database triggers/webhooks, the polling job is not needed

@@ -1,12 +1,27 @@
 const deliveryOperationsService = require('../services/delivery-operations.service');
+const { getPickupAssignmentStatus } = require('../jobs/pickup-assignment.job');
 const logger = require('../utils/logger');
 
 /**
  * Admin Delivery Operations Controller
  * - GET  /api/v1/admin/delivery-ops/nearby-staff
+ * - GET  /api/v1/admin/delivery-ops/pickup-assignment-status (debug)
  * - POST /api/v1/admin/delivery-ops/assignment-requests
  * - POST /api/v1/admin/delivery-ops/assignment-requests/:requestId/cancel
  */
+
+exports.getPickupAssignmentStatus = async (req, res, next) => {
+    try {
+        const status = await getPickupAssignmentStatus();
+        res.status(200).json({
+            success: true,
+            data: status,
+            message: 'Pickup assignment status (for debugging)',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
 
 exports.searchNearbyStaff = async (req, res, next) => {
     try {

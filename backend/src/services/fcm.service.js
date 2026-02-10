@@ -1,4 +1,3 @@
-const admin = require('firebase-admin');
 const fs = require('fs');
 const path = require('path');
 
@@ -6,10 +5,22 @@ const prisma = require('../config/database');
 const logger = require('../utils/logger');
 
 let _initialized = false;
+let admin = null; // Lazy-loaded when FIREBASE_ENABLED=true to avoid requiring firebase-admin at startup
 
 function _safeString(v) {
     if (v == null) return '';
     return String(v);
+}
+
+function _getAdmin() {
+    if (admin) return admin;
+    try {
+        admin = require('firebase-admin');
+        return admin;
+    } catch (e) {
+        logger.warn('firebase-admin not installed; FCM disabled. Install with: npm install firebase-admin');
+        return null;
+    }
 }
 
 function initFirebaseAdmin() {
@@ -20,6 +31,9 @@ function initFirebaseAdmin() {
         logger.info('Firebase Admin disabled (FIREBASE_ENABLED != true)');
         return false;
     }
+
+    const adm = _getAdmin();
+    if (!adm) return false;
 
     try {
         const configuredPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
@@ -35,13 +49,13 @@ function initFirebaseAdmin() {
         const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
 
         // Avoid double init (tests / nodemon reloads)
-        if (admin.apps && admin.apps.length > 0) {
+        if (adm.apps && adm.apps.length > 0) {
             _initialized = true;
             return true;
         }
 
-        admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount),
+        adm.initializeApp({
+            credential: adm.credential.cert(serviceAccount),
         });
 
         _initialized = true;
@@ -81,7 +95,9 @@ async function sendToToken({ token, title, body, data = {} }) {
             apns: { headers: { 'apns-priority': '10' } },
         };
 
-        const messageId = await admin.messaging().send(message);
+        const adm = _getAdmin();
+        if (!adm) return { ok: false, skipped: true, reason: 'firebase_admin_not_available' };
+        const messageId = await adm.messaging().send(message);
         return { ok: true, messageId };
     } catch (e) {
         logger.error('FCM send failed', { error: e?.message || String(e) });

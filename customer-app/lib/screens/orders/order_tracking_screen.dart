@@ -355,7 +355,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.paddingOf(context).bottom;
     final t = _tracking;
 
     return Scaffold(
@@ -412,9 +411,13 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                     textAlign: TextAlign.center,
                   ),
                 )
-              : Stack(
+              : Column(
                   children: [
-                    Positioned.fill(
+                    // Top half: live Google Map showing shop, pickup and delivery locations (and driver when available)
+                    SizedBox(
+                      // Show map on roughly 30% of the screen height
+                      // so that the bottom sheet gets more space for details.
+                      height: MediaQuery.of(context).size.height * 0.3,
                       child: _TrackingMap(
                         onMapCreated: (c) => _mapController = c,
                         tracking: t,
@@ -422,8 +425,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                         route: _route,
                       ),
                     ),
-                    Align(
-                      alignment: Alignment.bottomCenter,
+                    // Bottom half: timeline + addresses + rider info
+                    Expanded(
                       child: Container(
                         width: double.infinity,
                         decoration: const BoxDecoration(
@@ -442,8 +445,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                         ),
                         child: SafeArea(
                           top: false,
-                          child: Padding(
-                            padding: EdgeInsets.fromLTRB(18, 14, 18, 14 + bottomInset),
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [

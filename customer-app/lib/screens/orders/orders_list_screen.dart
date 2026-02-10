@@ -787,6 +787,11 @@ class _OrderCard extends StatelessWidget {
 
     final isBillPaid =
         (data.billPaymentStatus ?? '').toLowerCase() == 'completed';
+    // Show bill payment action for:
+    // - Orders that include kg-wise items (invoice-based billing), OR
+    // - Orders whose selected payment mode is COD (so customer can pay the bill later)
+    final isCodPayment = data.paymentMethod == PaymentMethod.cod;
+    final shouldShowBillAction = hasKgWiseItems || isCodPayment;
 
     return Container(
       width: double.infinity,
@@ -889,8 +894,7 @@ class _OrderCard extends StatelessWidget {
                 ),
               ],
               const Spacer(),
-              // Show bill action only for orders with kg-wise items
-              if (hasKgWiseItems) ...[
+              if (shouldShowBillAction) ...[
                 InkWell(
                   onTap: isBillPaid ? null : onPayBill,
                   borderRadius: BorderRadius.circular(18),

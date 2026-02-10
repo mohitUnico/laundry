@@ -89,10 +89,7 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
 
     Future<_ReceivedOrderUi> mapOne(Map<String, dynamic> o) async {
       final orderId = (o['orderId'] ?? '').toString();
-      final createdAtRaw = o['createdAt'];
-      final createdAt = (createdAtRaw is String && createdAtRaw.isNotEmpty)
-          ? DateTime.tryParse(createdAtRaw)
-          : null;
+      final createdAt = parseUtc(o['createdAt']);
 
       final customer = o['customer'];
       final customerName = (customer is Map ? customer['fullName'] : null)?.toString() ?? 'Customer';
@@ -471,10 +468,7 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
 
     Future<_IncomingOrderUi> mapOne(Map<String, dynamic> o) async {
       final orderId = (o['orderId'] ?? '').toString();
-      final createdAtRaw = o['createdAt'];
-      final createdAt = (createdAtRaw is String && createdAtRaw.isNotEmpty)
-          ? DateTime.tryParse(createdAtRaw)
-          : null;
+      final createdAt = parseUtc(o['createdAt']);
 
       final customer = o['customer'];
       final customerName = (customer is Map ? customer['fullName'] : null)?.toString() ?? 'Customer';
@@ -503,6 +497,7 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
       final orderType = (o['orderType'] ?? '').toString().trim();
       final pricingModel = (o['pricingModel'] ?? '').toString().trim().toLowerCase();
       final perKgWeightsComplete = o['perKgWeightsComplete'] == true;
+      final orderStatus = (o['orderStatus'] ?? '').toString().trim();
 
       return _IncomingOrderUi(
         backendOrderId: orderId,
@@ -518,6 +513,7 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
         orderType: orderType,
         pricingModel: pricingModel,
         perKgWeightsComplete: perKgWeightsComplete,
+        orderStatus: orderStatus,
       );
     }
 
@@ -961,6 +957,7 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
                     time: o.time,
                     itemCount: o.itemCount,
                     isAssigned: o.isAssigned,
+                    orderStatus: o.orderStatus,
                     isDeliveryOnly: o.isDeliveryOnly,
                     isPerKg: o.isPerKg,
                     perKgWeightsComplete: o.perKgWeightsComplete,
@@ -1125,6 +1122,7 @@ class _IncomingOrderUi {
   final String orderType;
   final String pricingModel;
   final bool perKgWeightsComplete;
+  final String orderStatus;
 
   const _IncomingOrderUi({
     required this.backendOrderId,
@@ -1140,6 +1138,7 @@ class _IncomingOrderUi {
     this.orderType = '',
     this.pricingModel = '',
     this.perKgWeightsComplete = true,
+    this.orderStatus = '',
   });
 
   bool get isDeliveryOnly =>
@@ -1180,6 +1179,7 @@ class _NewOrderCard extends StatefulWidget {
   final String time;
   final int itemCount;
   final bool isAssigned;
+  final String orderStatus;
   final bool isDeliveryOnly;
   final bool isPerKg;
   final bool perKgWeightsComplete;
@@ -1205,6 +1205,7 @@ class _NewOrderCard extends StatefulWidget {
     required this.time,
     required this.itemCount,
     required this.isAssigned,
+    this.orderStatus = '',
     this.isDeliveryOnly = false,
     this.isPerKg = false,
     this.perKgWeightsComplete = true,
@@ -1488,8 +1489,8 @@ class _NewOrderCardState extends State<_NewOrderCard> {
           const SizedBox(height: 16),
           // Action Buttons: For delivery_only orders, no pickup.
           // For delivery_only + per_kg: step 1 = Update Weights, step 2 = Verified & Received.
-          // For pickup orders: show Assign Delivery when not assigned, else Verified & Received.
-          if (!widget.isAssigned && !widget.isDeliveryOnly)
+          // For pickup orders: show Assign Delivery Partner only when status is 'placed'; otherwise show Verified & Received.
+          if (widget.orderStatus == 'placed' && !widget.isAssigned && !widget.isDeliveryOnly)
             SizedBox(
               width: double.infinity,
               height: 48,
@@ -1525,7 +1526,7 @@ class _NewOrderCardState extends State<_NewOrderCard> {
           else
             Column(
               children: [
-                if (!widget.isDeliveryOnly)
+                if (widget.isAssigned && !widget.isDeliveryOnly)
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
@@ -1535,7 +1536,7 @@ class _NewOrderCardState extends State<_NewOrderCard> {
                       ),
                     ),
                   )
-                else
+                else if (widget.isDeliveryOnly)
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Text(

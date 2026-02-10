@@ -33,10 +33,17 @@ String formatDateIst(DateTime? utc) {
 }
 
 /// Parses backend date/time (ISO string or DateTime) as UTC.
+/// Strings without a timezone (e.g. "2026-02-10T01:17:00") are treated as UTC so they are not
+/// misinterpreted as device local time; then [formatDateIst]/[formatTimeIst] show IST correctly.
 DateTime? parseUtc(Object? raw) {
   if (raw is DateTime) return raw.toUtc();
   if (raw is String && raw.isNotEmpty) {
-    final dt = DateTime.tryParse(raw);
+    String s = raw.trim();
+    if (s.isEmpty) return null;
+    // Backend sends UTC. If no 'Z' or +/- offset, assume UTC to avoid local-time interpretation.
+    final hasTz = s.endsWith('Z') || RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(s);
+    if (!hasTz) s = '$s${s.contains('.') ? '' : '.000'}Z';
+    final dt = DateTime.tryParse(s);
     return dt?.toUtc();
   }
   return null;

@@ -484,11 +484,14 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
   }
 
   Widget _buildHomeOrdersList() {
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      children: [
-        FutureBuilder<List<_DmOrderUi>>(
-          future: _readyFuture,
+    return RefreshIndicator(
+      onRefresh: _refreshReady,
+      color: AppColors.primary,
+      child: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        children: [
+          FutureBuilder<List<_DmOrderUi>>(
+            future: _readyFuture,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Padding(
@@ -549,15 +552,19 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
           },
         ),
       ],
+    ),
     );
   }
 
   Widget _buildDispatchOrdersList() {
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      children: [
-        FutureBuilder<List<_DmOrderUi>>(
-          future: _verifiedFuture,
+    return RefreshIndicator(
+      onRefresh: _refreshVerified,
+      color: AppColors.primary,
+      child: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        children: [
+          FutureBuilder<List<_DmOrderUi>>(
+            future: _verifiedFuture,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Padding(
@@ -620,6 +627,7 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
           },
         ),
       ],
+    ),
     );
   }
 }

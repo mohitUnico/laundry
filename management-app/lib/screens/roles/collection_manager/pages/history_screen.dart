@@ -23,6 +23,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
     _future = _load(page: 1, limit: 20);
   }
 
+  Future<void> _refresh() async {
+    setState(() {
+      _future = _load(page: 1, limit: 20);
+    });
+    await _future;
+  }
+
   Future<List<_HistoryOrderUi>> _load({required int page, required int limit}) async {
     final body = await _ordersService.listSubmissionHistory(page: page, limit: limit);
     final data = body['data'];
@@ -42,10 +49,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     Future<_HistoryOrderUi> mapOne(Map<String, dynamic> o) async {
       final orderId = (o['orderId'] ?? '').toString();
-      final createdAtRaw = o['createdAt'];
-      final createdAt = (createdAtRaw is String && createdAtRaw.isNotEmpty)
-          ? DateTime.tryParse(createdAtRaw)
-          : null;
+      final createdAt = parseUtc(o['createdAt']);
 
       final customer = o['customer'];
       final customerName = (customer is Map ? customer['fullName'] : null)?.toString() ?? 'Customer';
@@ -194,83 +198,107 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
             // History Orders List
             Expanded(
-              child: FutureBuilder<List<_HistoryOrderUi>>(
-                future: _future,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                      child: SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    );
-                  }
-
-                  if (snapshot.hasError) {
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.error_outline, color: AppColors.error),
-                            const SizedBox(height: 10),
-                            Text(
-                              snapshot.error.toString().replaceFirst('Exception: ', ''),
-                              textAlign: TextAlign.center,
-                              style: AppTextStyles.subtitle(color: AppColors.textSecondary),
-                            ),
-                            const SizedBox(height: 10),
-                            TextButton(
-                              onPressed: () {
-                                setState(() {
-                                  _future = _load(page: 1, limit: 20);
-                                });
-                              },
-                              child: Text(
-                                'Retry',
-                                style: AppTextStyles.subtitle(color: AppColors.primary).copyWith(
-                                  fontWeight: FontWeight.w700,
-                                ),
+              child: RefreshIndicator(
+                onRefresh: _refresh,
+                color: AppColors.primary,
+                child: FutureBuilder<List<_HistoryOrderUi>>(
+                  future: _future,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: [
+                          SizedBox(
+                            height: MediaQuery.of(context).size.height * 0.4,
+                            child: const Center(
+                              child: SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(strokeWidth: 2),
                               ),
                             ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }
-
-                  final list = snapshot.data ?? const <_HistoryOrderUi>[];
-                  if (list.isEmpty) {
-                    return Center(
-                      child: Text(
-                        'No history found',
-                        style: AppTextStyles.subtitle(color: AppColors.textSecondary),
-                      ),
-                    );
-                  }
-
-                  return ListView.separated(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: list.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) {
-                      final o = list[index];
-                      return _HistoryOrderCard(
-                        orderId: o.orderIdDisplay,
-                        customerName: o.customerName,
-                        date: o.date,
-                        time: o.time,
-                        itemCount: o.itemCount,
-                        deliveryPerson: o.deliveryPerson,
-                        deliveryPersonId: o.deliveryPersonId,
-                        assignedTo: o.assignedTo,
-                        items: o.items,
+                          ),
+                        ],
                       );
-                    },
-                  );
-                },
+                    }
+
+                    if (snapshot.hasError) {
+                      return ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.error_outline, color: AppColors.error),
+                                const SizedBox(height: 10),
+                                Text(
+                                  snapshot.error.toString().replaceFirst('Exception: ', ''),
+                                  textAlign: TextAlign.center,
+                                  style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                                ),
+                                const SizedBox(height: 10),
+                                TextButton(
+                                  onPressed: () {
+                                    setState(() {
+                                      _future = _load(page: 1, limit: 20);
+                                    });
+                                  },
+                                  child: Text(
+                                    'Retry',
+                                    style: AppTextStyles.subtitle(color: AppColors.primary).copyWith(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+                    }
+
+                    final list = snapshot.data ?? const <_HistoryOrderUi>[];
+                    if (list.isEmpty) {
+                      return ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: [
+                          SizedBox(
+                            height: MediaQuery.of(context).size.height * 0.4,
+                            child: Center(
+                              child: Text(
+                                'No history found',
+                                style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    }
+
+                    return ListView.separated(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(16),
+                      itemCount: list.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        final o = list[index];
+                        return _HistoryOrderCard(
+                          orderId: o.orderIdDisplay,
+                          customerName: o.customerName,
+                          date: o.date,
+                          time: o.time,
+                          itemCount: o.itemCount,
+                          deliveryPerson: o.deliveryPerson,
+                          deliveryPersonId: o.deliveryPersonId,
+                          assignedTo: o.assignedTo,
+                          items: o.items,
+                        );
+                      },
+                    );
+                  },
+                ),
               ),
             ),
           ],

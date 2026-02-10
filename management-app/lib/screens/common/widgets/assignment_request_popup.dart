@@ -35,6 +35,15 @@ class AssignmentRequestPopup extends StatefulWidget {
   final String? orderId;
   /// Optional request counter (e.g. "1 of 3").
   final String? requestCounter;
+  /// Optional callback to dismiss all current assignment requests from the queue.
+  /// This is wired from the delivery partner home screen and clears all pending
+  /// requests when the user taps the bottom "Dismiss all" button.
+  final VoidCallback? onDismissAll;
+  /// Index of the current request in the carousel (0-based). Used to render
+  /// page indicators directly under the dismiss button.
+  final int? currentIndex;
+  /// Total number of pending requests in the carousel.
+  final int? totalCount;
 
   const AssignmentRequestPopup({
     super.key,
@@ -58,6 +67,9 @@ class AssignmentRequestPopup extends StatefulWidget {
     this.dropLng,
     this.orderId,
     this.requestCounter,
+    this.onDismissAll,
+    this.currentIndex,
+    this.totalCount,
   });
 
   @override
@@ -139,6 +151,18 @@ class _AssignmentRequestPopupState extends State<AssignmentRequestPopup> {
 
   @override
   Widget build(BuildContext context) {
+    // Derive a short, human-friendly order ID similar to the customer app (e.g. ORDC1C24E)
+    String? shortOrderId;
+    final fullOrderId = widget.orderId ?? '';
+    if (fullOrderId.isNotEmpty) {
+      final normalized = fullOrderId.replaceAll('-', '').toUpperCase().trim();
+      if (normalized.length >= 6) {
+        shortOrderId = 'ORD${normalized.substring(0, 6)}';
+      } else if (normalized.isNotEmpty) {
+        shortOrderId = 'ORD$normalized';
+      }
+    }
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -252,7 +276,21 @@ class _AssignmentRequestPopupState extends State<AssignmentRequestPopup> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            widget.customerName,
+                            // When collapsed, show short order ID (like "ORDC1C24E") instead of
+                            // "New request". When expanded, show "Customer Name • ORDC1C24E"
+                            // so staff can see both who the order belongs to and the order id.
+                            () {
+                              final name = widget.customerName;
+                              if (_isExpanded) {
+                                if (name.isNotEmpty && shortOrderId != null) {
+                                  return '$name • $shortOrderId';
+                                }
+                                if (name.isNotEmpty) return name;
+                                return shortOrderId ?? 'New request';
+                              } else {
+                                return shortOrderId ?? (name.isNotEmpty ? name : 'New request');
+                              }
+                            }(),
                             style: AppTextStyles.listItemTitle(
                               color: AppColors.textPrimary,
                             ).copyWith(
@@ -511,6 +549,43 @@ class _AssignmentRequestPopupState extends State<AssignmentRequestPopup> {
                     ),
                   ],
                 ),
+                if (widget.onDismissAll != null) ...[
+                  const SizedBox(height: 10),
+                  Center(
+                    child: TextButton(
+                      onPressed: widget.isProcessing ? null : widget.onDismissAll,
+                      child: Text(
+                        'Dismiss all',
+                        style: AppTextStyles.subtitle(color: AppColors.textSecondary).copyWith(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+                if (widget.currentIndex != null &&
+                    widget.totalCount != null &&
+                    widget.totalCount! > 1) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(
+                      widget.totalCount!,
+                      (index) => Container(
+                        width: 8,
+                        height: 8,
+                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: widget.currentIndex == index
+                              ? AppColors.primary
+                              : AppColors.primary.withOpacity(0.3),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

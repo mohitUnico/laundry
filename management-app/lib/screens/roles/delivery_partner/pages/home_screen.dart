@@ -56,7 +56,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // Cache the latest UI data so we don't "blank" the screen on every refresh.
   _HomeStatsUi _statsCache = const _HomeStatsUi(inProgress: 0, completed: 0);
   List<_AcceptedTaskUi> _acceptedCache = const <_AcceptedTaskUi>[];
-  bool _refreshingStats = false;
   bool _refreshingAccepted = false;
 
   Timer? _locationTimer;
@@ -108,6 +107,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (mounted) {
         setState(() {
           _acceptedCache = v;
+          _statsCache = _computeStatsFromAccepted(v);
         });
       }
       return v;
@@ -238,19 +238,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _refreshStatsInPlace() async {
-    if (_refreshingStats) return;
-    _refreshingStats = true;
-    try {
-      final next = await _loadStats();
-      if (!mounted) return;
-      setState(() {
-        _statsCache = next;
-      });
-    } catch (_) {
-      // Keep old stats on failure (avoid screen jitter).
-    } finally {
-      _refreshingStats = false;
-    }
+    if (!mounted) return;
+    setState(() {
+      _statsCache = _computeStatsFromAccepted(_acceptedCache);
+    });
   }
 
   static String _acceptedTaskKey(_AcceptedTaskUi t) {
@@ -258,6 +249,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (deliveryId.isNotEmpty) return 'd:$deliveryId';
     final orderId = t.orderId.trim();
     return 'o:$orderId:${t.taskType}';
+  }
+
+  _HomeStatsUi _computeStatsFromAccepted(List<_AcceptedTaskUi> list) {
+    var inProgress = 0;
+    var completed = 0;
+    for (final t in list) {
+      if (t.orderStatus == 'submitted_to_cm' || t.orderStatus == 'delivered') {
+        completed++;
+      } else {
+        inProgress++;
+      }
+    }
+    return _HomeStatsUi(inProgress: inProgress, completed: completed);
   }
 
   void _mergeAcceptedTasks(List<_AcceptedTaskUi> fresh) {
@@ -314,6 +318,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       setState(() {
         _mergeAcceptedTasks(fresh);
+        _statsCache = _computeStatsFromAccepted(_acceptedCache);
       });
     } catch (_) {
       // Keep old list on failure (avoid reloading the whole screen).
@@ -800,14 +805,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _removeExpiredFromQueue() {
-    final now = DateTime.now();
+    final nowUtc = DateTime.now().toUtc();
     _pendingAssignmentRequests.removeWhere((r) {
       final payload = (r['payload'] is Map) ? (r['payload'] as Map).cast<String, dynamic>() : <String, dynamic>{};
-      final expiresAtRaw = payload['expiresAt'];
-      final expiresAt = expiresAtRaw is DateTime
-          ? expiresAtRaw
-          : (expiresAtRaw is String && expiresAtRaw.toString().isNotEmpty ? DateTime.tryParse(expiresAtRaw.toString()) : null);
-      return expiresAt != null && expiresAt.isBefore(now);
+      final expiresAt = parseUtc(payload['expiresAt']);
+      return expiresAt != null && expiresAt.isBefore(nowUtc);
     });
   }
 
@@ -843,12 +845,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         : data;
     final deliveryType = (payload['deliveryType'] ?? '').toString();
     final taskType = deliveryType == 'pickup' ? 'Pickup' : 'Delivery';
-    final assignedAtRaw = payload['assignedAt'];
-    final assignedAt = assignedAtRaw is DateTime
-        ? assignedAtRaw
-        : (assignedAtRaw is String && assignedAtRaw.toString().isNotEmpty
-            ? DateTime.tryParse(assignedAtRaw.toString())
-            : null);
+    final assignedAt = parseUtc(payload['assignedAt']);
     final assignedAtStr = assignedAt != null ? formatTimeIst(assignedAt) : '—';
     final itemCountRaw = payload['itemCount'];
     final itemCount = (itemCountRaw is num)
@@ -860,8 +857,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     final entry = OverlayEntry(
       builder: (context) {
+        final mediaQuery = MediaQuery.of(context);
+        final topPadding = mediaQuery.padding.top + 12;
         return Positioned(
-          top: 12,
+          top: topPadding,
           left: 12,
           right: 12,
           child: Material(
@@ -948,8 +947,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     final entry = OverlayEntry(
       builder: (context) {
+        final mediaQuery = MediaQuery.of(context);
+        final topPadding = mediaQuery.padding.top + 12;
         return Positioned(
-          top: 12,
+          top: topPadding,
           left: 12,
           right: 12,
           child: Material(
@@ -976,6 +977,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   // Rebuild overlay when page changes to update request counter
                   _incomingOverlay?.markNeedsBuild();
                 },
+                onDismissAll: _dismissAllAssignmentRequests,
               ),
             ),
           ),
@@ -1019,6 +1021,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         }
       }
     });
+  }
+
+  void _dismissAllAssignmentRequests() {
+    _pendingAssignmentRequests.clear();
+    _expiryTimer?.cancel();
+    _removeIncomingPopup();
   }
 
   Future<void> _handleAcceptRequest(String requestId) async {
@@ -1468,42 +1476,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             ),
             // Orders Summary Section
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Orders',
-                    style: AppTextStyles.header(
-                      color: AppColors.textPrimary,
-                    ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Orders',
+                  style: AppTextStyles.header(
+                    color: AppColors.textPrimary,
                   ),
-                  const SizedBox(height: 12),
-                  FutureBuilder<_HomeStatsUi>(
-                    future: _statsFuture,
-                    builder: (context, snapshot) {
-                      final stats = snapshot.data ?? _statsCache;
-                      return Row(
-                        children: [
-                          OrderSummaryCard(
-                            label: 'In Progress',
-                            count: stats.inProgress,
-                            iconAsset: 'assets/icons/home_screen/in_progress.png',
-                          ),
-                          const SizedBox(width: 12),
-                          OrderSummaryCard(
-                            label: 'Completed',
-                            count: stats.completed,
-                            iconAsset: 'assets/icons/home_screen/completed.png',
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 12),
+                FutureBuilder<_HomeStatsUi>(
+                  future: _statsFuture,
+                  builder: (context, snapshot) {
+                    final stats = _statsCache;
+                    return Row(
+                      children: [
+                        OrderSummaryCard(
+                          label: 'In Progress',
+                          count: stats.inProgress,
+                          iconAsset: 'assets/icons/home_screen/in_progress.png',
+                        ),
+                        const SizedBox(width: 12),
+                        OrderSummaryCard(
+                          label: 'Completed',
+                          count: stats.completed,
+                          iconAsset: 'assets/icons/home_screen/completed.png',
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ],
             ),
+          ),
             const SizedBox(height: 20),
             // Task Filter Tabs
             Padding(
@@ -2446,6 +2454,8 @@ class _AssignmentRequestCarousel extends StatefulWidget {
   final Function(String requestId) onAccept;
   final Function(String requestId) onReject;
   final VoidCallback onPageChanged;
+   /// Callback to dismiss all current assignment requests from the queue.
+   final VoidCallback onDismissAll;
 
   const _AssignmentRequestCarousel({
     required this.requests,
@@ -2454,6 +2464,7 @@ class _AssignmentRequestCarousel extends StatefulWidget {
     required this.onAccept,
     required this.onReject,
     required this.onPageChanged,
+    required this.onDismissAll,
   });
 
   @override
@@ -2520,11 +2531,25 @@ class _AssignmentRequestCarouselState extends State<_AssignmentRequestCarousel> 
     if (address.isEmpty) {
       address = pickupAddress.isNotEmpty ? pickupAddress : (dropAddress.isNotEmpty ? dropAddress : 'Address not available');
     }
-    final expiresAtRaw = payload['expiresAt'];
-    final expiresAt = expiresAtRaw is DateTime
-        ? expiresAtRaw
-        : (expiresAtRaw is String && expiresAtRaw.toString().isNotEmpty ? DateTime.tryParse(expiresAtRaw.toString()) : null);
+    final expiresAt = parseUtc(payload['expiresAt']);
     final orderId = (payload['orderId'] ?? '').toString();
+
+    // Try to derive customer name from payload where possible so that
+    // the popup can show "Customer Name • ORDXYZ" instead of "New request".
+    String customerName = '';
+    final customerRaw = payload['customer'];
+    if (customerRaw is Map) {
+      final fullName = customerRaw['fullName'] ?? customerRaw['name'];
+      if (fullName != null && fullName.toString().trim().isNotEmpty) {
+        customerName = fullName.toString().trim();
+      }
+    }
+    if (customerName.isEmpty) {
+      final customerNameField = (payload['customerName'] ?? payload['customer_full_name'])?.toString().trim();
+      if (customerNameField != null && customerNameField.isNotEmpty) {
+        customerName = customerNameField;
+      }
+    }
 
     final taskType = deliveryType == 'pickup' ? 'Pickup' : 'Delivery';
     final scheduledTimeStr = expiresAt != null ? formatTimeIst(expiresAt) : null;
@@ -2538,7 +2563,7 @@ class _AssignmentRequestCarouselState extends State<_AssignmentRequestCarousel> 
 
     return AssignmentRequestPopup(
       taskType: taskType,
-      customerName: 'New request',
+      customerName: customerName.isNotEmpty ? customerName : 'New request',
       address: address.isNotEmpty ? address : 'Address not available',
       itemCount: itemCount,
       isProcessing: widget.isProcessing,
@@ -2556,6 +2581,9 @@ class _AssignmentRequestCarouselState extends State<_AssignmentRequestCarousel> 
       dropLng: dropLng,
       orderId: orderId.isNotEmpty ? orderId : null,
       requestCounter: requestCounter,
+      onDismissAll: widget.onDismissAll,
+      currentIndex: _currentPage,
+      totalCount: totalPending,
     );
   }
 
@@ -2566,43 +2594,18 @@ class _AssignmentRequestCarouselState extends State<_AssignmentRequestCarousel> 
     // PageView requires bounded height; use ~70% of screen or fixed max
     final maxHeight = MediaQuery.of(context).size.height * 0.7;
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (widget.requests.length > 1) ...[
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(
-              widget.requests.length,
-              (index) => Container(
-                width: 8,
-                height: 8,
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _currentPage == index
-                      ? AppColors.primary
-                      : AppColors.primary.withOpacity(0.3),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-        ],
-        SizedBox(
-          height: maxHeight,
-          child: PageView.builder(
-            controller: widget.pageController,
-            itemCount: widget.requests.length,
-            itemBuilder: (context, index) => SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: _buildRequestPopup(index),
-              ),
-            ),
+    return SizedBox(
+      height: maxHeight,
+      child: PageView.builder(
+        controller: widget.pageController,
+        itemCount: widget.requests.length,
+        itemBuilder: (context, index) => SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: _buildRequestPopup(index),
           ),
         ),
-      ],
+      ),
     );
   }
 }
@@ -2648,27 +2651,7 @@ class _TopSlidePopupState extends State<_TopSlidePopup> with SingleTickerProvide
   Widget build(BuildContext context) {
     return SlideTransition(
       position: _slide,
-      child: Stack(
-        children: [
-          widget.child,
-          Positioned(
-            top: 6,
-            right: 6,
-            child: Material(
-              color: Colors.white,
-              shape: const CircleBorder(),
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: widget.onClose,
-                child: const Padding(
-                  padding: EdgeInsets.all(6),
-                  child: Icon(Icons.close, size: 18, color: AppColors.textSecondary),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+      child: widget.child,
     );
   }
 }

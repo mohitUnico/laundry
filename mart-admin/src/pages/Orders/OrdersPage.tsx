@@ -55,7 +55,7 @@ export const OrdersPage: React.FC = () => {
       { label: 'Pending', value: summary?.pending ?? 0, status: 'pickup' },
       { label: 'Out for Delivery', value: summary?.outForDelivery ?? 0, status: 'out_for_delivery' },
       { label: 'In Progress', value: summary?.inProgress ?? 0, status: 'in_process' },
-      { label: 'Completed Today', value: summary?.completedToday ?? 0, status: 'completed_today' },
+      { label: 'Completed', value: summary?.completedToday ?? 0, status: 'completed_today' },
     ];
   }, [summary]);
 
@@ -72,6 +72,10 @@ export const OrdersPage: React.FC = () => {
         return 'delivered,closed';
       case 'ready':
         return 'services_completed';
+      case 'completed_today':
+        // Completed KPI card should show orders that were completed (delivered/closed)
+        // on the selected day (or today when no date filter is chosen).
+        return 'delivered,closed';
       default:
         return undefined;
     }
@@ -88,7 +92,6 @@ export const OrdersPage: React.FC = () => {
         const summaryRes = await adminManagementApi.getAdminOrdersSummary({
           from,
           to,
-          completedDate: dateFilter || undefined,
         });
 
         if (!isMounted) return;
@@ -113,13 +116,15 @@ export const OrdersPage: React.FC = () => {
         setIsLoading(true);
         setError(null);
 
-        const from = monthRange?.from;
-        const to = monthRange?.to;
+        const isCompletedView = statusFilter === 'completed_today';
+
+        // When viewing Completed, we intentionally ignore the date filter so that
+        // the table shows all delivered/closed orders, matching the KPI total.
+        const from = isCompletedView ? undefined : monthRange?.from;
+        const to = isCompletedView ? undefined : monthRange?.to;
 
         const statusParam =
-          statusFilter === 'all' || statusFilter === 'completed_today'
-            ? undefined
-            : mapUiStatusToApiStatus(statusFilter);
+          statusFilter === 'all' ? undefined : mapUiStatusToApiStatus(statusFilter);
 
         const ordersRes = await adminManagementApi.getAdminOrders({
           status: statusParam,
@@ -233,7 +238,6 @@ export const OrdersPage: React.FC = () => {
           const summaryRes = await adminManagementApi.getAdminOrdersSummary({
             from,
             to,
-            completedDate: dateFilter || undefined,
           });
           setSummary(summaryRes.data);
         } catch {

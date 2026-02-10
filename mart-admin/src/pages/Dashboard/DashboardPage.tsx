@@ -175,7 +175,9 @@ export const DashboardPage: React.FC = () => {
         { label: 'Pending', count: dayOverview.pending_orders, color: '#facc15' },
         { label: 'In progress', count: dayOverview.in_progress, color: '#60a5fa' },
         { label: 'Out for delivery', count: dayOverview.out_for_delivery, color: '#22d3ee' },
-        { label: 'Completed today', count: dayOverview.completed_today, color: '#34d399' },
+        // "Completed" represents all delivered/closed orders (lifetime total),
+        // aligned with the Orders overview Completed KPI.
+        { label: 'Completed', count: dayOverview.completed_today, color: '#34d399' },
       ]
     : undefined;
 

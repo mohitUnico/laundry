@@ -176,9 +176,9 @@ class DashboardService {
             const nextDayStart = new Date(Date.UTC(year, month, day + 1, 0, 0, 0));
 
             // IMPORTANT:
-            // - Pending / In progress / Out for delivery should reflect CURRENT queue (not only "created today"),
-            //   otherwise older pending orders show as 0 on dashboard while modals show them correctly.
-            // - Completed today should remain day-scoped (delivered today), using updated_at.
+            // - Pending / In progress / Out for delivery reflect CURRENT queue (regardless of when created).
+            // - "Completed" on dashboard should show the total pool of finished orders (delivered/closed),
+            //   matching the admin orders overview, not just those completed today.
             const buildCurrentCountPromise = (statusOrStatuses) =>
                 prisma.order.count({
                     where: {
@@ -189,14 +189,12 @@ class DashboardService {
                     },
                 });
 
-            const buildCompletedTodayPromise = () =>
+            const buildCompletedTotalPromise = () =>
                 prisma.order.count({
                     where: {
                         ...(martId ? { mart_id: martId } : {}),
-                        order_status: 'delivered',
-                        updated_at: {
-                            gte: dayStart,
-                            lt: nextDayStart,
+                        order_status: {
+                            in: ['delivered', 'closed'],
                         },
                     },
                 });
@@ -213,7 +211,7 @@ class DashboardService {
                 ]),
                 buildCurrentCountPromise('services_in_progress'), // Orders in progress (current)
                 buildCurrentCountPromise('out_for_delivery'), // Orders out for delivery (current)
-                buildCompletedTodayPromise(), // Completed today
+                buildCompletedTotalPromise(), // All completed (delivered/closed), across history
             ]);
 
             return {

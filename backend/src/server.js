@@ -1,9 +1,26 @@
-const app = require('./app');
-const logger = require('./utils/logger');
-const prisma = require('./config/database');
-const { startCleanupJob } = require('./services/portal-auth.service');
-const { startDailyMetricsJob } = require('./jobs/daily-metrics.job');
-const { startPickupAssignmentJob, stopPickupAssignmentJob } = require('./jobs/pickup-assignment.job');
+let app;
+let logger;
+let prisma;
+let startCleanupJob;
+let startDailyMetricsJob;
+let startPickupAssignmentJob;
+let stopPickupAssignmentJob;
+
+try {
+    app = require('./app');
+    logger = require('./utils/logger');
+    prisma = require('./config/database');
+    const portalAuth = require('./services/portal-auth.service');
+    const dailyMetricsJob = require('./jobs/daily-metrics.job');
+    const pickupJob = require('./jobs/pickup-assignment.job');
+    startCleanupJob = portalAuth.startCleanupJob;
+    startDailyMetricsJob = dailyMetricsJob.startDailyMetricsJob;
+    startPickupAssignmentJob = pickupJob.startPickupAssignmentJob;
+    stopPickupAssignmentJob = pickupJob.stopPickupAssignmentJob;
+} catch (err) {
+    console.error('❌ Startup failed (require/load):', err);
+    process.exit(1);
+}
 
 const PORT = process.env.PORT || 5000;
 
@@ -52,25 +69,36 @@ const gracefulShutdown = async (signal) => {
 
 // Start server
 const server = app.listen(PORT, () => {
-    logger.info(`🚀 Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
-    logger.info(`📊 API: http://localhost:${PORT}/api/v1`);
-    logger.info(`🏥 Health: http://localhost:${PORT}/health`);
-    startCleanupJob();
-    // Daily metrics job: set DAILY_METRICS_JOB_ENABLED=false to disable; set DAILY_METRICS_LOGS_ENABLED=false to disable only logs
-    if (process.env.DAILY_METRICS_JOB_ENABLED !== 'false') {
-        startDailyMetricsJob();
+    try {
+        logger.info(`🚀 Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
+        logger.info(`📊 API: http://localhost:${PORT}/api/v1`);
+        logger.info(`🏥 Health: http://localhost:${PORT}/health`);
+        startCleanupJob();
+        // Daily metrics job: set DAILY_METRICS_JOB_ENABLED=false to disable; set DAILY_METRICS_LOGS_ENABLED=false to disable only logs
+        if (process.env.DAILY_METRICS_JOB_ENABLED !== 'false') {
+            startDailyMetricsJob();
+        }
+        // Only start polling job if webhook-based assignment is disabled
+        const useWebhookAssignment = process.env.USE_WEBHOOK_PICKUP_ASSIGNMENT === 'true';
+        if (!useWebhookAssignment) {
+            logger.info('📋 Starting pickup assignment polling job (webhook mode disabled)');
+            startPickupAssignmentJob();
+        } else {
+            logger.info('🔗 Pickup assignment webhook mode enabled - polling job disabled');
+        }
+    } catch (err) {
+        logger.error('❌ Error during server startup (in listen callback):', err);
+        process.exit(1);
     }
-    
-    // Only start polling job if webhook-based assignment is disabled
-    // When using database triggers/webhooks, the polling job is not needed
-    const useWebhookAssignment = process.env.USE_WEBHOOK_PICKUP_ASSIGNMENT === 'true';
-    if (!useWebhookAssignment) {
-        logger.info('📋 Starting pickup assignment polling job (webhook mode disabled)');
-        startPickupAssignmentJob();
+});
+
+server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+        logger.error(`Port ${PORT} is already in use. Stop the process using it or set PORT to another value (e.g. in .env).`);
     } else {
-        logger.info('🔗 Pickup assignment webhook mode enabled - polling job disabled');
-        logger.info('   Ensure database triggers and pg_cron are configured');
+        logger.error('❌ Server error:', err);
     }
+    process.exit(1);
 });
 
 // Listen for termination signals

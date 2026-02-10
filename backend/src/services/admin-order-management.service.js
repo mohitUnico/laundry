@@ -390,7 +390,6 @@ exports.getAdminOrderSummary = async ({ from, to, completedDate } = {}) => {
     const pendingStatuses = ['placed', 'pickup_assigned', 'picked_up', 'received_by_collection', 'submitted_to_services'];
 
     const createdAtWhere = buildCreatedAtWhere(from, to);
-    const { start: completedStart, end: completedEnd } = getUtcDayRange(completedDate);
 
     const whereBase = {
         ...(createdAtWhere ? { created_at: createdAtWhere } : {}),
@@ -406,11 +405,12 @@ exports.getAdminOrderSummary = async ({ from, to, completedDate } = {}) => {
         prisma.order.count({
             where: { ...whereBase, order_status: 'services_in_progress' },
         }),
+        // Completed = all orders that have ever reached delivered/closed, across the full history.
+        // We deliberately ignore created/updated date filters here so the KPI represents
+        // total completed orders, while other buckets can still respect date ranges.
         prisma.order.count({
             where: {
-                ...whereBase,
                 order_status: { in: ['delivered', 'closed'] },
-                updated_at: { gte: completedStart, lt: completedEnd },
             },
         }),
     ]);
@@ -423,6 +423,7 @@ exports.getAdminOrders = async (query = {}) => {
         status,
         from,
         to,
+        completedDate, // kept for backward-compat; ignored in current logic
         page = 1,
         limit = 20,
     } = query;

@@ -30,5 +30,28 @@ exports.getRevenueBreakdown = async (req, res, next) => {
     }
 };
 
+/**
+ * GET /api/v1/admin/dashboard/delivery-analytics
+ * Returns delivery metrics (today/week/month avg + deltas) and recent deliveries for the modal.
+ */
+exports.getDeliveryAnalytics = async (req, res, next) => {
+    try {
+        const limit = req.query.limit != null ? parseInt(req.query.limit, 10) : 10;
+        const timestamp = new Date();
+
+        logger.info('Admin delivery analytics request', { userId: req.user?.user_id, role: req.user?.role });
+
+        const data = await adminDashboardService.getDeliveryAnalytics(timestamp, limit);
+
+        res.status(200).json({
+            success: true,
+            data,
+            message: 'Delivery analytics fetched successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = exports;
 

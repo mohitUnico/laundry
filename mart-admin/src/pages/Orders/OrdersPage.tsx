@@ -55,7 +55,7 @@ export const OrdersPage: React.FC = () => {
       { label: 'Pending', value: summary?.pending ?? 0, status: 'pickup' },
       { label: 'Out for Delivery', value: summary?.outForDelivery ?? 0, status: 'out_for_delivery' },
       { label: 'In Progress', value: summary?.inProgress ?? 0, status: 'in_process' },
-      { label: 'Completed Today', value: summary?.completedToday ?? 0, status: 'completed_today' },
+      { label: 'Completed', value: summary?.completedToday ?? 0, status: 'completed_today' },
     ];
   }, [summary]);
 
@@ -72,6 +72,10 @@ export const OrdersPage: React.FC = () => {
         return 'delivered,closed';
       case 'ready':
         return 'services_completed';
+      case 'completed_today':
+        // Completed KPI card should show orders that were completed (delivered/closed)
+        // on the selected day (or today when no date filter is chosen).
+        return 'delivered,closed';
       default:
         return undefined;
     }
@@ -88,7 +92,6 @@ export const OrdersPage: React.FC = () => {
         const summaryRes = await adminManagementApi.getAdminOrdersSummary({
           from,
           to,
-          completedDate: dateFilter || undefined,
         });
 
         if (!isMounted) return;
@@ -113,13 +116,15 @@ export const OrdersPage: React.FC = () => {
         setIsLoading(true);
         setError(null);
 
-        const from = monthRange?.from;
-        const to = monthRange?.to;
+        const isCompletedView = statusFilter === 'completed_today';
+
+        // When viewing Completed, we intentionally ignore the date filter so that
+        // the table shows all delivered/closed orders, matching the KPI total.
+        const from = isCompletedView ? undefined : monthRange?.from;
+        const to = isCompletedView ? undefined : monthRange?.to;
 
         const statusParam =
-          statusFilter === 'all' || statusFilter === 'completed_today'
-            ? undefined
-            : mapUiStatusToApiStatus(statusFilter);
+          statusFilter === 'all' ? undefined : mapUiStatusToApiStatus(statusFilter);
 
         const ordersRes = await adminManagementApi.getAdminOrders({
           status: statusParam,
@@ -167,10 +172,28 @@ export const OrdersPage: React.FC = () => {
     setIsDetailsOpen(true);
   };
 
+  /** Map any API status to one of the 5 dropdown values (aligned with OrderRow statusClasses). */
+  const apiStatusToDropdownValue = (apiStatus: string | null | undefined): string => {
+    if (!apiStatus) return 'placed';
+    switch (apiStatus) {
+      case 'picked_up':
+        return 'picked_up';
+      case 'services_in_progress':
+        return 'services_in_progress';
+      case 'out_for_delivery':
+        return 'out_for_delivery';
+      case 'delivered':
+      case 'closed':
+        return 'delivered';
+      default:
+        return 'placed'; // draft, placed, pickup_assigned, submitted_to_cm, received_by_collection, submitted_to_services, services_completed, dispatch_assigned, cancelled
+    }
+  };
+
   const onEdit = (orderId: string) => {
     setSelectedOrderId(orderId);
     const current = apiOrders.find((o) => o.order_number === orderId);
-    setEditStatus(current?.status || '');
+    setEditStatus(apiStatusToDropdownValue(current?.status));
     setSaveError(null);
     setIsEditOpen(true);
   };
@@ -215,7 +238,6 @@ export const OrdersPage: React.FC = () => {
           const summaryRes = await adminManagementApi.getAdminOrdersSummary({
             from,
             to,
-            completedDate: dateFilter || undefined,
           });
           setSummary(summaryRes.data);
         } catch {
@@ -423,21 +445,11 @@ export const OrdersPage: React.FC = () => {
                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="">—</option>
-                <option value="draft">draft</option>
-                <option value="placed">placed</option>
-                <option value="pickup_assigned">pickup_assigned</option>
-                <option value="picked_up">picked_up</option>
-                <option value="submitted_to_cm">submitted_to_cm</option>
-                <option value="received_by_collection">received_by_collection</option>
-                <option value="submitted_to_services">submitted_to_services</option>
-                <option value="services_in_progress">services_in_progress</option>
-                <option value="services_completed">services_completed</option>
-                <option value="dispatch_assigned">dispatch_assigned</option>
-                <option value="out_for_delivery">out_for_delivery</option>
-                <option value="payment_pending">payment_pending</option>
-                <option value="delivered">delivered</option>
-                <option value="closed">closed</option>
-                <option value="cancelled">cancelled</option>
+                <option value="placed">Pending</option>
+                <option value="picked_up">Picked Up</option>
+                <option value="services_in_progress">In Progress</option>
+                <option value="out_for_delivery">Out for Delivery</option>
+                <option value="delivered">Delivered</option>
               </select>
               {saveError ? <p className="text-xs text-red-600">{saveError}</p> : null}
             </div>

@@ -30,8 +30,10 @@ export const FilteredOrdersModal: React.FC<FilteredOrdersModalProps> = ({ isOpen
     if (normalized === 'out for delivery') {
       return { status: 'out_for_delivery' };
     }
-    if (normalized === 'completed today') {
-      return { completedDate: new Date().toISOString() };
+    if (normalized === 'completed' || normalized === 'completed today') {
+      // Completed view should show only delivered/closed orders,
+      // aligned with the global Completed KPI.
+      return { status: 'delivered,closed' };
     }
     return {};
   }, [status]);

@@ -11,9 +11,9 @@ interface ActiveOrdersModalProps {
 }
 
 // "Active" (as used in UI modal) = everything except draft/closed/cancelled.
-// This matches the Orders page expectation where "Delivered" is still shown.
+// Aligned with backend ORDER_STATUSES; payment_pending was removed from the enum.
 const ACTIVE_STATUSES =
-  'placed,pickup_assigned,picked_up,submitted_to_cm,received_by_collection,submitted_to_services,services_in_progress,services_completed,dispatch_assigned,out_for_delivery,payment_pending,delivered';
+  'placed,pickup_assigned,picked_up,submitted_to_cm,received_by_collection,submitted_to_services,services_in_progress,services_completed,dispatch_assigned,out_for_delivery,delivered';
 
 const formatStatus = (status: string | null): string => {
   if (!status) return 'Unknown';
@@ -29,7 +29,6 @@ const formatStatus = (status: string | null): string => {
     services_completed: 'Services Completed',
     dispatch_assigned: 'Dispatch Assigned',
     out_for_delivery: 'Out for Delivery',
-    payment_pending: 'Payment Pending',
     delivered: 'Delivered',
   };
   

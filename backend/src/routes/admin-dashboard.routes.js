@@ -21,5 +21,17 @@ router.get(
     adminDashboardController.getRevenueBreakdown
 );
 
+/**
+ * @route   GET /api/v1/admin/dashboard/delivery-analytics
+ * @desc    Delivery analytics for Avg. Delivery Time popup (metrics + recent deliveries)
+ * @access  Private (Admin, Owner)
+ */
+router.get(
+    '/delivery-analytics',
+    authenticateJWT,
+    authorize('admin', 'owner', 'super_admin'),
+    adminDashboardController.getDeliveryAnalytics
+);
+
 module.exports = router;
 

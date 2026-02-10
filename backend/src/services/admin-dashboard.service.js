@@ -168,6 +168,152 @@ class AdminDashboardService {
             throw new AppError('Failed to fetch revenue breakdown', 500);
         }
     }
+
+    /**
+     * Delivery analytics for the Avg. Delivery Time popup.
+     * Returns today/week/month avg delivery times with deltas vs previous period,
+     * plus recent completed drop deliveries with duration and status (On Time / Delayed / Early).
+     *
+     * @param {Date} currentTimestamp
+     * @param {number} [limit=10] - Max recent deliveries to return
+     * @returns {Promise<{ metrics: object, recentDeliveries: array }>}
+     */
+    async getDeliveryAnalytics(currentTimestamp, limit = 10) {
+        try {
+            const now = currentTimestamp instanceof Date ? currentTimestamp : new Date(currentTimestamp);
+            if (Number.isNaN(now.getTime())) {
+                throw new AppError('Invalid timestamp provided', 400);
+            }
+
+            const todayStart = startOfUtcDay(now);
+            const tomorrowStart = addUtcDays(todayStart, 1);
+            const yesterdayStart = addUtcDays(todayStart, -1);
+
+            const weekStart = addUtcDays(todayStart, -6);
+            const prevWeekStart = addUtcDays(weekStart, -7);
+            const prevWeekEnd = weekStart;
+
+            const monthStart = startOfUtcMonth(now);
+            const nextMonthStart = addUtcMonths(monthStart, 1);
+            const prevMonthStart = addUtcMonths(monthStart, -1);
+            const prevMonthEnd = monthStart;
+
+            const getAvgDeliveryMinutes = async (dateStart, dateEnd) => {
+                const deliveries = await prisma.delivery.findMany({
+                    where: {
+                        delivery_type: 'drop',
+                        completed_at: { gte: dateStart, lt: dateEnd },
+                        delivery_status: 'completed',
+                    },
+                    select: {
+                        actual_duration: true,
+                        assigned_at: true,
+                        completed_at: true,
+                    },
+                });
+
+                const minutesList = deliveries
+                    .map((d) => {
+                        if (Number.isFinite(d.actual_duration) && d.actual_duration > 0) return d.actual_duration;
+                        if (!d.assigned_at || !d.completed_at) return null;
+                        const mins = Math.round((d.completed_at.getTime() - d.assigned_at.getTime()) / 60000);
+                        return mins > 0 ? mins : null;
+                    })
+                    .filter((v) => typeof v === 'number' && Number.isFinite(v));
+
+                if (minutesList.length === 0) return 0;
+                return Math.round(
+                    minutesList.reduce((sum, v) => sum + v, 0) / minutesList.length
+                );
+            };
+
+            const [
+                todayAvg,
+                yesterdayAvg,
+                weekAvg,
+                prevWeekAvg,
+                monthAvg,
+                prevMonthAvg,
+            ] = await Promise.all([
+                getAvgDeliveryMinutes(todayStart, tomorrowStart),
+                getAvgDeliveryMinutes(yesterdayStart, todayStart),
+                getAvgDeliveryMinutes(weekStart, tomorrowStart),
+                getAvgDeliveryMinutes(prevWeekStart, prevWeekEnd),
+                getAvgDeliveryMinutes(monthStart, nextMonthStart),
+                getAvgDeliveryMinutes(prevMonthStart, prevMonthEnd),
+            ]);
+
+            const metrics = {
+                todayAvgMinutes: todayAvg,
+                todayDeltaMinutes: yesterdayAvg === 0 ? 0 : todayAvg - yesterdayAvg,
+                weekAvgMinutes: weekAvg,
+                weekDeltaMinutes: prevWeekAvg === 0 ? 0 : weekAvg - prevWeekAvg,
+                monthAvgMinutes: monthAvg,
+                monthDeltaMinutes: prevMonthAvg === 0 ? 0 : monthAvg - prevMonthAvg,
+            };
+
+            const take = Number.isFinite(limit) && limit > 0 ? Math.min(Math.max(1, limit), 50) : 10;
+
+            const recentDrops = await prisma.delivery.findMany({
+                where: {
+                    delivery_type: 'drop',
+                    delivery_status: 'completed',
+                    completed_at: { not: null },
+                },
+                orderBy: { completed_at: 'desc' },
+                take,
+                select: {
+                    order_id: true,
+                    actual_duration: true,
+                    estimated_duration: true,
+                    assigned_at: true,
+                    completed_at: true,
+                    order: {
+                        select: {
+                            customer: {
+                                select: { full_name: true },
+                            },
+                        },
+                    },
+                },
+            });
+
+            const ON_TIME_TOLERANCE_MIN = 2;
+
+            const recentDeliveries = recentDrops.map((d) => {
+                let durationMinutes = null;
+                if (Number.isFinite(d.actual_duration) && d.actual_duration > 0) {
+                    durationMinutes = d.actual_duration;
+                } else if (d.assigned_at && d.completed_at) {
+                    durationMinutes = Math.round((d.completed_at.getTime() - d.assigned_at.getTime()) / 60000);
+                }
+
+                let status = 'On Time';
+                if (durationMinutes != null && d.estimated_duration != null && Number.isFinite(d.estimated_duration)) {
+                    const est = d.estimated_duration;
+                    if (durationMinutes < est - ON_TIME_TOLERANCE_MIN) status = 'Early';
+                    else if (durationMinutes > est + ON_TIME_TOLERANCE_MIN) status = 'Delayed';
+                }
+
+                return {
+                    orderId: d.order_id,
+                    customerName: d.order?.customer?.full_name ?? null,
+                    durationMinutes,
+                    status,
+                    completedAt: d.completed_at ? d.completed_at.toISOString() : null,
+                };
+            });
+
+            return {
+                metrics,
+                recentDeliveries,
+            };
+        } catch (error) {
+            logger.error('Error fetching delivery analytics', { error: error?.message || String(error) });
+            if (error instanceof AppError) throw error;
+            throw new AppError('Failed to fetch delivery analytics', 500);
+        }
+    }
 }
 
 module.exports = new AdminDashboardService();

@@ -285,6 +285,23 @@ class NotificationService {
     }
   }
 
+  /// Clear FCM token on backend on logout. Call before clearing auth session.
+  /// Only clears if the stored token matches (safe for multi-device).
+  Future<void> clearFcmTokenOnLogout() async {
+    final token = _currentToken;
+    if (token == null || token.isEmpty) return;
+    try {
+      await _apiService.delete(
+        '/notifications/fcm-token',
+        data: {'fcmToken': token},
+      );
+      debugPrint('FCM token cleared on backend');
+    } catch (e) {
+      debugPrint('Error clearing FCM token on logout: $e');
+      // Don't throw - don't block logout on API failure
+    }
+  }
+
   /// Get current FCM token
   String? get currentToken => _currentToken;
 

@@ -228,5 +228,42 @@ exports.saveFcmToken = async (req, res, next) => {
     }
 };
 
+/**
+ * Clear the delivery staff's FCM token only if it matches the token provided by the device.
+ * Prevents Device A logout from clearing Device B's token when both use same account.
+ */
+exports.clearFcmTokenIfMatches = async (req, res, next) => {
+    try {
+        const staffId = req.user?.user_id;
+        const providedToken = req.body?.fcmToken;
+
+        if (!staffId) throw new ValidationError('Missing delivery staff identity');
+        if (!providedToken || typeof providedToken !== 'string') {
+            throw new ValidationError('fcmToken is required');
+        }
+
+        const current = await prisma.deliveryStaff.findUnique({
+            where: { staff_id: staffId },
+            select: { fcm_token: true },
+        });
+
+        if (current?.fcm_token && current.fcm_token === providedToken.trim()) {
+            await prisma.deliveryStaff.update({
+                where: { staff_id: staffId },
+                data: { fcm_token: null },
+                select: { staff_id: true },
+            });
+        }
+
+        logger.info('Delivery staff FCM token cleared if matched', { staffId });
+        res.status(200).json({
+            success: true,
+            message: 'FCM token cleared if matched',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = exports;
 

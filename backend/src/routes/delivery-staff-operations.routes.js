@@ -38,6 +38,7 @@ const validateUuidParam = (paramName) => {
  * - POST  /api/v1/delivery-staff/assignment-requests/:requestId/reject
  * - GET   /api/v1/delivery-staff/events (SSE)
  * - POST  /api/v1/delivery-staff/fcm-token (FCM token for push when app closed)
+ * - DELETE /api/v1/delivery-staff/fcm-token (clear FCM token on logout, only if matches)
  */
 
 router.post(
@@ -46,6 +47,14 @@ router.post(
     authorize('delivery_staff'),
     validate(saveFcmTokenSchema),
     deliveryStaffOperationsController.saveFcmToken
+);
+
+router.delete(
+    '/fcm-token',
+    authenticateJWT,
+    authorize('delivery_staff'),
+    validate(saveFcmTokenSchema),
+    deliveryStaffOperationsController.clearFcmTokenIfMatches
 );
 
 router.get('/shift/status', authenticateJWT, authorize('delivery_staff'), deliveryStaffOperationsController.getShiftStatus);

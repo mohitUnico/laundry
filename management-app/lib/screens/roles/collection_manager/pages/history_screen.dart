@@ -580,7 +580,7 @@ class _HistoryOrderCardState extends State<_HistoryOrderCard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Padding(
-                    padding: const EdgeInsets.only(bottom: hasClothItems ? 8 : 12),
+                    padding: EdgeInsets.only(bottom: hasClothItems ? 8 : 12),
                     child: Row(
                       children: [
                         // Bullet point

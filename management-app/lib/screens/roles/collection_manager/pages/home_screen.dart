@@ -1314,7 +1314,7 @@ List<Widget> _buildCategorizedItemsList(List<_OrderItem> items) {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(bottom: hasClothItems ? 8 : 12),
+            padding: EdgeInsets.only(bottom: hasClothItems ? 8 : 12),
             child: Row(
               children: [
                 Container(
@@ -1430,7 +1430,7 @@ List<Widget> _buildCategorizedItemsList(List<_OrderItem> items) {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(bottom: hasClothItems ? 8 : 12),
+            padding: EdgeInsets.only(bottom: hasClothItems ? 8 : 12),
             child: Row(
               children: [
                 Container(

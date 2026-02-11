@@ -24,34 +24,46 @@ const parseStatusList = (statusCsv) => {
     return list;
 };
 
-const mapQueueItem = (q) => ({
-    queueId: q.queue_id,
-    orderId: q.order_id,
-    orderItemId: q.item_id,
-    serviceId: q.service_id,
-    itemName: q.item_name,
-    quantity: (q.quantity != null) ? q.quantity : null,
-    weightKg: (q.weight_kg?.toString?.() != null) ? q.weight_kg.toString() : ((q.weight_kg != null) ? q.weight_kg : null),
-    queueStatus: q.queue_status,
-    priority: q.priority,
-    assignedAt: q.assigned_at,
-    startedAt: q.started_at,
-    completedAt: q.completed_at,
-    comments: q.comments || null,
-    order: q.order
-        ? {
-            orderStatus: q.order.order_status,
-            orderType: q.order.order_type,
-            customer: q.order.customer
-                ? {
-                    customerId: q.order.customer.customer_id,
-                    fullName: q.order.customer.full_name,
-                    phone: q.order.customer.phone || null,
-                }
-                : null,
-        }
-        : null,
-});
+const mapQueueItem = (q) => {
+    // Extract cloth items from order item selections
+    const clothItems = Array.isArray(q.orderItem?.item_selections)
+        ? q.orderItem.item_selections.map((sel) => ({
+              clothId: sel.cloth_item?.cloth_id || null,
+              clothName: sel.cloth_item?.item_name || '',
+              quantity: sel.quantity || 0,
+          }))
+        : [];
+
+    return {
+        queueId: q.queue_id,
+        orderId: q.order_id,
+        orderItemId: q.item_id,
+        serviceId: q.service_id,
+        itemName: q.item_name,
+        quantity: (q.quantity != null) ? q.quantity : null,
+        weightKg: (q.weight_kg?.toString?.() != null) ? q.weight_kg.toString() : ((q.weight_kg != null) ? q.weight_kg : null),
+        queueStatus: q.queue_status,
+        priority: q.priority,
+        assignedAt: q.assigned_at,
+        startedAt: q.started_at,
+        completedAt: q.completed_at,
+        comments: q.comments || null,
+        clothItems: clothItems.length > 0 ? clothItems : null, // Include cloth items if available
+        order: q.order
+            ? {
+                orderStatus: q.order.order_status,
+                orderType: q.order.order_type,
+                customer: q.order.customer
+                    ? {
+                        customerId: q.order.customer.customer_id,
+                        fullName: q.order.customer.full_name,
+                        phone: q.order.customer.phone || null,
+                    }
+                    : null,
+            }
+            : null,
+    };
+};
 
 exports.listQueue = async ({ staffId, status, page, limit } = {}) => {
     if (!staffId) throw new ValidationError('staffId is required');
@@ -76,6 +88,23 @@ exports.listQueue = async ({ staffId, status, page, limit } = {}) => {
                         order_status: true,
                         order_type: true,
                         customer: { select: { customer_id: true, full_name: true, phone: true } },
+                    },
+                },
+                orderItem: {
+                    select: {
+                        item_id: true,
+                        item_selections: {
+                            select: {
+                                selection_id: true,
+                                quantity: true,
+                                cloth_item: {
+                                    select: {
+                                        cloth_id: true,
+                                        item_name: true,
+                                    },
+                                },
+                            },
+                        },
                     },
                 },
             },

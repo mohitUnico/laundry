@@ -105,7 +105,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   static _ItemsUiMapping _mapItemsForUi(Object? itemsData) {
     final items = <_OrderItem>[];
-    final aggregated = <String, int>{};
+    final aggregated = <String, Map<String, dynamic>>{};
 
     if (itemsData is Map) {
       final map = itemsData.cast<String, dynamic>();
@@ -119,6 +119,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           final key = _formatServiceKey(categoryName, serviceName);
 
           int qty = 0;
+          final List<_ClothItem> clothItemsList = [];
           final selections = item['selections'];
           if (selections is List && selections.isNotEmpty) {
             for (final rawSel in selections) {
@@ -126,7 +127,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
               final sel = rawSel.cast<String, dynamic>();
               final qtyNum = sel['quantity'];
               final q = (qtyNum is num) ? qtyNum.toInt() : int.tryParse(qtyNum?.toString() ?? '') ?? 0;
-              if (q > 0) qty += q;
+              if (q > 0) {
+                qty += q;
+                // Collect cloth item details
+                final clothName = (sel['clothName'] ?? '').toString().trim();
+                if (clothName.isNotEmpty) {
+                  clothItemsList.add(_ClothItem(clothName: clothName, quantity: q));
+                }
+              }
             }
           } else {
             final qtyNum = item['quantity'];
@@ -134,18 +142,33 @@ class _HistoryScreenState extends State<HistoryScreen> {
           }
 
           if (key.isEmpty || qty <= 0) continue;
-          aggregated[key] = (aggregated[key] ?? 0) + qty;
+
+          // Store cloth items with the service item
+          final clothItems = clothItemsList.isNotEmpty ? clothItemsList : null;
+          if (!aggregated.containsKey(key)) {
+            aggregated[key] = {'quantity': 0, 'clothItems': <_ClothItem>[]};
+          }
+          aggregated[key]!['quantity'] = (aggregated[key]!['quantity'] as int) + qty;
+          if (clothItems != null) {
+            (aggregated[key]!['clothItems'] as List<_ClothItem>).addAll(clothItems);
+          }
         }
       }
     }
 
     final entries = aggregated.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
+      ..sort((a, b) => (b.value['quantity'] as int).compareTo(a.value['quantity'] as int));
 
     int total = 0;
     for (final e in entries) {
-      total += e.value;
-      items.add(_OrderItem(name: e.key, quantity: e.value));
+      final qty = e.value['quantity'] as int;
+      total += qty;
+      final clothItems = e.value['clothItems'] as List<_ClothItem>?;
+      items.add(_OrderItem(
+        name: e.key,
+        quantity: qty,
+        clothItems: clothItems?.isNotEmpty == true ? clothItems : null,
+      ));
     }
 
     return _ItemsUiMapping(items: items, totalCount: total);
@@ -311,8 +334,23 @@ class _HistoryScreenState extends State<HistoryScreen> {
 class _OrderItem {
   final String name;
   final int quantity;
+  final List<_ClothItem>? clothItems; // Cloth items for this service
 
-  const _OrderItem({required this.name, required this.quantity});
+  const _OrderItem({
+    required this.name,
+    required this.quantity,
+    this.clothItems,
+  });
+}
+
+class _ClothItem {
+  final String clothName;
+  final int quantity;
+
+  const _ClothItem({
+    required this.clothName,
+    required this.quantity,
+  });
 }
 
 class _ItemsUiMapping {
@@ -536,51 +574,102 @@ class _HistoryOrderCardState extends State<_HistoryOrderCard> {
           if (_isExpanded) ...[
             const SizedBox(height: 16),
             // Items List
-            ...widget.items.map((item) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Row(
-                    children: [
-                      // Bullet point
-                      Container(
-                        width: 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: AppColors.textSecondary,
-                          shape: BoxShape.circle,
+            ...widget.items.map((item) {
+              final hasClothItems = item.clothItems != null && item.clothItems!.isNotEmpty;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: hasClothItems ? 8 : 12),
+                    child: Row(
+                      children: [
+                        // Bullet point
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: AppColors.textSecondary,
+                            shape: BoxShape.circle,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      // Item name
-                      Text(
-                        item.name,
-                        style: AppTextStyles.subtitle(
-                          color: AppColors.textPrimary,
-                        ).copyWith(
-                          fontSize: 13,
+                        const SizedBox(width: 12),
+                        // Item name
+                        Expanded(
+                          child: Text(
+                            item.name,
+                            style: AppTextStyles.subtitle(
+                              color: AppColors.textPrimary,
+                            ).copyWith(
+                              fontSize: 13,
+                            ),
+                          ),
                         ),
-                      ),
-                      // Dotted line
-                      Expanded(
-                        child: Padding(
+                        // Dotted line
+                        Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 8),
                           child: CustomPaint(
                             painter: DottedLinePainter(),
                             child: const SizedBox(height: 1),
                           ),
                         ),
-                      ),
-                      // Quantity
-                      Text(
-                        item.quantity.toString().padLeft(2, '0'),
-                        style: AppTextStyles.subtitle(
-                          color: AppColors.textPrimary,
-                        ).copyWith(
-                          fontSize: 13,
+                        // Quantity
+                        Text(
+                          item.quantity.toString().padLeft(2, '0'),
+                          style: AppTextStyles.subtitle(
+                            color: AppColors.textPrimary,
+                          ).copyWith(
+                            fontSize: 13,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                )),
+                  // Show cloth items nested under service
+                  if (hasClothItems)
+                    ...item.clothItems!.map((clothItem) => Padding(
+                          padding: const EdgeInsets.only(left: 18, bottom: 8),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 4,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: AppColors.textSecondary,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  clothItem.clothName,
+                                  style: AppTextStyles.subtitle(
+                                    color: AppColors.textSecondary,
+                                  ).copyWith(
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                                child: CustomPaint(
+                                  painter: DottedLinePainter(),
+                                  child: const SizedBox(height: 1),
+                                ),
+                              ),
+                              Text(
+                                clothItem.quantity.toString().padLeft(2, '0'),
+                                style: AppTextStyles.subtitle(
+                                  color: AppColors.textSecondary,
+                                ).copyWith(
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )),
+                ],
+              );
+            }),
             const SizedBox(height: 12),
             // Items list footer with upward chevrons
             InkWell(

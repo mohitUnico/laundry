@@ -1296,31 +1296,70 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         final deliveryId = (d['delivery_id'] ?? '').toString();
         final orderId = (d['order_id'] ?? '').toString();
         final customerName = (d['customer_name'] ?? 'Customer').toString();
+        final customerPhone = (d['customer_phone'] ?? '').toString();
         final deliveryType = (d['delivery_type'] ?? '').toString(); // 'pickup' or 'delivery'
-        final itemCountRaw = d['number_of_order_items'];
+        final itemCountRaw = d['number_of_order_items'] ?? d['quantity_count'];
         final itemCount = (itemCountRaw is num) ? itemCountRaw.toInt() : int.tryParse(itemCountRaw?.toString() ?? '') ?? 0;
         final completedAt = _parseDate(d['date_of_delivery']);
+        final assignedAt = _parseDate(d['assigned_at']);
         final isPickup = deliveryType == 'pickup';
 
-        // For completed orders, determine orderStatus based on delivery type and completion
-        // Since these are from history (completed_at is set), they should be at least submitted_to_cm
-        // For pickup deliveries, if completed, they're submitted_to_cm; for drop deliveries, they're delivered
-        final orderStatus = isPickup ? 'submitted_to_cm' : 'delivered';
+        // Extract address and coordinates from pickup or drop
+        final pickup = d['pickup'];
+        final drop = d['drop'];
+        final address = (isPickup && pickup is Map)
+            ? (pickup['address'] ?? '').toString()
+            : (!isPickup && drop is Map)
+                ? (drop['address'] ?? '').toString()
+                : '—';
+
+        final destinationLat = _parseDouble(
+          (isPickup && pickup is Map)
+              ? pickup['latitude']
+              : (!isPickup && drop is Map)
+                  ? drop['latitude']
+                  : null,
+        );
+        final destinationLng = _parseDouble(
+          (isPickup && pickup is Map)
+              ? pickup['longitude']
+              : (!isPickup && drop is Map)
+                  ? drop['longitude']
+                  : null,
+        );
+
+        // Extract preferred time range for display
+        DateTime? preferredFrom;
+        DateTime? preferredTo;
+        if (isPickup && pickup is Map) {
+          preferredFrom = _parseDate(pickup['preferredFrom'] ?? pickup['time']);
+          preferredTo = _parseDate(pickup['preferredTo']);
+        } else if (!isPickup && drop is Map) {
+          preferredFrom = _parseDate(drop['preferredFrom'] ?? drop['time']);
+          preferredTo = _parseDate(drop['preferredTo']);
+        }
+        final scheduledTime = _formatTimeRange(preferredFrom, preferredTo, fallback: completedAt ?? assignedAt);
+
+        // For completed orders, use order_status from backend if available, otherwise infer from delivery type
+        final orderStatusRaw = (d['order_status'] ?? '').toString();
+        final orderStatus = orderStatusRaw.isNotEmpty
+            ? orderStatusRaw
+            : (isPickup ? 'submitted_to_cm' : 'delivered');
 
         return _AcceptedTaskUi(
           deliveryId: deliveryId,
           orderId: orderId,
           taskType: isPickup ? 'Pickup' : 'Delivery',
-          scheduledTime: completedAt != null ? formatTimeIst(completedAt) : '—',
+          scheduledTime: scheduledTime,
           customerName: customerName,
-          address: '—', // History API doesn't return address details
-          phoneNumber: '—', // History API doesn't return phone
+          address: (address.isNotEmpty) ? address : '—',
+          phoneNumber: (customerPhone.isNotEmpty) ? customerPhone : '—',
           itemCount: itemCount,
           amount: '', // Amount not shown for delivery staff
           buttonText: 'Completed',
           iconPath: isPickup ? 'assets/icons/pickup.png' : 'assets/icons/out_for_delivery.png',
-          destinationLat: null, // History API doesn't return coordinates
-          destinationLng: null,
+          destinationLat: destinationLat,
+          destinationLng: destinationLng,
           orderStatus: orderStatus,
         );
       }).toList();

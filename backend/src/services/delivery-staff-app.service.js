@@ -314,6 +314,7 @@ exports.listOrderHistory = async ({ staffId, page, limit, from, to }) => {
             hasNext: deliveries.length === safeLimit,
         },
         orders: deliveries.map((d) => ({
+            delivery_id: d.delivery_id, // Include delivery_id for proper key matching in frontend
             // Quantity count (sum of order_items.quantity). Fallback to row-count if unknown/zero.
             // NOTE: for per_kg items, quantity can be null; we fallback.
             // This matches the delivery staff app UI expectation ("Qty", not "items").

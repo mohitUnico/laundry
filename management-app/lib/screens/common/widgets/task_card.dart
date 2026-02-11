@@ -6,6 +6,8 @@ class TaskCard extends StatelessWidget {
   final String taskType; // 'Pickup' or 'Delivery'
   final String scheduledTime;
   final String customerName;
+  /// Optional short order ID to show next to customer name (e.g. ORDCEI212).
+  final String? orderIdDisplay;
   final String address;
   final String phoneNumber;
   final int itemCount;
@@ -20,6 +22,7 @@ class TaskCard extends StatelessWidget {
     required this.taskType,
     required this.scheduledTime,
     required this.customerName,
+    this.orderIdDisplay,
     required this.address,
     required this.phoneNumber,
     required this.itemCount,
@@ -124,7 +127,19 @@ class TaskCard extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          // Amount intentionally hidden for delivery staff UI (salary-based; no per-order amount shown)
+                          if (orderIdDisplay != null && orderIdDisplay!.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 8),
+                              child: Text(
+                                orderIdDisplay!,
+                                style: AppTextStyles.subtitle(
+                                  color: AppColors.textSecondary,
+                                ).copyWith(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                       const SizedBox(height: 4),

@@ -456,7 +456,13 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
       throw Exception('Invalid response: missing data list');
     }
 
-    final orders = data.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList()
+    final orders = data.whereType<Map>().map((m) => m.cast<String, dynamic>())
+      // Filter: only show orders with status 'placed' or 'submitted_to_cm'
+      .where((o) {
+        final status = (o['orderStatus'] ?? '').toString().trim();
+        return status == 'placed' || status == 'submitted_to_cm';
+      })
+      .toList()
       ..sort((a, b) {
         final adt = _parseCreatedAt(a);
         final bdt = _parseCreatedAt(b);
@@ -1489,7 +1495,9 @@ class _NewOrderCardState extends State<_NewOrderCard> {
           const SizedBox(height: 16),
           // Action Buttons: For delivery_only orders, no pickup.
           // For delivery_only + per_kg: step 1 = Update Weights, step 2 = Verified & Received.
-          // For pickup orders: show Assign Delivery Partner only when status is 'placed'; otherwise show Verified & Received.
+          // For pickup orders: show Assign Delivery Partner only when status is 'placed';
+          // when already assigned (and still 'placed') or when status is 'submitted_to_cm',
+          // show Verified & Received.
           if (widget.orderStatus == 'placed' && !widget.isAssigned && !widget.isDeliveryOnly)
             SizedBox(
               width: double.infinity,
@@ -1523,7 +1531,7 @@ class _NewOrderCardState extends State<_NewOrderCard> {
                 ),
               ),
             )
-          else
+          else if (widget.orderStatus == 'placed' || widget.orderStatus == 'submitted_to_cm')
             Column(
               children: [
                 if (widget.isAssigned && !widget.isDeliveryOnly)
@@ -1554,7 +1562,10 @@ class _NewOrderCardState extends State<_NewOrderCard> {
                         height: 48,
                         child: Builder(
                           builder: (context) {
-                            final showUpdateWeights = widget.isDeliveryOnly &&
+                            // For status 'submitted_to_cm', always show "Verified & Received"
+                            // For delivery_only + per_kg orders, show "Update Weights" only if weights not complete
+                            final showUpdateWeights = widget.orderStatus != 'submitted_to_cm' &&
+                                widget.isDeliveryOnly &&
                                 widget.isPerKg &&
                                 !widget.perKgWeightsComplete;
                             final buttonLabel =

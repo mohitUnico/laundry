@@ -44,6 +44,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final mode = args?['mode'] as String? ?? 'newOrder';
     final isExistingBill = mode == 'existingBill';
     final existingOrderId = args?['orderId'] as String?;
+    final existingBillTotal = args?['billTotal'] as int?;
 
     // Get delivery option from route arguments (used only for new order flow)
     final deliveryOptionStr = args?['deliveryOption'] as String? ?? 'pickupOnly';
@@ -197,7 +198,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   child: SafeArea(
                     top: false,
                     child: _PayButton(
-                      amount: finalTotal,
+                      amount: isExistingBill && existingBillTotal != null ? existingBillTotal : finalTotal,
                       onTap: () async {
                         // EXISTING BILL FLOW: only process payment for an already-created invoice
                         if (isExistingBill) {

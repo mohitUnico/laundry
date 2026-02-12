@@ -26,12 +26,15 @@ exports.getAdminDeliveryStaffs = async (query = {}) => {
     const { verificationStatus, isVerifiedByAdmin, isActive, onlyOnShift } = query;
     const { safePage, safeLimit, skip } = normalizePagination(query);
 
+    const onlyOnShiftParsed = parseBoolean(onlyOnShift);
+    const shouldFilterByShift = onlyOnShiftParsed === true;
+
     const where = {
         ...(verificationStatus ? { verification_status: verificationStatus } : {}),
         ...(parseBoolean(isVerifiedByAdmin) === true ? { is_verified_by_admin: true } : {}),
         ...(parseBoolean(isActive) === true ? { is_active: true } : {}),
         // When onlyOnShift is true, return only staff who have an active shift (shift is on).
-        ...(parseBoolean(onlyOnShift) === true
+        ...(shouldFilterByShift
             ? {
                   deliveryStaffShifts: {
                       some: {
@@ -47,7 +50,9 @@ exports.getAdminDeliveryStaffs = async (query = {}) => {
         verificationStatus: verificationStatus || null,
         isVerifiedByAdmin: parseBoolean(isVerifiedByAdmin) ?? null,
         isActive: parseBoolean(isActive) ?? null,
-        onlyOnShift: parseBoolean(onlyOnShift) ?? null,
+        onlyOnShift: onlyOnShiftParsed ?? null,
+        onlyOnShiftRaw: onlyOnShift,
+        shouldFilterByShift,
         page: safePage,
         limit: safeLimit,
     });

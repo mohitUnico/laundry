@@ -47,16 +47,19 @@ class AdminDeliveryStaffService {
     bool onlyOnShift = true,
   }) async {
     try {
+      final queryParams = <String, dynamic>{
+        'page': page,
+        'limit': limit,
+        'verificationStatus': 'verified',
+        'isVerifiedByAdmin': 'true',
+        'isActive': 'true',
+      };
+      if (onlyOnShift) {
+        queryParams['onlyOnShift'] = 'true';
+      }
       final res = await _api.get(
         '/admin/delivery-staff',
-        queryParameters: {
-          'page': page,
-          'limit': limit,
-          'verificationStatus': 'verified',
-          'isVerifiedByAdmin': true,
-          'isActive': true,
-          if (onlyOnShift) 'onlyOnShift': true,
-        },
+        queryParameters: queryParams,
       );
       final body = res.data;
       if (body is Map<String, dynamic>) return body;

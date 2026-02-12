@@ -27,25 +27,29 @@ exports.getAdminDeliveryStaffs = async (query = {}) => {
     const { safePage, safeLimit, skip } = normalizePagination(query);
 
     const onlyOnShiftParsed = parseBoolean(onlyOnShift);
-    const shouldFilterByShift = onlyOnShiftParsed === true;
+    // Explicitly check: if onlyOnShift is provided and parsed as true, filter by active shift
+    // This matches the same check used in directAssignDelivery (delivery-operations.service.js:670-675)
+    // When onlyOnShift='true' (string) or onlyOnShift=true (boolean), filter to only staff with active shifts
+    const shouldFilterByShift = onlyOnShift !== undefined && onlyOnShift !== null && onlyOnShiftParsed === true;
 
+    // Build base where clause
     const where = {
         ...(verificationStatus ? { verification_status: verificationStatus } : {}),
         ...(parseBoolean(isVerifiedByAdmin) === true ? { is_verified_by_admin: true } : {}),
         ...(parseBoolean(isActive) === true ? { is_active: true } : {}),
-        // When onlyOnShift is true, return only staff who have an active shift (shift is on).
-        // Filter: staff must have at least one delivery_staff_shifts record with is_active=true AND ended_at=null
-        ...(shouldFilterByShift
-            ? {
-                  deliveryStaffShifts: {
-                      some: {
-                          is_active: true,
-                          ended_at: null,
-                      },
-                  },
-              }
-            : {}),
     };
+
+    // When onlyOnShift is true, return only staff who have an active shift (shift is on).
+    // Filter: staff must have at least one delivery_staff_shifts record with is_active=true AND ended_at=null
+    // This matches the exact same condition used in directAssignDelivery to check if shift is active
+    if (shouldFilterByShift) {
+        where.deliveryStaffShifts = {
+            some: {
+                is_active: true,
+                ended_at: null,
+            },
+        };
+    }
 
     logger.info('Admin delivery staff list query', {
         verificationStatus: verificationStatus || null,

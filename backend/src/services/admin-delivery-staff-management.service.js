@@ -34,6 +34,7 @@ exports.getAdminDeliveryStaffs = async (query = {}) => {
         ...(parseBoolean(isVerifiedByAdmin) === true ? { is_verified_by_admin: true } : {}),
         ...(parseBoolean(isActive) === true ? { is_active: true } : {}),
         // When onlyOnShift is true, return only staff who have an active shift (shift is on).
+        // Filter: staff must have at least one delivery_staff_shifts record with is_active=true AND ended_at=null
         ...(shouldFilterByShift
             ? {
                   deliveryStaffShifts: {
@@ -52,7 +53,9 @@ exports.getAdminDeliveryStaffs = async (query = {}) => {
         isActive: parseBoolean(isActive) ?? null,
         onlyOnShift: onlyOnShiftParsed ?? null,
         onlyOnShiftRaw: onlyOnShift,
+        onlyOnShiftType: typeof onlyOnShift,
         shouldFilterByShift,
+        whereFilter: JSON.stringify(where),
         page: safePage,
         limit: safeLimit,
     });

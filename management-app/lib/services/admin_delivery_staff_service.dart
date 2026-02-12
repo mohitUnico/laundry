@@ -47,16 +47,16 @@ class AdminDeliveryStaffService {
     bool onlyOnShift = true,
   }) async {
     try {
+      // Always send onlyOnShift parameter explicitly for assignment screens
+      // This ensures only delivery staff with active shifts are shown
       final queryParams = <String, dynamic>{
         'page': page,
         'limit': limit,
         'verificationStatus': 'verified',
         'isVerifiedByAdmin': 'true',
         'isActive': 'true',
+        'onlyOnShift': onlyOnShift ? 'true' : 'false',
       };
-      if (onlyOnShift) {
-        queryParams['onlyOnShift'] = 'true';
-      }
       final res = await _api.get(
         '/admin/delivery-staff',
         queryParameters: queryParams,

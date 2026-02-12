@@ -38,9 +38,13 @@ class AdminDeliveryStaffService {
     return fallback;
   }
 
+  /// Fetches verified delivery staff. When [onlyOnShift] is true (default),
+  /// only staff with an active shift (shift is on) are returned — use for
+  /// collection/distribution manager assign pickup/delivery partner screens.
   Future<Map<String, dynamic>> listVerifiedActiveDeliveryStaffs({
     int page = 1,
     int limit = 20,
+    bool onlyOnShift = true,
   }) async {
     try {
       final res = await _api.get(
@@ -51,6 +55,7 @@ class AdminDeliveryStaffService {
           'verificationStatus': 'verified',
           'isVerifiedByAdmin': true,
           'isActive': true,
+          if (onlyOnShift) 'onlyOnShift': true,
         },
       );
       final body = res.data;

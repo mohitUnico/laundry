@@ -15,20 +15,39 @@ const normalizePagination = ({ page = 1, limit = 20 } = {}) => {
     return { safePage, safeLimit, skip: (safePage - 1) * safeLimit };
 };
 
+const parseBoolean = (v) => {
+    if (v === true || v === false) return v;
+    if (v === 'true' || v === '1') return true;
+    if (v === 'false' || v === '0') return false;
+    return undefined;
+};
+
 exports.getAdminDeliveryStaffs = async (query = {}) => {
-    const { verificationStatus, isVerifiedByAdmin, isActive } = query;
+    const { verificationStatus, isVerifiedByAdmin, isActive, onlyOnShift } = query;
     const { safePage, safeLimit, skip } = normalizePagination(query);
 
     const where = {
         ...(verificationStatus ? { verification_status: verificationStatus } : {}),
-        ...(typeof isVerifiedByAdmin === 'boolean' ? { is_verified_by_admin: isVerifiedByAdmin } : {}),
-        ...(typeof isActive === 'boolean' ? { is_active: isActive } : {}),
+        ...(parseBoolean(isVerifiedByAdmin) === true ? { is_verified_by_admin: true } : {}),
+        ...(parseBoolean(isActive) === true ? { is_active: true } : {}),
+        // When onlyOnShift is true, return only staff who have an active shift (shift is on).
+        ...(parseBoolean(onlyOnShift) === true
+            ? {
+                  deliveryStaffShifts: {
+                      some: {
+                          is_active: true,
+                          ended_at: null,
+                      },
+                  },
+              }
+            : {}),
     };
 
     logger.info('Admin delivery staff list query', {
         verificationStatus: verificationStatus || null,
-        isVerifiedByAdmin: typeof isVerifiedByAdmin === 'boolean' ? isVerifiedByAdmin : null,
-        isActive: typeof isActive === 'boolean' ? isActive : null,
+        isVerifiedByAdmin: parseBoolean(isVerifiedByAdmin) ?? null,
+        isActive: parseBoolean(isActive) ?? null,
+        onlyOnShift: parseBoolean(onlyOnShift) ?? null,
         page: safePage,
         limit: safeLimit,
     });

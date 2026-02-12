@@ -16,6 +16,15 @@ router.post(
     notificationController.saveCustomerFcmToken
 );
 
+// DELETE /api/v1/notifications/fcm-token - clears token only if it matches (safe for multi-device)
+router.delete(
+    '/fcm-token',
+    authenticateJWT,
+    authorize('customer'),
+    validate(saveFcmTokenSchema),
+    notificationController.clearCustomerFcmTokenIfMatches
+);
+
 module.exports = router;
 
 

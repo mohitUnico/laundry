@@ -193,9 +193,10 @@ class ApiService {
     );
   }
 
-  Future<Response> delete(String path, {Options? options}) {
+  Future<Response> delete(String path, {dynamic data, Options? options}) {
     return _dio.delete(
       path,
+      data: data,
       options: options,
     );
   }

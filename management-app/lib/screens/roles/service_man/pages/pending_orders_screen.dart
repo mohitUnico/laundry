@@ -115,12 +115,43 @@ class _PendingOrdersServicemenScreenState extends State<PendingOrdersServicemenS
 
         if (name.isEmpty) continue;
 
+        // Extract cloth items if available
+        final List<_ClothItem> clothItemsList = [];
+        final clothItemsRaw = r['clothItems'];
+        if (clothItemsRaw is List) {
+          for (final clothRaw in clothItemsRaw) {
+            if (clothRaw is Map) {
+              final clothMap = clothRaw.cast<String, dynamic>();
+              final clothName = (clothMap['clothName'] ?? '').toString().trim();
+              final clothQty = (clothMap['quantity'] is num)
+                  ? (clothMap['quantity'] as num).toInt()
+                  : int.tryParse(clothMap['quantity']?.toString() ?? '') ?? 0;
+              if (clothName.isNotEmpty && clothQty > 0) {
+                clothItemsList.add(_ClothItem(clothName: clothName, quantity: clothQty));
+              }
+            }
+          }
+        }
+        final clothItems = clothItemsList.isNotEmpty ? clothItemsList : null;
+
         if (qty > 0) {
-          mappedItems.add(_OrderItem(name: name, valueText: qty.toString().padLeft(2, '0')));
+          mappedItems.add(_OrderItem(
+            name: name,
+            valueText: qty.toString().padLeft(2, '0'),
+            clothItems: clothItems,
+          ));
         } else if (weight != null && weight > 0) {
-          mappedItems.add(_OrderItem(name: name, valueText: '${weight.toStringAsFixed(1)} kg'));
+          mappedItems.add(_OrderItem(
+            name: name,
+            valueText: '${weight.toStringAsFixed(1)} kg',
+            clothItems: clothItems,
+          ));
         } else {
-          mappedItems.add(_OrderItem(name: name, valueText: '01'));
+          mappedItems.add(_OrderItem(
+            name: name,
+            valueText: '01',
+            clothItems: clothItems,
+          ));
         }
       }
 
@@ -692,8 +723,23 @@ class _CompletedOrdersView extends StatelessWidget {
 class _OrderItem {
   final String name;
   final String valueText;
+  final List<_ClothItem>? clothItems; // Cloth items for this service
 
-  const _OrderItem({required this.name, required this.valueText});
+  const _OrderItem({
+    required this.name,
+    required this.valueText,
+    this.clothItems,
+  });
+}
+
+class _ClothItem {
+  final String clothName;
+  final int quantity;
+
+  const _ClothItem({
+    required this.clothName,
+    required this.quantity,
+  });
 }
 
 class _QueueOrderUi {
@@ -905,51 +951,102 @@ class _OrderCardState extends State<_OrderCard> {
           if (_isExpanded) ...[
             const SizedBox(height: 16),
             // Items List
-            ...widget.items.map((item) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Row(
-                    children: [
-                      // Bullet point
-                      Container(
-                        width: 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: AppColors.textSecondary,
-                          shape: BoxShape.circle,
+            ...widget.items.map((item) {
+              final hasClothItems = item.clothItems != null && item.clothItems!.isNotEmpty;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: EdgeInsets.only(bottom: hasClothItems ? 8 : 12),
+                    child: Row(
+                      children: [
+                        // Bullet point
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: AppColors.textSecondary,
+                            shape: BoxShape.circle,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      // Item name
-                      Text(
-                        item.name,
-                        style: AppTextStyles.subtitle(
-                          color: AppColors.textPrimary,
-                        ).copyWith(
-                          fontSize: 13,
+                        const SizedBox(width: 12),
+                        // Item name
+                        Expanded(
+                          child: Text(
+                            item.name,
+                            style: AppTextStyles.subtitle(
+                              color: AppColors.textPrimary,
+                            ).copyWith(
+                              fontSize: 13,
+                            ),
+                          ),
                         ),
-                      ),
-                      // Dotted line
-                      Expanded(
-                        child: Padding(
+                        // Dotted line
+                        Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 8),
                           child: CustomPaint(
                             painter: DottedLinePainter(),
                             child: const SizedBox(height: 1),
                           ),
                         ),
-                      ),
-                      // Quantity
-                      Text(
-                        item.valueText,
-                        style: AppTextStyles.subtitle(
-                          color: AppColors.textPrimary,
-                        ).copyWith(
-                          fontSize: 13,
+                        // Quantity
+                        Text(
+                          item.valueText,
+                          style: AppTextStyles.subtitle(
+                            color: AppColors.textPrimary,
+                          ).copyWith(
+                            fontSize: 13,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                )),
+                  // Show cloth items nested under service
+                  if (hasClothItems)
+                    ...item.clothItems!.map((clothItem) => Padding(
+                          padding: const EdgeInsets.only(left: 18, bottom: 8),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 4,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: AppColors.textSecondary,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  clothItem.clothName,
+                                  style: AppTextStyles.subtitle(
+                                    color: AppColors.textSecondary,
+                                  ).copyWith(
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                                child: CustomPaint(
+                                  painter: DottedLinePainter(),
+                                  child: const SizedBox(height: 1),
+                                ),
+                              ),
+                              Text(
+                                clothItem.quantity.toString().padLeft(2, '0'),
+                                style: AppTextStyles.subtitle(
+                                  color: AppColors.textSecondary,
+                                ).copyWith(
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )),
+                ],
+              );
+            }),
             const SizedBox(height: 12),
             // Items list footer with upward chevrons
             InkWell(

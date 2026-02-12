@@ -6,6 +6,7 @@ import '../../../../theme/app_text_styles.dart';
 import '../../../../utils/auth_storage.dart';
 import '../../../../utils/role_manager.dart';
 import '../../../../services/delivery_staff_app_service.dart';
+import '../../../../services/notification_service.dart';
 import '../../../common/widgets/bottom_nav_bar.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -79,6 +80,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _logout(BuildContext context) async {
+    try {
+      await NotificationService().clearFcmTokenOnLogout();
+    } catch (_) {
+      // Don't block logout on FCM clear failure
+    }
     await Future.wait([
       RoleManager.clearRole(),
       AuthStorage.clearAll(),

@@ -272,11 +272,9 @@ exports.listOrderHistory = async ({ staffId, page, limit, from, to }) => {
                 orderBy: { completed_at: 'desc' },
                 skip,
                 take: safeLimit,
-                select: {
-                    delivery_id: true,
-                    delivery_type: true,
-                    completed_at: true,
-                    order_id: true,
+                include: {
+                    pickup: true,
+                    drop: true,
                     assignment_requests: {
                         where: { staff_id: staffId },
                         orderBy: { offered_at: 'desc' },
@@ -284,11 +282,10 @@ exports.listOrderHistory = async ({ staffId, page, limit, from, to }) => {
                         select: { status: true },
                     },
                     order: {
-                        select: {
-                            order_id: true,
+                        include: {
+                            customer: { select: { customer_id: true, full_name: true, phone: true } },
                             _count: { select: { order_items: true } },
                             order_items: { select: { quantity: true } },
-                            customer: { select: { full_name: true } },
                         },
                     },
                 },
@@ -313,11 +310,9 @@ exports.listOrderHistory = async ({ staffId, page, limit, from, to }) => {
             totalPages: null,
             hasNext: deliveries.length === safeLimit,
         },
-        orders: deliveries.map((d) => ({
-            // Quantity count (sum of order_items.quantity). Fallback to row-count if unknown/zero.
-            // NOTE: for per_kg items, quantity can be null; we fallback.
-            // This matches the delivery staff app UI expectation ("Qty", not "items").
-            quantity_count: Array.isArray(d.order?.order_items)
+        orders: deliveries.map((d) => {
+            // Calculate item count (quantity sum)
+            const itemCountFromQuantities = Array.isArray(d.order?.order_items)
                 ? d.order.order_items.reduce((sum, oi) => {
                       const qty = oi?.quantity;
                       const n =
@@ -326,25 +321,50 @@ exports.listOrderHistory = async ({ staffId, page, limit, from, to }) => {
                               : parseInt(coalesce(qty?.toString?.(), String(coalesce(qty, ''))), 10);
                       return sum + (Number.isFinite(n) ? n : 0);
                   }, 0)
-                : 0,
-            order_id: d.order_id,
-            delivery_request_status: d.assignment_requests?.[0]?.status || null, // accepted/rejected (or null)
-            customer_name: d.order?.customer?.full_name || null,
-            date_of_delivery: d.completed_at,
-            // Backward-compatible key, but now represents quantity (not row count).
-            number_of_order_items:
-                (Array.isArray(d.order?.order_items)
-                    ? d.order.order_items.reduce((sum, oi) => {
-                          const qty = oi?.quantity;
-                          const n =
-                              typeof qty === 'number'
-                                  ? qty
-                                  : parseInt(coalesce(qty?.toString?.(), String(coalesce(qty, ''))), 10);
-                          return sum + (Number.isFinite(n) ? n : 0);
-                      }, 0)
-                    : 0) || coalesce(d.order?._count?.order_items, 0),
-            delivery_type: d.delivery_type === 'drop' ? 'delivery' : 'pickup',
-        })),
+                : 0;
+            const itemCount = itemCountFromQuantities > 0 ? itemCountFromQuantities : coalesce(d.order?._count?.order_items, 0);
+
+            return {
+                delivery_id: d.delivery_id,
+                order_id: d.order_id,
+                delivery_type: d.delivery_type === 'drop' ? 'delivery' : 'pickup',
+                delivery_request_status: d.assignment_requests?.[0]?.status || null,
+                customer_name: d.order?.customer?.full_name || null,
+                customer_phone: d.order?.customer?.phone || null,
+                date_of_delivery: d.completed_at,
+                number_of_order_items: itemCount,
+                quantity_count: itemCount,
+                // Include pickup and drop information for address display
+                pickup: d.pickup
+                    ? {
+                          address: d.pickup.pickup_address,
+                          latitude: d.pickup.pickup_lat,
+                          longitude: d.pickup.pickup_lng,
+                          status: d.pickup.pickup_status,
+                          preferredFrom: d.pickup.preferred_pickup_from,
+                          preferredTo: d.pickup.preferred_pickup_to,
+                          time: d.pickup.pickup_time,
+                          proof: d.pickup.pickup_proof || null,
+                      }
+                    : null,
+                drop: d.drop
+                    ? {
+                          address: d.drop.drop_address,
+                          latitude: d.drop.drop_lat,
+                          longitude: d.drop.drop_lng,
+                          status: d.drop.drop_status,
+                          preferredFrom: d.drop.preferred_drop_from,
+                          preferredTo: d.drop.preferred_drop_to,
+                          time: d.drop.drop_time,
+                          proof: d.drop.drop_proof || null,
+                      }
+                    : null,
+                // Include order status for proper display
+                order_status: d.order?.order_status || null,
+                // Include assigned_at for time display
+                assigned_at: d.assigned_at,
+            };
+        }),
     };
 };
 

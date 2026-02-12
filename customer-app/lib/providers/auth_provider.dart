@@ -4,6 +4,7 @@ import 'dart:io';
 
 import '../repositories/auth_repository.dart';
 import '../repositories/customer_info_repository.dart';
+import '../services/notification_service.dart';
 import '../utils/prefs_keys.dart';
 import '../utils/jwt_utils.dart';
 import '../utils/auth_storage.dart';
@@ -308,7 +309,12 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  void logout() {
+  Future<void> logout() async {
+    try {
+      await NotificationService().clearFcmTokenOnLogout();
+    } catch (_) {
+      // Don't block logout on FCM clear failure
+    }
     _token = null;
     _userOrCustomer = null;
     _isAuthenticated = false;

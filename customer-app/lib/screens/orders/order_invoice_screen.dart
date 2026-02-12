@@ -99,6 +99,7 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
                                       arguments: {
                                         'mode': 'existingBill',
                                         'orderId': invoice.orderId,
+                                        'billTotal': billTotal,
                                       },
                                     );
                                   },

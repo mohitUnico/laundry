@@ -456,7 +456,13 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
       throw Exception('Invalid response: missing data list');
     }
 
-    final orders = data.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList()
+    final orders = data.whereType<Map>().map((m) => m.cast<String, dynamic>())
+      // Filter: only show orders with status 'placed' or 'submitted_to_cm'
+      .where((o) {
+        final status = (o['orderStatus'] ?? '').toString().trim();
+        return status == 'placed' || status == 'submitted_to_cm';
+      })
+      .toList()
       ..sort((a, b) {
         final adt = _parseCreatedAt(a);
         final bdt = _parseCreatedAt(b);
@@ -534,8 +540,8 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
   static _ItemsUiMapping _mapItemsForUi(Object? itemsData) {
     final perPieceItems = <_OrderItem>[];
     final perKgItems = <_OrderItem>[];
-    final perPieceAggregated = <String, int>{};
-    final perKgAggregated = <String, int>{};
+    final perPieceAggregated = <String, Map<String, dynamic>>{};
+    final perKgAggregated = <String, Map<String, dynamic>>{};
 
     if (itemsData is Map) {
       final map = itemsData.cast<String, dynamic>();
@@ -550,15 +556,24 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
           final key = _formatServiceKey(categoryName, serviceName);
 
           int qty = 0;
+          final List<_ClothItem> clothItemsList = [];
           final selections = item['selections'];
           if (selections is List && selections.isNotEmpty) {
             // For per_piece orders we still aggregate by service, but count total pieces in that service.
+            // Also collect cloth items for display
             for (final rawSel in selections) {
               if (rawSel is! Map) continue;
               final sel = rawSel.cast<String, dynamic>();
               final qtyNum = sel['quantity'];
               final q = (qtyNum is num) ? qtyNum.toInt() : int.tryParse(qtyNum?.toString() ?? '') ?? 0;
-              if (q > 0) qty += q;
+              if (q > 0) {
+                qty += q;
+                // Collect cloth item details
+                final clothName = (sel['clothName'] ?? '').toString().trim();
+                if (clothName.isNotEmpty) {
+                  clothItemsList.add(_ClothItem(clothName: clothName, quantity: q));
+                }
+              }
             }
           } else {
             // Fallback for per_kg / service-level items
@@ -568,12 +583,27 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
 
           if (key.isEmpty || qty <= 0) continue;
 
+          // Store cloth items with the service item
+          final clothItems = clothItemsList.isNotEmpty ? clothItemsList : null;
+
           // Categorize by pricing type
           if (pricingType == 'per_kg' || pricingType == 'per-kg') {
-            perKgAggregated[key] = (perKgAggregated[key] ?? 0) + qty;
+            if (!perKgAggregated.containsKey(key)) {
+              perKgAggregated[key] = {'quantity': 0, 'clothItems': <_ClothItem>[]};
+            }
+            perKgAggregated[key]!['quantity'] = (perKgAggregated[key]!['quantity'] as int) + qty;
+            if (clothItems != null) {
+              (perKgAggregated[key]!['clothItems'] as List<_ClothItem>).addAll(clothItems);
+            }
           } else {
             // Default to per_piece
-            perPieceAggregated[key] = (perPieceAggregated[key] ?? 0) + qty;
+            if (!perPieceAggregated.containsKey(key)) {
+              perPieceAggregated[key] = {'quantity': 0, 'clothItems': <_ClothItem>[]};
+            }
+            perPieceAggregated[key]!['quantity'] = (perPieceAggregated[key]!['quantity'] as int) + qty;
+            if (clothItems != null) {
+              (perPieceAggregated[key]!['clothItems'] as List<_ClothItem>).addAll(clothItems);
+            }
           }
         }
       }
@@ -581,16 +611,28 @@ class _CollectionManagerHomeScreenState extends State<CollectionManagerHomeScree
 
     // Sort and add per-piece items
     final perPieceEntries = perPieceAggregated.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
+      ..sort((a, b) => (b.value['quantity'] as int).compareTo(a.value['quantity'] as int));
     for (final e in perPieceEntries) {
-      perPieceItems.add(_OrderItem(name: e.key, quantity: e.value, pricingType: 'per_piece'));
+      final clothItems = e.value['clothItems'] as List<_ClothItem>?;
+      perPieceItems.add(_OrderItem(
+        name: e.key,
+        quantity: e.value['quantity'] as int,
+        pricingType: 'per_piece',
+        clothItems: clothItems?.isNotEmpty == true ? clothItems : null,
+      ));
     }
 
     // Sort and add per-kg items
     final perKgEntries = perKgAggregated.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
+      ..sort((a, b) => (b.value['quantity'] as int).compareTo(a.value['quantity'] as int));
     for (final e in perKgEntries) {
-      perKgItems.add(_OrderItem(name: e.key, quantity: e.value, pricingType: 'per_kg'));
+      final clothItems = e.value['clothItems'] as List<_ClothItem>?;
+      perKgItems.add(_OrderItem(
+        name: e.key,
+        quantity: e.value['quantity'] as int,
+        pricingType: 'per_kg',
+        clothItems: clothItems?.isNotEmpty == true ? clothItems : null,
+      ));
     }
 
     // Combine items: per-piece first, then per-kg
@@ -1093,11 +1135,23 @@ class _OrderItem {
   final String name;
   final int quantity;
   final String pricingType; // 'per_piece' or 'per_kg'
+  final List<_ClothItem>? clothItems; // Cloth items for this service
 
   const _OrderItem({
     required this.name,
     required this.quantity,
     this.pricingType = 'per_piece',
+    this.clothItems,
+  });
+}
+
+class _ClothItem {
+  final String clothName;
+  final int quantity;
+
+  const _ClothItem({
+    required this.clothName,
+    required this.quantity,
   });
 }
 
@@ -1254,44 +1308,91 @@ List<Widget> _buildCategorizedItemsList(List<_OrderItem> items) {
         ),
       ),
     );
-    widgets.addAll(perPieceItems.map((item) => Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Row(
-            children: [
-              Container(
-                width: 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  color: AppColors.primary,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  item.name,
-                  style: AppTextStyles.subtitle(color: AppColors.textPrimary).copyWith(
-                    fontSize: 13,
+    widgets.addAll(perPieceItems.map((item) {
+      final hasClothItems = item.clothItems != null && item.clothItems!.isNotEmpty;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: EdgeInsets.only(bottom: hasClothItems ? 8 : 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    shape: BoxShape.circle,
                   ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: CustomPaint(
-                  painter: DottedLinePainter(),
-                  child: const SizedBox(height: 1),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    item.name,
+                    style: AppTextStyles.subtitle(color: AppColors.textPrimary).copyWith(
+                      fontSize: 13,
+                    ),
+                  ),
                 ),
-              ),
-              Text(
-                item.quantity.toString().padLeft(2, '0'),
-                style: AppTextStyles.subtitle(color: AppColors.textPrimary).copyWith(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: CustomPaint(
+                    painter: DottedLinePainter(),
+                    child: const SizedBox(height: 1),
+                  ),
                 ),
-              ),
-            ],
+                Text(
+                  item.quantity.toString().padLeft(2, '0'),
+                  style: AppTextStyles.subtitle(color: AppColors.textPrimary).copyWith(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
           ),
-        )));
+          // Show cloth items nested under service
+          if (hasClothItems)
+            ...item.clothItems!.map((clothItem) => Padding(
+                  padding: const EdgeInsets.only(left: 18, bottom: 8),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 4,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: AppColors.textSecondary,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          clothItem.clothName,
+                          style: AppTextStyles.subtitle(color: AppColors.textSecondary).copyWith(
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: CustomPaint(
+                          painter: DottedLinePainter(),
+                          child: const SizedBox(height: 1),
+                        ),
+                      ),
+                      Text(
+                        clothItem.quantity.toString().padLeft(2, '0'),
+                        style: AppTextStyles.subtitle(color: AppColors.textSecondary).copyWith(
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+        ],
+      );
+    }));
   }
 
   // Per-Kg Section
@@ -1323,44 +1424,91 @@ List<Widget> _buildCategorizedItemsList(List<_OrderItem> items) {
         ),
       ),
     );
-    widgets.addAll(perKgItems.map((item) => Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Row(
-            children: [
-              Container(
-                width: 6,
-                height: 6,
-                decoration: const BoxDecoration(
-                  color: Color(0xFF10B981),
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  item.name,
-                  style: AppTextStyles.subtitle(color: AppColors.textPrimary).copyWith(
-                    fontSize: 13,
+    widgets.addAll(perKgItems.map((item) {
+      final hasClothItems = item.clothItems != null && item.clothItems!.isNotEmpty;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: EdgeInsets.only(bottom: hasClothItems ? 8 : 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF10B981),
+                    shape: BoxShape.circle,
                   ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: CustomPaint(
-                  painter: DottedLinePainter(),
-                  child: const SizedBox(height: 1),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    item.name,
+                    style: AppTextStyles.subtitle(color: AppColors.textPrimary).copyWith(
+                      fontSize: 13,
+                    ),
+                  ),
                 ),
-              ),
-              Text(
-                item.quantity.toString().padLeft(2, '0'),
-                style: AppTextStyles.subtitle(color: AppColors.textPrimary).copyWith(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: CustomPaint(
+                    painter: DottedLinePainter(),
+                    child: const SizedBox(height: 1),
+                  ),
                 ),
-              ),
-            ],
+                Text(
+                  item.quantity.toString().padLeft(2, '0'),
+                  style: AppTextStyles.subtitle(color: AppColors.textPrimary).copyWith(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
           ),
-        )));
+          // Show cloth items nested under service
+          if (hasClothItems)
+            ...item.clothItems!.map((clothItem) => Padding(
+                  padding: const EdgeInsets.only(left: 18, bottom: 8),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 4,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: AppColors.textSecondary,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          clothItem.clothName,
+                          style: AppTextStyles.subtitle(color: AppColors.textSecondary).copyWith(
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: CustomPaint(
+                          painter: DottedLinePainter(),
+                          child: const SizedBox(height: 1),
+                        ),
+                      ),
+                      Text(
+                        clothItem.quantity.toString().padLeft(2, '0'),
+                        style: AppTextStyles.subtitle(color: AppColors.textSecondary).copyWith(
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+        ],
+      );
+    }));
   }
 
   return widgets;
@@ -1489,7 +1637,9 @@ class _NewOrderCardState extends State<_NewOrderCard> {
           const SizedBox(height: 16),
           // Action Buttons: For delivery_only orders, no pickup.
           // For delivery_only + per_kg: step 1 = Update Weights, step 2 = Verified & Received.
-          // For pickup orders: show Assign Delivery Partner only when status is 'placed'; otherwise show Verified & Received.
+          // For pickup orders: show Assign Delivery Partner only when status is 'placed';
+          // when already assigned (and still 'placed') or when status is 'submitted_to_cm',
+          // show Verified & Received.
           if (widget.orderStatus == 'placed' && !widget.isAssigned && !widget.isDeliveryOnly)
             SizedBox(
               width: double.infinity,
@@ -1523,7 +1673,7 @@ class _NewOrderCardState extends State<_NewOrderCard> {
                 ),
               ),
             )
-          else
+          else if (widget.orderStatus == 'placed' || widget.orderStatus == 'submitted_to_cm')
             Column(
               children: [
                 if (widget.isAssigned && !widget.isDeliveryOnly)
@@ -1554,7 +1704,10 @@ class _NewOrderCardState extends State<_NewOrderCard> {
                         height: 48,
                         child: Builder(
                           builder: (context) {
-                            final showUpdateWeights = widget.isDeliveryOnly &&
+                            // For status 'submitted_to_cm', always show "Verified & Received"
+                            // For delivery_only + per_kg orders, show "Update Weights" only if weights not complete
+                            final showUpdateWeights = widget.orderStatus != 'submitted_to_cm' &&
+                                widget.isDeliveryOnly &&
                                 widget.isPerKg &&
                                 !widget.perKgWeightsComplete;
                             final buttonLabel =

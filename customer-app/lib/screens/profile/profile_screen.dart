@@ -158,8 +158,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 16),
             _LogoutButton(
-              onTap: () {
-                context.read<AuthProvider>().logout();
+              onTap: () async {
+                await context.read<AuthProvider>().logout();
+                if (!context.mounted) return;
                 Navigator.of(context).pushNamedAndRemoveUntil(
                   AppRoutes.onboarding,
                   (route) => false,

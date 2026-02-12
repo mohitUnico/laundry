@@ -103,14 +103,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       return v;
     });
-    _acceptedFuture = _loadAcceptedOrders().then((v) {
+    _acceptedFuture = Future.wait<List<_AcceptedTaskUi>>([
+      _loadAcceptedOrders(),
+      _loadCompletedOrders(),
+    ]).then((results) {
+      final active = results[0];
+      final completed = results[1];
       if (mounted) {
         setState(() {
-          _acceptedCache = v;
-          _statsCache = _computeStatsFromAccepted(v);
+          // Start with active orders, then merge completed ones
+          _acceptedCache = active;
+          _mergeAcceptedTasks(completed);
+          _statsCache = _computeStatsFromAccepted(_acceptedCache);
         });
       }
-      return v;
+      return active;
     });
 
     WidgetsBinding.instance.addObserver(this);
@@ -255,10 +262,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     var inProgress = 0;
     var completed = 0;
     for (final t in list) {
+      // In-progress: only pickup leg orders in 'pickup_assigned' or 'picked_up' status.
+      if (t.orderStatus == 'pickup_assigned' || t.orderStatus == 'picked_up') {
+        inProgress++;
+      }
+      // Completed: orders that have reached submitted_to_cm or delivered.
       if (t.orderStatus == 'submitted_to_cm' || t.orderStatus == 'delivered') {
         completed++;
-      } else {
-        inProgress++;
       }
     }
     return _HomeStatsUi(inProgress: inProgress, completed: completed);
@@ -280,16 +290,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       freshByKey[_acceptedTaskKey(t)] = t;
     }
 
-    // Update existing items in-place, but only keep items that are still in fresh list
-    // OR items that are not completed (submitted_to_cm or delivered)
+    // Update existing items in-place. Keep items that are:
+    // 1. Still in fresh list (active deliveries) - will be updated
+    // 2. Completed (submitted_to_cm or delivered) - keep for Completed tab even if backend stops returning them
+    // 3. Other statuses (might be temporary network issue) - keep for now
     final updatedExisting = _acceptedCache.where((t) {
       final k = _acceptedTaskKey(t);
       final isInFresh = freshByKey.containsKey(k);
       // If item is in fresh list, keep it (will be updated)
       if (isInFresh) return true;
-      // If item is not in fresh list but is completed, remove it
+      // If item is completed, KEEP it (needed for Completed tab even after backend stops returning it)
       if (t.orderStatus == 'submitted_to_cm' || t.orderStatus == 'delivered') {
-        return false;
+        return true;
       }
       // Otherwise keep it (might be a temporary network issue)
       return true;
@@ -314,10 +326,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_refreshingAccepted) return;
     _refreshingAccepted = true;
     try {
-      final fresh = await _loadAcceptedOrders();
+      // Load both active and completed orders in parallel
+      final activeFuture = _loadAcceptedOrders();
+      final completedFuture = _loadCompletedOrders();
+      final fresh = await activeFuture;
+      final completed = await completedFuture;
       if (!mounted) return;
       setState(() {
+        // Merge active orders first
         _mergeAcceptedTasks(fresh);
+        // Then merge completed orders (they will be kept even if not in fresh list)
+        _mergeAcceptedTasks(completed);
         _statsCache = _computeStatsFromAccepted(_acceptedCache);
       });
     } catch (_) {
@@ -1255,6 +1274,101 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }).toList();
   }
 
+  /// Loads completed orders from history API and transforms them to _AcceptedTaskUi format.
+  /// These are orders that have been completed (submitted_to_cm or delivered) by this delivery staff.
+  Future<List<_AcceptedTaskUi>> _loadCompletedOrders() async {
+    try {
+      final body = await _deliveryStaffAppService.listOrderHistory(page: 1, limit: 50);
+      final data = body['data'];
+      if (data is! List) return const <_AcceptedTaskUi>[];
+
+      final list = data.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList()
+        ..sort((a, b) {
+          final adt = _parseDate(a['date_of_delivery']);
+          final bdt = _parseDate(b['date_of_delivery']);
+          if (adt == null && bdt == null) return 0;
+          if (adt == null) return 1;
+          if (bdt == null) return -1;
+          return bdt.compareTo(adt); // newest first
+        });
+
+      return list.map<_AcceptedTaskUi>((d) {
+        final deliveryId = (d['delivery_id'] ?? '').toString();
+        final orderId = (d['order_id'] ?? '').toString();
+        final customerName = (d['customer_name'] ?? 'Customer').toString();
+        final customerPhone = (d['customer_phone'] ?? '').toString();
+        final deliveryType = (d['delivery_type'] ?? '').toString(); // 'pickup' or 'delivery'
+        final itemCountRaw = d['number_of_order_items'] ?? d['quantity_count'];
+        final itemCount = (itemCountRaw is num) ? itemCountRaw.toInt() : int.tryParse(itemCountRaw?.toString() ?? '') ?? 0;
+        final completedAt = _parseDate(d['date_of_delivery']);
+        final assignedAt = _parseDate(d['assigned_at']);
+        final isPickup = deliveryType == 'pickup';
+
+        // Extract address and coordinates from pickup or drop
+        final pickup = d['pickup'];
+        final drop = d['drop'];
+        final address = (isPickup && pickup is Map)
+            ? (pickup['address'] ?? '').toString()
+            : (!isPickup && drop is Map)
+                ? (drop['address'] ?? '').toString()
+                : '—';
+
+        final destinationLat = _parseDouble(
+          (isPickup && pickup is Map)
+              ? pickup['latitude']
+              : (!isPickup && drop is Map)
+                  ? drop['latitude']
+                  : null,
+        );
+        final destinationLng = _parseDouble(
+          (isPickup && pickup is Map)
+              ? pickup['longitude']
+              : (!isPickup && drop is Map)
+                  ? drop['longitude']
+                  : null,
+        );
+
+        // Extract preferred time range for display
+        DateTime? preferredFrom;
+        DateTime? preferredTo;
+        if (isPickup && pickup is Map) {
+          preferredFrom = _parseDate(pickup['preferredFrom'] ?? pickup['time']);
+          preferredTo = _parseDate(pickup['preferredTo']);
+        } else if (!isPickup && drop is Map) {
+          preferredFrom = _parseDate(drop['preferredFrom'] ?? drop['time']);
+          preferredTo = _parseDate(drop['preferredTo']);
+        }
+        final scheduledTime = _formatTimeRange(preferredFrom, preferredTo, fallback: completedAt ?? assignedAt);
+
+        // For completed orders, use order_status from backend if available, otherwise infer from delivery type
+        final orderStatusRaw = (d['order_status'] ?? '').toString();
+        final orderStatus = orderStatusRaw.isNotEmpty
+            ? orderStatusRaw
+            : (isPickup ? 'submitted_to_cm' : 'delivered');
+
+        return _AcceptedTaskUi(
+          deliveryId: deliveryId,
+          orderId: orderId,
+          taskType: isPickup ? 'Pickup' : 'Delivery',
+          scheduledTime: scheduledTime,
+          customerName: customerName,
+          address: (address.isNotEmpty) ? address : '—',
+          phoneNumber: (customerPhone.isNotEmpty) ? customerPhone : '—',
+          itemCount: itemCount,
+          amount: '', // Amount not shown for delivery staff
+          buttonText: 'Completed',
+          iconPath: isPickup ? 'assets/icons/pickup.png' : 'assets/icons/out_for_delivery.png',
+          destinationLat: destinationLat,
+          destinationLng: destinationLng,
+          orderStatus: orderStatus,
+        );
+      }).toList();
+    } catch (e) {
+      // If history API fails, return empty list (don't break the active orders display)
+      return const <_AcceptedTaskUi>[];
+    }
+  }
+
   static String _formatTimeRange(DateTime? from, DateTime? to, {DateTime? fallback}) {
     final start = from ?? fallback;
     if (start == null) return '--';
@@ -1317,6 +1431,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   static DateTime? _parseDate(Object? raw) {
     return parseUtc(raw);
+  }
+
+  static String _formatOrderIdDisplay(String orderId) {
+    final normalized = orderId.replaceAll('-', '').toUpperCase();
+    if (normalized.length >= 6) return 'ORD${normalized.substring(0, 6)}';
+    if (normalized.isNotEmpty) return 'ORD$normalized';
+    return 'ORDER';
   }
 
   @override
@@ -1678,10 +1799,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           }
 
           final allList = _acceptedCache.isNotEmpty ? _acceptedCache : (snapshot.data ?? const <_AcceptedTaskUi>[]);
-          // Filter out completed orders (submitted_to_cm and delivered status) from today's list
+          // For today's tasks, show only pickup leg orders assigned to this staff where
+          // the order status is in the pickup flow (pickup_assigned / picked_up).
+          // Orders that are already submitted_to_cm or delivered are moved to the
+          // Completed tab and should not appear here.
           final list = allList.where((t) {
-            // Keep only orders that are NOT submitted to collection manager AND NOT delivered
-            return t.orderStatus != 'submitted_to_cm' && t.orderStatus != 'delivered';
+            return t.orderStatus == 'pickup_assigned' || t.orderStatus == 'picked_up';
           }).toList();
           
           if (list.isEmpty) {
@@ -1712,6 +1835,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 taskType: t.taskType,
                 scheduledTime: t.scheduledTime,
                 customerName: t.customerName,
+                orderIdDisplay: _formatOrderIdDisplay(t.orderId),
                 address: t.address,
                 phoneNumber: t.phoneNumber,
                 itemCount: t.itemCount,
@@ -1840,6 +1964,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               taskType: t.taskType,
               scheduledTime: t.scheduledTime,
               customerName: t.customerName,
+              orderIdDisplay: _formatOrderIdDisplay(t.orderId),
               address: t.address,
               phoneNumber: t.phoneNumber,
               itemCount: t.itemCount,

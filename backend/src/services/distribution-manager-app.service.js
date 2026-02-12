@@ -58,8 +58,9 @@ const mapOrderRow = (o) => ({
 exports.listReadyToVerify = async ({ page, limit } = {}) => {
     const { safePage, safeLimit, skip } = normalizePagination({ page, limit });
 
+    // Include orders where at least one order item is completed (services_in_progress) or all completed (services_completed)
     const where = {
-        order_status: 'services_completed',
+        order_status: { in: ['services_in_progress', 'services_completed'] },
         verified_at: null,
     };
 
@@ -110,6 +111,8 @@ exports.getOrderItems = async ({ orderId }) => {
                 order_items: {
                     select: {
                         item_id: true,
+                        item_status: true,
+                        completed_at: true,
                         pricing_type: true,
                         quantity: true,
                         weight_kg: true,
@@ -158,9 +161,11 @@ exports.getOrderItems = async ({ orderId }) => {
                 }))
                 .filter((s) => s.quantity != null && s.quantity > 0);
 
-            // NOTE: Keep this shape backward-compatible for the staff app UI that aggregates by (categoryName, serviceName).
+            // NOTE: Keep this shape backward-compatible for the staff app UI; include itemStatus for distribution manager.
             return {
                 itemId: item.item_id,
+                itemStatus: item.item_status || 'pending', // pending | in_progress | completed
+                completedAt: item.completed_at || null,
                 pricingType: item.pricing_type, // per_unit | per_kg
                 quantity: item.quantity != null ? item.quantity : null,
                 weightKg: item.weight_kg != null ? item.weight_kg.toString() : null,

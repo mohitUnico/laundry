@@ -69,6 +69,7 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
     Future<_DmOrderUi> mapOne(Map<String, dynamic> o) async {
       final orderId = (o['orderId'] ?? '').toString();
       final orderType = (o['orderType'] ?? '').toString();
+      final orderStatus = (o['orderStatus'] ?? 'services_completed').toString();
       final createdAt = _parseDate(o['createdAt']);
       final customer = o['customer'];
       final customerName = (customer is Map ? customer['fullName'] : null)?.toString() ?? 'Customer';
@@ -85,8 +86,11 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
         items: itemsMapped.items,
         assignedTo: '—',
         orderType: orderType,
-        buttonText: 'Mark as Verified',
+        buttonText: orderStatus == 'services_completed'
+            ? 'Mark as Verified'
+            : 'Complete all items to verify',
         isVerifyButton: true,
+        orderStatus: orderStatus,
       );
     }
 
@@ -111,6 +115,7 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
     Future<_DmOrderUi> mapOne(Map<String, dynamic> o) async {
       final orderId = (o['orderId'] ?? '').toString();
       final orderType = (o['orderType'] ?? '').toString();
+      final orderStatus = (o['orderStatus'] ?? 'services_completed').toString();
       final createdAt = _parseDate(o['createdAt']);
       final customer = o['customer'];
       final customerName = (customer is Map ? customer['fullName'] : null)?.toString() ?? 'Customer';
@@ -139,6 +144,7 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
             ? 'Submitted to Customer'
             : (assignedTo == '—' ? 'Assign Delivery Partner' : 'Assigned'),
         isVerifyButton: false,
+        orderStatus: orderStatus,
       );
     }
 
@@ -198,7 +204,7 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
 
   static _ItemsUiMapping _mapItemsForUi(Object? itemsData) {
     final items = <_OrderItem>[];
-    final aggregated = <String, Map<String, dynamic>>{};
+    int total = 0;
 
     if (itemsData is Map) {
       final map = itemsData.cast<String, dynamic>();
@@ -210,6 +216,7 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
           final serviceName = (item['serviceName'] ?? '').toString().trim();
           final categoryName = (item['categoryName'] ?? '').toString().trim();
           final key = _formatServiceKey(categoryName, serviceName);
+          final itemStatus = (item['itemStatus'] ?? 'pending').toString().toLowerCase();
 
           int qty = 0;
           final List<_ClothItem> clothItemsList = [];
@@ -222,7 +229,6 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
               final q = (qtyNum is num) ? qtyNum.toInt() : int.tryParse(qtyNum?.toString() ?? '') ?? 0;
               if (q > 0) {
                 qty += q;
-                // Collect cloth item details
                 final clothName = (sel['clothName'] ?? '').toString().trim();
                 if (clothName.isNotEmpty) {
                   clothItemsList.add(_ClothItem(clothName: clothName, quantity: q));
@@ -236,31 +242,16 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
 
           if (key.isEmpty || qty <= 0) continue;
 
-          // Store cloth items with the service item
+          total += qty;
           final clothItems = clothItemsList.isNotEmpty ? clothItemsList : null;
-          if (!aggregated.containsKey(key)) {
-            aggregated[key] = {'quantity': 0, 'clothItems': <_ClothItem>[]};
-          }
-          aggregated[key]!['quantity'] = (aggregated[key]!['quantity'] as int) + qty;
-          if (clothItems != null) {
-            (aggregated[key]!['clothItems'] as List<_ClothItem>).addAll(clothItems);
-          }
+          items.add(_OrderItem(
+            name: key,
+            quantity: qty,
+            clothItems: clothItems,
+            itemStatus: itemStatus,
+          ));
         }
       }
-    }
-
-    final entries = aggregated.entries.toList()
-      ..sort((a, b) => (b.value['quantity'] as int).compareTo(a.value['quantity'] as int));
-    int total = 0;
-    for (final e in entries) {
-      final qty = e.value['quantity'] as int;
-      total += qty;
-      final clothItems = e.value['clothItems'] as List<_ClothItem>?;
-      items.add(_OrderItem(
-        name: e.key,
-        quantity: qty,
-        clothItems: clothItems?.isNotEmpty == true ? clothItems : null,
-      ));
     }
 
     return _ItemsUiMapping(items: items, totalCount: total);
@@ -567,6 +558,7 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
                     buttonText: o.buttonText,
                     items: o.items,
                     isVerifyButton: o.isVerifyButton,
+                    orderStatus: o.orderStatus,
                     onVerify: _verifyAndRefresh,
                   ),
                   const SizedBox(height: 12),
@@ -640,6 +632,7 @@ class _DistributionManagerHomeScreenState extends State<DistributionManagerHomeS
                     buttonText: o.buttonText,
                     items: o.items,
                     isVerifyButton: o.isVerifyButton,
+                    orderStatus: o.orderStatus,
                     onVerify: _verifyAndRefresh,
                     onAssigned: _refreshVerified,
                     onSubmitToCustomer: _submitToCustomerAndRefresh,
@@ -660,11 +653,13 @@ class _OrderItem {
   final String name;
   final int quantity;
   final List<_ClothItem>? clothItems; // Cloth items for this service
+  final String itemStatus; // pending | in_progress | completed
 
   const _OrderItem({
     required this.name,
     required this.quantity,
     this.clothItems,
+    this.itemStatus = 'pending',
   });
 }
 
@@ -697,6 +692,7 @@ class _DmOrderUi {
   final String orderType;
   final String buttonText;
   final bool isVerifyButton;
+  final String orderStatus; // e.g. services_in_progress, services_completed
 
   const _DmOrderUi({
     required this.backendOrderId,
@@ -710,6 +706,7 @@ class _DmOrderUi {
     required this.orderType,
     required this.buttonText,
     required this.isVerifyButton,
+    this.orderStatus = 'services_completed',
   });
 }
 
@@ -726,6 +723,7 @@ class _OrderCard extends StatefulWidget {
   final List<_OrderItem> items;
   final bool isExpanded;
   final bool isVerifyButton;
+  final String orderStatus;
   final Future<void> Function(String orderId)? onVerify;
   final VoidCallback? onAssigned;
   final Future<void> Function(String orderId)? onSubmitToCustomer;
@@ -743,6 +741,7 @@ class _OrderCard extends StatefulWidget {
     required this.items,
     this.isExpanded = false,
     required this.isVerifyButton,
+    this.orderStatus = 'services_completed',
     this.onVerify,
     this.onAssigned,
     this.onSubmitToCustomer,
@@ -864,14 +863,24 @@ class _OrderCardState extends State<_OrderCard> {
             height: 48,
             child: DecoratedBox(
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                  colors: [
-                    Color(0xFF283897),
-                    Color(0xFF0F73F7),
-                  ],
-                ),
+                gradient: widget.isVerifyButton &&
+                        widget.orderStatus != 'services_completed'
+                    ? LinearGradient(
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                        colors: [
+                          AppColors.textSecondary.withOpacity(0.5),
+                          AppColors.textSecondary.withOpacity(0.4),
+                        ],
+                      )
+                    : const LinearGradient(
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                        colors: [
+                          Color(0xFF283897),
+                          Color(0xFF0F73F7),
+                        ],
+                      ),
                 borderRadius: BorderRadius.circular(18),
               ),
               child: TextButton(
@@ -883,6 +892,9 @@ class _OrderCardState extends State<_OrderCard> {
                   ),
                 ),
                 onPressed: () async {
+                  final canVerify = widget.isVerifyButton &&
+                      widget.orderStatus == 'services_completed';
+                  if (widget.isVerifyButton && !canVerify) return;
                   if (!widget.isVerifyButton) {
                     final normalized = widget.assignedTo.trim();
                     final alreadyAssigned = normalized.isNotEmpty && normalized != '—';
@@ -981,6 +993,17 @@ class _OrderCardState extends State<_OrderCard> {
             // Items List
             ...widget.items.map((item) {
               final hasClothItems = item.clothItems != null && item.clothItems!.isNotEmpty;
+              final status = item.itemStatus.toLowerCase();
+              final statusLabel = status == 'completed'
+                  ? 'Completed'
+                  : status == 'in_progress'
+                      ? 'In progress'
+                      : 'Pending';
+              final statusColor = status == 'completed'
+                  ? const Color(0xFF2E7D32)
+                  : status == 'in_progress'
+                      ? const Color(0xFFF57C00)
+                      : AppColors.textSecondary;
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1009,6 +1032,31 @@ class _OrderCardState extends State<_OrderCard> {
                             ),
                           ),
                         ),
+                        // Status chip
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: statusColor.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: statusColor.withOpacity(0.5),
+                              width: 1,
+                            ),
+                          ),
+                          child: Text(
+                            statusLabel,
+                            style: AppTextStyles.subtitle(
+                              color: statusColor,
+                            ).copyWith(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
                         // Dotted line
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 8),

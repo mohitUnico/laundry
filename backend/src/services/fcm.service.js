@@ -3,6 +3,7 @@ const path = require('path');
 
 const prisma = require('../config/database');
 const logger = require('../utils/logger');
+const whatsappService = require('./whatsapp.service');
 
 let _initialized = false;
 let admin = null; // Lazy-loaded when FIREBASE_ENABLED=true to avoid requiring firebase-admin at startup
@@ -134,24 +135,41 @@ async function notifyOrderStatusChange({ orderId, status }) {
         select: {
             order_id: true,
             order_status: true,
-            customer: { select: { customer_id: true, fcm_token: true } },
+            customer: { select: { customer_id: true, fcm_token: true, phone: true } },
         },
     });
 
     if (!order || !order.customer) return { ok: false, skipped: true, reason: 'order_or_customer_not_found' };
-    const token = order.customer.fcm_token;
-    if (!token) return { ok: false, skipped: true, reason: 'customer_missing_fcm_token' };
 
     const pretty = _humanizeOrderStatus(status);
-    return sendToToken({
-        token,
+    const fcmPayload = {
+        token: order.customer.fcm_token,
         title: 'Order Update',
         body: `Your order status is now: ${pretty}`,
         data: {
             order_id: order.order_id,
             status,
         },
-    });
+    };
+
+    // FCM: send if token present
+    let fcmResult = { ok: false, skipped: true, reason: 'customer_missing_fcm_token' };
+    if (order.customer.fcm_token) {
+        fcmResult = await sendToToken(fcmPayload);
+    }
+
+    // WhatsApp: send to customer phone if present (fire-and-forget, same as FCM at call sites)
+    if (order.customer.phone && whatsappService.isEnabled()) {
+        whatsappService
+            .sendOrderStatusUpdate({
+                phone: order.customer.phone,
+                orderId: order.order_id,
+                status,
+            })
+            .catch((err) => logger.warn('WhatsApp order status notification failed', { orderId, error: err?.message }));
+    }
+
+    return fcmResult;
 }
 
 module.exports = {

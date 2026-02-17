@@ -1,6 +1,7 @@
 const { Prisma, OrderStatus, PaymentStatus } = require('@prisma/client');
 const prisma = require('../config/database');
 const { NotFoundError, ValidationError } = require('../utils/errors');
+const { notifyOrderStatusChange } = require('./fcm.service');
 const { schedulePickupAssignment, cancelPickupAssignment } = require('../queues/pickup-assignment.queue');
 
 /**
@@ -637,7 +638,7 @@ exports.confirmOrder = async (customerId, orderId) => {
         throw new ValidationError('orderId is required');
     }
 
-    return prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
         const order = await tx.order.findFirst({
             where: {
                 order_id: orderId,
@@ -847,6 +848,8 @@ exports.confirmOrder = async (customerId, orderId) => {
         };
     });
 
+    // Notify customer via FCM and WhatsApp (fire-and-forget)
+    notifyOrderStatusChange({ orderId: result.order_id, status: result.order_status }).catch(() => {});
     // Schedule pickup assignment job if queue-based assignment is enabled
     // Only schedule if order requires pickup and has pickup_time_from set
     if (process.env.PICKUP_ASSIGNMENT_USE_QUEUE === 'true') {

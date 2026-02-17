@@ -1,0 +1,9 @@
+{
+  "folders": [
+    { "path": ".", "name": "laundry-1" },
+    { "path": "management-app", "name": "management-app" }
+  ],
+  "settings": {
+    "dart.flutterProjectSearchDepth": 2
+  }
+}

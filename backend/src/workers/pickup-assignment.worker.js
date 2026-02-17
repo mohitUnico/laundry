@@ -2,22 +2,42 @@ const { Worker } = require('bullmq');
 const { getRedisWorkerConnection } = require('../config/redis');
 const deliveryOperationsService = require('../services/delivery-operations.service');
 const { getPickupAssignmentConfig } = require('../config/delivery-assignment.config');
+const { schedulePickupAssignment } = require('../queues/pickup-assignment.queue');
 const prisma = require('../config/database');
 const logger = require('../utils/logger');
 
 let worker = null;
 
 /**
+ * Count how many expired assignment requests exist for an order (retry attempts)
+ * @param {string} orderId - Order ID
+ * @returns {Promise<number>} Number of expired assignment requests
+ */
+async function getRetryAttemptCount(orderId) {
+    const now = new Date();
+    const count = await prisma.deliveryAssignmentRequest.count({
+        where: {
+            order_id: orderId,
+            delivery_type: 'pickup',
+            status: { in: ['pending', 'rejected', 'cancelled'] },
+            expires_at: { lt: now },
+        },
+    });
+    return count;
+}
+
+/**
  * Process pickup assignment job
  * @param {object} job - BullMQ job object
  */
 async function processPickupAssignment(job) {
-    const { orderId, deliveryType = 'pickup' } = job.data;
+    const { orderId, deliveryType = 'pickup', isRetry = false } = job.data;
 
     logger.info('Processing pickup assignment job', {
         component: 'pickup-assignment-worker',
         orderId,
         jobId: job.id,
+        isRetry,
     });
 
     try {
@@ -80,7 +100,21 @@ async function processPickupAssignment(job) {
             return; // Job completed (already assigned)
         }
 
-        // Create assignment request (same logic as current polling job)
+        // Check retry attempt count (max 2 attempts total)
+        const retryCount = await getRetryAttemptCount(orderId);
+        const MAX_ATTEMPTS = 2;
+
+        if (retryCount >= MAX_ATTEMPTS) {
+            logger.warn('Maximum pickup assignment attempts reached, stopping retries', {
+                component: 'pickup-assignment-worker',
+                orderId,
+                retryCount,
+                maxAttempts: MAX_ATTEMPTS,
+            });
+            return; // Job completed (max attempts reached)
+        }
+
+        // Create assignment request
         const config = getPickupAssignmentConfig();
         const result = await deliveryOperationsService.createAssignmentRequest({
             orderId,
@@ -90,12 +124,38 @@ async function processPickupAssignment(job) {
             expiresInSeconds: config.expirySeconds,
         });
 
+        const attemptNumber = retryCount + 1;
         logger.info('Pickup assignment request created via queue', {
             component: 'pickup-assignment-worker',
             orderId,
             requestId: result.request?.request_id,
             recipientCount: result.recipients?.length || 0,
+            attemptNumber,
+            maxAttempts: MAX_ATTEMPTS,
         });
+
+        // If this is the first attempt, schedule a retry job 2 minutes after expiry
+        if (attemptNumber === 1 && result.request?.expires_at) {
+            const expiryTime = new Date(result.request.expires_at);
+            const retryTime = new Date(expiryTime.getTime() + 2 * 60 * 1000); // 2 minutes after expiry
+
+            try {
+                await schedulePickupAssignment(orderId, retryTime, true); // Mark as retry
+                logger.info('Scheduled retry job for pickup assignment', {
+                    component: 'pickup-assignment-worker',
+                    orderId,
+                    retryTime: retryTime.toISOString(),
+                    attemptNumber: 2,
+                });
+            } catch (retryError) {
+                logger.error('Failed to schedule retry job', {
+                    component: 'pickup-assignment-worker',
+                    orderId,
+                    error: retryError.message,
+                });
+                // Don't fail the main job if retry scheduling fails
+            }
+        }
 
         return result;
     } catch (error) {

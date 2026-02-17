@@ -30,9 +30,10 @@ const pickupAssignmentQueue = new Queue('pickup-assignment', {
  * Schedule pickup assignment job for an order
  * @param {string} orderId - Order ID
  * @param {Date|string} pickupTimeFrom - Pickup time (Date object or ISO string)
+ * @param {boolean} [isRetry=false] - Whether this is a retry attempt
  * @returns {Promise<string>} Job ID
  */
-async function schedulePickupAssignment(orderId, pickupTimeFrom) {
+async function schedulePickupAssignment(orderId, pickupTimeFrom, isRetry = false) {
     try {
         const pickupTime = typeof pickupTimeFrom === 'string' 
             ? new Date(pickupTimeFrom) 
@@ -67,6 +68,7 @@ async function schedulePickupAssignment(orderId, pickupTimeFrom) {
             {
                 orderId,
                 deliveryType: 'pickup',
+                isRetry, // Mark as retry if this is a retry attempt
             },
             {
                 jobId,

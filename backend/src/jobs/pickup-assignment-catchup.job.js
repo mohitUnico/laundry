@@ -15,25 +15,29 @@ const isJobEnabled = () => {
 
 /**
  * Catch-up job: Find orders that should have been assigned but weren't.
- * Primary safety net for Redis Cloud free tier (no persistence): scheduled jobs
+ * Safety net for Redis Cloud free tier (no persistence): scheduled jobs
  * are lost on Redis restart, so we re-queue eligible orders every 5 minutes.
  * Also covers worker downtime or missed jobs.
+ * 
+ * IMPORTANT: Only re-queues orders whose pickup_time_from is in the future (not expired).
+ * Expired orders are handled by the retry mechanism (max 2 attempts).
  */
 const catchUpMissedPickupAssignments = async () => {
     try {
         const now = new Date();
 
         // Find orders that:
-        // 1. Have reached their preferred pickup time (pickup_time_from <= now)
+        // 1. Have pickup_time_from in the FUTURE (not expired) - only re-queue future scheduled jobs
         // 2. Are in 'placed' status
         // 3. Have pickup_time_from set
         // 4. Don't already have an active pickup assignment request
         // 5. Don't have an assigned pickup delivery
+        // 6. Haven't exceeded max retry attempts (max 2 expired requests)
         const eligibleOrders = await prisma.order.findMany({
             where: {
                 order_status: 'placed',
                 pickup_time_from: {
-                    lte: now,
+                    gt: now, // Only future orders (not expired)
                     not: null,
                 },
                 // Only orders that require pickup
@@ -58,25 +62,41 @@ const catchUpMissedPickupAssignments = async () => {
                 order_id: true,
                 pickup_time_from: true,
                 order_type: true,
+                _count: {
+                    select: {
+                        deliveryAssignmentRequests: {
+                            where: {
+                                delivery_type: 'pickup',
+                                status: { in: ['pending', 'rejected', 'cancelled'] },
+                                expires_at: { lt: now },
+                            },
+                        },
+                    },
+                },
             },
             take: getPickupAssignmentConfig().batchSize,
         });
 
-        if (eligibleOrders.length === 0) {
+        // Filter out orders that have exceeded max retry attempts (2 attempts)
+        const MAX_ATTEMPTS = 2;
+        const filteredOrders = eligibleOrders.filter((order) => order._count.deliveryAssignmentRequests < MAX_ATTEMPTS);
+
+        if (filteredOrders.length === 0) {
             return;
         }
 
-        logger.info('Catch-up job: Found orders eligible for pickup assignment', {
+        logger.info('Catch-up job: Found orders eligible for pickup assignment (future scheduled only)', {
             component: 'pickup-assignment-catchup',
-            count: eligibleOrders.length,
-            orderIds: eligibleOrders.map((o) => o.order_id),
+            count: filteredOrders.length,
+            orderIds: filteredOrders.map((o) => o.order_id),
+            note: 'Only re-queuing future scheduled jobs (not expired orders)',
         });
 
         // Re-queue each order (schedulePickupAssignment will handle idempotency)
         let requeued = 0;
         let failed = 0;
 
-        for (const order of eligibleOrders) {
+        for (const order of filteredOrders) {
             try {
                 // Re-queue with delay 0 (run immediately)
                 // schedulePickupAssignment will remove any existing job and add a new one
@@ -95,7 +115,7 @@ const catchUpMissedPickupAssignments = async () => {
         if (requeued > 0 || failed > 0) {
             logger.info('Catch-up job: Completed', {
                 component: 'pickup-assignment-catchup',
-                total: eligibleOrders.length,
+                total: filteredOrders.length,
                 requeued,
                 failed,
             });

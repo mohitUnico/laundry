@@ -33,15 +33,12 @@ See [REDIS_CLOUD_SETUP.md](./REDIS_CLOUD_SETUP.md) for a short setup guide.
 ### Mitigation: Catch-Up Job (Safety Net)
 
 A **catch-up job** is automatically enabled when queue mode is active. It:
-- Runs every 15 minutes (configurable)
+- Runs every **5 minutes** (configurable)
 - Finds orders that should have been assigned but weren't
 - Re-queues them automatically
 - Acts as a safety net for Redis data loss or worker downtime
 
-**For production with high reliability requirements**, consider:
-1. **Upgrading Redis Cloud** to a paid plan with persistence (AOF/RDB)
-2. **Running Redis on EC2** with persistence enabled (see alternatives below)
-3. **Keeping catch-up job enabled** (default) as a safety net
+**Optional**: Upgrade Redis Cloud to a paid plan for persistence; otherwise keep catch-up job enabled (default).
 
 ## Setup Steps
 
@@ -54,24 +51,16 @@ npm install
 
 This will install `bullmq` and `ioredis` automatically.
 
-### 2. Configure Redis
-
-**Option A: Redis Cloud (Quick Setup)**
+### 2. Configure Redis Cloud
 
 1. Sign up for Redis Cloud: https://redis.com/try-free/
-2. Create a subscription (choose AWS, same region as your EC2 instance)
+2. Create a subscription (choose AWS, same region as your app server)
 3. Create a database (30MB free tier is sufficient)
 4. Copy the connection string from the database dashboard
    - Format: `redis://default:password@host:port`
-5. ⚠️ **Note**: Free tier has NO persistence - catch-up job will handle missed orders
+5. Free tier has no persistence; the catch-up job (every 5 min) handles missed orders.
 
-**Option B: Redis on EC2 (Recommended - Full Persistence)**
-
-1. Follow the guide: [REDIS_EC2_SETUP.md](./REDIS_EC2_SETUP.md)
-2. Install Redis on your EC2 instance
-3. Enable AOF persistence (recommended)
-4. Set a password for security
-5. Use connection string: `redis://:password@localhost:6379`
+See [REDIS_CLOUD_SETUP.md](./REDIS_CLOUD_SETUP.md) for a short guide.
 
 ### 3. Configure Environment Variables
 
@@ -218,67 +207,8 @@ Monitor in Redis Cloud dashboard:
 **Cause**: Free Redis Cloud tier doesn't persist data
 
 **Solutions**:
-1. **Catch-up job** (already enabled) will re-queue missed orders within 15 minutes
-2. Upgrade to Redis Cloud paid plan with persistence
-3. Use Redis on EC2 with persistence enabled
-4. Manually trigger catch-up: The catch-up job runs automatically, but you can also call the function directly if needed
-
-## Alternatives: Redis with Persistence
-
-If you need persistence (recommended for production):
-
-### Option 1: Upgrade Redis Cloud
-
-Upgrade to a paid Redis Cloud plan that supports:
-- **AOF (Append-Only File)**: Logs every write operation
-- **RDB snapshots**: Periodic backups
-- **Replication**: High availability
-
-### Option 2: Redis on EC2 with Persistence ⭐ **RECOMMENDED**
-
-Run Redis on your EC2 instance with persistence enabled - **NO additional cost**!
-
-**Quick Setup:**
-
-```bash
-# Install Redis
-sudo amazon-linux-extras install redis6
-
-# Configure persistence in /etc/redis.conf
-appendonly yes
-appendfsync everysec
-
-# Set password (recommended)
-requirepass your-strong-password-here
-
-# Start Redis
-sudo systemctl start redis
-sudo systemctl enable redis
-```
-
-Then use `REDIS_URL=redis://:password@localhost:6379`
-
-**Full Setup Guide**: See [REDIS_EC2_SETUP.md](./REDIS_EC2_SETUP.md) for detailed instructions.
-
-**Pros**: 
-- ✅ Full persistence (AOF/RDB) - no data loss
-- ✅ No additional cost (uses existing EC2)
-- ✅ Full control over configuration
-- ✅ No external dependency
-
-**Cons**: 
-- You manage Redis (updates, backups, monitoring)
-- Uses EC2 resources (RAM, disk)
-
-**Best For**: Production environments where reliability is critical
-
-### Option 3: AWS ElastiCache for Redis
-
-Use AWS ElastiCache (managed Redis with persistence):
-- Automatic backups
-- Multi-AZ support
-- Managed by AWS
-- Higher cost than self-hosted
+1. **Catch-up job** (already enabled) will re-queue missed orders within 5 minutes
+2. Upgrade to Redis Cloud paid plan with persistence if needed
 
 ## Comparison: Queue vs Polling vs Webhook
 
@@ -306,14 +236,11 @@ To migrate from polling to queue-based:
 
 ## Catch-Up Job (Safety Net)
 
-A **catch-up job** is automatically enabled when queue mode is active. It runs every 15 minutes (configurable) and:
+A **catch-up job** is automatically enabled when queue mode is active. It runs every **5 minutes** (configurable) and:
 
 1. Finds orders that are eligible for pickup assignment but don't have pending requests
 2. Re-queues them automatically (handles idempotency - won't create duplicates)
-3. Acts as a safety net for:
-   - Redis data loss (free tier without persistence)
-   - Worker downtime
-   - Missed jobs due to clock skew or other issues
+3. Acts as a safety net for Redis Cloud free tier (no persistence), worker downtime, or missed jobs
 
 ### Configuration
 
@@ -321,8 +248,8 @@ A **catch-up job** is automatically enabled when queue mode is active. It runs e
 # Enable/disable catch-up job (default: enabled when queue mode is active)
 PICKUP_ASSIGNMENT_CATCHUP_ENABLED=true
 
-# Interval between catch-up runs (default: 15 minutes = 900000 ms)
-PICKUP_ASSIGNMENT_CATCHUP_INTERVAL_MS=900000
+# Interval between catch-up runs (default: 5 minutes = 300000 ms)
+PICKUP_ASSIGNMENT_CATCHUP_INTERVAL_MS=300000
 ```
 
 The catch-up job is implemented in `backend/src/jobs/pickup-assignment-catchup.job.js` and starts automatically with the queue worker.
@@ -333,7 +260,7 @@ All configuration is in `backend/src/queues/pickup-assignment.queue.js`:
 
 - **Job attempts**: 3 retries with exponential backoff
 - **Concurrency**: 1 job at a time (adjustable in worker)
-- **Job retention**: Completed jobs kept 24h, failed jobs kept 7 days
+- **Job retention**: Completed jobs kept 12h (max 500), failed jobs kept 3 days (Redis Cloud–friendly)
 - **Rate limiting**: Max 10 jobs per second
 
 ## Support

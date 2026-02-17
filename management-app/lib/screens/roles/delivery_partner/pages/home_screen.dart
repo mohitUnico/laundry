@@ -1799,12 +1799,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           }
 
           final allList = _acceptedCache.isNotEmpty ? _acceptedCache : (snapshot.data ?? const <_AcceptedTaskUi>[]);
-          // For today's tasks, show only pickup leg orders assigned to this staff where
-          // the order status is in the pickup flow (pickup_assigned / picked_up).
+          // For today's tasks, show:
+          // - pickup leg orders where orderStatus is in the pickup flow (pickup_assigned / picked_up)
+          // - drop leg orders that have been directly assigned or are out for delivery
+          //   (dispatch_assigned / out_for_delivery)
           // Orders that are already submitted_to_cm or delivered are moved to the
           // Completed tab and should not appear here.
           final list = allList.where((t) {
-            return t.orderStatus == 'pickup_assigned' || t.orderStatus == 'picked_up';
+            return t.orderStatus == 'pickup_assigned' ||
+                t.orderStatus == 'picked_up' ||
+                t.orderStatus == 'dispatch_assigned' ||
+                t.orderStatus == 'out_for_delivery';
           }).toList();
           
           if (list.isEmpty) {

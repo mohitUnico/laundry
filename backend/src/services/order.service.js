@@ -2,6 +2,7 @@ const { Prisma, OrderStatus, PaymentStatus } = require('@prisma/client');
 const prisma = require('../config/database');
 const { NotFoundError, ValidationError } = require('../utils/errors');
 const { notifyOrderStatusChange } = require('./fcm.service');
+const { schedulePickupAssignment, cancelPickupAssignment } = require('../queues/pickup-assignment.queue');
 
 /**
  * Create an order from a customer's active cart.
@@ -585,6 +586,41 @@ exports.createOrder = async (customerId, payload) => {
         },
         { maxWait: 10000, timeout: 60000 } // Increase timeout to 60 seconds for complex order creation
     );
+
+    // Schedule pickup assignment job if queue-based assignment is enabled
+    // Only schedule if order requires pickup and has pickup_time_from set
+    if (process.env.PICKUP_ASSIGNMENT_USE_QUEUE === 'true') {
+        const createdOrder = await prisma.order.findUnique({
+            where: { order_id: result.order_id },
+            select: {
+                order_id: true,
+                order_status: true,
+                order_type: true,
+                pickup_time_from: true,
+            },
+        });
+
+        if (
+            createdOrder &&
+            createdOrder.order_status === 'placed' &&
+            createdOrder.pickup_time_from &&
+            (createdOrder.order_type === 'pickup_only' || createdOrder.order_type === 'both')
+        ) {
+            try {
+                await schedulePickupAssignment(createdOrder.order_id, createdOrder.pickup_time_from);
+            } catch (error) {
+                // Log error but don't fail order creation
+                const logger = require('../utils/logger');
+                logger.error('Failed to schedule pickup assignment job after order creation', {
+                    component: 'order-service',
+                    orderId: createdOrder.order_id,
+                    error: error.message,
+                });
+            }
+        }
+    }
+
+    return result;
 };
 
 /**
@@ -814,6 +850,38 @@ exports.confirmOrder = async (customerId, orderId) => {
 
     // Notify customer via FCM and WhatsApp (fire-and-forget)
     notifyOrderStatusChange({ orderId: result.order_id, status: result.order_status }).catch(() => {});
+    // Schedule pickup assignment job if queue-based assignment is enabled
+    // Only schedule if order requires pickup and has pickup_time_from set
+    if (process.env.PICKUP_ASSIGNMENT_USE_QUEUE === 'true') {
+        const confirmedOrder = await prisma.order.findUnique({
+            where: { order_id: result.order_id },
+            select: {
+                order_id: true,
+                order_status: true,
+                order_type: true,
+                pickup_time_from: true,
+            },
+        });
+
+        if (
+            confirmedOrder &&
+            confirmedOrder.order_status === 'placed' &&
+            confirmedOrder.pickup_time_from &&
+            (confirmedOrder.order_type === 'pickup_only' || confirmedOrder.order_type === 'both')
+        ) {
+            try {
+                await schedulePickupAssignment(confirmedOrder.order_id, confirmedOrder.pickup_time_from);
+            } catch (error) {
+                // Log error but don't fail order confirmation
+                const logger = require('../utils/logger');
+                logger.error('Failed to schedule pickup assignment job after order confirmation', {
+                    component: 'order-service',
+                    orderId: confirmedOrder.order_id,
+                    error: error.message,
+                });
+            }
+        }
+    }
 
     return result;
 };

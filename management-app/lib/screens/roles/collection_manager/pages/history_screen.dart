@@ -511,10 +511,16 @@ class _HistoryOrderCardState extends State<_HistoryOrderCard> {
                 color: AppColors.textSecondary,
               ),
               const SizedBox(width: 6),
-              Text(
-                'Delivered by: ${widget.deliveryPerson} (${widget.deliveryPersonId})',
-                style: AppTextStyles.subtitle(
-                  color: AppColors.textSecondary,
+              Expanded(
+                child: Text(
+                  widget.deliveryPersonId == '—' || widget.deliveryPerson.isEmpty
+                      ? 'Delivered by: ${widget.deliveryPerson}'
+                      : 'Delivered by: ${widget.deliveryPerson} (${widget.deliveryPersonId})',
+                  style: AppTextStyles.subtitle(
+                    color: AppColors.textSecondary,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],

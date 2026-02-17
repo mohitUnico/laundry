@@ -10,11 +10,23 @@ if (!fs.existsSync(logsDir)) {
     fs.mkdirSync(logsDir, { recursive: true });
 }
 
-// When LOG_ONLY_PICKUP_ASSIGNMENT=true, only log messages with component === 'pickup-assignment-job'
-// logform requires a format instance: format(fn) returns a constructor, so we call it to get the instance
-const onlyPickupAssignmentFilter = winston.format((info) => {
-    if (process.env.LOG_ONLY_PICKUP_ASSIGNMENT !== 'true') return info;
-    return info.component === 'pickup-assignment-job' ? info : false;
+// Console filter: when LOG_COMPONENTS is set (comma-separated), only show logs with matching component.
+// Example: LOG_COMPONENTS=pickup-assignment-queue,pickup-assignment-worker,pickup-assignment-catchup,whatsapp
+// Legacy: LOG_ONLY_PICKUP_ASSIGNMENT=true is equivalent to LOG_COMPONENTS=pickup-assignment-job
+const getAllowedComponents = () => {
+    const components = process.env.LOG_COMPONENTS;
+    if (components) {
+        return components.split(',').map((c) => c.trim()).filter(Boolean);
+    }
+    if (process.env.LOG_ONLY_PICKUP_ASSIGNMENT === 'true') {
+        return ['pickup-assignment-job'];
+    }
+    return [];
+};
+const componentFilter = winston.format((info) => {
+    const allowed = getAllowedComponents();
+    if (allowed.length === 0) return info;
+    return allowed.includes(info.component) ? info : false;
 })();
 
 // Custom log format
@@ -30,10 +42,10 @@ const logger = winston.createLogger({
     level: process.env.LOG_LEVEL || 'info',
     format: combine(timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }), errors({ stack: true }), logFormat),
     transports: [
-        // Console transport (when LOG_ONLY_PICKUP_ASSIGNMENT=true, only pickup-assignment-job logs)
+        // Console transport (when LOG_COMPONENTS set, only matching component logs)
         new winston.transports.Console({
             format: combine(
-                onlyPickupAssignmentFilter,
+                componentFilter,
                 colorize(),
                 timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
                 logFormat

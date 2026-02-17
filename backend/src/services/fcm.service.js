@@ -166,7 +166,13 @@ async function notifyOrderStatusChange({ orderId, status }) {
                 orderId: order.order_id,
                 status,
             })
-            .catch((err) => logger.warn('WhatsApp order status notification failed', { orderId, error: err?.message }));
+            .catch((err) =>
+                logger.warn('WhatsApp order status notification failed', {
+                    component: 'whatsapp',
+                    orderId,
+                    error: err?.message,
+                })
+            );
     }
 
     return fcmResult;

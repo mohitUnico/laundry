@@ -64,13 +64,15 @@ async function sendWhatsAppMessage({ toE164, contentSid, contentVariables, body 
             process.env.TWILIO_AUTH_TOKEN
         );
     } catch (e) {
-        logger.warn('Twilio not available for WhatsApp', { error: e?.message });
+        logger.warn('Twilio not available for WhatsApp', { component: 'whatsapp', error: e?.message });
         return { ok: false, skipped: true, reason: 'twilio_not_available' };
     }
 
     const from = process.env.TWILIO_WHATSAPP_FROM || ''; // e.g. "whatsapp:+14155238886"
     if (!from || !from.toLowerCase().startsWith('whatsapp:')) {
-        logger.warn('TWILIO_WHATSAPP_FROM not set or invalid (must be whatsapp:+1234567890)');
+        logger.warn('TWILIO_WHATSAPP_FROM not set or invalid (must be whatsapp:+1234567890)', {
+            component: 'whatsapp',
+        });
         return { ok: false, skipped: true, reason: 'missing_whatsapp_from' };
     }
 
@@ -95,6 +97,7 @@ async function sendWhatsAppMessage({ toE164, contentSid, contentVariables, body 
     try {
         const message = await client.messages.create(payload);
         logger.info('WhatsApp message sent', {
+            component: 'whatsapp',
             sid: message.sid,
             to: toE164,
             status: message.status,
@@ -102,6 +105,7 @@ async function sendWhatsAppMessage({ toE164, contentSid, contentVariables, body 
         return { ok: true, messageId: message.sid };
     } catch (e) {
         logger.error('WhatsApp send failed', {
+            component: 'whatsapp',
             error: e?.message || String(e),
             to: toE164,
             code: e?.code,

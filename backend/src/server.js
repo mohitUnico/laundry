@@ -14,6 +14,10 @@ let closeRedisConnection;
 try {
     app = require('./app');
     logger = require('./utils/logger');
+    // Ensure startup logs appear on console when log filter is active
+    if (process.env.LOG_COMPONENTS || process.env.LOG_ONLY_PICKUP_ASSIGNMENT === 'true') {
+        console.log('[server] App and logger loaded (console filtered; see logs/combined.log for full output)');
+    }
     prisma = require('./config/database');
     const portalAuth = require('./services/portal-auth.service');
     const dailyMetricsJob = require('./jobs/daily-metrics.job');

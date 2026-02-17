@@ -1,6 +1,7 @@
 const prisma = require('../config/database');
 const logger = require('../utils/logger');
 const { NotFoundError, ValidationError } = require('../utils/errors');
+const { notifyOrderStatusChange } = require('./fcm.service');
 const { Prisma } = require('@prisma/client');
 
 const ORDER_STATUSES = [
@@ -584,6 +585,9 @@ exports.updateOrderStatus = async (orderId, status, actorUserId = null) => {
             orderId,
             status,
         });
+
+        // Notify customer via FCM and WhatsApp (fire-and-forget)
+        notifyOrderStatusChange({ orderId: updated.order_id, status: updated.order_status }).catch(() => {});
 
         return {
             order_id: updated.order_id,

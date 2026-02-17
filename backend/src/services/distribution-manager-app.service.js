@@ -1,5 +1,6 @@
 const prisma = require('../config/database');
 const deliveryOperationsService = require('./delivery-operations.service');
+const { notifyOrderStatusChange } = require('./fcm.service');
 const { NotFoundError, ValidationError, ConflictError } = require('../utils/errors');
 
 const normalizePagination = ({ page = 1, limit = 20 } = {}) => {
@@ -341,6 +342,9 @@ exports.dispatchOrder = async ({ staffId, orderId, radiusKm, limit, expiresInSec
         select: { order_id: true, dispatched_at: true, order_status: true },
     });
 
+    // Notify customer via FCM and WhatsApp (fire-and-forget)
+    notifyOrderStatusChange({ orderId: updated.order_id, status: 'dispatch_assigned' }).catch(() => {});
+
     return {
         orderId: updated.order_id,
         orderStatus: updated.order_status,
@@ -386,7 +390,7 @@ exports.submitToCustomer = async ({ staffId, orderId }) => {
 
     const now = new Date();
 
-    return prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
         const order = await tx.order.findUnique({
             where: { order_id: orderId },
             select: {
@@ -439,6 +443,13 @@ exports.submitToCustomer = async ({ staffId, orderId }) => {
             submittedAt: updated.dispatched_at,
         };
     });
+
+    // Notify customer via FCM and WhatsApp (fire-and-forget) when order was actually delivered (not idempotent return)
+    if (result.orderStatus === 'delivered' && result.submittedAt != null) {
+        notifyOrderStatusChange({ orderId: result.orderId, status: 'delivered' }).catch(() => {});
+    }
+
+    return result;
 };
 
 exports.listDispatchHistory = async ({ page, limit } = {}) => {

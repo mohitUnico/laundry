@@ -1,6 +1,7 @@
 const { Prisma, OrderStatus, PaymentStatus } = require('@prisma/client');
 const prisma = require('../config/database');
 const { NotFoundError, ValidationError } = require('../utils/errors');
+const { notifyOrderStatusChange } = require('./fcm.service');
 
 /**
  * Create an order from a customer's active cart.
@@ -601,7 +602,7 @@ exports.confirmOrder = async (customerId, orderId) => {
         throw new ValidationError('orderId is required');
     }
 
-    return prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
         const order = await tx.order.findFirst({
             where: {
                 order_id: orderId,
@@ -810,6 +811,11 @@ exports.confirmOrder = async (customerId, orderId) => {
             total_amount: updated.total_amount.toString(),
         };
     });
+
+    // Notify customer via FCM and WhatsApp (fire-and-forget)
+    notifyOrderStatusChange({ orderId: result.order_id, status: result.order_status }).catch(() => {});
+
+    return result;
 };
 
 /**

@@ -18,7 +18,7 @@ No API or app changes are required for existing order flows; WhatsApp is additiv
 
 ## Environment Variables
 
-Add to your `.env`:
+Add to your `.env` (or copy from `env.template` and fill values):
 
 | Variable | Required | Description |
 |----------|----------|-------------|

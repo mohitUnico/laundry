@@ -1,5 +1,6 @@
 const prisma = require('../config/database');
 const { NotFoundError, ValidationError, ConflictError } = require('../utils/errors');
+const { notifyOrderStatusChange } = require('./fcm.service');
 
 const normalizePagination = ({ page = 1, limit = 20 } = {}) => {
     const safePage = Number.isInteger(page) ? page : parseInt(page, 10);
@@ -128,8 +129,10 @@ exports.updateQueueItem = async ({ staffId, queueId, action, comments }) => {
     if (!['in_progress', 'completed', 'mark_for_later'].includes(action)) throw new ValidationError('Invalid action');
 
     const now = new Date();
+    let notifyOrderId = null;
+    let notifyStatus = null;
 
-    return prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
         const q = await tx.serviceQueueItem.findUnique({
             where: { queue_id: queueId },
             select: {
@@ -165,6 +168,8 @@ exports.updateQueueItem = async ({ staffId, queueId, action, comments }) => {
                 where: { order_id: q.order_id },
                 data: { order_status: 'services_in_progress' },
             });
+            notifyOrderId = q.order_id;
+            notifyStatus = 'services_in_progress';
         }
 
         if (action === 'completed') {
@@ -188,10 +193,13 @@ exports.updateQueueItem = async ({ staffId, queueId, action, comments }) => {
                 where: { order_id: q.order_id, queue_status: { not: 'completed' } },
             });
 
+            const newOrderStatus = remaining === 0 ? 'services_completed' : 'services_in_progress';
             await tx.order.update({
                 where: { order_id: q.order_id },
-                data: { order_status: remaining === 0 ? 'services_completed' : 'services_in_progress' },
+                data: { order_status: newOrderStatus },
             });
+            notifyOrderId = q.order_id;
+            notifyStatus = newOrderStatus;
         }
 
         if (action === 'mark_for_later') {
@@ -232,8 +240,15 @@ exports.updateQueueItem = async ({ staffId, queueId, action, comments }) => {
             },
         });
 
-        return mapQueueItem(refreshed);
+        return { queueItem: mapQueueItem(refreshed), _notifyOrderId: notifyOrderId, _notifyStatus: notifyStatus };
     });
+
+    // Notify customer via FCM and WhatsApp (fire-and-forget) when order status changed
+    if (result._notifyOrderId && result._notifyStatus) {
+        notifyOrderStatusChange({ orderId: result._notifyOrderId, status: result._notifyStatus }).catch(() => {});
+    }
+
+    return result.queueItem;
 };
 
 exports.listCompleted = async ({ staffId, page, limit } = {}) => {

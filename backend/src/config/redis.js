@@ -20,8 +20,9 @@ function getRedisConnection() {
     }
 
     // Redis Cloud (no persistence): retry and reconnect on connection loss
+    // BullMQ Worker requires maxRetriesPerRequest: null for blocking commands (BRPOPLPUSH)
     const connectionOptions = {
-        maxRetriesPerRequest: 3,
+        maxRetriesPerRequest: null,
         retryStrategy: (times) => {
             const delay = Math.min(times * 100, 5000);
             logger.info('Redis retry', { component: 'redis', attempt: times, delayMs: delay });

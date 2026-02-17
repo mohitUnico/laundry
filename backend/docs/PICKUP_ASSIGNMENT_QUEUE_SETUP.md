@@ -165,6 +165,22 @@ Monitor in Redis Cloud dashboard:
 
 ## Troubleshooting
 
+### TypeError: Cannot read properties of undefined (reading 'client')
+
+**Cause**: BullMQ Worker requires `maxRetriesPerRequest: null` for blocking Redis commands. If set to a number (e.g. 3), the Worker fails when processing jobs.
+
+**Solution**: The Redis connection in `src/config/redis.js` is configured with `maxRetriesPerRequest: null`. Ensure you are using the latest config.
+
+### Redis Eviction Policy Warning
+
+**Error**: `IMPORTANT! Eviction policy is volatile-lru. It should be "noeviction"`
+
+**Cause**: Redis Cloud free tier defaults to `volatile-lru`. BullMQ recommends `noeviction` so job data is not evicted when memory is full.
+
+**Solutions**:
+1. **Redis Cloud**: In the Redis Cloud dashboard, edit your database → Advanced → Eviction policy → set to `noeviction`. (Note: Some free tiers may not allow this; upgrade may be required.)
+2. **Self-hosted Redis**: In `redis.conf`, set `maxmemory-policy noeviction` and restart Redis.
+
 ### Worker Not Starting
 
 **Error**: `Redis connection error`

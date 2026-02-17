@@ -1,5 +1,5 @@
 const { Worker } = require('bullmq');
-const { getRedisConnection } = require('../config/redis');
+const { getRedisWorkerConnection } = require('../config/redis');
 const deliveryOperationsService = require('../services/delivery-operations.service');
 const { getPickupAssignmentConfig } = require('../config/delivery-assignment.config');
 const prisma = require('../config/database');
@@ -126,7 +126,7 @@ function startPickupAssignmentWorker() {
             return await processPickupAssignment(job);
         },
         {
-            connection: getRedisConnection(),
+            connection: getRedisWorkerConnection(),
             concurrency: 1, // Process one job at a time (adjust if needed)
             limiter: {
                 max: 10, // Max 10 jobs per second

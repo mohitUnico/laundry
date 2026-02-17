@@ -2,94 +2,80 @@ const { Redis } = require('ioredis');
 const logger = require('../utils/logger');
 
 let redisClient = null;
+let redisWorkerClient = null;
 
-/**
- * Get or create Redis connection for BullMQ.
- * Configured for Redis Cloud (no persistence): reconnects and retries on failure.
- * @returns {Redis} Redis client instance
- */
-function getRedisConnection() {
-    if (redisClient) {
-        return redisClient;
-    }
+const BASE_OPTIONS = {
+    retryStrategy: (times) => {
+        const delay = Math.min(times * 100, 5000);
+        logger.info('Redis retry', { component: 'redis', attempt: times, delayMs: delay });
+        return delay;
+    },
+    reconnectOnError: (err) => {
+        if (err.message.includes('READONLY')) return true;
+        return false;
+    },
+    enableReadyCheck: true,
+    enableOfflineQueue: true,
+    connectTimeout: 10000,
+    lazyConnect: false,
+};
 
+function createRedisClient(maxRetriesPerRequest) {
     const redisUrl = process.env.REDIS_URL;
-    
     if (!redisUrl) {
         throw new Error('REDIS_URL environment variable is required (e.g. Redis Cloud connection string)');
     }
+    const client = new Redis(redisUrl, { ...BASE_OPTIONS, maxRetriesPerRequest });
+    client.on('connect', () => logger.info('Redis connected', { component: 'redis' }));
+    client.on('ready', () => logger.info('Redis ready', { component: 'redis' }));
+    client.on('error', (err) => logger.error('Redis connection error', { component: 'redis', error: err.message, stack: err.stack }));
+    client.on('close', () => logger.warn('Redis connection closed', { component: 'redis' }));
+    client.on('reconnecting', () => logger.info('Redis reconnecting', { component: 'redis' }));
+    return client;
+}
 
-    // Redis Cloud (no persistence): retry and reconnect on connection loss
-    // BullMQ Worker requires maxRetriesPerRequest: null for blocking commands (BRPOPLPUSH)
-    const connectionOptions = {
-        maxRetriesPerRequest: null,
-        retryStrategy: (times) => {
-            const delay = Math.min(times * 100, 5000);
-            logger.info('Redis retry', { component: 'redis', attempt: times, delayMs: delay });
-            return delay;
-        },
-        reconnectOnError: (err) => {
-            const targetError = 'READONLY';
-            if (err.message.includes(targetError)) {
-                return true;
-            }
-            return false;
-        },
-        enableReadyCheck: true,
-        enableOfflineQueue: true,
-        connectTimeout: 10000,
-        lazyConnect: false,
-    };
-
-    redisClient = new Redis(redisUrl, connectionOptions);
-
-    redisClient.on('connect', () => {
-        logger.info('Redis connected', { component: 'redis' });
-    });
-
-    redisClient.on('ready', () => {
-        logger.info('Redis ready', { component: 'redis' });
-    });
-
-    redisClient.on('error', (err) => {
-        logger.error('Redis connection error', { 
-            component: 'redis', 
-            error: err.message,
-            stack: err.stack,
-        });
-    });
-
-    redisClient.on('close', () => {
-        logger.warn('Redis connection closed', { component: 'redis' });
-    });
-
-    redisClient.on('reconnecting', () => {
-        logger.info('Redis reconnecting', { component: 'redis' });
-    });
-
+/**
+ * Get or create Redis connection for BullMQ Queue (add job, get job, etc.).
+ * @returns {Redis} Redis client instance
+ */
+function getRedisConnection() {
+    if (redisClient) return redisClient;
+    redisClient = createRedisClient(3);
     return redisClient;
 }
 
 /**
- * Close Redis connection gracefully
+ * Get or create Redis connection for BullMQ Worker (blocking commands).
+ * Must use maxRetriesPerRequest: null or Worker.run() throws "reading 'client'".
+ * @returns {Redis} Redis client instance for worker use only
+ */
+function getRedisWorkerConnection() {
+    if (redisWorkerClient) return redisWorkerClient;
+    redisWorkerClient = createRedisClient(null);
+    return redisWorkerClient;
+}
+
+/**
+ * Close Redis connections gracefully
  */
 async function closeRedisConnection() {
-    if (redisClient) {
+    const close = async (client, name) => {
+        if (!client) return;
         try {
-            await redisClient.quit();
-            redisClient = null;
-            logger.info('Redis connection closed gracefully', { component: 'redis' });
+            await client.quit();
+            logger.info('Redis connection closed gracefully', { component: 'redis', connection: name });
         } catch (error) {
-            logger.error('Error closing Redis connection', {
-                component: 'redis',
-                error: error.message,
-            });
-            redisClient = null;
+            logger.error('Error closing Redis connection', { component: 'redis', connection: name, error: error.message });
         }
-    }
+    };
+    await close(redisWorkerClient, 'worker');
+    redisWorkerClient = null;
+    await close(redisClient, 'queue');
+    redisClient = null;
 }
 
 module.exports = {
     getRedisConnection,
+    getRedisWorkerConnection,
     closeRedisConnection,
 };

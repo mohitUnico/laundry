@@ -5,6 +5,34 @@ export interface ServiceArea {
   name: string;
 }
 
+export interface AdminTeamMember {
+  staffId: string;
+  fullName: string;
+  email?: string | null;
+  phone?: string | null;
+  role: 'owner' | 'service_man' | 'collection_manager' | 'distribution_manager' | string;
+  isActive: boolean;
+  service?: any;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminTeamMembersGrouped {
+  owner: AdminTeamMember[];
+  service_men: AdminTeamMember[];
+  collection_managers: AdminTeamMember[];
+  distribution_managers: AdminTeamMember[];
+}
+
+export interface AdminCreateTeamMemberInput {
+  fullName: string;
+  email: string;
+  phone?: string | null;
+  role: 'owner' | 'service_man' | 'collection_manager' | 'distribution_manager';
+  serviceId?: string | null;
+  isActive?: boolean;
+}
+
 export interface SaveSettingsPayload {
   businessName: string;
   businessEmail: string;
@@ -47,6 +75,22 @@ export interface TeamMember extends TeamMemberInput {
 }
 
 export const settingsApi = {
+  async getAdminTeamMembersGrouped(): Promise<AdminTeamMembersGrouped> {
+    const res = await axiosInstance.get(API_ENDPOINTS.ADMIN_SETTINGS.TEAM_MEMBERS_GROUPED);
+    const data = res.data?.data;
+    return {
+      owner: data?.owner ?? [],
+      service_men: data?.service_men ?? [],
+      collection_managers: data?.collection_managers ?? [],
+      distribution_managers: data?.distribution_managers ?? [],
+    };
+  },
+
+  async createAdminTeamMember(payload: AdminCreateTeamMemberInput): Promise<AdminTeamMember> {
+    const res = await axiosInstance.post(API_ENDPOINTS.ADMIN_SETTINGS.TEAM_MEMBERS_GROUPED, payload);
+    return res.data?.data;
+  },
+
   async getServiceAreas(): Promise<ServiceArea[]> {
     const res = await axiosInstance.get(API_ENDPOINTS.SETTINGS.SERVICE_AREAS.LIST);
     // Expecting { serviceAreas: ServiceArea[] } or { data: ServiceArea[] }

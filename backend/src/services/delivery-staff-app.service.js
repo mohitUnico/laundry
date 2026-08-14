@@ -1,0 +1,931 @@
+const prisma = require('../config/database');
+const logger = require('../utils/logger');
+const { NotFoundError, ValidationError, ConflictError, AppError } = require('../utils/errors');
+const { getSupabaseClient } = require('../config/supabase');
+const { uploadDeliveryProofImage } = require('./delivery-staff-media.service');
+const { v4: uuidv4 } = require('uuid');
+const { notifyOrderStatusChange } = require('./fcm.service');
+
+const UUID_REGEX =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const assertUuid = (value, fieldName) => {
+    if (!value || typeof value !== 'string' || !UUID_REGEX.test(value)) {
+        throw new ValidationError(`${fieldName} must be a valid UUID`);
+    }
+};
+
+const normalizePagination = ({ page = 1, limit = 20 } = {}) => {
+    const safePage = Number.isInteger(page) ? page : parseInt(page);
+    const safeLimit = Number.isInteger(limit) ? limit : parseInt(limit);
+
+    if (!Number.isInteger(safePage) || safePage < 1) throw new ValidationError('page must be >= 1');
+    if (!Number.isInteger(safeLimit) || safeLimit < 1 || safeLimit > 100) {
+        throw new ValidationError('limit must be between 1 and 100');
+    }
+
+    return { safePage, safeLimit, skip: (safePage - 1) * safeLimit };
+};
+
+// Node-safe nullish coalescing helper (replacement for `a ?? b`).
+// Uses `== null` to match both `null` and `undefined` only (does NOT treat 0/'' as nullish).
+const coalesce = (value, fallback) => (value == null ? fallback : value);
+
+// -----------------------------------------------------------------------------
+// In-memory cache + in-flight de-duplication for high-frequency endpoints.
+//
+// Why:
+// - Production DB often runs with a very small pool (e.g. connection_limit=3).
+// - Delivery staff app polls/refreshes frequently; concurrent identical requests can saturate the pool.
+// - When pool is saturated Prisma throws P2024 ("Timed out fetching a new connection").
+//
+// What we do:
+// - De-dupe concurrent calls for the same key (staffId/page/limit)
+// - Cache results for a short TTL (2-4 seconds)
+// - On P2024, serve cached data if present instead of failing the request
+// -----------------------------------------------------------------------------
+
+const _inflight = new Map(); // key -> Promise
+const _cache = new Map(); // key -> { expiresAt: number, value: any }
+
+const _getCached = (key) => {
+    const entry = _cache.get(key);
+    if (!entry) return null;
+    if (Date.now() > entry.expiresAt) {
+        _cache.delete(key);
+        return null;
+    }
+    return entry.value;
+};
+
+const _setCached = (key, value, ttlMs) => {
+    _cache.set(key, { value, expiresAt: Date.now() + ttlMs });
+};
+
+const _withInflight = async (key, fn) => {
+    const existing = _inflight.get(key);
+    if (existing) return existing;
+    const p = (async () => fn())().finally(() => _inflight.delete(key));
+    _inflight.set(key, p);
+    return p;
+};
+
+const _isPrismaPoolTimeout = (err) => {
+    return err && typeof err === 'object' && err.code === 'P2024';
+};
+
+const mapDeliveryToOrderCard = (d) => {
+    // itemCount is used by delivery staff UI as "number of clothes/items" (quantity), not number of order_items rows.
+    // Prefer total quantity derived from order_items.quantity and fallback to row-count if unavailable.
+    const itemCountFromQuantities = Array.isArray(d.order?.order_items)
+        ? d.order.order_items.reduce((sum, oi) => {
+              const qty = oi?.quantity;
+              const n =
+                  typeof qty === 'number'
+                      ? qty
+                      : parseInt(coalesce(qty?.toString?.(), String(coalesce(qty, ''))), 10);
+              return sum + (Number.isFinite(n) ? n : 0);
+          }, 0)
+        : 0;
+    const itemCount =
+        itemCountFromQuantities > 0 ? itemCountFromQuantities : coalesce(d.order?._count?.order_items, 0);
+    return {
+        deliveryId: d.delivery_id,
+        orderId: d.order_id,
+        deliveryType: d.delivery_type,
+        deliveryStatus: d.delivery_status,
+        assignedAt: d.assigned_at,
+        completedAt: d.completed_at,
+        needsWeightMachine: d.needs_weight_machine,
+        itemCount,
+        order: d.order
+            ? {
+                orderStatus: d.order.order_status,
+                pricingModel: d.order.pricing_model,
+                orderType: d.order.order_type,
+                totalAmount: coalesce(d.order.total_amount?.toString?.(), String(d.order.total_amount)),
+                billingStatus: d.order.billing_status,
+                createdAt: d.order.created_at,
+                pickupDate: d.order.pickup_date,
+                deliveryDate: d.order.delivery_date,
+                customer: d.order.customer
+                    ? {
+                        customerId: d.order.customer.customer_id,
+                        fullName: d.order.customer.full_name,
+                        phone: d.order.customer.phone || null,
+                    }
+                    : null,
+                bill: d.order.bill
+                    ? {
+                        finalAmount: coalesce(
+                            d.order.bill.final_amount?.toString?.(),
+                            String(d.order.bill.final_amount)
+                        ),
+                        paymentStatus: d.order.bill.payment_status,
+                    }
+                    : null,
+            }
+            : null,
+        pickup: d.pickup
+            ? {
+                address: d.pickup.pickup_address,
+                latitude: d.pickup.pickup_lat,
+                longitude: d.pickup.pickup_lng,
+                status: d.pickup.pickup_status,
+                preferredFrom: d.pickup.preferred_pickup_from,
+                preferredTo: d.pickup.preferred_pickup_to,
+                time: d.pickup.pickup_time,
+                proof: d.pickup.pickup_proof || null,
+            }
+            : null,
+        drop: d.drop
+            ? {
+                address: d.drop.drop_address,
+                latitude: d.drop.drop_lat,
+                longitude: d.drop.drop_lng,
+                status: d.drop.drop_status,
+                preferredFrom: d.drop.preferred_drop_from,
+                preferredTo: d.drop.preferred_drop_to,
+                time: d.drop.drop_time,
+                proof: d.drop.drop_proof || null,
+            }
+            : null,
+    };
+};
+
+exports.getHomeStats = async ({ staffId }) => {
+    assertUuid(staffId, 'staffId');
+
+    const cacheKey = `deliveryStaffApp:homeStats:${staffId}`;
+    const cached = _getCached(cacheKey);
+    if (cached) return cached;
+
+    return _withInflight(cacheKey, async () => {
+        try {
+            // Single SQL round-trip instead of 2 count() calls
+            const rows = await prisma.$queryRaw`
+                SELECT
+                  COUNT(*) FILTER (WHERE staff_id = ${staffId} AND completed_at IS NOT NULL) AS completed,
+                  COUNT(*) FILTER (WHERE staff_id = ${staffId} AND completed_at IS NULL AND delivery_status <> 'cancelled') AS in_progress
+                FROM "public"."delivery"
+            `;
+
+            const row = Array.isArray(rows) && rows.length ? rows[0] : null;
+            const completed = Number(row?.completed ?? 0);
+            const inProgress = Number(row?.in_progress ?? 0);
+            const value = { completed, inProgress };
+
+            _setCached(cacheKey, value, 2500);
+            return value;
+        } catch (err) {
+            if (_isPrismaPoolTimeout(err) && cached) {
+                logger.warn('P2024 in getHomeStats; serving cached stats', { staffId });
+                return cached;
+            }
+            throw err;
+        }
+    });
+};
+
+exports.listAcceptedOrders = async ({ staffId, page, limit }) => {
+    assertUuid(staffId, 'staffId');
+    const { safePage, safeLimit, skip } = normalizePagination({ page, limit });
+
+    const where = {
+        staff_id: staffId,
+        completed_at: null,
+        delivery_status: { not: 'cancelled' },
+    };
+
+    const cacheKey = `deliveryStaffApp:accepted:${staffId}:${safePage}:${safeLimit}`;
+    const cached = _getCached(cacheKey);
+    if (cached) return cached;
+
+    return _withInflight(cacheKey, async () => {
+        try {
+            // Avoid COUNT() for this high-frequency endpoint to reduce DB load.
+            const deliveries = await prisma.delivery.findMany({
+                where,
+                orderBy: { assigned_at: 'desc' },
+                skip,
+                take: safeLimit,
+                include: {
+                    pickup: true,
+                    drop: true,
+                    order: {
+                        include: {
+                            customer: { select: { customer_id: true, full_name: true, phone: true } },
+                            bill: { select: { final_amount: true, payment_status: true } },
+                            _count: { select: { order_items: true } },
+                            order_items: { select: { quantity: true } },
+                        },
+                    },
+                },
+            });
+
+            const value = {
+                pagination: {
+                    page: safePage,
+                    limit: safeLimit,
+                    total: null,
+                    totalPages: null,
+                    hasNext: deliveries.length === safeLimit,
+                },
+                orders: deliveries.map(mapDeliveryToOrderCard),
+            };
+
+            _setCached(cacheKey, value, 2000);
+            return value;
+        } catch (err) {
+            if (_isPrismaPoolTimeout(err) && cached) {
+                logger.warn('P2024 in listAcceptedOrders; serving cached list', { staffId, page: safePage, limit: safeLimit });
+                return cached;
+            }
+            throw err;
+        }
+    });
+};
+
+exports.listOrderHistory = async ({ staffId, page, limit, from, to }) => {
+    assertUuid(staffId, 'staffId');
+    const { safePage, safeLimit, skip } = normalizePagination({ page, limit });
+
+    const created_at = {};
+    if (from) created_at.gte = new Date(from);
+    if (to) created_at.lte = new Date(to);
+
+    const where = {
+        staff_id: staffId,
+        completed_at: { not: null },
+        ...(from || to ? { created_at } : {}),
+    };
+
+    const cacheKey = `deliveryStaffApp:history:${staffId}:${safePage}:${safeLimit}:${from || ''}:${to || ''}`;
+    const cached = _getCached(cacheKey);
+    if (cached) return cached;
+
+    const deliveries = await _withInflight(cacheKey, async () => {
+        try {
+            // Avoid COUNT() for history as well; UI does not rely on total pages.
+            const rows = await prisma.delivery.findMany({
+                where,
+                orderBy: { completed_at: 'desc' },
+                skip,
+                take: safeLimit,
+                include: {
+                    pickup: true,
+                    drop: true,
+                    assignment_requests: {
+                        where: { staff_id: staffId },
+                        orderBy: { offered_at: 'desc' },
+                        take: 1,
+                        select: { status: true },
+                    },
+                    order: {
+                        include: {
+                            customer: { select: { customer_id: true, full_name: true, phone: true } },
+                            _count: { select: { order_items: true } },
+                            order_items: { select: { quantity: true } },
+                        },
+                    },
+                },
+            });
+
+            _setCached(cacheKey, rows, 4000);
+            return rows;
+        } catch (err) {
+            if (_isPrismaPoolTimeout(err) && cached) {
+                logger.warn('P2024 in listOrderHistory; serving cached list', { staffId, page: safePage, limit: safeLimit });
+                return cached;
+            }
+            throw err;
+        }
+    });
+
+    return {
+        pagination: {
+            page: safePage,
+            limit: safeLimit,
+            total: null,
+            totalPages: null,
+            hasNext: deliveries.length === safeLimit,
+        },
+        orders: deliveries.map((d) => {
+            // Calculate item count (quantity sum)
+            const itemCountFromQuantities = Array.isArray(d.order?.order_items)
+                ? d.order.order_items.reduce((sum, oi) => {
+                      const qty = oi?.quantity;
+                      const n =
+                          typeof qty === 'number'
+                              ? qty
+                              : parseInt(coalesce(qty?.toString?.(), String(coalesce(qty, ''))), 10);
+                      return sum + (Number.isFinite(n) ? n : 0);
+                  }, 0)
+                : 0;
+            const itemCount = itemCountFromQuantities > 0 ? itemCountFromQuantities : coalesce(d.order?._count?.order_items, 0);
+
+            return {
+                delivery_id: d.delivery_id,
+                order_id: d.order_id,
+                delivery_type: d.delivery_type === 'drop' ? 'delivery' : 'pickup',
+                delivery_request_status: d.assignment_requests?.[0]?.status || null,
+                customer_name: d.order?.customer?.full_name || null,
+                customer_phone: d.order?.customer?.phone || null,
+                date_of_delivery: d.completed_at,
+                number_of_order_items: itemCount,
+                quantity_count: itemCount,
+                // Include pickup and drop information for address display
+                pickup: d.pickup
+                    ? {
+                          address: d.pickup.pickup_address,
+                          latitude: d.pickup.pickup_lat,
+                          longitude: d.pickup.pickup_lng,
+                          status: d.pickup.pickup_status,
+                          preferredFrom: d.pickup.preferred_pickup_from,
+                          preferredTo: d.pickup.preferred_pickup_to,
+                          time: d.pickup.pickup_time,
+                          proof: d.pickup.pickup_proof || null,
+                      }
+                    : null,
+                drop: d.drop
+                    ? {
+                          address: d.drop.drop_address,
+                          latitude: d.drop.drop_lat,
+                          longitude: d.drop.drop_lng,
+                          status: d.drop.drop_status,
+                          preferredFrom: d.drop.preferred_drop_from,
+                          preferredTo: d.drop.preferred_drop_to,
+                          time: d.drop.drop_time,
+                          proof: d.drop.drop_proof || null,
+                      }
+                    : null,
+                // Include order status for proper display
+                order_status: d.order?.order_status || null,
+                // Include assigned_at for time display
+                assigned_at: d.assigned_at,
+            };
+        }),
+    };
+};
+
+exports.getProfile = async ({ staffId }) => {
+    assertUuid(staffId, 'staffId');
+
+    const staff = await prisma.deliveryStaff.findUnique({
+        where: { staff_id: staffId },
+        select: {
+            staff_id: true,
+            full_name: true,
+            email: true,
+            phone: true,
+            vehicle_type: true,
+            vehicle_number: true,
+            bank_account_details: true,
+            address: true,
+            current_latitude: true,
+            current_longitude: true,
+            profile_image_url: true,
+            id_proof_type: true,
+            id_proof_url: true,
+            driving_license_url: true,
+            verification_status: true,
+            is_verified_by_admin: true,
+            is_active: true,
+            average_rating: true,
+            total_deliveries: true,
+            created_at: true,
+            updated_at: true,
+        },
+    });
+
+    if (!staff) throw new NotFoundError('DeliveryStaff');
+
+    // Return exact DB field names (snake_case) for client mapping consistency.
+    return {
+        staff_id: staff.staff_id,
+        full_name: staff.full_name,
+        phone: staff.phone || null,
+        email: staff.email,
+        vehicle_type: staff.vehicle_type,
+        vehicle_number: staff.vehicle_number,
+        bank_account_details: coalesce(staff.bank_account_details, null),
+        is_active: staff.is_active,
+        average_rating: staff.average_rating ? staff.average_rating.toString() : null,
+        total_deliveries: staff.total_deliveries,
+        created_at: staff.created_at,
+        updated_at: staff.updated_at,
+        id_proof_type: staff.id_proof_type || null,
+        id_proof_url: staff.id_proof_url || null,
+        is_verified_by_admin:
+            typeof staff.is_verified_by_admin === 'boolean' ? staff.is_verified_by_admin : null,
+        verification_status: staff.verification_status,
+        address: staff.address || null,
+        current_latitude: staff.current_latitude ? staff.current_latitude.toString() : null,
+        current_longitude: staff.current_longitude ? staff.current_longitude.toString() : null,
+        profile_image_url: staff.profile_image_url || null,
+        driving_license_url: staff.driving_license_url || null,
+    };
+};
+
+exports.uploadProfileImage = async ({ staffId, file }) => {
+    assertUuid(staffId, 'staffId');
+
+    if (!file) {
+        throw new ValidationError('Image file is required');
+    }
+
+    const allowedMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
+    if (!allowedMimeTypes.has(file.mimetype)) {
+        throw new ValidationError('Only JPEG, PNG, or WEBP images are allowed');
+    }
+
+    const bucket = process.env.SUPABASE_DELIVERY_PROFILE_BUCKET || 'delivery-staff';
+    const ext = file.mimetype === 'image/jpeg' ? 'jpg' : file.mimetype === 'image/png' ? 'png' : 'webp';
+    const objectPath = `delivery-staff/${staffId}/${uuidv4()}.${ext}`;
+
+    const supabase = getSupabaseClient();
+
+    const { error: uploadError } = await supabase.storage.from(bucket).upload(objectPath, file.buffer, {
+        contentType: file.mimetype,
+        upsert: true,
+        cacheControl: '3600',
+    });
+
+    if (uploadError) {
+        logger.error('Supabase upload failed (delivery staff profile)', {
+            error: uploadError.message,
+            bucket,
+            objectPath,
+        });
+        throw new AppError('Failed to upload image', 500);
+    }
+
+    const { data: publicUrlData } = supabase.storage.from(bucket).getPublicUrl(objectPath);
+    const publicUrl = publicUrlData?.publicUrl;
+
+    if (!publicUrl) {
+        logger.error('Supabase getPublicUrl returned empty url (delivery staff profile)', { bucket, objectPath });
+        throw new AppError('Failed to resolve image URL', 500);
+    }
+
+    const updated = await prisma.deliveryStaff.update({
+        where: { staff_id: staffId },
+        data: { profile_image_url: publicUrl },
+        select: {
+            staff_id: true,
+            full_name: true,
+            email: true,
+            phone: true,
+            profile_image_url: true,
+            updated_at: true,
+        },
+    });
+
+    return {
+        staffId: updated.staff_id,
+        fullName: updated.full_name,
+        email: updated.email,
+        phone: updated.phone || null,
+        profileImageUrl: updated.profile_image_url || null,
+        updatedAt: updated.updated_at,
+    };
+};
+
+exports.updateAcceptedOrderStatus = async ({ staffId, deliveryId, action, proofUrl }) => {
+    assertUuid(staffId, 'staffId');
+    assertUuid(deliveryId, 'deliveryId');
+
+    if (!['start_delivery', 'picked_up', 'submitted_to_cm', 'dropped'].includes(action)) {
+        throw new ValidationError('Invalid action');
+    }
+
+    if (proofUrl != null && (typeof proofUrl !== 'string' || !proofUrl.trim())) {
+        throw new ValidationError('proofUrl must be a non-empty string when provided');
+    }
+
+    const now = new Date();
+
+    let orderIdToNotify = null;
+    let statusToNotify = null;
+
+    const result = await prisma.$transaction(async (tx) => {
+        const delivery = await tx.delivery.findUnique({
+            where: { delivery_id: deliveryId },
+            include: { pickup: true, drop: true },
+        });
+
+        if (!delivery) throw new NotFoundError('Delivery');
+        if (delivery.staff_id !== staffId) throw new ConflictError('Delivery does not belong to this staff');
+        if (delivery.delivery_status === 'cancelled') throw new ConflictError('Delivery is cancelled');
+        if (delivery.completed_at) throw new ConflictError('Delivery is already completed');
+
+        // Basic flow:
+        // - start_delivery: marks the active leg in progress; for drop leg also sets order out_for_delivery
+        // - picked_up:
+        //   - pickup leg: marks pickup-from-customer + keeps delivery active + sets order picked_up
+        //   - drop leg: marks pickup-from-laundry + sets order out_for_delivery
+        // - submitted_to_cm:
+        //   - pickup leg: marks drop-at-laundry + completes delivery + sets order submitted_to_cm
+        // - dropped:
+        //   - pickup leg: marks drop-at-laundry + completes delivery
+        //   - drop leg: marks customer drop + completes delivery + sets order delivered
+
+        if (action === 'start_delivery') {
+            await tx.delivery.update({
+                where: { delivery_id: deliveryId },
+                data: { delivery_status: 'in_progress' },
+            });
+
+            if (delivery.delivery_type === 'pickup') {
+                await tx.pickupForDelivery.update({
+                    where: { delivery_id: deliveryId },
+                    data: { pickup_status: 'in_progress' },
+                });
+            } else {
+                await tx.dropForDelivery.update({
+                    where: { delivery_id: deliveryId },
+                    data: { drop_status: 'in_progress' },
+                });
+                await tx.order.update({
+                    where: { order_id: delivery.order_id },
+                    data: { order_status: 'out_for_delivery' },
+                });
+                orderIdToNotify = delivery.order_id;
+                statusToNotify = 'out_for_delivery';
+            }
+        }
+
+        if (action === 'picked_up') {
+            await tx.pickupForDelivery.update({
+                where: { delivery_id: deliveryId },
+                data: {
+                    pickup_status: 'picked_up',
+                    pickup_time: now,
+                    ...(proofUrl ? { pickup_proof: proofUrl } : {}),
+                },
+            });
+
+            if (delivery.delivery_type === 'pickup') {
+                await tx.delivery.update({
+                    where: { delivery_id: deliveryId },
+                    data: { delivery_status: 'in_progress' },
+                });
+                await tx.order.update({
+                    where: { order_id: delivery.order_id },
+                    data: { order_status: 'picked_up' },
+                });
+                orderIdToNotify = delivery.order_id;
+                statusToNotify = 'picked_up';
+            } else {
+                // drop leg: picked up from laundry -> out for delivery
+                await tx.delivery.update({
+                    where: { delivery_id: deliveryId },
+                    data: { delivery_status: 'in_progress' },
+                });
+                await tx.order.update({
+                    where: { order_id: delivery.order_id },
+                    data: { order_status: 'out_for_delivery' },
+                });
+                orderIdToNotify = delivery.order_id;
+                statusToNotify = 'out_for_delivery';
+            }
+        }
+
+        if (action === 'submitted_to_cm') {
+            if (delivery.delivery_type !== 'pickup') {
+                throw new ConflictError('Only pickup deliveries can be submitted to collection manager');
+            }
+
+            // Mark drop-at-laundry (collection) and complete the pickup delivery leg
+            await tx.dropForDelivery.update({
+                where: { delivery_id: deliveryId },
+                data: {
+                    drop_status: 'dropped',
+                    drop_time: now,
+                },
+            });
+
+            await tx.delivery.update({
+                where: { delivery_id: deliveryId },
+                data: { delivery_status: 'completed', completed_at: now },
+            });
+
+            await tx.order.update({
+                where: { order_id: delivery.order_id },
+                data: { order_status: 'submitted_to_cm' },
+            });
+            orderIdToNotify = delivery.order_id;
+            statusToNotify = 'submitted_to_cm';
+        }
+
+        if (action === 'dropped') {
+            await tx.dropForDelivery.update({
+                where: { delivery_id: deliveryId },
+                data: {
+                    drop_status: 'dropped',
+                    drop_time: now,
+                    ...(proofUrl ? { drop_proof: proofUrl } : {}),
+                },
+            });
+
+            await tx.delivery.update({
+                where: { delivery_id: deliveryId },
+                data: { delivery_status: 'completed', completed_at: now },
+            });
+
+            if (delivery.delivery_type === 'drop') {
+                await tx.order.update({
+                    where: { order_id: delivery.order_id },
+                    data: { order_status: 'delivered' },
+                });
+                orderIdToNotify = delivery.order_id;
+                statusToNotify = 'delivered';
+            }
+        }
+
+        const refreshed = await tx.delivery.findUnique({
+            where: { delivery_id: deliveryId },
+            include: {
+                pickup: true,
+                drop: true,
+                order: {
+                    include: {
+                        customer: { select: { customer_id: true, full_name: true, phone: true } },
+                        bill: { select: { final_amount: true, payment_status: true } },
+                    },
+                },
+            },
+        });
+
+        logger.info('Delivery staff app updated delivery status', { staffId, deliveryId, action });
+        return mapDeliveryToOrderCard(refreshed);
+    });
+
+    // Push notify after transaction commits (non-blocking)
+    if (orderIdToNotify && statusToNotify) {
+        notifyOrderStatusChange({ orderId: orderIdToNotify, status: statusToNotify }).catch(() => {});
+    }
+
+    return result;
+};
+
+exports.markPickedUpWithProof = async ({ staffId, deliveryId, file }) => {
+    assertUuid(staffId, 'staffId');
+    assertUuid(deliveryId, 'deliveryId');
+    if (!file) throw new ValidationError('Proof image file is required');
+
+    const proofUrl = await uploadDeliveryProofImage({ deliveryId, kind: 'picked_up', file });
+
+    return exports.updateAcceptedOrderStatus({
+        staffId,
+        deliveryId,
+        action: 'picked_up',
+        proofUrl,
+    });
+};
+
+exports.markDeliveredWithProof = async ({ staffId, deliveryId, file }) => {
+    assertUuid(staffId, 'staffId');
+    assertUuid(deliveryId, 'deliveryId');
+    if (!file) throw new ValidationError('Proof image file is required');
+
+    const proofUrl = await uploadDeliveryProofImage({ deliveryId, kind: 'delivered', file });
+
+    return exports.updateAcceptedOrderStatus({
+        staffId,
+        deliveryId,
+        action: 'dropped',
+        proofUrl,
+    });
+};
+
+exports.getPerKgItems = async ({ staffId, orderId }) => {
+    assertUuid(staffId, 'staffId');
+    assertUuid(orderId, 'orderId');
+
+    // Ensure this staff currently owns an active delivery leg for the order.
+    const activeDelivery = await prisma.delivery.findFirst({
+        where: {
+            order_id: orderId,
+            staff_id: staffId,
+            completed_at: null,
+            delivery_status: { not: 'cancelled' },
+        },
+        select: { delivery_id: true, delivery_type: true },
+    });
+
+    if (!activeDelivery) {
+        throw new ConflictError('No active delivery found for this order under this staff');
+    }
+
+    const order = await prisma.order.findUnique({
+        where: { order_id: orderId },
+        select: {
+            order_id: true,
+            pricing_model: true,
+            total_amount: true,
+            updated_at: true,
+        },
+    });
+
+    if (!order) throw new NotFoundError('Order');
+
+    // Do NOT gate by order.pricing_model; we rely on actual order_items.pricing_type.
+    // Some deployments/data can have per_kg items even when pricing_model is not strictly 'per_kg'.
+    const perKgItems = await prisma.orderItem.findMany({
+        where: { order_id: orderId, pricing_type: 'per_kg' },
+        orderBy: { created_at: 'asc' },
+        select: {
+            item_id: true,
+            service_id: true,
+            pricing_type: true,
+            weight_kg: true,
+            unit_price: true,
+            subtotal: true,
+            updated_at: true,
+            service: {
+                select: {
+                    service_name: true,
+                    category: { select: { category_name: true } },
+                },
+            },
+        },
+    });
+
+    if (!perKgItems || perKgItems.length === 0) {
+        return null;
+    }
+
+    return {
+        orderId: order.order_id,
+        pricingModel: order.pricing_model,
+        totalAmount: coalesce(order.total_amount?.toString?.(), String(order.total_amount)),
+        orderUpdatedAt: order.updated_at,
+        deliveryContext: {
+            deliveryId: activeDelivery.delivery_id,
+            deliveryType: activeDelivery.delivery_type,
+        },
+        perKgItems: perKgItems.map((x) => ({
+            orderItemId: x.item_id,
+            serviceId: x.service_id,
+            serviceName: x.service?.service_name || null,
+            categoryName: x.service?.category?.category_name || null,
+            pricingType: x.pricing_type,
+            weightKg: x.weight_kg ? coalesce(x.weight_kg.toString?.(), String(x.weight_kg)) : null,
+            unitPrice: coalesce(x.unit_price?.toString?.(), String(x.unit_price)),
+            subtotal: coalesce(x.subtotal?.toString?.(), String(x.subtotal)),
+            updatedAt: x.updated_at,
+        })),
+    };
+};
+
+exports.updatePerKgWeights = async ({ staffId, orderId, items }) => {
+    assertUuid(staffId, 'staffId');
+    assertUuid(orderId, 'orderId');
+
+    if (!Array.isArray(items) || items.length === 0) {
+        throw new ValidationError('items must be a non-empty array');
+    }
+
+    // quick sanity (validator already checks UUID + weight range)
+    for (const it of items) {
+        if (!it || typeof it !== 'object') throw new ValidationError('items must be an array of objects');
+        assertUuid(it.orderItemId, 'orderItemId');
+        if (typeof it.weightKg !== 'number' || Number.isNaN(it.weightKg)) {
+            throw new ValidationError('weightKg must be a number');
+        }
+    }
+
+    return prisma.$transaction(async (tx) => {
+        // Ensure this staff currently owns an active delivery leg for the order.
+        const activeDelivery = await tx.delivery.findFirst({
+            where: {
+                order_id: orderId,
+                staff_id: staffId,
+                completed_at: null,
+                delivery_status: { not: 'cancelled' },
+            },
+            select: { delivery_id: true, delivery_type: true },
+        });
+
+        if (!activeDelivery) {
+            throw new ConflictError('No active delivery found for this order under this staff');
+        }
+
+        const order = await tx.order.findUnique({
+            where: { order_id: orderId },
+            select: {
+                order_id: true,
+                pricing_model: true,
+            },
+        });
+
+        if (!order) throw new NotFoundError('Order');
+        if (order.pricing_model !== 'per_kg') {
+            throw new ConflictError("Order pricing_model must be 'per_kg' to update weights");
+        }
+
+        const perKgItems = await tx.orderItem.findMany({
+            where: { order_id: orderId, pricing_type: 'per_kg' },
+            select: {
+                item_id: true,
+                unit_price: true,
+                weight_kg: true,
+                subtotal: true,
+                service_id: true,
+            },
+        });
+
+        if (perKgItems.length === 0) {
+            throw new ConflictError('No per_kg order items found to update');
+        }
+
+        const perKgItemIds = new Set(perKgItems.map((i) => i.item_id));
+        const requestIds = new Set(items.map((i) => i.orderItemId));
+
+        // Require "all per_kg order items" to be provided and disallow extras.
+        const missing = [...perKgItemIds].filter((id) => !requestIds.has(id));
+        const extra = [...requestIds].filter((id) => !perKgItemIds.has(id));
+
+        if (missing.length) {
+            throw new ValidationError(`Missing weight updates for per_kg order items: ${missing.join(', ')}`);
+        }
+        if (extra.length) {
+            throw new ValidationError(`Provided orderItemId(s) are not per_kg items of this order: ${extra.join(', ')}`);
+        }
+
+        const weightById = new Map(items.map((i) => [i.orderItemId, i.weightKg]));
+
+        // Update each per_kg item: weight_kg + subtotal = unit_price * weight_kg
+        for (const oi of perKgItems) {
+            const weightKg = weightById.get(oi.item_id);
+            const newSubtotal = oi.unit_price.mul(weightKg);
+
+            await tx.orderItem.update({
+                where: { item_id: oi.item_id },
+                data: {
+                    weight_kg: weightKg,
+                    subtotal: newSubtotal,
+                },
+            });
+        }
+
+        // Recompute order total from all order items.
+        const agg = await tx.orderItem.aggregate({
+            where: { order_id: orderId },
+            _sum: { subtotal: true },
+        });
+
+        const newTotal = agg._sum.subtotal || 0;
+
+        const updatedOrder = await tx.order.update({
+            where: { order_id: orderId },
+            data: { total_amount: newTotal },
+            select: {
+                order_id: true,
+                pricing_model: true,
+                total_amount: true,
+                updated_at: true,
+                order_items: {
+                    where: { pricing_type: 'per_kg' },
+                    select: {
+                        item_id: true,
+                        service_id: true,
+                        pricing_type: true,
+                        weight_kg: true,
+                        unit_price: true,
+                        subtotal: true,
+                        updated_at: true,
+                    },
+                },
+            },
+        });
+
+        logger.info('Delivery staff updated per_kg weights', {
+            staffId,
+            orderId,
+            deliveryId: activeDelivery.delivery_id,
+            deliveryType: activeDelivery.delivery_type,
+            perKgItemCount: perKgItems.length,
+        });
+
+        return {
+            orderId: updatedOrder.order_id,
+            pricingModel: updatedOrder.pricing_model,
+            totalAmount: coalesce(updatedOrder.total_amount?.toString?.(), String(updatedOrder.total_amount)),
+            updatedAt: updatedOrder.updated_at,
+            perKgItems: updatedOrder.order_items.map((x) => ({
+                orderItemId: x.item_id,
+                serviceId: x.service_id,
+                pricingType: x.pricing_type,
+                weightKg: x.weight_kg ? coalesce(x.weight_kg.toString?.(), String(x.weight_kg)) : null,
+                unitPrice: coalesce(x.unit_price?.toString?.(), String(x.unit_price)),
+                subtotal: coalesce(x.subtotal?.toString?.(), String(x.subtotal)),
+                updatedAt: x.updated_at,
+            })),
+        };
+    });
+};
+
+module.exports = exports;
+

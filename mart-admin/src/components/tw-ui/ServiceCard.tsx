@@ -1,4 +1,5 @@
 import React from 'react';
+import { Pencil, Trash2 } from 'lucide-react';
 
 interface ServiceCardProps {
   title: string;
@@ -6,6 +7,7 @@ interface ServiceCardProps {
   status?: 'Active' | 'Inactive';
   pricePerKg?: string;
   duration?: string;
+  onView?: () => void;
   onDelete?: () => void;
   onEdit?: () => void;
 }
@@ -16,6 +18,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
   status = 'Active',
   pricePerKg,
   duration,
+  onView,
   onDelete,
   onEdit,
 }) => {
@@ -24,7 +27,9 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
     <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
       <div className="flex items-start justify-between">
         <div className="flex items-start gap-3">
-          <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">🧺</div>
+          <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
+            <span className="text-base">🧺</span>
+          </div>
           <div>
             <div className="text-slate-800 font-semibold leading-5">{title}</div>
             {description && <div className="text-[12px] text-slate-500 mt-0.5">{description}</div>}
@@ -56,20 +61,27 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
         )}
       </div>
       <div className="mt-4 flex items-center gap-3">
-        <button 
-          onClick={onEdit}
+        <button
+          onClick={onView}
           className="flex-1 h-8 bg-indigo-700 hover:bg-indigo-600 text-white text-sm rounded-md"
         >
-          Edit
+          View
         </button>
+
+        <button
+          aria-label="Edit service"
+          onClick={onEdit}
+          className="h-8 w-8 rounded-md border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200"
+        >
+          <Pencil className="h-4 w-4" />
+        </button>
+
         <button
           aria-label="Delete service"
           onClick={onDelete}
-          className="h-8 w-8 rounded-full border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200"
+          className="h-8 w-8 rounded-md border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200"
         >
-          <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
-            <path fillRule="evenodd" d="M8 2a2 2 0 00-2 2H4a1 1 0 100 2h12a1 1 0 100-2h-2a2 2 0 00-2-2H8zm-3 6a1 1 0 011 1v7a2 2 0 002 2h4a2 2 0 002-2V9a1 1 0 112 0v7a4 4 0 01-4 4H8a4 4 0 01-4-4V9a1 1 0 011-1zm4 1a1 1 0 00-1 1v6a1 1 0 102 0V10a1 1 0 00-1-1zm4 0a1 1 0 00-1 1v6a1 1 0 102 0V10a1 1 0 00-1-1z" clipRule="evenodd" />
-          </svg>
+          <Trash2 className="h-4 w-4" />
         </button>
       </div>
     </div>

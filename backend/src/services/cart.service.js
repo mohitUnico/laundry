@@ -1,0 +1,504 @@
+const prisma = require('../config/database');
+const { NotFoundError, ValidationError } = require('../utils/errors');
+
+/**
+ * Add cart items into the customer's active cart.
+ * If no active cart exists, create a new one and then add items.
+ *
+ * Payload shape (validated by Joi in route):
+ * items: [
+ *   {
+ *     service_id: string(uuid),
+ *     pricing_type: 'per_unit' | 'per_kg',
+ *     selections?: [{ cloth_id: string(uuid), quantity: number }],
+ *     weight_kg?: number
+ *   }
+ * ]
+ */
+exports.addItemsToActiveCart = async (customerId, { items }) => {
+    // Interactive transaction default timeout can be too low for larger carts (P2028).
+    // Increase timeout to avoid Prisma closing the transaction mid-operation.
+    return prisma.$transaction(
+        async (tx) => {
+            if (!Array.isArray(items) || items.length === 0) {
+                throw new ValidationError('Cart items are required');
+            }
+
+            const customer = await tx.customer.findUnique({
+                where: { customer_id: customerId },
+                select: { customer_id: true },
+            });
+
+            if (!customer) {
+                throw new NotFoundError('Customer');
+            }
+
+            let cart = await tx.cart.findFirst({
+                where: { customer_id: customerId, is_active: true },
+                orderBy: { updated_at: 'desc' },
+                select: { cart_id: true },
+            });
+
+            if (!cart) {
+                cart = await tx.cart.create({
+                    data: {
+                        customer_id: customerId,
+                        is_active: true,
+                    },
+                    select: { cart_id: true },
+                });
+            }
+
+            const uniqueServiceIds = Array.from(new Set(items.map((i) => i.service_id)));
+            const serviceRecords = await tx.service.findMany({
+                where: {
+                    service_id: { in: uniqueServiceIds },
+                    is_active: true,
+                },
+                select: { service_id: true },
+            });
+
+            if (serviceRecords.length !== uniqueServiceIds.length) {
+                throw new ValidationError('One or more services are invalid or inactive');
+            }
+
+            const allowedServiceIds = new Set(serviceRecords.map((s) => s.service_id));
+
+            const createdCartItemIds = [];
+            const processedCartItemIds = []; // Track all processed cart items (new and existing)
+
+            for (const item of items) {
+                if (!item || typeof item !== 'object') {
+                    throw new ValidationError('Invalid cart item payload');
+                }
+
+                if (!item.service_id) {
+                    throw new ValidationError('service_id is required for each cart item');
+                }
+
+                if (!item.pricing_type || !['per_unit', 'per_kg'].includes(item.pricing_type)) {
+                    throw new ValidationError('pricing_type must be per_unit or per_kg');
+                }
+
+                if (!allowedServiceIds.has(item.service_id)) {
+                    throw new ValidationError(`Service ${item.service_id} is invalid or inactive`);
+                }
+
+                const selections = Array.isArray(item.selections) ? item.selections : [];
+
+                // per_unit requires selections (counts). per_kg can optionally include selections to keep counts.
+                if (item.pricing_type === 'per_unit' && selections.length === 0) {
+                    throw new ValidationError('selections are required when pricing_type is per_unit');
+                }
+
+                if (selections.length > 0) {
+                    // Validate selection shape early
+                    for (const selection of selections) {
+                        if (!selection || typeof selection !== 'object') {
+                            throw new ValidationError('Invalid selection payload');
+                        }
+                        if (!selection.cloth_id) {
+                            throw new ValidationError('cloth_id is required for each selection');
+                        }
+                        if (!Number.isInteger(selection.quantity) || selection.quantity < 1) {
+                            throw new ValidationError('quantity must be an integer >= 1 for each selection');
+                        }
+                    }
+
+                    const uniqueClothIds = Array.from(new Set(selections.map((s) => s.cloth_id)));
+                    const clothRecords = await tx.clothesItem.findMany({
+                        where: {
+                            cloth_id: { in: uniqueClothIds },
+                            service_id: item.service_id,
+                            is_active: true,
+                        },
+                        select: { cloth_id: true },
+                    });
+
+                    if (clothRecords.length !== uniqueClothIds.length) {
+                        throw new ValidationError(
+                            'One or more clothes items are invalid, inactive, or not part of the selected service'
+                        );
+                    }
+                }
+
+                // Check if a cart item with the same service_id and pricing_type already exists
+                let cartItem = await tx.cartItem.findFirst({
+                    where: {
+                        cart_id: cart.cart_id,
+                        service_id: item.service_id,
+                        pricing_type: item.pricing_type,
+                    },
+                    select: { cart_item_id: true },
+                });
+
+                // If cart item doesn't exist, create a new one
+                if (!cartItem) {
+                    cartItem = await tx.cartItem.create({
+                        data: {
+                            cart_id: cart.cart_id,
+                            service_id: item.service_id,
+                            pricing_type: item.pricing_type,
+                            weight_kg: item.pricing_type === 'per_kg' ? item.weight_kg ?? null : null,
+                        },
+                        select: { cart_item_id: true },
+                    });
+                    createdCartItemIds.push(cartItem.cart_item_id);
+                }
+                
+                // Track all processed cart items (both new and existing)
+                processedCartItemIds.push(cartItem.cart_item_id);
+
+                // Append selections to the existing or newly created cart item
+                if (selections.length > 0) {
+                    // Get existing selections for this cart item
+                    const existingSelections = await tx.cartItemSelection.findMany({
+                        where: {
+                            cart_item_id: cartItem.cart_item_id,
+                        },
+                        select: {
+                            selection_id: true,
+                            cloth_id: true,
+                            quantity: true,
+                        },
+                    });
+
+                    // Create a map of existing selections by cloth_id
+                    const existingSelectionsMap = new Map(
+                        existingSelections.map((s) => [s.cloth_id, { selection_id: s.selection_id, quantity: s.quantity }])
+                    );
+
+                    // Process each new selection
+                    for (const selection of selections) {
+                        const existing = existingSelectionsMap.get(selection.cloth_id);
+
+                        if (existing) {
+                            // If selection already exists, add the quantities together
+                            await tx.cartItemSelection.update({
+                                where: { selection_id: existing.selection_id },
+                                data: { quantity: existing.quantity + selection.quantity },
+                            });
+                        } else {
+                            // If selection doesn't exist, create a new one
+                            await tx.cartItemSelection.create({
+                                data: {
+                                    cart_item_id: cartItem.cart_item_id,
+                                    cloth_id: selection.cloth_id,
+                                    quantity: selection.quantity,
+                                },
+                            });
+                        }
+                    }
+                }
+            }
+
+            // Touch cart timestamp so clients can rely on updated_at for sync logic.
+            await tx.cart.update({
+                where: { cart_id: cart.cart_id },
+                data: { updated_at: new Date() },
+                select: { cart_id: true },
+            });
+
+            // Fetch and return the complete cart with all items and selections
+            const completeCart = await tx.cart.findUnique({
+                where: { cart_id: cart.cart_id },
+                include: {
+                    cart_items: {
+                        orderBy: { created_at: 'desc' },
+                        include: {
+                            service: {
+                                select: {
+                                    service_id: true,
+                                    service_name: true,
+                                    base_price: true,
+                                    per_kg_price: true,
+                                    icon_url: true,
+                                    is_active: true,
+                                },
+                            },
+                            item_selections: {
+                                include: {
+                                    cloth_item: {
+                                        select: {
+                                            cloth_id: true,
+                                            item_name: true,
+                                            per_unit_price: true,
+                                            icon_url: true,
+                                            is_active: true,
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            });
+
+            // Attach processed cart item IDs to the result for frontend
+            completeCart.processed_cart_item_ids = processedCartItemIds;
+            completeCart.created_cart_item_ids = createdCartItemIds;
+            
+            return completeCart;
+        },
+        { maxWait: 10000, timeout: 60000 }
+    );
+};
+
+exports.getCustomerCarts = async (customerId) => {
+    // Optimize: Use single query with proper select instead of separate customer check
+    const carts = await prisma.cart.findMany({
+        where: { 
+            customer_id: customerId,
+            // Only fetch active carts for better performance
+            is_active: true,
+        },
+        orderBy: { created_at: 'desc' },
+        take: 1, // Only need the active cart
+        select: {
+            cart_id: true,
+            is_active: true,
+            created_at: true,
+            updated_at: true,
+            cart_items: {
+                orderBy: { created_at: 'desc' },
+                select: {
+                    cart_item_id: true,
+                    pricing_type: true,
+                    weight_kg: true,
+                    created_at: true,
+                    updated_at: true,
+                    service: {
+                        select: {
+                            service_id: true,
+                            service_name: true,
+                            base_price: true,
+                            per_kg_price: true,
+                            icon_url: true,
+                            is_active: true,
+                        },
+                    },
+                    item_selections: {
+                        select: {
+                            selection_id: true,
+                            quantity: true,
+                            cloth_item: {
+                                select: {
+                                    cloth_id: true,
+                                    item_name: true,
+                                    per_unit_price: true,
+                                    icon_url: true,
+                                    is_active: true,
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    });
+
+    // If no active cart found, return empty array (not an error)
+    return carts;
+};
+
+exports.updateSelectionQuantity = async (customerId, cartItemId, selectionId, delta) => {
+    if (!cartItemId || !selectionId) {
+        throw new ValidationError('cartItemId and selectionId are required');
+    }
+
+    if (![1, -1].includes(delta)) {
+        throw new ValidationError('delta must be +1 or -1');
+    }
+
+    return prisma.$transaction(async (tx) => {
+        // Ensure selection belongs to the given cartItem AND to the authenticated customer
+        const selection = await tx.cartItemSelection.findFirst({
+            where: {
+                selection_id: selectionId,
+                cart_item_id: cartItemId,
+                cart_item: {
+                    cart: {
+                        customer_id: customerId,
+                    },
+                },
+            },
+            select: {
+                selection_id: true,
+                quantity: true,
+                cart_item_id: true,
+                cart_item: { select: { cart_id: true } },
+            },
+        });
+
+        if (!selection) {
+            throw new NotFoundError('Cart item selection');
+        }
+
+        const nextQuantity = selection.quantity + delta;
+
+        if (nextQuantity < 1) {
+            await tx.cartItemSelection.delete({
+                where: { selection_id: selection.selection_id },
+            });
+        } else {
+            await tx.cartItemSelection.update({
+                where: { selection_id: selection.selection_id },
+                data: { quantity: nextQuantity },
+            });
+        }
+
+        await tx.cart.update({
+            where: { cart_id: selection.cart_item.cart_id },
+            data: { updated_at: new Date() },
+            select: { cart_id: true },
+        });
+
+        return {
+            cart_item_id: selection.cart_item_id,
+            selection_id: selection.selection_id,
+            quantity: Math.max(nextQuantity, 0),
+            deleted: nextQuantity < 1,
+        };
+    });
+};
+
+/**
+ * Set quantity for a cart item selection identified by (cartItemId, clothId).
+ * If quantity is 0: selection is deleted. If cart item becomes empty (per_unit), cart item is deleted.
+ */
+exports.setSelectionQuantity = async (customerId, cartItemId, clothId, quantity) => {
+    if (!cartItemId || !clothId) {
+        throw new ValidationError('cartItemId and clothId are required');
+    }
+
+    if (!Number.isInteger(quantity) || quantity < 0) {
+        throw new ValidationError('quantity must be an integer >= 0');
+    }
+
+    return prisma.$transaction(async (tx) => {
+        const cartItem = await tx.cartItem.findFirst({
+            where: {
+                cart_item_id: cartItemId,
+                cart: { customer_id: customerId },
+            },
+            select: {
+                cart_item_id: true,
+                cart_id: true,
+                pricing_type: true,
+            },
+        });
+
+        if (!cartItem) {
+            throw new NotFoundError('Cart item');
+        }
+
+        if (cartItem.pricing_type !== 'per_unit') {
+            throw new ValidationError('Selection quantity updates are only supported for per_unit cart items');
+        }
+
+        const existing = await tx.cartItemSelection.findFirst({
+            where: {
+                cart_item_id: cartItem.cart_item_id,
+                cloth_id: clothId,
+            },
+            select: {
+                selection_id: true,
+                quantity: true,
+            },
+        });
+
+        let selectionDeleted = false;
+        let cartItemDeleted = false;
+        let selectionId = existing?.selection_id ?? null;
+
+        if (quantity < 1) {
+            if (existing) {
+                await tx.cartItemSelection.delete({
+                    where: { selection_id: existing.selection_id },
+                });
+                selectionDeleted = true;
+            }
+
+            const remaining = await tx.cartItemSelection.count({
+                where: { cart_item_id: cartItem.cart_item_id },
+            });
+
+            if (remaining < 1) {
+                await tx.cartItem.delete({
+                    where: { cart_item_id: cartItem.cart_item_id },
+                });
+                cartItemDeleted = true;
+            }
+        } else if (existing) {
+            await tx.cartItemSelection.update({
+                where: { selection_id: existing.selection_id },
+                data: { quantity },
+            });
+        } else {
+            const created = await tx.cartItemSelection.create({
+                data: {
+                    cart_item_id: cartItem.cart_item_id,
+                    cloth_id: clothId,
+                    quantity,
+                },
+                select: { selection_id: true },
+            });
+            selectionId = created.selection_id;
+        }
+
+        // Touch cart updated_at (and keep behavior consistent with other mutations)
+        await tx.cart.update({
+            where: { cart_id: cartItem.cart_id },
+            data: { updated_at: new Date() },
+            select: { cart_id: true },
+        });
+
+        return {
+            cart_item_id: cartItem.cart_item_id,
+            selection_id: selectionId,
+            cloth_id: clothId,
+            quantity,
+            deleted: selectionDeleted,
+            cart_item_deleted: cartItemDeleted,
+        };
+    });
+};
+
+exports.removeCartItem = async (customerId, cartItemId) => {
+    if (!cartItemId) {
+        throw new ValidationError('cartItemId is required');
+    }
+
+    return prisma.$transaction(async (tx) => {
+        const cartItem = await tx.cartItem.findFirst({
+            where: {
+                cart_item_id: cartItemId,
+                cart: { customer_id: customerId },
+            },
+            select: { cart_item_id: true, cart_id: true },
+        });
+
+        if (!cartItem) {
+            throw new NotFoundError('Cart item');
+        }
+
+        await tx.cartItem.delete({
+            where: { cart_item_id: cartItem.cart_item_id },
+        });
+
+        await tx.cart.update({
+            where: { cart_id: cartItem.cart_id },
+            data: { updated_at: new Date() },
+            select: { cart_id: true },
+        });
+
+        return {
+            cart_item_id: cartItem.cart_item_id,
+            deleted: true,
+        };
+    });
+};
+
+module.exports = exports;
+
+

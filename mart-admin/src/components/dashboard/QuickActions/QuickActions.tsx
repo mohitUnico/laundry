@@ -38,19 +38,19 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
   ];
 
   return (
-    <div className="bg-white rounded-2xl p-4 sm:p-6 border border-slate-200">
-      <h3 className="text-base sm:text-lg font-semibold text-slate-800 mb-4 sm:mb-6">Quick Actions</h3>
+    <div className="bg-white rounded-[24px] p-4 sm:p-6 border border-[#E2E8F0] shadow-[0_1px_2px_rgba(15,23,42,0.06)]">
+      <h3 className="text-base sm:text-lg font-semibold text-[#0F172A] mb-4 sm:mb-6">Quick Actions</h3>
       <div className="space-y-2 sm:space-y-3">
         {actions.map((action) => (
           <button
             key={action.label}
             onClick={action.onClick}
-            className="w-full flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl text-left hover:bg-slate-50 transition-colors"
+            className="w-full flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 bg-[#F7F7F7] border border-[#E2E8F0] rounded-[16px] text-left hover:bg-[#EEF2FF] hover:border-[#CBD5E1] transition-colors"
           >
-            <span className="text-slate-600 flex-shrink-0">
+            <span className="text-[#64748B] flex-shrink-0">
               {React.cloneElement(action.icon as React.ReactElement, { size: 18, className: 'sm:w-5 sm:h-5' })}
             </span>
-            <span className="text-xs sm:text-sm font-medium text-slate-800">
+            <span className="text-xs sm:text-sm font-medium text-[#0F172A]">
               {action.label}
             </span>
           </button>

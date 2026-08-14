@@ -1,6 +1,6 @@
-const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcrypt');
-const prisma = new PrismaClient();
+// IMPORTANT: Use the shared Prisma client from config/database to avoid exhausting the DB pool.
+const prisma = require('../config/database');
 const { AppError, ValidationError, NotFoundError } = require('../utils/errors');
 const logger = require('../utils/logger');
 const { generateToken } = require('../utils/jwt');

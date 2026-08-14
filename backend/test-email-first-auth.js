@@ -299,23 +299,37 @@ async function testDeliveryFlow() {
     if (isNewUser) {
         log('\n🆕 New delivery staff detected! Please complete your profile.', 'yellow');
 
-        const martId = await question('Enter Mart ID: ');
         const fullName = await question('Enter full name: ');
         const phone = await question('Enter phone number: ');
         const vehicleType = await question('Vehicle type (bike/car/scooter): ');
         const vehicleNumber = await question('Vehicle number: ');
-        const licenseNumber = await question('License number: ');
+        const address = await question('Current address: ');
+        const latitude = await question('Current latitude: ');
+        const longitude = await question('Current longitude: ');
+        const idProofType = await question('ID proof type (e.g., Aadhaar/PAN) (optional): ');
+
+        log('\n📎 Provide uploaded file URLs (or use multipart/form-data with files):', 'yellow');
+        const profileImageUrl = await question('Profile image URL: ');
+        const idProofUrl = await question('ID proof document URL: ');
+        const drivingLicenseUrl = await question('Driving license document URL: ');
 
         log('\n💾 Completing registration...', 'blue');
         const registerResult = await makeRequest('/delivery/complete-registration', 'POST', {
             sessionToken,
             deliveryData: {
-                martId,
                 fullName,
                 phone,
                 vehicleType,
                 vehicleNumber,
-                licenseNumber
+                address,
+                currentCoordinates: {
+                    latitude: Number(latitude),
+                    longitude: Number(longitude)
+                },
+                idProofType: idProofType || null,
+                profileImageUrl,
+                idProofUrl,
+                drivingLicenseUrl
             }
         });
 

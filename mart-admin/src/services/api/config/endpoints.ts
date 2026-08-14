@@ -25,8 +25,53 @@ export const API_ENDPOINTS = {
     LIST: '/services',
     GET: (id: string) => `/services/${id}`,
   },
+  CLOTHES: {
+    SERVICE_CATEGORIES: {
+      LIST: '/clothes/service-categories',
+      CREATE: '/clothes/service-categories',
+      UPDATE: (id: string) => `/clothes/service-categories/${id}`,
+      DELETE: (id: string) => `/clothes/service-categories/${id}`,
+    },
+    SERVICES: {
+      LIST: '/clothes/services',
+      CREATE: '/clothes/services',
+      UPDATE: (id: string) => `/clothes/services/${id}`,
+      DELETE: (id: string) => `/clothes/services/${id}`,
+    },
+  },
   DASHBOARD: {
-    METRICS: '/dashboard/metrics',
+    // Mart dashboard (mart scoped)
+    MONTHLY_OVERVIEW: '/dashboard/monthly-overview',
+    DAY_OVERVIEW: '/dashboard/day-overview',
+    REVENUE_TREND: '/dashboard/revenue-trend',
+    RECENT_ORDERS: '/dashboard/recent-orders',
+    CUSTOMER_SATISFACTION: '/dashboard/customer-satisfaction',
+    TOP_PERFORMERS: '/dashboard/top-performers',
+
+    // Admin dashboard (global)
+    ADMIN: {
+      SUMMARY: '/admin/dashboard/summary',
+      ORDER_STATUS: '/admin/dashboard/order-status',
+      REVENUE_TREND: '/admin/dashboard/revenue-trend',
+      RECENT_ORDERS: '/admin/dashboard/recent-orders',
+      TOP_PERFORMERS: '/admin/dashboard/top-performers',
+      CUSTOMER_SATISFACTION: '/admin/dashboard/customer-satisfaction',
+    },
+  },
+  ADMIN_CUSTOMERS: {
+    LIST: '/admin/customers',
+    SUMMARY: '/admin/customers/summary',
+    CREATE: '/admin/customers',
+  },
+  ADMIN_DELIVERY_STAFF: {
+    LIST: '/admin/delivery-staff',
+    SUMMARY: '/admin/delivery-staff/staff-summary',
+    PENDING_VERIFICATIONS: '/admin/delivery-staff/pending-verifications',
+    ONLINE: '/admin/delivery-staff/online',
+    VERIFY: (staffId: string) => `/admin/delivery-staff/${staffId}/verify`,
+  },
+  ADMIN_SETTINGS: {
+    TEAM_MEMBERS_GROUPED: '/admin/settings/team-members',
   },
   NOTIFICATIONS: {
     SEND: '/notifications/send',

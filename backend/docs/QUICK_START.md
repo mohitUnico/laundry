@@ -391,6 +391,27 @@ POST /api/v1/auth/manager/verify-otp
 POST /api/v1/auth/manager/complete-registration
 ```
 
+### Collection Manager Authentication
+```
+POST /api/v1/auth/collection-manager/send-otp
+POST /api/v1/auth/collection-manager/verify-otp
+POST /api/v1/auth/collection-manager/complete-registration   (Owner/Admin only)
+```
+
+### Distribution Manager Authentication
+```
+POST /api/v1/auth/distribution-manager/send-otp
+POST /api/v1/auth/distribution-manager/verify-otp
+POST /api/v1/auth/distribution-manager/complete-registration  (Owner/Admin only)
+```
+
+### Service Man Authentication
+```
+POST /api/v1/auth/service-man/send-otp                        (requires serviceId or serviceType)
+POST /api/v1/auth/service-man/verify-otp                      (requires serviceId or serviceType)
+POST /api/v1/auth/service-man/complete-registration            (Owner/Admin only; requires serviceId or serviceType)
+```
+
 ### Customer Authentication
 ```
 POST /api/v1/auth/customer/send-otp

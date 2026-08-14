@@ -19,6 +19,7 @@ Welcome to the Laundry App backend documentation! This folder contains all the g
 | **[EMAIL_FIRST_AUTH_GUIDE.md](EMAIL_FIRST_AUTH_GUIDE.md)** | Complete email-first authentication guide | Understanding the system, API reference, frontend integration |
 | **[MART_REGISTRATION_FLOW.md](MART_REGISTRATION_FLOW.md)** | Mart owner two-step email verification flow | Implementing owner registration, understanding mart setup |
 | **[MANAGER_REGISTRATION_API.md](MANAGER_REGISTRATION_API.md)** | Manager registration API documentation | Adding managers to a mart, request/response formats |
+| **[STAFF_REGISTRATION_API.md](STAFF_REGISTRATION_API.md)** | Staff registration API documentation (Collection Manager, Distribution Manager, Service Man) | Owner/admin onboarding staff accounts (service man requires serviceId/serviceType; 1 per service) |
 | **[EMAIL_FIRST_AUTH_SUMMARY.md](EMAIL_FIRST_AUTH_SUMMARY.md)** | Implementation summary and migration guide | Quick overview, migration from phone-first |
 
 ### 📧 Email Configuration
@@ -26,6 +27,16 @@ Welcome to the Laundry App backend documentation! This folder contains all the g
 | Document | Description | When to Use |
 |----------|-------------|-------------|
 | **[GMAIL_SMTP_SETUP.md](GMAIL_SMTP_SETUP.md)** | Gmail SMTP configuration guide | Setting up Gmail for sending OTP emails |
+
+### 🏗️ Architecture Documentation (v2.0)
+
+| Document | Description | When to Use |
+|----------|-------------|-------------|
+| **[NEW_ARCHITECTURE_OVERVIEW.md](NEW_ARCHITECTURE_OVERVIEW.md)** | Complete Architecture v2.0 with 6 user roles, cart system, and service queue | Understanding new system, planning development, API reference |
+| **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)** | Migration guide from Architecture v1.0 to v2.0 | Performing migration, understanding changes, troubleshooting |
+| **[WORKFLOW_DIAGRAMS.md](WORKFLOW_DIAGRAMS.md)** | Visual workflow diagrams for all processes | Understanding flows visually, training staff |
+| **[ARCHITECTURE_V2_SUMMARY.md](ARCHITECTURE_V2_SUMMARY.md)** | Quick reference and change summary | Quick reference, planning, progress tracking |
+| **[new_order_creation_flow.md](new_order_creation_flow.md)** | Cart-based order creation flow and API documentation | Implementing order creation, API integration, understanding cart-to-order conversion |
 
 ### 📂 Archived Documentation
 
@@ -62,6 +73,27 @@ Welcome to the Laundry App backend documentation! This folder contains all the g
 
 **...test the authentication flows**  
 → Run `node test-email-first-auth.js`
+
+**...understand the new 6-user role architecture**  
+→ Read [NEW_ARCHITECTURE_OVERVIEW.md](NEW_ARCHITECTURE_OVERVIEW.md)
+
+**...migrate to the new architecture**  
+→ Follow [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)
+
+**...implement the cart system**  
+→ See Cart System section in [NEW_ARCHITECTURE_OVERVIEW.md](NEW_ARCHITECTURE_OVERVIEW.md#cart-system)
+
+**...implement service queues (FIFO)**  
+→ See Service Queue Management in [NEW_ARCHITECTURE_OVERVIEW.md](NEW_ARCHITECTURE_OVERVIEW.md#service-queue-management)
+
+**...see visual workflow diagrams**  
+→ Read [WORKFLOW_DIAGRAMS.md](WORKFLOW_DIAGRAMS.md)
+
+**...get a quick reference of all changes**  
+→ Read [ARCHITECTURE_V2_SUMMARY.md](ARCHITECTURE_V2_SUMMARY.md)
+
+**...track implementation progress**  
+→ Use checklists in [ARCHITECTURE_V2_SUMMARY.md](ARCHITECTURE_V2_SUMMARY.md#implementation-checklist)
 
 ---
 

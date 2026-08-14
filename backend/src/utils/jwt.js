@@ -18,14 +18,12 @@ exports.generateToken = (user) => {
 
     // Support both userId (camelCase) and user_id (snake_case) for compatibility
     const userId = user.user_id || user.userId;
-    const martId = user.mart_id || user.martId;
     const fullName = user.full_name || user.fullName;
 
     const payload = {
         user_id: userId,
         email: user.email,
         role: user.role,
-        mart_id: martId,
         full_name: fullName,
     };
 

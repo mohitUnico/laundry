@@ -2,15 +2,21 @@ import React from 'react';
 
 interface CustomerSatisfactionProps {
   value?: number;
+  fiveStars?: number;
+  fourStars?: number;
+  lessThanThree?: number;
 }
 
 export const CustomerSatisfaction: React.FC<CustomerSatisfactionProps> = ({
   value = 92,
+  fiveStars = 82,
+  fourStars = 12,
+  lessThanThree = 4,
 }) => {
   const circumference = 2 * Math.PI * 54;
   const offset = circumference - (value / 100) * circumference;
   return (
-    <div className="bg-white rounded-2xl p-4 sm:p-6 border border-slate-200">
+    <div className="bg-white rounded-[24px] p-4 sm:p-6 border border-[#E2E8F0] shadow-[0_1px_2px_rgba(15,23,42,0.06)]">
       <h3 className="text-base sm:text-lg font-semibold text-slate-800 mb-4 sm:mb-6">
         Customer Satisfaction
       </h3>
@@ -21,7 +27,7 @@ export const CustomerSatisfaction: React.FC<CustomerSatisfactionProps> = ({
               cx="70"
               cy="70"
               r="54"
-              stroke="#e5e7eb"
+              stroke="#E2E8F0"
               strokeWidth="12"
               fill="none"
             />
@@ -29,7 +35,7 @@ export const CustomerSatisfaction: React.FC<CustomerSatisfactionProps> = ({
               cx="70"
               cy="70"
               r="54"
-              stroke="#16a34a"
+              stroke="#22C55E"
               strokeWidth="12"
               fill="none"
               strokeDasharray={`${circumference} ${circumference}`}
@@ -51,16 +57,16 @@ export const CustomerSatisfaction: React.FC<CustomerSatisfactionProps> = ({
         </div>
         <div className="flex items-center gap-2 sm:gap-4 flex-wrap justify-center">
           <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-slate-600">
-            <span className="h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full bg-green-500" />
-            <span>5 star 82%</span>
+            <span className="h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full bg-[#22C55E]" />
+            <span>5 star {fiveStars}%</span>
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-slate-600">
-            <span className="h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full bg-blue-500" />
-            <span>4 star 12%</span>
+            <span className="h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full bg-[#38BDF8]" />
+            <span>4 star {fourStars}%</span>
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-slate-600">
-            <span className="h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full bg-amber-500" />
-            <span>3 star 4%</span>
+            <span className="h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full bg-[#FACC15]" />
+            <span>&le;3 star {lessThanThree}%</span>
           </div>
         </div>
       </div>

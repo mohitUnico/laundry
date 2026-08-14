@@ -1,24 +1,346 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:io';
+
+import '../repositories/auth_repository.dart';
+import '../repositories/customer_info_repository.dart';
+import '../services/notification_service.dart';
+import '../utils/prefs_keys.dart';
+import '../utils/jwt_utils.dart';
+import '../utils/auth_storage.dart';
 
 class AuthProvider with ChangeNotifier {
   String? _token;
-  Map<String, dynamic>? _user;
+  Map<String, dynamic>? _userOrCustomer;
   bool _isAuthenticated = false;
+  bool _isLoading = false;
+  String? _error;
+
+  final AuthRepository _authRepository;
+  final CustomerInfoRepository _customerInfoRepository;
+
+  AuthProvider({
+    AuthRepository? authRepository,
+    CustomerInfoRepository? customerInfoRepository,
+  })  : _authRepository = authRepository ?? AuthRepository(),
+        _customerInfoRepository = customerInfoRepository ?? CustomerInfoRepository();
 
   String? get token => _token;
-  Map<String, dynamic>? get user => _user;
+  Map<String, dynamic>? get user => _userOrCustomer;
   bool get isAuthenticated => _isAuthenticated;
+  bool get isLoading => _isLoading;
+  String? get error => _error;
 
-  Future<void> login(String phone, String otp) async {
-    // TODO: Implement login logic
-    _isAuthenticated = true;
+  bool get hasValidSession => _token != null && !JwtUtils.isExpired(_token!);
+
+  String get displayName {
+    final fromUser = _stringFromMap(_userOrCustomer, const [
+      'fullName',
+      'full_name',
+      'name',
+      'customerName',
+      'customer_name',
+    ]);
+    if (fromUser.isNotEmpty) return fromUser;
+
+    final token = _token;
+    if (token == null || token.isEmpty) return 'Guest';
+    final payload = JwtUtils.decodePayload(token);
+    final fromToken = _stringFromMap(payload, const ['full_name', 'fullName', 'name']);
+    return fromToken.isNotEmpty ? fromToken : 'Guest';
+  }
+
+  String get displayFirstName {
+    final name = displayName.trim();
+    if (name.isEmpty || name == 'Guest') return 'Guest';
+    final first = name.split(RegExp(r'\s+')).first;
+    return first.isNotEmpty ? first : name;
+  }
+
+  String get displayEmail {
+    final fromUser = _stringFromMap(_userOrCustomer, const ['email', 'customerEmail', 'customer_email']);
+    if (fromUser.isNotEmpty) return fromUser;
+
+    final token = _token;
+    if (token == null || token.isEmpty) return '';
+    final payload = JwtUtils.decodePayload(token);
+    return _stringFromMap(payload, const ['email']) ;
+  }
+
+  String get displayPhone {
+    final fromUser = _stringFromMap(_userOrCustomer, const [
+      'phone',
+      'phoneNumber',
+      'phone_number',
+      'customerPhone',
+      'customer_phone',
+    ]);
+    return fromUser;
+  }
+
+  String get profileImageUrl {
+    final fromUser = _stringFromMap(_userOrCustomer, const [
+      'profile_image_url',
+      'profileImageUrl',
+      'profileImageURL',
+    ]);
+    return fromUser;
+  }
+
+  void updateLocalProfile({String? fullName, String? phone}) {
+    final updated = <String, dynamic>{...(_userOrCustomer ?? {})};
+
+    if (fullName != null && fullName.trim().isNotEmpty) {
+      updated['full_name'] = fullName.trim();
+      updated['fullName'] = fullName.trim();
+    }
+
+    if (phone != null) {
+      updated['phone'] = phone.trim();
+      updated['phoneNumber'] = phone.trim();
+    }
+
+    _userOrCustomer = updated;
     notifyListeners();
   }
 
-  void logout() {
-    _token = null;
-    _user = null;
-    _isAuthenticated = false;
+  Future<void> fetchProfile() async {
+    try {
+      final profile = await _customerInfoRepository.getProfile();
+      _userOrCustomer = {
+        ...?_userOrCustomer,
+        ...profile,
+      };
+      notifyListeners();
+    } catch (e) {
+      // Silently fail - don't block UI if profile fetch fails
+      debugPrint('Failed to fetch profile: $e');
+    }
+  }
+
+  Future<void> updateProfileRemote({
+    String? fullName,
+    String? phone,
+  }) async {
+    _setLoading(true);
+    _error = null;
     notifyListeners();
+
+    try {
+      // Send null for phone when user clears it.
+      final normalizedPhone = phone == null ? null : (phone.trim().isEmpty ? null : phone.trim());
+      final normalizedName = fullName == null ? null : fullName.trim();
+
+      final updated = await _customerInfoRepository.updateProfile(
+        fullName: normalizedName,
+        phone: normalizedPhone,
+      );
+
+      _userOrCustomer = {
+        ...?_userOrCustomer,
+        ...updated,
+      };
+    } catch (e) {
+      _error = e.toString();
+      rethrow;
+    } finally {
+      _setLoading(false);
+      notifyListeners();
+    }
+  }
+
+  Future<void> hydrateFromStorage() async {
+    final stored = await _authRepository.getStoredToken();
+    if (stored != null && stored.isNotEmpty) {
+      if (JwtUtils.isExpired(stored)) {
+        try {
+          final refreshed = await _authRepository.refreshSession();
+          _token = refreshed.token;
+          _userOrCustomer = refreshed.user ?? _userOrCustomer;
+          _isAuthenticated = true;
+        } catch (_) {
+          await _authRepository.clearSession();
+          _token = null;
+          _userOrCustomer = null;
+          _isAuthenticated = false;
+        }
+      } else {
+        _token = stored;
+        _isAuthenticated = true;
+      }
+      
+      // Fetch full profile from backend to ensure phone and other data are up-to-date
+      // This ensures phone number is always available after app restart
+      if (_isAuthenticated) {
+        try {
+          final profile = await _customerInfoRepository.getProfile();
+          _userOrCustomer = {
+            ...?_userOrCustomer,
+            ...profile,
+          };
+        } catch (e) {
+          // Silently fail - profile will be fetched when needed
+          // This prevents blocking app startup if profile fetch fails
+          debugPrint('Failed to fetch profile during hydration: $e');
+        }
+      }
+      
+      notifyListeners();
+    }
+  }
+
+  Future<CustomerSendOtpResult> sendCustomerOtp(String email) async {
+    _setLoading(true);
+    _error = null;
+    notifyListeners();
+
+    try {
+      return await _authRepository.sendCustomerOtp(email: email);
+    } catch (e) {
+      _error = e.toString();
+      rethrow;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<CustomerSendOtpResult> resendCustomerOtp(String email) async {
+    _setLoading(true);
+    _error = null;
+    notifyListeners();
+
+    try {
+      return await _authRepository.resendCustomerOtp(email: email);
+    } catch (e) {
+      _error = e.toString();
+      rethrow;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<CustomerVerifyOtpResult> verifyCustomerOtp({
+    required String email,
+    required String otp,
+  }) async {
+    _setLoading(true);
+    _error = null;
+    notifyListeners();
+
+    try {
+      final result =
+          await _authRepository.verifyCustomerOtp(email: email, otp: otp);
+
+      if (!result.isNewUser) {
+        final token = result.token;
+        if (token == null || token.isEmpty) throw Exception('Missing token');
+        // Token is already stored by AuthRepository.verifyCustomerOtp
+        // Just sync the local state
+        _token = token;
+        _userOrCustomer = result.user;
+        _isAuthenticated = true;
+        // Ensure token is in storage (repository should have done this, but double-check)
+        await AuthStorage.setAuthToken(token);
+        if (result.refreshToken != null && result.refreshToken!.isNotEmpty) {
+          await AuthStorage.setRefreshToken(result.refreshToken!);
+        }
+      }
+
+      return result;
+    } catch (e) {
+      _error = e.toString();
+      rethrow;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<void> completeCustomerRegistration({
+    required String sessionToken,
+    required String fullName,
+    String? phone,
+    Map<String, dynamic>? address,
+  }) async {
+    _setLoading(true);
+    _error = null;
+    notifyListeners();
+
+    try {
+      final result = await _authRepository.completeCustomerRegistration(
+        sessionToken: sessionToken,
+        fullName: fullName,
+        phone: phone,
+        address: address,
+      );
+
+      // Token is already stored by AuthRepository.completeCustomerRegistration
+      // Just sync the local state
+      _token = result.token;
+      _userOrCustomer = result.customer;
+      _isAuthenticated = true;
+      // Ensure token is in storage (repository should have done this, but double-check)
+      await AuthStorage.setAuthToken(result.token);
+      await AuthStorage.setRefreshToken(result.refreshToken);
+    } catch (e) {
+      _error = e.toString();
+      rethrow;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<void> uploadProfileImage(File file) async {
+    _setLoading(true);
+    _error = null;
+    notifyListeners();
+
+    try {
+      final updated = await _customerInfoRepository.uploadProfileImage(file: file);
+      _userOrCustomer = {
+        ...?_userOrCustomer,
+        ...updated,
+      };
+    } catch (e) {
+      _error = e.toString();
+      rethrow;
+    } finally {
+      _setLoading(false);
+      notifyListeners();
+    }
+  }
+
+  Future<void> logout() async {
+    try {
+      await NotificationService().clearFcmTokenOnLogout();
+    } catch (_) {
+      // Don't block logout on FCM clear failure
+    }
+    _token = null;
+    _userOrCustomer = null;
+    _isAuthenticated = false;
+    _error = null;
+    _authRepository.clearSession();
+    // Show onboarding again after logout (so the next user/new session sees it).
+    SharedPreferences.getInstance()
+        .then((prefs) => prefs.setBool(PrefsKeys.onboardingSeen, false));
+    notifyListeners();
+  }
+
+  void clearError() {
+    _error = null;
+    notifyListeners();
+  }
+
+  void _setLoading(bool value) {
+    _isLoading = value;
+  }
+
+  static String _stringFromMap(Map<String, dynamic>? map, List<String> keys) {
+    if (map == null) return '';
+    for (final k in keys) {
+      final v = map[k];
+      if (v is String && v.trim().isNotEmpty) return v.trim();
+    }
+    return '';
   }
 }

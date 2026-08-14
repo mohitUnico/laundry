@@ -56,8 +56,7 @@ backend/
 ├── logs/                      # Application logs
 ├── uploads/                   # Temporary uploads
 ├── .env.example               # Environment variables template
-├── Dockerfile                 # Docker configuration
-├── docker-compose.yml         # Docker Compose setup
+├── Dockerfile                 # Backend Docker configuration
 └── package.json
 ```
 
@@ -116,8 +115,12 @@ npm start
 
 ### Docker
 
+**Note**: `docker-compose.yml` is located at the project root (`/laundry/`) to support both backend and frontend services.
+
 ```bash
 # Build and run with Docker Compose (includes PostgreSQL)
+# Run from project root directory (/laundry/)
+cd ..  # If in backend folder
 docker-compose up -d
 
 # View logs
@@ -126,7 +129,8 @@ docker-compose logs -f backend
 # Stop services
 docker-compose down
 
-# Build Docker image only
+# Build Docker image only (from backend folder)
+cd backend
 npm run docker:build
 ```
 
@@ -325,7 +329,7 @@ Log levels: `error`, `warn`, `info`, `debug`
 ### Using Docker
 
 ```bash
-# Build and deploy
+# Build and deploy (run from project root directory)
 docker-compose up -d
 
 # Run migrations in production

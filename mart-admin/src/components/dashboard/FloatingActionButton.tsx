@@ -81,8 +81,8 @@ export const FloatingActionButton: React.FC<FloatingActionButtonProps> = ({
       {/* Main FAB Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-transform transform ${
-          isOpen ? 'bg-red-600 rotate-45' : 'bg-blue-600 hover:bg-blue-700'
+        className={`w-14 h-14 rounded-full shadow-[0_12px_30px_rgba(15,23,42,0.18)] flex items-center justify-center transition-transform transform ${
+          isOpen ? 'bg-[#EF4444] rotate-45' : 'bg-[#2F47FF] hover:bg-[#263BE6]'
         }`}
       >
         <Plus size={24} className="text-white" />

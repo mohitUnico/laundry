@@ -1,14 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Modal } from '@/components/common';
 import { Search, Download, ChevronLeft, ChevronRight } from 'lucide-react';
-
-interface Order {
-  orderId: string;
-  customer: string;
-  assignedStaff: string;
-  status: string;
-  date: string;
-}
+import { adminManagementApi, AdminOrdersListItem } from '@/services';
 
 interface FilteredOrdersModalProps {
   isOpen: boolean;
@@ -20,76 +13,73 @@ export const FilteredOrdersModal: React.FC<FilteredOrdersModalProps> = ({ isOpen
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [orders, setOrders] = useState<AdminOrdersListItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
-  // Dummy data based on status
-  const allOrders: Order[] = useMemo(() => {
-    const ordersByStatus: Record<string, Order[]> = {
-      'Pending': [
-        { orderId: 'ORD-2025-100', customer: 'Alice Johnson', assignedStaff: 'John Doe', status: 'Pending', date: '2025-01-15' },
-        { orderId: 'ORD-2025-101', customer: 'Bob Smith', assignedStaff: 'Jane Smith', status: 'Pending', date: '2025-01-15' },
-        { orderId: 'ORD-2025-102', customer: 'Carol White', assignedStaff: 'John Doe', status: 'Pending', date: '2025-01-14' },
-        { orderId: 'ORD-2025-103', customer: 'David Brown', assignedStaff: '-', status: 'Pending', date: '2025-01-14' },
-        { orderId: 'ORD-2025-104', customer: 'Emma Davis', assignedStaff: 'John Doe', status: 'Pending', date: '2025-01-13' },
-        { orderId: 'ORD-2025-105', customer: 'Frank Miller', assignedStaff: 'Jane Smith', status: 'Pending', date: '2025-01-13' },
-        { orderId: 'ORD-2025-106', customer: 'Grace Lee', assignedStaff: '-', status: 'Pending', date: '2025-01-12' },
-        { orderId: 'ORD-2025-107', customer: 'Henry Taylor', assignedStaff: 'John Doe', status: 'Pending', date: '2025-01-12' },
-      ],
-      'In progress': [
-        { orderId: 'ORD-2025-080', customer: 'Iris Chen', assignedStaff: 'Mike Johnson', status: 'In progress', date: '2025-01-15' },
-        { orderId: 'ORD-2025-081', customer: 'Jack Wilson', assignedStaff: 'Sarah Connor', status: 'In progress', date: '2025-01-15' },
-        { orderId: 'ORD-2025-082', customer: 'Karen Anderson', assignedStaff: 'Mike Johnson', status: 'In progress', date: '2025-01-14' },
-        { orderId: 'ORD-2025-083', customer: 'Larry Martin', assignedStaff: 'Sarah Connor', status: 'In progress', date: '2025-01-14' },
-        { orderId: 'ORD-2025-084', customer: 'Mary Garcia', assignedStaff: 'Mike Johnson', status: 'In progress', date: '2025-01-13' },
-        { orderId: 'ORD-2025-085', customer: 'Nick Thompson', assignedStaff: 'Tom Hanks', status: 'In progress', date: '2025-01-13' },
-        { orderId: 'ORD-2025-086', customer: 'Olivia Martinez', assignedStaff: 'Sarah Connor', status: 'In progress', date: '2025-01-12' },
-        { orderId: 'ORD-2025-087', customer: 'Paul Rodriguez', assignedStaff: 'Mike Johnson', status: 'In progress', date: '2025-01-12' },
-        { orderId: 'ORD-2025-088', customer: 'Quinn Lewis', assignedStaff: 'Tom Hanks', status: 'In progress', date: '2025-01-11' },
-        { orderId: 'ORD-2025-089', customer: 'Rachel Walker', assignedStaff: 'Mike Johnson', status: 'In progress', date: '2025-01-11' },
-        { orderId: 'ORD-2025-090', customer: 'Sam Young', assignedStaff: 'Sarah Connor', status: 'In progress', date: '2025-01-10' },
-        { orderId: 'ORD-2025-091', customer: 'Tina Hall', assignedStaff: 'Tom Hanks', status: 'In progress', date: '2025-01-10' },
-        { orderId: 'ORD-2025-092', customer: 'Uma King', assignedStaff: 'Mike Johnson', status: 'In progress', date: '2025-01-09' },
-        { orderId: 'ORD-2025-093', customer: 'Victor Wright', assignedStaff: 'Sarah Connor', status: 'In progress', date: '2025-01-09' },
-        { orderId: 'ORD-2025-094', customer: 'Wendy Lopez', assignedStaff: 'Tom Hanks', status: 'In progress', date: '2025-01-08' },
-      ],
-      'Out for delivery': [
-        { orderId: 'ORD-2025-060', customer: 'Xara Moore', assignedStaff: 'Ryan Gosling', status: 'Out for delivery', date: '2025-01-15' },
-        { orderId: 'ORD-2025-061', customer: 'Yuki Clark', assignedStaff: 'Emma Stone', status: 'Out for delivery', date: '2025-01-15' },
-        { orderId: 'ORD-2025-062', customer: 'Zara Scott', assignedStaff: 'Ryan Gosling', status: 'Out for delivery', date: '2025-01-14' },
-        { orderId: 'ORD-2025-063', customer: 'Alex Green', assignedStaff: 'Emma Stone', status: 'Out for delivery', date: '2025-01-14' },
-        { orderId: 'ORD-2025-064', customer: 'Ben Adams', assignedStaff: 'Ryan Gosling', status: 'Out for delivery', date: '2025-01-13' },
-        { orderId: 'ORD-2025-065', customer: 'Cindy Baker', assignedStaff: 'Tom Cruise', status: 'Out for delivery', date: '2025-01-13' },
-        { orderId: 'ORD-2025-066', customer: 'Dan Nelson', assignedStaff: 'Emma Stone', status: 'Out for delivery', date: '2025-01-12' },
-        { orderId: 'ORD-2025-067', customer: 'Eva Hill', assignedStaff: 'Ryan Gosling', status: 'Out for delivery', date: '2025-01-12' },
-        { orderId: 'ORD-2025-068', customer: 'Fiona Campbell', assignedStaff: 'Tom Cruise', status: 'Out for delivery', date: '2025-01-11' },
-        { orderId: 'ORD-2025-069', customer: 'George Mitchell', assignedStaff: 'Emma Stone', status: 'Out for delivery', date: '2025-01-11' },
-        { orderId: 'ORD-2025-070', customer: 'Hannah Roberts', assignedStaff: 'Ryan Gosling', status: 'Out for delivery', date: '2025-01-10' },
-        { orderId: 'ORD-2025-071', customer: 'Ian Turner', assignedStaff: 'Tom Cruise', status: 'Out for delivery', date: '2025-01-10' },
-      ],
-      'Completed today': Array.from({ length: 34 }, (_, i) => ({
-        orderId: `ORD-2025-${String(20 + i).padStart(3, '0')}`,
-        customer: `Customer ${i + 1}`,
-        assignedStaff: ['Mike Johnson', 'Sarah Connor', 'Tom Hanks', 'Ryan Gosling'][i % 4],
-        status: 'Completed',
-        date: '2025-01-15',
-      })),
-    };
-
-    return ordersByStatus[status] || [];
+  const statusQuery = useMemo(() => {
+    const normalized = status.toLowerCase();
+    if (normalized === 'pending') {
+      return { status: 'placed,pickup_assigned,picked_up,received_by_collection,submitted_to_services' };
+    }
+    if (normalized === 'in progress') {
+      return { status: 'services_in_progress' };
+    }
+    if (normalized === 'out for delivery') {
+      return { status: 'out_for_delivery' };
+    }
+    if (normalized === 'completed' || normalized === 'completed today') {
+      // Completed view should show only delivered/closed orders,
+      // aligned with the global Completed KPI.
+      return { status: 'delivered,closed' };
+    }
+    return {};
   }, [status]);
 
-  const filteredOrders = useMemo(() => {
-    return allOrders.filter(order =>
-      order.orderId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.customer.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [allOrders, searchTerm]);
+  useEffect(() => {
+    if (!isOpen) return;
 
-  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
-  const paginatedOrders = useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage;
-    const end = start + itemsPerPage;
-    return filteredOrders.slice(start, end);
-  }, [filteredOrders, currentPage]);
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await adminManagementApi.getAdminOrders({
+          ...statusQuery,
+          search: searchTerm || undefined,
+          page: currentPage,
+          limit: itemsPerPage,
+        });
+        if (cancelled) return;
+        setOrders(res.data.orders);
+        setTotal(res.data.pagination.total);
+        setTotalPages(res.data.pagination.total_pages || 1);
+      } catch (e: any) {
+        if (cancelled) return;
+        const message = e?.response?.data?.message || e?.message || 'Failed to load orders';
+        setError(message);
+        setOrders([]);
+        setTotal(0);
+        setTotalPages(1);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, statusQuery, searchTerm, currentPage]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setCurrentPage(1);
+  }, [isOpen, status, searchTerm]);
+
+  const paginatedOrders = orders;
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
@@ -100,11 +90,26 @@ export const FilteredOrdersModal: React.FC<FilteredOrdersModalProps> = ({ isOpen
       case 'out for delivery':
         return 'bg-cyan-100 text-cyan-800';
       case 'completed':
+      case 'delivered':
+      case 'closed':
         return 'bg-green-100 text-green-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
   };
+
+  const formatStatusForRow = (raw: string | null) => {
+    if (!raw) return status;
+    if (raw === 'services_in_progress') return 'In progress';
+    if (raw === 'out_for_delivery') return 'Out for delivery';
+    if (raw === 'delivered' || raw === 'closed') return 'Completed';
+    if (['placed', 'pickup_assigned', 'picked_up', 'received_by_collection', 'submitted_to_services'].includes(raw)) {
+      return 'Pending';
+    }
+    return raw.replaceAll('_', ' ');
+  };
+
+  const formatDate = (iso: string | null) => (iso ? iso.slice(0, 10) : '—');
 
   const handleExport = () => {
     // Simulate export
@@ -162,38 +167,43 @@ export const FilteredOrdersModal: React.FC<FilteredOrdersModalProps> = ({ isOpen
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {paginatedOrders.map((order) => (
-                  <tr key={order.orderId} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3 text-sm font-medium text-slate-900">
-                      {order.orderId}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-slate-700">
-                      {order.customer}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-slate-700">
-                      {order.assignedStaff}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
-                        {order.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-slate-600">
-                      {order.date}
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      <button className="text-blue-600 hover:text-blue-700 font-medium">
-                        View
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {paginatedOrders.map((order) => {
+                  const rowStatus = formatStatusForRow(order.status);
+                  return (
+                    <tr key={order.order_number} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3 text-sm font-medium text-slate-900">{order.order_number}</td>
+                      <td className="px-4 py-3 text-sm text-slate-700">{order.customer?.name || 'Unknown'}</td>
+                      <td className="px-4 py-3 text-sm text-slate-700">{order.delivery_boy?.name || '—'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(rowStatus)}`}>
+                          {rowStatus}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-600">{formatDate(order.created_at)}</td>
+                      <td className="px-4 py-3 text-sm">
+                        <button className="text-blue-600 hover:text-blue-700 font-medium">View</button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
 
-        {filteredOrders.length === 0 && (
+        {loading && (
+          <div className="text-center py-10">
+            <p className="text-slate-500">Loading…</p>
+          </div>
+        )}
+
+        {!loading && error && (
+          <div className="text-center py-10">
+            <p className="text-slate-500">{error}</p>
+          </div>
+        )}
+
+        {!loading && !error && total === 0 && (
           <div className="text-center py-12">
             <p className="text-slate-500">No orders found for "{status}"</p>
           </div>
@@ -203,7 +213,8 @@ export const FilteredOrdersModal: React.FC<FilteredOrdersModalProps> = ({ isOpen
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200">
             <div className="text-sm text-slate-700">
-              Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredOrders.length)} of {filteredOrders.length} orders
+              Showing {total === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1} to{' '}
+              {Math.min(currentPage * itemsPerPage, total)} of {total} orders
             </div>
             <div className="flex gap-2">
               <button

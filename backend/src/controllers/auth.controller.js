@@ -9,7 +9,10 @@
 
 const otpService = require('../services/otp.service');
 const portalAuthService = require('../services/portal-auth.service');
+const deliveryStaffMediaService = require('../services/delivery-staff-media.service');
 const logger = require('../utils/logger');
+const crypto = require('crypto');
+const { ValidationError } = require('../utils/errors');
 
 // ============================================================================
 // PORTAL AUTHENTICATION (EMAIL/PHONE OTP)
@@ -50,6 +53,31 @@ const completePortalRegistration = async (req, res, next) => {
     res.status(201).json(result);
   } catch (error) {
     logger.error('Complete portal registration failed', { error: error.message });
+    next(error);
+  }
+};
+
+// ============================================================================
+// TOKEN REFRESH
+// ============================================================================
+
+/**
+ * Refresh access token using refresh token (rotates refresh token)
+ * POST /api/v1/auth/refresh
+ * Body: { refreshToken }
+ */
+const refreshToken = async (req, res, next) => {
+  try {
+    const { refreshToken: token } = req.body;
+    const result = await otpService.refreshAccessToken(token);
+
+    res.status(200).json({
+      success: true,
+      message: 'Token refreshed',
+      data: result,
+    });
+  } catch (error) {
+    logger.error('Refresh token failed', { error: error.message });
     next(error);
   }
 };
@@ -134,11 +162,12 @@ const verifyOwnerOtp = async (req, res, next) => {
  */
 const sendMartEmailOtp = async (req, res, next) => {
   try {
-    const { sessionToken, martEmail } = req.body;
+    const { sessionToken, martEmail, businessEmail } = req.body;
+    const emailToVerify = martEmail || businessEmail;
 
     // Try portal auth service first (for portal registration flow)
     try {
-      const result = await portalAuthService.sendMartEmailOtp(sessionToken, martEmail);
+      const result = await portalAuthService.sendMartEmailOtp(sessionToken, emailToVerify);
       return res.status(200).json({
         success: true,
         message: result.message || 'OTP sent successfully to mart email',
@@ -151,7 +180,7 @@ const sendMartEmailOtp = async (req, res, next) => {
       // If portal auth fails, try otp service (for owner auth flow)
       // Only fallback if it's an authentication error (session not found)
       if (portalError.code === 'AUTHENTICATION_ERROR' || portalError.message.includes('session')) {
-        const result = await otpService.sendMartEmailOtp(sessionToken, martEmail);
+        const result = await otpService.sendMartEmailOtp(sessionToken, emailToVerify);
         return res.status(200).json({
           success: true,
           message: 'OTP sent successfully to mart email',
@@ -179,11 +208,12 @@ const sendMartEmailOtp = async (req, res, next) => {
  */
 const verifyMartEmailOtp = async (req, res, next) => {
   try {
-    const { sessionToken, martEmail, otp } = req.body;
+    const { sessionToken, martEmail, businessEmail, otp } = req.body;
+    const emailToVerify = martEmail || businessEmail;
 
     // Try portal auth service first (for portal registration flow)
     try {
-      const result = await portalAuthService.verifyMartEmailOtp(sessionToken, martEmail, otp);
+      const result = await portalAuthService.verifyMartEmailOtp(sessionToken, emailToVerify, otp);
       return res.status(200).json({
         success: true,
         message: result.message,
@@ -196,7 +226,7 @@ const verifyMartEmailOtp = async (req, res, next) => {
       // If portal auth fails, try otp service (for owner auth flow)
       // Only fallback if it's an authentication error (session not found)
       if (portalError.code === 'AUTHENTICATION_ERROR' || portalError.message.includes('session')) {
-        const result = await otpService.verifyMartEmailOtp(sessionToken, martEmail, otp);
+        const result = await otpService.verifyMartEmailOtp(sessionToken, emailToVerify, otp);
         return res.status(200).json({
           success: true,
           message: result.message,
@@ -540,6 +570,7 @@ const verifyCustomerOtp = async (req, res, next) => {
         data: {
           isNewUser: false,
           token: result.token,
+          refreshToken: result.refreshToken,
           user: result.user
         }
       });
@@ -568,6 +599,7 @@ const completeCustomerRegistration = async (req, res, next) => {
       message: 'Registration completed successfully. Welcome to Laundry App!',
       data: {
         token: result.token,
+        refreshToken: result.refreshToken,
         customer: result.customer
       }
     });
@@ -652,9 +684,57 @@ const completeDeliveryRegistration = async (req, res, next) => {
   try {
     const { sessionToken, deliveryData } = req.body;
 
+    // If request is multipart, files are available on req.files (multer).
+    // We upload them to Supabase Storage and persist the resulting public URLs.
+    const registrationKey = crypto.createHash('sha256').update(String(sessionToken || '')).digest('hex');
+    const files = req.files || {};
+
+    const profileImageFile = Array.isArray(files.profileImage) ? files.profileImage[0] : null;
+    const idProofDocumentFile = Array.isArray(files.idProofDocument) ? files.idProofDocument[0] : null;
+    const drivingLicenseFile = Array.isArray(files.drivingLicenseFile) ? files.drivingLicenseFile[0] : null;
+
+    // For the new flow, expect these files. (URLs are still accepted for backward compatibility.)
+    if (!deliveryData?.profileImageUrl && !profileImageFile) {
+      throw new ValidationError('Profile image file is required');
+    }
+    if (!deliveryData?.idProofUrl && !idProofDocumentFile) {
+      throw new ValidationError('ID proof document file is required');
+    }
+    if (!deliveryData?.drivingLicenseUrl && !drivingLicenseFile) {
+      throw new ValidationError('Driving license file is required');
+    }
+
+    const [profileImageUrl, idProofUrl, drivingLicenseUrl] = await Promise.all([
+      deliveryData?.profileImageUrl
+        ? deliveryData.profileImageUrl
+        : deliveryStaffMediaService.uploadDeliveryStaffProfileImage({
+          registrationKey,
+          file: profileImageFile,
+        }),
+      deliveryData?.idProofUrl
+        ? deliveryData.idProofUrl
+        : deliveryStaffMediaService.uploadDeliveryStaffDocument({
+          registrationKey,
+          kind: 'id-proof',
+          file: idProofDocumentFile,
+        }),
+      deliveryData?.drivingLicenseUrl
+        ? deliveryData.drivingLicenseUrl
+        : deliveryStaffMediaService.uploadDeliveryStaffDocument({
+          registrationKey,
+          kind: 'driving-license',
+          file: drivingLicenseFile,
+        }),
+    ]);
+
     const result = await otpService.completeDeliveryRegistration(
       sessionToken,
-      deliveryData
+      {
+        ...deliveryData,
+        profileImageUrl,
+        idProofUrl,
+        drivingLicenseUrl,
+      }
     );
 
     res.status(201).json({
@@ -667,6 +747,287 @@ const completeDeliveryRegistration = async (req, res, next) => {
     });
   } catch (error) {
     logger.error('Complete delivery registration failed', { error: error.message });
+    next(error);
+  }
+};
+
+// ============================================================================
+// COLLECTION MANAGER AUTHENTICATION
+// ============================================================================
+
+/**
+ * Send OTP to collection manager email
+ * POST /api/v1/auth/collection-manager/send-otp
+ */
+const sendCollectionManagerOtp = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    const result = await otpService.sendOtp(email, otpService.USER_TYPES.COLLECTION_MANAGER);
+
+    res.status(200).json({
+      success: true,
+      message: 'OTP sent successfully to your email',
+      data: {
+        email,
+        expiresIn: result.expiresIn
+      }
+    });
+  } catch (error) {
+    logger.error('Send collection manager OTP failed', { error: error.message });
+    next(error);
+  }
+};
+
+/**
+ * Verify collection manager OTP
+ * POST /api/v1/auth/collection-manager/verify-otp
+ */
+const verifyCollectionManagerOtp = async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+
+    const result = await otpService.verifyOtp(email, otp, otpService.USER_TYPES.COLLECTION_MANAGER);
+
+    if (result.isNewUser) {
+      res.status(200).json({
+        success: true,
+        message: 'Email verified. Awaiting admin approval to complete your profile.',
+        data: {
+          isNewUser: true,
+          sessionToken: result.sessionToken,
+          expiresIn: result.expiresIn
+        }
+      });
+    } else {
+      res.status(200).json({
+        success: true,
+        message: 'Login successful',
+        data: {
+          isNewUser: false,
+          token: result.token,
+          user: result.user
+        }
+      });
+    }
+  } catch (error) {
+    logger.error('Verify collection manager OTP failed', { error: error.message });
+    next(error);
+  }
+};
+
+/**
+ * Complete collection manager registration
+ * POST /api/v1/auth/collection-manager/complete-registration
+ *
+ * Requires owner/admin token in Authorization header.
+ */
+const completeCollectionManagerRegistration = async (req, res, next) => {
+  try {
+    const { sessionToken, collectionManagerData } = req.body;
+
+    const result = await otpService.completeCollectionManagerRegistration(
+      sessionToken,
+      collectionManagerData,
+      req.user
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Collection manager registration completed successfully',
+      data: {
+        token: result.token,
+        collectionManager: result.collectionManager
+      }
+    });
+  } catch (error) {
+    logger.error('Complete collection manager registration failed', { error: error.message });
+    next(error);
+  }
+};
+
+// ============================================================================
+// DISTRIBUTION MANAGER AUTHENTICATION
+// ============================================================================
+
+/**
+ * Send OTP to distribution manager email
+ * POST /api/v1/auth/distribution-manager/send-otp
+ */
+const sendDistributionManagerOtp = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    const result = await otpService.sendOtp(email, otpService.USER_TYPES.DISTRIBUTION_MANAGER);
+
+    res.status(200).json({
+      success: true,
+      message: 'OTP sent successfully to your email',
+      data: {
+        email,
+        expiresIn: result.expiresIn
+      }
+    });
+  } catch (error) {
+    logger.error('Send distribution manager OTP failed', { error: error.message });
+    next(error);
+  }
+};
+
+/**
+ * Verify distribution manager OTP
+ * POST /api/v1/auth/distribution-manager/verify-otp
+ */
+const verifyDistributionManagerOtp = async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+
+    const result = await otpService.verifyOtp(email, otp, otpService.USER_TYPES.DISTRIBUTION_MANAGER);
+
+    if (result.isNewUser) {
+      res.status(200).json({
+        success: true,
+        message: 'Email verified. Awaiting admin approval to complete your profile.',
+        data: {
+          isNewUser: true,
+          sessionToken: result.sessionToken,
+          expiresIn: result.expiresIn
+        }
+      });
+    } else {
+      res.status(200).json({
+        success: true,
+        message: 'Login successful',
+        data: {
+          isNewUser: false,
+          token: result.token,
+          user: result.user
+        }
+      });
+    }
+  } catch (error) {
+    logger.error('Verify distribution manager OTP failed', { error: error.message });
+    next(error);
+  }
+};
+
+/**
+ * Complete distribution manager registration
+ * POST /api/v1/auth/distribution-manager/complete-registration
+ *
+ * Requires owner/admin token in Authorization header.
+ */
+const completeDistributionManagerRegistration = async (req, res, next) => {
+  try {
+    const { sessionToken, distributionManagerData } = req.body;
+
+    const result = await otpService.completeDistributionManagerRegistration(
+      sessionToken,
+      distributionManagerData,
+      req.user
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Distribution manager registration completed successfully',
+      data: {
+        token: result.token,
+        distributionManager: result.distributionManager
+      }
+    });
+  } catch (error) {
+    logger.error('Complete distribution manager registration failed', { error: error.message });
+    next(error);
+  }
+};
+
+// ============================================================================
+// SERVICE MAN AUTHENTICATION
+// ============================================================================
+
+/**
+ * Send OTP to service man email
+ * POST /api/v1/auth/service-man/send-otp
+ */
+const sendServiceManOtp = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    const result = await otpService.sendOtp(email, otpService.USER_TYPES.SERVICE_MAN);
+
+    res.status(200).json({
+      success: true,
+      message: 'OTP sent successfully to your email',
+      data: {
+        email,
+        expiresIn: result.expiresIn
+      }
+    });
+  } catch (error) {
+    logger.error('Send service man OTP failed', { error: error.message });
+    next(error);
+  }
+};
+
+/**
+ * Verify service man OTP
+ * POST /api/v1/auth/service-man/verify-otp
+ */
+const verifyServiceManOtp = async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+
+    const result = await otpService.verifyOtp(email, otp, otpService.USER_TYPES.SERVICE_MAN);
+
+    if (result.isNewUser) {
+      res.status(200).json({
+        success: true,
+        message: 'Email verified. Awaiting admin approval to complete your profile.',
+        data: {
+          isNewUser: true,
+          sessionToken: result.sessionToken,
+          expiresIn: result.expiresIn
+        }
+      });
+    } else {
+      res.status(200).json({
+        success: true,
+        message: 'Login successful',
+        data: {
+          isNewUser: false,
+          token: result.token,
+          user: result.user
+        }
+      });
+    }
+  } catch (error) {
+    logger.error('Verify service man OTP failed', { error: error.message });
+    next(error);
+  }
+};
+
+/**
+ * Complete service man registration
+ * POST /api/v1/auth/service-man/complete-registration
+ *
+ * Requires owner/admin token in Authorization header.
+ */
+const completeServiceManRegistration = async (req, res, next) => {
+  try {
+    const { sessionToken, serviceManData } = req.body;
+
+    const result = await otpService.completeServiceManRegistration(sessionToken, serviceManData, req.user);
+
+    res.status(201).json({
+      success: true,
+      message: 'Service man registration completed successfully',
+      data: {
+        token: result.token,
+        serviceMan: result.serviceMan
+      }
+    });
+  } catch (error) {
+    logger.error('Complete service man registration failed', { error: error.message });
     next(error);
   }
 };
@@ -735,6 +1096,7 @@ module.exports = {
   sendPortalOtp,
   verifyPortalOtp,
   completePortalRegistration,
+  refreshToken,
 
   // Owner
   sendOwnerOtp,
@@ -757,6 +1119,21 @@ module.exports = {
   sendDeliveryOtp,
   verifyDeliveryOtp,
   completeDeliveryRegistration,
+
+  // Collection manager
+  sendCollectionManagerOtp,
+  verifyCollectionManagerOtp,
+  completeCollectionManagerRegistration,
+
+  // Distribution manager
+  sendDistributionManagerOtp,
+  verifyDistributionManagerOtp,
+  completeDistributionManagerRegistration,
+
+  // Service man
+  sendServiceManOtp,
+  verifyServiceManOtp,
+  completeServiceManRegistration,
 
   // Common
   resendOtp,

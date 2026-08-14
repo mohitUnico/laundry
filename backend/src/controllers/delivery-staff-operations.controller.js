@@ -1,0 +1,269 @@
+const prisma = require('../config/database');
+const deliveryOperationsService = require('../services/delivery-operations.service');
+const realtimeService = require('../services/realtime.service');
+const logger = require('../utils/logger');
+const { ValidationError } = require('../utils/errors');
+
+/**
+ * Delivery Staff Operations Controller
+ * - GET   /api/v1/delivery-staff/shift/status
+ * - POST  /api/v1/delivery-staff/shift/start
+ * - POST  /api/v1/delivery-staff/shift/stop
+ * - PATCH /api/v1/delivery-staff/location
+ * - GET   /api/v1/delivery-staff/assignment-requests
+ * - POST  /api/v1/delivery-staff/assignment-requests/:requestId/accept
+ * - POST  /api/v1/delivery-staff/assignment-requests/:requestId/reject
+ * - GET   /api/v1/delivery-staff/events (SSE)
+ * - POST  /api/v1/delivery-staff/fcm-token (register FCM for push when app closed)
+ */
+
+exports.getShiftStatus = async (req, res, next) => {
+    try {
+        const staffId = req.user?.user_id;
+        logger.info('Delivery staff getShiftStatus', { staffId });
+
+        const shift = await deliveryOperationsService.getShiftStatus({ staffId });
+        res.status(200).json({
+            success: true,
+            data: shift
+                ? {
+                    shiftId: shift.shift_id,
+                    staffId: shift.staff_id,
+                    startedAt: shift.started_at,
+                    isActive: shift.is_active,
+                    lastLatitude: shift.last_latitude != null ? Number(shift.last_latitude) : null,
+                    lastLongitude: shift.last_longitude != null ? Number(shift.last_longitude) : null,
+                    lastLocationAt: shift.last_location_at,
+                }
+                : null,
+            message: shift ? 'Shift status retrieved' : 'No active shift',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.startShift = async (req, res, next) => {
+    try {
+        const staffId = req.user?.user_id;
+        logger.info('Delivery staff startShift', { staffId });
+
+        const shift = await deliveryOperationsService.startShift({ staffId });
+        res.status(200).json({
+            success: true,
+            data: {
+                shiftId: shift.shift_id,
+                staffId: shift.staff_id,
+                startedAt: shift.started_at,
+                isActive: shift.is_active,
+            },
+            message: 'Shift started successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.stopShift = async (req, res, next) => {
+    try {
+        const staffId = req.user?.user_id;
+        logger.info('Delivery staff stopShift', { staffId });
+
+        const shift = await deliveryOperationsService.stopShift({ staffId });
+        res.status(200).json({
+            success: true,
+            data: shift
+                ? {
+                    shiftId: shift.shift_id,
+                    staffId: shift.staff_id,
+                    endedAt: shift.ended_at,
+                    isActive: shift.is_active,
+                }
+                : null,
+            message: shift ? 'Shift stopped successfully' : 'No active shift to stop',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.updateLocation = async (req, res, next) => {
+    try {
+        const staffId = req.user?.user_id;
+        const { latitude, longitude } = req.body;
+        logger.info('Delivery staff update location', { staffId });
+
+        const shift = await deliveryOperationsService.updateLiveLocation({ staffId, latitude, longitude });
+        res.status(200).json({
+            success: true,
+            data: {
+                shiftId: shift.shift_id,
+                lastLatitude: shift.last_latitude,
+                lastLongitude: shift.last_longitude,
+                lastLocationAt: shift.last_location_at,
+            },
+            message: 'Location updated successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.listAssignmentRequests = async (req, res, next) => {
+    try {
+        const staffId = req.user?.user_id;
+        const { status } = req.query;
+
+        const rows = await deliveryOperationsService.listStaffAssignmentRequests({ staffId, status });
+
+        res.status(200).json({
+            success: true,
+            data: rows.map((r) => ({
+                requestId: r.request_id,
+                orderId: r.order_id,
+            deliveryId: r.delivery_id,
+                staffId: r.staff_id,
+                deliveryType: r.delivery_type,
+                status: r.status,
+                offeredAt: r.offered_at,
+                expiresAt: r.expires_at,
+                pickup: {
+                    address: r.pickup_address,
+                    latitude: r.pickup_lat,
+                    longitude: r.pickup_lng,
+                },
+                drop: {
+                    address: r.drop_address,
+                    latitude: r.drop_lat,
+                    longitude: r.drop_lng,
+                },
+                rejectionNote: r.rejection_note || null,
+            })),
+            message: 'Assignment requests fetched successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.acceptAssignmentRequest = async (req, res, next) => {
+    try {
+        const staffId = req.user?.user_id;
+        const { requestId } = req.params;
+
+        const result = await deliveryOperationsService.respondToAssignmentRequest({
+            staffId,
+            requestId,
+            action: 'accept',
+        });
+
+        res.status(200).json({
+            success: true,
+            data: result,
+            message: 'Assignment accepted successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.rejectAssignmentRequest = async (req, res, next) => {
+    try {
+        const staffId = req.user?.user_id;
+        const { requestId } = req.params;
+        const { rejectionNote } = req.body;
+
+        const result = await deliveryOperationsService.respondToAssignmentRequest({
+            staffId,
+            requestId,
+            action: 'reject',
+            rejectionNote,
+        });
+
+        res.status(200).json({
+            success: true,
+            data: result,
+            message: 'Assignment rejected successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.events = async (req, res, next) => {
+    try {
+        const staffId = req.user?.user_id;
+        logger.info('Delivery staff SSE connect', { staffId });
+
+        realtimeService.subscribeDeliveryStaff({ staffId, res });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * Save/update the delivery staff's FCM token for push notifications (e.g. assignment requests when app is closed).
+ */
+exports.saveFcmToken = async (req, res, next) => {
+    try {
+        const staffId = req.user?.user_id;
+        const fcmToken = req.body?.fcmToken;
+
+        if (!staffId) throw new ValidationError('Missing delivery staff identity');
+        if (!fcmToken || typeof fcmToken !== 'string') throw new ValidationError('fcmToken is required');
+
+        await prisma.deliveryStaff.update({
+            where: { staff_id: staffId },
+            data: { fcm_token: fcmToken.trim() },
+            select: { staff_id: true },
+        });
+
+        logger.info('Delivery staff FCM token saved', { staffId });
+        res.status(200).json({
+            success: true,
+            message: 'FCM token saved',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * Clear the delivery staff's FCM token only if it matches the token provided by the device.
+ * Prevents Device A logout from clearing Device B's token when both use same account.
+ */
+exports.clearFcmTokenIfMatches = async (req, res, next) => {
+    try {
+        const staffId = req.user?.user_id;
+        const providedToken = req.body?.fcmToken;
+
+        if (!staffId) throw new ValidationError('Missing delivery staff identity');
+        if (!providedToken || typeof providedToken !== 'string') {
+            throw new ValidationError('fcmToken is required');
+        }
+
+        const current = await prisma.deliveryStaff.findUnique({
+            where: { staff_id: staffId },
+            select: { fcm_token: true },
+        });
+
+        if (current?.fcm_token && current.fcm_token === providedToken.trim()) {
+            await prisma.deliveryStaff.update({
+                where: { staff_id: staffId },
+                data: { fcm_token: null },
+                select: { staff_id: true },
+            });
+        }
+
+        logger.info('Delivery staff FCM token cleared if matched', { staffId });
+        res.status(200).json({
+            success: true,
+            message: 'FCM token cleared if matched',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+module.exports = exports;
+

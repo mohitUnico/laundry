@@ -6,7 +6,7 @@ A comprehensive multi-tenant laundry service platform connecting customers, laun
 
 Laundry App provides:
 - **Customer App** (Flutter): Order placement, tracking, and management
-- **Delivery App** (Flutter): Task management and delivery tracking
+- **Staff App** (Flutter): Role-based app for collection manager, service man, distribution manager, and delivery partner
 - **Admin Panel** (React): Mart administration and analytics
 - **Backend API** (Node.js/Express): REST API with PostgreSQL database
 
@@ -36,7 +36,7 @@ laundry/
 │   │   └── ...
 │   ├── pubspec.yaml
 │   └── README.md
-├── delivery-app/             # Flutter Delivery Partner Mobile App
+├── staff-app/                # Flutter Staff (Multi-role) Mobile App
 │   ├── lib/
 │   │   ├── screens/        # Full-screen pages
 │   │   ├── widgets/        # Reusable widgets
@@ -98,10 +98,10 @@ flutter pub get
 flutter run
 ```
 
-#### 3. Delivery App (Flutter)
+#### 3. Staff App (Flutter)
 
 ```bash
-cd delivery-app
+cd staff-app
 
 # Get dependencies
 flutter pub get
@@ -174,15 +174,12 @@ Access API at: http://localhost:5000/api/v1
 - ✅ Order history and reordering
 - ✅ Ratings and reviews
 
-### Delivery Partner App
-- ✅ Partner authentication and verification
-- ✅ Available task list
-- ✅ Task acceptance/rejection
-- ✅ GPS-based navigation
-- ✅ Photo proof for pickup and delivery
-- ✅ Real-time earnings tracking
-- ✅ Performance statistics
-- ✅ Route optimization
+### Staff App (Multi-role)
+- ✅ Role-based access (collection manager, service man, distribution manager, delivery partner)
+- ✅ Delivery partner: tasks, navigation, proof, earnings
+- ⏳ Collection manager: incoming/received/submitted orders
+- ⏳ Service man: FIFO service queue processing
+- ⏳ Distribution manager: dispatch assignment and delivery tracking
 
 ### Admin Panel
 - ✅ Dashboard with analytics
@@ -285,7 +282,7 @@ npm run test:coverage     # Generate coverage report
 
 ### Mobile Apps
 ```bash
-cd customer-app  # or delivery-app
+cd customer-app  # or staff-app
 flutter test              # Run tests
 flutter test --coverage   # Generate coverage
 ```

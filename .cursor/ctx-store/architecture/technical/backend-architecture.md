@@ -169,18 +169,35 @@ backend/
 │   ├── controllers/      # HTTP request handlers
 │   │   ├── order.controller.js
 │   │   ├── customer.controller.js
-│   │   └── delivery.controller.js
+│   │   ├── delivery.controller.js
+│   │   ├── cart.controller.js                    # NEW
+│   │   ├── collection-manager.controller.js      # NEW
+│   │   ├── service-man.controller.js             # NEW
+│   │   ├── distribution-manager.controller.js    # NEW
+│   │   ├── service-queue.controller.js           # NEW
+│   │   └── admin.controller.js
 │   ├── services/         # Business logic
 │   │   ├── order.service.js
 │   │   ├── billing.service.js
-│   │   └── delivery.service.js
+│   │   ├── delivery.service.js
+│   │   ├── cart.service.js                       # NEW
+│   │   ├── collection.service.js                 # NEW
+│   │   ├── service-queue.service.js              # NEW
+│   │   ├── distribution.service.js               # NEW
+│   │   └── verification.service.js               # NEW
 │   ├── middleware/       # Express middleware
 │   │   ├── auth.middleware.js
 │   │   ├── validation.middleware.js
-│   │   └── error.middleware.js
+│   │   ├── error.middleware.js
+│   │   └── role.middleware.js                    # NEW
 │   ├── routes/           # API route definitions
 │   │   ├── order.routes.js
-│   │   └── customer.routes.js
+│   │   ├── customer.routes.js
+│   │   ├── cart.routes.js                        # NEW
+│   │   ├── collection.routes.js                  # NEW
+│   │   ├── service-queue.routes.js               # NEW
+│   │   ├── distribution.routes.js                # NEW
+│   │   └── admin.routes.js
 │   ├── utils/            # Helper functions
 │   │   ├── errors.js
 │   │   ├── logger.js
@@ -189,13 +206,19 @@ backend/
 │   │   └── database.js
 │   ├── types/            # TypeScript types
 │   └── constants/        # Application constants
+│       └── order-statuses.js                     # NEW
 ├── prisma/
-│   ├── schema.prisma     # Database schema
+│   ├── schema.prisma     # Database schema (UPDATED with 6 user roles)
 │   ├── migrations/       # Database migrations
-│   └── seed.ts           # Seed data
+│   └── seed.ts           # Seed data (UPDATED)
 ├── tests/
 │   ├── unit/
+│   │   ├── cart.service.test.js                  # NEW
+│   │   ├── service-queue.service.test.js         # NEW
+│   │   └── collection.service.test.js            # NEW
 │   └── integration/
+│       ├── cart-workflow.test.js                 # NEW
+│       └── order-workflow.test.js                # UPDATED
 ├── Dockerfile
 ├── .env.example
 └── package.json

@@ -17,7 +17,7 @@
 
 - **Updated**: `README.md`
   - Added complete document catalog
-  - Added MART_REGISTRATION_FLOW.md and MANAGER_REGISTRATION_API.md summaries
+  - Added MART_REGISTRATION_FLOW.md and staff registration docs summaries (manager, collection manager, distribution manager, service man)
   - Added GMAIL_SMTP_SETUP.md section
   - Updated folder structure
   - Updated last modified date
@@ -47,6 +47,7 @@ backend/docs/
 ├── EMAIL_FIRST_AUTH_SUMMARY.md        # Migration summary
 ├── MART_REGISTRATION_FLOW.md          # Owner registration flow
 ├── MANAGER_REGISTRATION_API.md        # Manager registration API
+├── STAFF_REGISTRATION_API.md          # Staff registration API (collection manager, distribution manager, service man)
 ├── GMAIL_SMTP_SETUP.md                # Gmail SMTP setup
 └── archived_old_auth/                 # Legacy docs (reference only)
     ├── PHONE_FIRST_AUTH_GUIDE.md
@@ -71,8 +72,11 @@ backend/docs/
 
 1. **Mart Owners**: Two-step email verification (owner email + mart email)
 2. **Managers**: Email verification + owner authorization required
-3. **Customers**: Email verification + address registration
-4. **Delivery Staff**: Email verification + vehicle information
+3. **Collection Managers**: Email verification + owner/admin completes profile creation
+4. **Distribution Managers**: Email verification + owner/admin completes profile creation
+5. **Service Men**: Email verification + owner/admin completes profile creation + linked to service (1 per service)
+6. **Customers**: Email verification + address registration
+7. **Delivery Staff**: Email verification + vehicle information
 
 ### Key Features
 - ✅ No passwords (passwordless)

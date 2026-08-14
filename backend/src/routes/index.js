@@ -2,6 +2,27 @@ const express = require('express');
 const authRoutes = require('./auth.routes');
 const martRoutes = require('./mart.routes');
 const orderRoutes = require('./order.routes');
+const cartRoutes = require('./cart.routes');
+const dashboardRoutes = require('./dashboard.routes');
+const serviceRoutes = require('./service.routes');
+const clothesRoutes = require('./clothes.routes');
+const customerInfoRoutes = require('./customer-info.routes');
+const adminOrderManagementRoutes = require('./admin-order-management.routes');
+const adminCustomerManagementRoutes = require('./admin-customer-management.routes');
+const adminDeliveryStaffManagementRoutes = require('./admin-delivery-staff-management.routes');
+const adminDeliveryOperationsRoutes = require('./delivery-operations.routes');
+const adminSettingsRoutes = require('./admin-settings.routes');
+const adminDashboardRoutes = require('./admin-dashboard.routes');
+const paymentRoutes = require('./payment.routes');
+const deliveryStaffOperationsRoutes = require('./delivery-staff-operations.routes');
+const deliveryStaffAppRoutes = require('./delivery-staff-app.routes');
+const collectionManagerAppRoutes = require('./collection-manager-app.routes');
+const distributionManagerAppRoutes = require('./distribution-manager-app.routes');
+const serviceManAppRoutes = require('./service-man-app.routes');
+const couponsRoutes = require('./coupons.routes');
+const configRoutes = require('./config.routes');
+const notificationRoutes = require('./notification.routes');
+const pickupAssignmentWebhookRoutes = require('./pickup-assignment-webhook.routes');
 
 const router = express.Router();
 
@@ -17,6 +38,11 @@ router.get('/', (req, res) => {
             auth: '/api/v1/auth',
             marts: '/api/v1/marts',
             orders: '/api/v1/orders',
+            carts: '/api/v1/carts',
+            dashboard: '/api/v1/dashboard',
+            services: '/api/v1/services',
+            clothes: '/api/v1/clothes',
+            coupons: '/api/v1/coupons',
         },
         authentication: {
             type: 'OTP-based Passwordless',
@@ -57,6 +83,27 @@ router.get('/', (req, res) => {
 router.use('/auth', authRoutes);
 router.use('/marts', martRoutes);
 router.use('/orders', orderRoutes);
+router.use('/carts', cartRoutes);
+router.use('/dashboard', dashboardRoutes);
+router.use('/services', serviceRoutes);
+router.use('/clothes', clothesRoutes);
+router.use('/customer-info', customerInfoRoutes);
+router.use('/admin/orders', adminOrderManagementRoutes);
+router.use('/admin/customers', adminCustomerManagementRoutes);
+router.use('/admin/delivery-staff', adminDeliveryStaffManagementRoutes);
+router.use('/admin/delivery-ops', adminDeliveryOperationsRoutes);
+router.use('/admin/settings', adminSettingsRoutes);
+router.use('/admin/dashboard', adminDashboardRoutes);
+router.use('/payments', paymentRoutes);
+router.use('/coupons', couponsRoutes);
+router.use('/delivery-staff', deliveryStaffOperationsRoutes);
+router.use('/delivery-staff-app', deliveryStaffAppRoutes);
+router.use('/staff-app/collection-manager', collectionManagerAppRoutes);
+router.use('/staff-app/distribution-manager', distributionManagerAppRoutes);
+router.use('/staff-app/service-man', serviceManAppRoutes);
+router.use('/config', configRoutes);
+router.use('/notifications', notificationRoutes);
+router.use('/webhooks/pickup-assignment', pickupAssignmentWebhookRoutes);
 
 module.exports = router;
 

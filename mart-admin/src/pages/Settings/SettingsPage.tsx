@@ -2,7 +2,16 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { Toast } from '@/components/common/Toast';
 import { useToast } from '@/hooks/common/useToast';
-import { settingsApi, ServiceArea, SaveSettingsPayload, TeamSummary, TeamMemberInput, TeamMember } from '@/services/api/modules/settingsApi';
+import { clothesApi } from '@/services/api/modules/clothesApi';
+import { authApi } from '@/services/api/modules/authApi';
+import { ClothesServiceRecord } from '@/types';
+import {
+  settingsApi,
+  ServiceArea,
+  SaveSettingsPayload,
+  AdminTeamMembersGrouped,
+  AdminTeamMember,
+} from '@/services/api/modules/settingsApi';
 
 interface ToggleSwitchProps {
   enabled: boolean;
@@ -56,7 +65,6 @@ export const SettingsPage: React.FC = () => {
   const { toast, showToast, hideToast } = useToast();
 
   const PENDING_LOCAL_KEY = 'settings_pending_service_areas';
-  const PENDING_TEAM_KEY = 'settings_pending_team_members';
 
   const getPendingAreas = (): ServiceArea[] => {
     try {
@@ -76,25 +84,6 @@ export const SettingsPage: React.FC = () => {
       localStorage.setItem(PENDING_LOCAL_KEY, JSON.stringify(serializable));
     } catch {
       // ignore storage errors
-    }
-  };
-
-  const getPendingTeam = (): TeamMemberInput[] => {
-    try {
-      const raw = localStorage.getItem(PENDING_TEAM_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw) as TeamMemberInput[];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  };
-
-  const setPendingTeam = (members: TeamMemberInput[]) => {
-    try {
-      localStorage.setItem(PENDING_TEAM_KEY, JSON.stringify(members));
-    } catch {
-      // ignore
     }
   };
 
@@ -132,14 +121,45 @@ export const SettingsPage: React.FC = () => {
     load();
   }, []);
 
-  // Team summary state and load
-  const [teamSummary, setTeamSummary] = useState<TeamSummary>({ owner: 1, manager: 3, cleaningStaff: 5, deliveryBoys: 8 });
-  const [isAddTeamModalOpen, setIsAddTeamModalOpen] = useState(false);
-  const [newMember, setNewMember] = useState<TeamMemberInput>({ name: '', email: '', phone: '', role: 'manager' });
+  // Team members (grouped) state and load
+  const [teamGroups, setTeamGroups] = useState<AdminTeamMembersGrouped>({
+    owner: [],
+    service_men: [],
+    collection_managers: [],
+    distribution_managers: [],
+  });
+  const [loadingTeamGroups, setLoadingTeamGroups] = useState(false);
+  const [teamGroupsError, setTeamGroupsError] = useState<string | null>(null);
+
+  const roleCards = useMemo(
+    () =>
+      [
+        { key: 'owner', label: 'Owner', members: teamGroups.owner },
+        { key: 'service_men', label: 'Service Men', members: teamGroups.service_men },
+        { key: 'collection_managers', label: 'Collection Managers', members: teamGroups.collection_managers },
+        { key: 'distribution_managers', label: 'Distribution Managers', members: teamGroups.distribution_managers },
+      ] as const,
+    [teamGroups]
+  );
+
   const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
-  const [membersRole, setMembersRole] = useState<TeamMemberInput['role']>('manager');
-  const [members, setMembers] = useState<TeamMember[]>([]);
-  const [loadingMembers, setLoadingMembers] = useState(false);
+  const [membersRoleKey, setMembersRoleKey] = useState<keyof AdminTeamMembersGrouped>('owner');
+  const [members, setMembers] = useState<AdminTeamMember[]>([]);
+
+  // Add Team Member modal state
+  const [isAddTeamModalOpen, setIsAddTeamModalOpen] = useState(false);
+  const [creatingMember, setCreatingMember] = useState(false);
+  const [otpStep, setOtpStep] = useState<'send' | 'verify' | 'details'>('send');
+  const [otpEmail, setOtpEmail] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpSessionToken, setOtpSessionToken] = useState<string | null>(null);
+  const [otpRole, setOtpRole] = useState<'collection_manager' | 'distribution_manager' | 'service_man'>('collection_manager');
+  const [otpServiceId, setOtpServiceId] = useState<string | null>(null);
+  const [otpFullName, setOtpFullName] = useState('');
+  const [otpPhone, setOtpPhone] = useState('');
+  const [services, setServices] = useState<ClothesServiceRecord[]>([]);
+  const [loadingServices, setLoadingServices] = useState(false);
+  const [servicesError, setServicesError] = useState<string | null>(null);
 
   // Security modals
   const [isChangePwdOpen, setIsChangePwdOpen] = useState(false);
@@ -153,37 +173,16 @@ export const SettingsPage: React.FC = () => {
 
   useEffect(() => {
     const loadTeam = async () => {
+      setLoadingTeamGroups(true);
+      setTeamGroupsError(null);
       try {
-        const summary = await settingsApi.getTeamSummary();
-        const pending = getPendingTeam();
-        const pendingCounts = pending.reduce(
-          (acc, m) => {
-            acc[m.role] = (acc[m.role] as number) + 1;
-            return acc;
-          },
-          { owner: 0, manager: 0, cleaningStaff: 0, deliveryBoys: 0 } as TeamSummary
-        );
-        setTeamSummary({
-          owner: summary.owner + pendingCounts.owner,
-          manager: summary.manager + pendingCounts.manager,
-          cleaningStaff: summary.cleaningStaff + pendingCounts.cleaningStaff,
-          deliveryBoys: summary.deliveryBoys + pendingCounts.deliveryBoys,
-        });
-      } catch {
-        const pending = getPendingTeam();
-        const pendingCounts = pending.reduce(
-          (acc, m) => {
-            acc[m.role] = (acc[m.role] as number) + 1;
-            return acc;
-          },
-          { owner: 0, manager: 0, cleaningStaff: 0, deliveryBoys: 0 } as TeamSummary
-        );
-        setTeamSummary((s) => ({
-          owner: s.owner + pendingCounts.owner,
-          manager: s.manager + pendingCounts.manager,
-          cleaningStaff: s.cleaningStaff + pendingCounts.cleaningStaff,
-          deliveryBoys: s.deliveryBoys + pendingCounts.deliveryBoys,
-        }));
+        const grouped = await settingsApi.getAdminTeamMembersGrouped();
+        setTeamGroups(grouped);
+      } catch (e: any) {
+        setTeamGroupsError(e?.message || 'Failed to load team members');
+      }
+      finally {
+        setLoadingTeamGroups(false);
       }
     };
     loadTeam();
@@ -210,64 +209,153 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
-  const handleAddTeamMember = async () => {
-    if (!newMember.name.trim()) {
-      showToast('Name is required', 'error');
+  const openMembersModal = (roleKey: keyof AdminTeamMembersGrouped) => {
+    setMembersRoleKey(roleKey);
+    const found = roleCards.find((r) => r.key === roleKey);
+    setMembers(found?.members ?? []);
+    setIsMembersModalOpen(true);
+  };
+
+  const loadServices = async () => {
+    if (loadingServices) return;
+    setLoadingServices(true);
+    setServicesError(null);
+    try {
+      const list = await clothesApi.listServices({ isActive: true });
+      setServices(list);
+    } catch (e: any) {
+      setServicesError(e?.message || 'Failed to load services');
+    } finally {
+      setLoadingServices(false);
+    }
+  };
+
+  const openAddTeamMemberModal = async () => {
+    setIsAddTeamModalOpen(true);
+    setOtpStep('send');
+    setOtpCode('');
+    setOtpSessionToken(null);
+    setOtpFullName('');
+    setOtpPhone('');
+    if (otpRole === 'service_man' && services.length === 0) {
+      await loadServices();
+    }
+  };
+
+  useEffect(() => {
+    if (!isAddTeamModalOpen) return;
+    if (otpRole === 'service_man' && services.length === 0) {
+      loadServices();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAddTeamModalOpen, otpRole]);
+
+  const handleSendOtp = async () => {
+    const email = otpEmail.trim();
+    if (!email) {
+      showToast('Email is required', 'error');
       return;
     }
+    if (otpRole === 'service_man' && !otpServiceId) {
+      showToast('Please select a service', 'error');
+      return;
+    }
+
     try {
-      await settingsApi.addTeamMember(newMember).catch(() => Promise.resolve());
-      setPendingTeam([newMember, ...getPendingTeam()]);
-      setTeamSummary((s) => ({
-        ...s,
-        [newMember.role]: (s[newMember.role] as number) + 1,
-      } as TeamSummary));
-      setIsAddTeamModalOpen(false);
-      setNewMember({ name: '', email: '', phone: '', role: 'manager' });
-      showToast('Team member added', 'success');
+      setCreatingMember(true);
+      await authApi.sendStaffOtp({
+        role: otpRole,
+        email,
+        ...(otpRole === 'service_man' ? { serviceId: otpServiceId || undefined } : {}),
+      });
+      showToast('OTP sent to email', 'success');
+      setOtpStep('verify');
     } catch (e: any) {
-      showToast(e?.message || 'Failed to add team member', 'error');
-    }
-  };
-
-  const openMembersModal = async (role: TeamMemberInput['role']) => {
-    setMembersRole(role);
-    setIsMembersModalOpen(true);
-    setLoadingMembers(true);
-    try {
-      const serverMembers = await settingsApi.getTeamMembers(role).catch(() => [] as TeamMember[]);
-      // Merge server with pending (pending don't have ids)
-      const pending = getPendingTeam().filter((m) => m.role === role);
-      const withPending = [
-        ...serverMembers,
-        ...pending.map((m, idx) => ({ id: `temp-${role}-${idx}-${Date.now()}`, ...m })),
-      ];
-      setMembers(withPending);
+      showToast(e?.response?.data?.message || e?.message || 'Failed to send OTP', 'error');
     } finally {
-      setLoadingMembers(false);
+      setCreatingMember(false);
     }
   };
 
-  const handleRemoveMember = async (member: TeamMember) => {
+  const handleVerifyOtp = async () => {
+    const email = otpEmail.trim();
+    const otp = otpCode.trim();
+    if (!email) {
+      showToast('Email is required', 'error');
+      return;
+    }
+    if (!otp) {
+      showToast('OTP is required', 'error');
+      return;
+    }
+    if (otpRole === 'service_man' && !otpServiceId) {
+      showToast('Please select a service', 'error');
+      return;
+    }
+
     try {
-      if (member.id.startsWith('temp-')) {
-        // Remove from pending store
-        const updated = getPendingTeam().filter(
-          (m) => !(m.role === member.role && m.name === member.name && m.email === member.email && m.phone === member.phone)
-        );
-        setPendingTeam(updated);
-        setMembers((prev) => prev.filter((m) => m.id !== member.id));
-        setTeamSummary((s) => ({ ...s, [member.role]: (s[member.role] as number) - 1 } as TeamSummary));
-        showToast('Member removed', 'success');
+      setCreatingMember(true);
+      const res = await authApi.verifyStaffOtp({
+        role: otpRole,
+        email,
+        otp,
+        ...(otpRole === 'service_man' ? { serviceId: otpServiceId || undefined } : {}),
+      });
+
+      if (res.data.isNewUser === false) {
+        showToast('This user is already registered', 'error');
         return;
       }
 
-      await settingsApi.deleteTeamMember(member.id);
-      setMembers((prev) => prev.filter((m) => m.id !== member.id));
-      setTeamSummary((s) => ({ ...s, [member.role]: (s[member.role] as number) - 1 } as TeamSummary));
-      showToast('Member removed', 'success');
+      setOtpSessionToken(res.data.sessionToken);
+      setOtpStep('details');
+      showToast('OTP verified', 'success');
     } catch (e: any) {
-      showToast(e?.message || 'Failed to remove member', 'error');
+      showToast(e?.response?.data?.message || e?.message || 'Failed to verify OTP', 'error');
+    } finally {
+      setCreatingMember(false);
+    }
+  };
+
+  const handleCompleteRegistration = async () => {
+    const fullName = otpFullName.trim();
+    const email = otpEmail.trim();
+    if (!email) {
+      showToast('Email is required', 'error');
+      return;
+    }
+    if (!otpSessionToken) {
+      showToast('Please verify OTP first', 'error');
+      return;
+    }
+    if (!fullName) {
+      showToast('Full name is required', 'error');
+      return;
+    }
+    if (otpRole === 'service_man' && !otpServiceId) {
+      showToast('Please select a service', 'error');
+      return;
+    }
+
+    try {
+      setCreatingMember(true);
+      await authApi.completeStaffRegistration({
+        role: otpRole,
+        sessionToken: otpSessionToken,
+        fullName,
+        phone: otpPhone.trim() ? otpPhone.trim() : null,
+        ...(otpRole === 'service_man' ? { serviceId: otpServiceId || undefined } : {}),
+      });
+
+      const grouped = await settingsApi.getAdminTeamMembersGrouped();
+      setTeamGroups(grouped);
+
+      showToast('Team member created', 'success');
+      setIsAddTeamModalOpen(false);
+    } catch (e: any) {
+      showToast(e?.response?.data?.message || e?.message || 'Failed to complete registration', 'error');
+    } finally {
+      setCreatingMember(false);
     }
   };
 
@@ -311,7 +399,6 @@ export const SettingsPage: React.FC = () => {
         systemAlerts: systemAlertsEnabled,
       },
       serviceAreas: serviceAreas.map((a) => ({ id: a.id.startsWith('demo-') || a.id.startsWith('temp-') ? undefined : a.id, name: a.name })),
-      teamMembersAdded: getPendingTeam(),
     };
 
     try {
@@ -319,7 +406,6 @@ export const SettingsPage: React.FC = () => {
       await settingsApi.saveSettings(payload);
       showToast('Settings saved successfully', 'success');
       setPendingAreas([]);
-      setPendingTeam([]);
     } catch (e: any) {
       // If backend not ready, still give user feedback (no-op save)
       showToast('Settings updated locally', 'info');
@@ -329,25 +415,26 @@ export const SettingsPage: React.FC = () => {
   };
 
   return (
-    <div className="px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10 py-4 sm:py-5 md:py-6 bg-[#F9FAFB] space-y-4 sm:space-y-5 md:space-y-6 lg:space-y-8">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-[#111827]">Settings</h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">Manage your account and system preferences.</p>
+    <div className="w-full">
+      <div className="mx-auto mt-1 sm:mt-2 w-full max-w-[1320px] rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 md:p-7 shadow-sm space-y-4 sm:space-y-5 md:space-y-6 lg:space-y-8">
+        {/* Page Header */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold text-[#111827]">Settings</h1>
+            <p className="text-xs sm:text-sm text-slate-500 mt-1">Manage your account and system preferences.</p>
+          </div>
+          <button onClick={handleSaveSettings} disabled={saving} className={`h-8 sm:h-9 px-4 sm:px-5 ${saving ? 'bg-[#1E40AF]/70 cursor-not-allowed' : 'bg-[#1E40AF] hover:bg-[#1E3A8A]'} text-white text-xs sm:text-sm font-medium rounded-full shadow-sm transition-colors flex items-center gap-1.5 justify-center w-full sm:w-auto md:sticky md:top-4 self-start`}>
+            <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+            </svg>
+            {saving ? 'Saving...' : 'Save Changes'}
+          </button>
         </div>
-        <button onClick={handleSaveSettings} disabled={saving} className={`h-8 sm:h-9 px-4 sm:px-5 ${saving ? 'bg-[#1E40AF]/70 cursor-not-allowed' : 'bg-[#1E40AF] hover:bg-[#1E3A8A]'} text-white text-xs sm:text-sm font-medium rounded-full shadow-sm transition-colors flex items-center gap-1.5 justify-center w-full sm:w-auto md:sticky md:top-4 self-start`}>
-          <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-          </svg>
-          {saving ? 'Saving...' : 'Save Changes'}
-        </button>
-      </div>
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 md:gap-6 lg:gap-8">
-        {/* Left Column */}
-        <div className="space-y-8 lg:col-span-8">
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 md:gap-6 lg:gap-8">
+          {/* Left Column */}
+          <div className="space-y-8 lg:col-span-8">
           {/* Business Information Card */}
           <div className="bg-white rounded-2xl shadow-md border border-gray-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200">
@@ -510,34 +597,46 @@ export const SettingsPage: React.FC = () => {
               <h2 className="text-base font-semibold text-[#111827]">Team Roles</h2>
             </div>
             <div className="p-6 space-y-4">
-              {[
-                { key: 'owner', label: 'Owner', count: teamSummary.owner },
-                { key: 'manager', label: 'Manager', count: teamSummary.manager },
-                { key: 'cleaningStaff', label: 'Cleaning Staff', count: teamSummary.cleaningStaff },
-                { key: 'deliveryBoys', label: 'Delivery Boys', count: teamSummary.deliveryBoys },
-              ].map((item: any, idx: number) => (
-                <button type="button" onClick={() => openMembersModal(item.key)} key={idx} className="w-full text-left flex items-center justify-between p-3 rounded-xl border border-gray-200 shadow-sm hover:bg-slate-50 transition-colors">
+              {loadingTeamGroups && <div className="text-sm text-slate-500">Loading team roles...</div>}
+              {!loadingTeamGroups && teamGroupsError && (
+                <div className="text-sm text-red-600">{teamGroupsError}</div>
+              )}
+              {!loadingTeamGroups &&
+                !teamGroupsError &&
+                roleCards.map((item, idx) => (
+                <button
+                  type="button"
+                  onClick={() => openMembersModal(item.key)}
+                  key={idx}
+                  className="w-full text-left flex items-center justify-between p-3 rounded-xl border border-gray-200 shadow-sm hover:bg-slate-50 transition-colors"
+                >
                   <div className="flex items-center gap-3">
                     <div className="flex -space-x-2">
-                      {[...Array(Math.min(item.count, 3))].map((_, i) => (
+                      {[...Array(Math.min(item.members.length, 3))].map((_, i) => (
                         <div key={i} className="w-8 h-8 rounded-full bg-blue-100 border-2 border-white flex items-center justify-center">
                           <span className="text-xs font-semibold text-[#1E40AF]">{item.label.charAt(0)}</span>
                         </div>
                       ))}
-                      {item.count > 3 && (
+                      {item.members.length > 3 && (
                         <div className="w-8 h-8 rounded-full bg-slate-200 border-2 border-white flex items-center justify-center">
                           <span className="text-xs font-semibold text-slate-600">
-                            +{item.count - 3}
+                            +{item.members.length - 3}
                           </span>
                         </div>
                       )}
                     </div>
                     <span className="text-sm font-medium text-slate-900">{item.label}</span>
                   </div>
-                  <span className="text-xs text-slate-500">{item.count} member{item.count !== 1 ? 's' : ''}</span>
+                  <span className="text-xs text-slate-500">
+                    {item.members.length} member{item.members.length !== 1 ? 's' : ''}
+                  </span>
                 </button>
               ))}
-              <button onClick={() => setIsAddTeamModalOpen(true)} className="w-full h-9 px-4 bg-[#1E40AF] hover:bg-[#1E3A8A] text-white text-xs font-medium rounded-full shadow-sm transition-colors flex items-center justify-center gap-1.5 mt-4">
+              <button
+                type="button"
+                onClick={openAddTeamMemberModal}
+                className="w-full h-9 px-4 bg-[#1E40AF] hover:bg-[#1E3A8A] text-white text-xs font-medium rounded-full shadow-sm transition-colors flex items-center justify-center gap-1.5 mt-4"
+              >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
@@ -623,6 +722,7 @@ export const SettingsPage: React.FC = () => {
           </div>
         </div>
       </div>
+      </div>
       {/* Add Service Area Modal */}
       <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Add Service Area" size="sm">
         <div className="space-y-4">
@@ -647,79 +747,162 @@ export const SettingsPage: React.FC = () => {
       <Toast message={toast.message} type={toast.type} isVisible={toast.isVisible} onClose={hideToast} />
 
       {/* Add Team Member Modal */}
-      <Modal isOpen={isAddTeamModalOpen} onClose={() => setIsAddTeamModalOpen(false)} title="Add Team Member" size="sm">
+      <Modal
+        isOpen={isAddTeamModalOpen}
+        onClose={() => setIsAddTeamModalOpen(false)}
+        title="Add Team Member"
+        size="sm"
+      >
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Full name</label>
-            <input
-              type="text"
-              value={newMember.name}
-              onChange={(e) => setNewMember((m) => ({ ...m, name: e.target.value }))}
-              placeholder="e.g., John Doe"
-              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1E40AF] focus:border-transparent"
-            />
+          <div className="text-xs text-slate-500">
+            Step {otpStep === 'send' ? '1' : otpStep === 'verify' ? '2' : '3'} of 3
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
-              <input
-                type="email"
-                value={newMember.email}
-                onChange={(e) => setNewMember((m) => ({ ...m, email: e.target.value }))}
-                placeholder="name@company.com"
-                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1E40AF] focus:border-transparent"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Phone</label>
-              <input
-                type="tel"
-                value={newMember.phone}
-                onChange={(e) => setNewMember((m) => ({ ...m, phone: e.target.value }))}
-                placeholder="+91 98765 43210"
-                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1E40AF] focus:border-transparent"
-              />
-            </div>
-          </div>
+
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">Role</label>
             <select
-              value={newMember.role}
-              onChange={(e) => setNewMember((m) => ({ ...m, role: e.target.value as TeamMemberInput['role'] }))}
-              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E40AF] focus:border-transparent bg-white"
+              value={otpRole}
+              onChange={(e) => {
+                const nextRole = e.target.value as typeof otpRole;
+                setOtpRole(nextRole);
+                setOtpServiceId(null);
+                setOtpStep('send');
+                setOtpCode('');
+                setOtpSessionToken(null);
+              }}
+              disabled={otpStep !== 'send'}
+              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E40AF] focus:border-transparent bg-white disabled:bg-slate-50"
             >
-              <option value="owner">Owner</option>
-              <option value="manager">Manager</option>
-              <option value="cleaningStaff">Cleaning Staff</option>
-              <option value="deliveryBoys">Delivery Boys</option>
+              <option value="collection_manager">Collection Manager</option>
+              <option value="distribution_manager">Distribution Manager</option>
+              <option value="service_man">Service Man</option>
             </select>
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
+            <input
+              type="email"
+              value={otpEmail}
+              onChange={(e) => setOtpEmail(e.target.value)}
+              placeholder="name@company.com"
+              disabled={otpStep !== 'send'}
+              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1E40AF] focus:border-transparent disabled:bg-slate-50"
+            />
+          </div>
+
+          {otpRole === 'service_man' && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Assign Service</label>
+              {loadingServices && <div className="text-xs text-slate-500 mb-2">Loading services...</div>}
+              {!loadingServices && servicesError && <div className="text-xs text-red-600 mb-2">{servicesError}</div>}
+              <select
+                value={otpServiceId || ''}
+                onChange={(e) => setOtpServiceId(e.target.value || null)}
+                disabled={otpStep !== 'send'}
+                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E40AF] focus:border-transparent bg-white disabled:bg-slate-50"
+              >
+                <option value="">Select a service</option>
+                {services.map((s) => (
+                  <option key={s.service_id} value={s.service_id}>
+                    {s.service_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {otpStep === 'verify' && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">OTP</label>
+              <input
+                type="text"
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value)}
+                placeholder="Enter OTP"
+                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1E40AF] focus:border-transparent"
+              />
+            </div>
+          )}
+
+          {otpStep === 'details' && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Full name</label>
+                <input
+                  type="text"
+                  value={otpFullName}
+                  onChange={(e) => setOtpFullName(e.target.value)}
+                  placeholder="e.g., John Doe"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1E40AF] focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Phone</label>
+                <input
+                  type="tel"
+                  value={otpPhone}
+                  onChange={(e) => setOtpPhone(e.target.value)}
+                  placeholder="+91 98765 43210"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1E40AF] focus:border-transparent"
+                />
+              </div>
+            </>
+          )}
+
           <div className="flex justify-end gap-3">
-            <button onClick={() => setIsAddTeamModalOpen(false)} className="h-9 px-4 border border-gray-300 text-sm font-medium text-slate-700 rounded-full hover:bg-slate-50 transition-colors">Cancel</button>
-            <button onClick={handleAddTeamMember} className="h-9 px-5 bg-[#1E40AF] hover:bg-[#1E3A8A] text-white text-sm font-medium rounded-full shadow-sm transition-colors">Add</button>
+            <button
+              onClick={() => setIsAddTeamModalOpen(false)}
+              className="h-9 px-4 border border-gray-300 text-sm font-medium text-slate-700 rounded-full hover:bg-slate-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={
+                otpStep === 'send' ? handleSendOtp : otpStep === 'verify' ? handleVerifyOtp : handleCompleteRegistration
+              }
+              disabled={creatingMember}
+              className={`h-9 px-5 ${
+                creatingMember ? 'bg-[#1E40AF]/70 cursor-not-allowed' : 'bg-[#1E40AF] hover:bg-[#1E3A8A]'
+              } text-white text-sm font-medium rounded-full shadow-sm transition-colors`}
+            >
+              {creatingMember
+                ? 'Please wait...'
+                : otpStep === 'send'
+                  ? 'Send OTP'
+                  : otpStep === 'verify'
+                    ? 'Verify OTP'
+                    : 'Create'}
+            </button>
           </div>
         </div>
       </Modal>
 
       {/* Team Members Modal */}
-      <Modal isOpen={isMembersModalOpen} onClose={() => setIsMembersModalOpen(false)} title="Team Members" size="lg">
+      <Modal
+        isOpen={isMembersModalOpen}
+        onClose={() => setIsMembersModalOpen(false)}
+        title={roleCards.find((r) => r.key === membersRoleKey)?.label || 'Team Members'}
+        size="lg"
+      >
         <div className="space-y-3">
-          {loadingMembers && <div className="text-sm text-slate-500">Loading members...</div>}
-          {!loadingMembers && members.length === 0 && (
+          {members.length === 0 && (
             <div className="text-sm text-slate-500">No members found for this role.</div>
           )}
-          {!loadingMembers && members.map((m) => (
-            <div key={m.id} className="flex items-center justify-between p-3 rounded-xl border border-gray-200">
+          {members.map((m) => (
+            <div key={m.staffId} className="flex items-center justify-between p-3 rounded-xl border border-gray-200">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-[#1E40AF] font-semibold">
-                  {m.name?.charAt(0)?.toUpperCase() || 'U'}
+                  {m.fullName?.charAt(0)?.toUpperCase() || 'U'}
                 </div>
                 <div>
-                  <div className="text-sm font-medium text-slate-900">{m.name}</div>
-                  <div className="text-xs text-slate-500">{m.email || m.phone || membersRole}</div>
+                  <div className="text-sm font-medium text-slate-900">{m.fullName}</div>
+                  <div className="text-xs text-slate-500">
+                    {m.email || m.phone || m.role}
+                    {typeof m.isActive === 'boolean' ? ` • ${m.isActive ? 'Active' : 'Inactive'}` : ''}
+                  </div>
                 </div>
               </div>
-              <button onClick={() => handleRemoveMember(m)} className="h-8 px-3 border border-gray-300 text-xs font-medium text-slate-700 rounded-full hover:bg-slate-50 transition-colors">Remove</button>
             </div>
           ))}
         </div>

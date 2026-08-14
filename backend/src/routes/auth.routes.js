@@ -9,21 +9,102 @@
 
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const authController = require('../controllers/auth.controller');
 const { validate } = require('../middleware/validation.middleware');
 const { authenticateJWT, authorize } = require('../middleware/auth.middleware');
 const {
   sendOtpSchema,
   sendPortalOtpSchema,
+  sendServiceManOtpSchema,
   verifyOtpSchema,
   verifyPortalOtpSchema,
+  verifyServiceManOtpSchema,
   completeOwnerRegistrationSchema,
   completePortalRegistrationSchema,
   completeManagerRegistrationSchema,
+  completeCollectionManagerRegistrationSchema,
+  completeDistributionManagerRegistrationSchema,
+  completeServiceManRegistrationSchema,
   completeCustomerRegistrationSchema,
   completeDeliveryRegistrationSchema,
-  resendOtpSchema
+  resendOtpSchema,
+  refreshTokenSchema
 } = require('../validators/auth.validator');
+
+// ============================================================================
+// FILE UPLOAD (DELIVERY STAFF REGISTRATION)
+// ============================================================================
+
+const deliveryRegistrationUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB per file
+  },
+});
+
+/**
+ * Normalize delivery complete-registration payload so both JSON and multipart/form-data are supported.
+ *
+ * - JSON clients can keep sending:
+ *   { sessionToken, deliveryData: { ... } }
+ *
+ * - Multipart clients should send flat fields:
+ *   sessionToken, fullName, phone, vehicleType, vehicleNumber, address, latitude, longitude, idProofType?
+ *   plus files (multipart):
+ *   - profileImage
+ *   - idProofDocument
+ *   - drivingLicenseFile
+ */
+const normalizeDeliveryCompleteRegistrationBody = (req, res, next) => {
+  const hasNested = req.body?.deliveryData && typeof req.body.deliveryData === 'object';
+  if (hasNested) return next();
+
+  const {
+    sessionToken,
+    fullName,
+    phone,
+    vehicleType,
+    vehicleNumber,
+    address,
+    latitude,
+    longitude,
+    idProofType,
+  } = req.body || {};
+
+  req.body = {
+    sessionToken,
+    deliveryData: {
+      fullName,
+      phone,
+      vehicleType,
+      vehicleNumber,
+      address,
+      currentCoordinates: { latitude, longitude },
+      idProofType,
+    },
+  };
+
+  next();
+};
+
+// ============================================================================
+// HELPERS (BACKWARD COMPATIBILITY)
+// ============================================================================
+
+/**
+ * Some older Postman collections send delivery OTP requests with a nested payload:
+ * { deliveryData: { email: "..." }, ... }
+ *
+ * The canonical API expects: { email: "..." }
+ * This middleware normalizes the request so validation passes.
+ */
+const normalizeDeliveryEmailBody = (req, res, next) => {
+  if (!req.body?.email && req.body?.deliveryData?.email) {
+    req.body.email = req.body.deliveryData.email;
+  }
+  next();
+};
 
 // ============================================================================
 // OWNER AUTHENTICATION ROUTES
@@ -52,6 +133,14 @@ router.post(
   validate(verifyPortalOtpSchema),
   authController.verifyPortalOtp
 );
+
+/**
+ * @route   POST /api/v1/auth/refresh
+ * @desc    Exchange refresh token for new access token (and rotated refresh token)
+ * @access  Public
+ * @body    { refreshToken: "..." }
+ */
+router.post('/refresh', validate(refreshTokenSchema), authController.refreshToken);
 
 /**
  * @route   POST /api/v1/auth/portal/complete-registration
@@ -236,7 +325,7 @@ router.post(
  *            customerData: { 
  *              fullName, 
  *              phone, 
- *              address: { addressLabel, address, latitude, longitude }
+ *              address?: { addressLabel, address, latitude, longitude }
  *            }
  *          }
  */
@@ -244,6 +333,78 @@ router.post(
   '/customer/complete-registration',
   validate(completeCustomerRegistrationSchema),
   authController.completeCustomerRegistration
+);
+
+// ============================================================================
+// COLLECTION MANAGER AUTH ROUTES
+// ============================================================================
+
+router.post(
+  '/collection-manager/send-otp',
+  validate(sendOtpSchema),
+  authController.sendCollectionManagerOtp
+);
+
+router.post(
+  '/collection-manager/verify-otp',
+  validate(verifyOtpSchema),
+  authController.verifyCollectionManagerOtp
+);
+
+router.post(
+  '/collection-manager/complete-registration',
+  authenticateJWT,
+  authorize('admin'),
+  validate(completeCollectionManagerRegistrationSchema),
+  authController.completeCollectionManagerRegistration
+);
+
+// ============================================================================
+// DISTRIBUTION MANAGER AUTH ROUTES
+// ============================================================================
+
+router.post(
+  '/distribution-manager/send-otp',
+  validate(sendOtpSchema),
+  authController.sendDistributionManagerOtp
+);
+
+router.post(
+  '/distribution-manager/verify-otp',
+  validate(verifyOtpSchema),
+  authController.verifyDistributionManagerOtp
+);
+
+router.post(
+  '/distribution-manager/complete-registration',
+  authenticateJWT,
+  authorize('admin'),
+  validate(completeDistributionManagerRegistrationSchema),
+  authController.completeDistributionManagerRegistration
+);
+
+// ============================================================================
+// SERVICE MAN AUTH ROUTES
+// ============================================================================
+
+router.post(
+  '/service-man/send-otp',
+  validate(sendServiceManOtpSchema),
+  authController.sendServiceManOtp
+);
+
+router.post(
+  '/service-man/verify-otp',
+  validate(verifyServiceManOtpSchema),
+  authController.verifyServiceManOtp
+);
+
+router.post(
+  '/service-man/complete-registration',
+  authenticateJWT,
+  authorize('admin'),
+  validate(completeServiceManRegistrationSchema),
+  authController.completeServiceManRegistration
 );
 
 // ============================================================================
@@ -263,6 +424,20 @@ router.post(
 );
 
 /**
+ * Backward-compatible alias (older Postman collections / docs)
+ * @route   POST /api/v1/auth/delivery/login/send-otp
+ * @desc    Send OTP to delivery staff email for login or signup
+ * @access  Public
+ * @deprecated Use /api/v1/auth/delivery/send-otp
+ */
+router.post(
+  '/delivery/login/send-otp',
+  normalizeDeliveryEmailBody,
+  validate(sendOtpSchema),
+  authController.sendDeliveryOtp
+);
+
+/**
  * @route   POST /api/v1/auth/delivery/verify-otp
  * @desc    Verify OTP and check if delivery staff exists
  * @access  Public
@@ -275,16 +450,36 @@ router.post(
 );
 
 /**
+ * Backward-compatible alias (older Postman collections / docs)
+ * @route   POST /api/v1/auth/delivery/login/verify-otp
+ * @desc    Verify OTP and check if delivery staff exists
+ * @access  Public
+ * @deprecated Use /api/v1/auth/delivery/verify-otp
+ */
+router.post(
+  '/delivery/login/verify-otp',
+  normalizeDeliveryEmailBody,
+  validate(verifyOtpSchema),
+  authController.verifyDeliveryOtp
+);
+
+/**
  * @route   POST /api/v1/auth/delivery/complete-registration
  * @desc    Complete delivery staff registration after OTP verification
  * @access  Public (requires sessionToken)
  * @body    {
  *            sessionToken: "abc123...",
- *            deliveryData: { martId, fullName, phone, vehicleType, vehicleNumber, licenseNumber }
+ *            deliveryData: { fullName, phone, vehicleType, vehicleNumber, address, currentCoordinates, ... }
  *          }
  */
 router.post(
   '/delivery/complete-registration',
+  deliveryRegistrationUpload.fields([
+    { name: 'profileImage', maxCount: 1 },
+    { name: 'idProofDocument', maxCount: 1 },
+    { name: 'drivingLicenseFile', maxCount: 1 },
+  ]),
+  normalizeDeliveryCompleteRegistrationBody,
   validate(completeDeliveryRegistrationSchema),
   authController.completeDeliveryRegistration
 );

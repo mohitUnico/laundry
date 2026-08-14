@@ -82,6 +82,16 @@ Body: { "email": "customer@example.com" }
 
 All endpoints follow the same pattern - replace `phone` with `email`.
 
+### Supported User Types (Email-First OTP)
+
+- `owner`
+- `manager`
+- `collection_manager`
+- `distribution_manager`
+- `service_man` (requires `serviceId` or `serviceType` during send/verify/complete)
+- `customer`
+- `delivery_staff`
+
 ---
 
 ## Environment Variables

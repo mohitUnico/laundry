@@ -1,12 +1,13 @@
-// Sample Order Controller
-// This is a template - implement full logic as needed
-
 const orderService = require('../services/order.service');
-const { NotFoundError } = require('../utils/errors');
+const { AuthorizationError } = require('../utils/errors');
 
 exports.createOrder = async (req, res, next) => {
     try {
-        const customerId = req.user.customer_id; // From JWT token
+        if (req.user.role !== 'customer') {
+            throw new AuthorizationError('Only customers can create orders');
+        }
+
+        const customerId = req.user.user_id; // payload stores customer id under user_id
         const order = await orderService.createOrder(customerId, req.body);
 
         res.status(201).json({
@@ -19,77 +20,63 @@ exports.createOrder = async (req, res, next) => {
     }
 };
 
-exports.getOrders = async (req, res, next) => {
+exports.confirmOrder = async (req, res, next) => {
     try {
-        const { page = 1, limit = 10, status } = req.query;
-        const customerId = req.user.customer_id;
-
-        const result = await orderService.getOrders(customerId, {
-            page: parseInt(page),
-            limit: parseInt(limit),
-            status,
-        });
-
-        res.json({
-            success: true,
-            data: result.orders,
-            pagination: {
-                page: result.page,
-                limit: result.limit,
-                total: result.total,
-                totalPages: result.totalPages,
-            },
-        });
-    } catch (error) {
-        next(error);
-    }
-};
-
-exports.getOrderById = async (req, res, next) => {
-    try {
-        const { id } = req.params;
-        const order = await orderService.getOrderById(id);
-
-        if (!order) {
-            throw new NotFoundError('Order');
+        if (req.user.role !== 'customer') {
+            throw new AuthorizationError('Only customers can confirm orders');
         }
 
-        res.json({
+        const customerId = req.user.user_id;
+        const { orderId } = req.params;
+
+        const order = await orderService.confirmOrder(customerId, orderId);
+
+        res.status(200).json({
             success: true,
             data: order,
+            message: 'Order confirmed successfully',
         });
     } catch (error) {
         next(error);
     }
 };
 
-exports.updateOrderStatus = async (req, res, next) => {
+exports.getCustomerOrders = async (req, res, next) => {
     try {
-        const { id } = req.params;
-        const { status } = req.body;
+        if (req.user.role !== 'customer') {
+            throw new AuthorizationError('Only customers can view their orders');
+        }
 
-        const order = await orderService.updateOrderStatus(id, status);
+        const customerId = req.user.user_id;
+        const result = await orderService.getCustomerOrders(customerId, req.query);
 
-        res.json({
+        res.status(200).json({
             success: true,
-            data: order,
-            message: 'Order status updated successfully',
+            data: result,
+            message: 'Orders fetched successfully',
         });
     } catch (error) {
         next(error);
     }
 };
 
-exports.cancelOrder = async (req, res, next) => {
+exports.getOrderTracking = async (req, res, next) => {
     try {
-        const { id } = req.params;
-        await orderService.cancelOrder(id);
+        if (req.user.role !== 'customer') {
+            throw new AuthorizationError('Only customers can view order tracking');
+        }
 
-        res.status(204).send();
+        const customerId = req.user.user_id;
+        const { orderId } = req.params;
+
+        const data = await orderService.getOrderTrackingForCustomer({ customerId, orderId });
+
+        res.status(200).json({
+            success: true,
+            data,
+            message: 'Order tracking fetched successfully',
+        });
     } catch (error) {
         next(error);
     }
 };
-
-module.exports = exports;
-

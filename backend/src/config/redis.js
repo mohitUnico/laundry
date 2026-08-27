@@ -20,11 +20,22 @@ const BASE_OPTIONS = {
     lazyConnect: false,
 };
 
-function createRedisClient(maxRetriesPerRequest) {
-    const redisUrl = process.env.REDIS_URL;
-    if (!redisUrl) {
-        throw new Error('REDIS_URL environment variable is required (e.g. Redis Cloud connection string)');
+const DEFAULT_LOCAL_REDIS_URL = 'redis://127.0.0.1:6379';
+
+function resolveRedisUrl() {
+    if (process.env.REDIS_URL) {
+        return process.env.REDIS_URL;
     }
+    if (process.env.NODE_ENV === 'production') {
+        throw new Error(
+            'REDIS_URL is required in production (e.g. redis://host:6379 or Redis Cloud URL)'
+        );
+    }
+    return DEFAULT_LOCAL_REDIS_URL;
+}
+
+function createRedisClient(maxRetriesPerRequest) {
+    const redisUrl = resolveRedisUrl();
     const client = new Redis(redisUrl, { ...BASE_OPTIONS, maxRetriesPerRequest });
     client.on('connect', () => logger.info('Redis connected', { component: 'redis' }));
     client.on('ready', () => logger.info('Redis ready', { component: 'redis' }));

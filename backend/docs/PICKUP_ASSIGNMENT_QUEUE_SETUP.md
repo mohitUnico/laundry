@@ -1,16 +1,16 @@
 # Pickup Assignment Queue Setup Guide
 
-This guide explains how to set up and use the **delayed job queue** system for automatic pickup assignment, replacing the polling-based approach.
+This guide explains how to set up and use the **delayed job queue** system for automatic pickup assignment.
 
 ## Overview
 
-The queue-based pickup assignment system uses **BullMQ** (job queue) with **Redis Cloud** to schedule pickup assignment jobs that run at the exact `pickup_time_from` time for each order. This eliminates the need for periodic database polling.
+The queue-based pickup assignment system uses **BullMQ** (job queue) with **Redis Cloud** to schedule pickup assignment jobs that run at the exact `pickup_time_from` time for each order.
 
 ## Architecture
 
 1. **Order Creation/Update**: When an order is created or confirmed with `pickup_time_from`, a delayed job is scheduled in Redis
 2. **Worker Process**: A BullMQ worker listens for jobs and processes them when their scheduled time arrives
-3. **Assignment**: The worker calls the same `createAssignmentRequest` logic used by the polling job (SSE broadcast + FCM to delivery staff)
+3. **Assignment**: The worker calls `createAssignmentRequest` (SSE broadcast + FCM to delivery staff)
 
 ## Prerequisites
 
@@ -70,17 +70,12 @@ Add to `backend/.env`:
 # Enable queue-based pickup assignment
 PICKUP_ASSIGNMENT_USE_QUEUE=true
 
-# Redis Cloud connection string (Option A)
-# REDIS_URL=redis://default:your-password@redis-xxxxx.redis.cloud:xxxxx
-
-# OR Redis on EC2 connection string (Option B - Recommended)
-REDIS_URL=redis://:your-password@localhost:6379
+REDIS_URL=redis://default:your-password@redis-xxxxx.redis.cloud:xxxxx
 ```
 
 **Important**: 
 - Set `PICKUP_ASSIGNMENT_USE_QUEUE=true` to enable queue-based assignment
-- When queue mode is enabled, the polling job (`startPickupAssignmentJob`) is automatically disabled
-- The webhook mode (`USE_WEBHOOK_PICKUP_ASSIGNMENT`) can coexist but is not needed
+- Queue mode is the only supported automatic scheduler mode
 
 ### 4. Start the Application
 
@@ -117,7 +112,7 @@ Redis ready
    - Order status is `placed`
    - No pending pickup assignment request
    - No assigned pickup delivery
-4. If eligible, calls `createAssignmentRequest()` (same logic as polling job)
+4. If eligible, calls `createAssignmentRequest()` to notify delivery staff
 5. SSE events and FCM notifications are sent to delivery staff
 
 ### Order Update Flow
@@ -225,30 +220,6 @@ Monitor in Redis Cloud dashboard:
 **Solutions**:
 1. **Catch-up job** (already enabled) will re-queue missed orders within 5 minutes
 2. Upgrade to Redis Cloud paid plan with persistence if needed
-
-## Comparison: Queue vs Polling vs Webhook
-
-| Feature | Queue-Based | Polling | Webhook |
-|---------|-------------|---------|---------|
-| **Latency** | Exact (runs at pickup_time_from) | Up to interval delay (e.g., 10 min) | Up to cron interval (e.g., 5 min) |
-| **Database Load** | Low (only when job runs) | High (periodic scans) | Medium (periodic scans) |
-| **Scalability** | Excellent (distributed workers) | Limited (single process) | Good (DB-level) |
-| **Infrastructure** | Requires Redis | None | Requires pg_cron + DB triggers |
-| **Reliability** | High (persistent jobs, retries) | Medium (lost on restart) | High (DB-level) |
-| **Setup Complexity** | Medium | Low | High |
-
-## Migration from Polling
-
-To migrate from polling to queue-based:
-
-1. Set up Redis Cloud (steps above)
-2. Add `PICKUP_ASSIGNMENT_USE_QUEUE=true` to `.env`
-3. Restart application
-4. Monitor logs to ensure worker starts
-5. Test with a test order (set `pickup_time_from` 1-2 minutes in future)
-6. Verify job runs at scheduled time
-
-**Note**: Existing polling job is automatically disabled when `PICKUP_ASSIGNMENT_USE_QUEUE=true`
 
 ## Catch-Up Job (Safety Net)
 

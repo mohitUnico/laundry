@@ -1,21 +1,20 @@
-// Jest setup file
-// Add global test setup here
+// Jest setup — CommonJS so Jest loads without ESM transform
+const path = require('path');
+const fs = require('fs');
+const dotenv = require('dotenv');
 
-import { config } from 'dotenv'
-
-// Load test environment variables
-config({ path: '.env.test' })
-
-// Global test timeout
-jest.setTimeout(10000)
-
-// Mock console methods in tests to reduce noise
-global.console = {
-    ...console,
-    error: jest.fn(),
-    warn: jest.fn(),
-    log: jest.fn(),
-    info: jest.fn(),
-    debug: jest.fn(),
+const envTestPath = path.join(__dirname, '..', '.env.test');
+if (fs.existsSync(envTestPath)) {
+    dotenv.config({ path: envTestPath });
 }
 
+jest.setTimeout(10000);
+
+afterAll(async () => {
+    try {
+        const prisma = require('../src/config/database');
+        await prisma.$disconnect();
+    } catch {
+        // ignore
+    }
+});

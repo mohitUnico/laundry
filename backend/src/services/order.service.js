@@ -47,7 +47,7 @@ exports.createOrder = async (customerId, payload) => {
 
     // Interactive transaction default timeout can be too low for complex order creation (P2028).
     // Increase timeout to avoid Prisma closing the transaction mid-operation.
-    return prisma.$transaction(
+    const result = await prisma.$transaction(
         async (tx) => {
             // Validate customer exists
             const customer = await tx.customer.findUnique({

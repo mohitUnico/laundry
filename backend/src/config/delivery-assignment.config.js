@@ -133,7 +133,7 @@ const deliveryAssignmentConfig = {
      */
     defaultExpirySeconds: parseEnvInt('DELIVERY_ASSIGNMENT_DEFAULT_EXPIRY_SECONDS', 120, 30, 3600),
 
-    // ==================== JOB CONFIGURATION ====================
+    // ==================== SCHEDULER SUPPORT ====================
     /**
      * Batch size for processing orders in pickup assignment job
      * Environment: PICKUP_ASSIGNMENT_BATCH_SIZE
@@ -142,13 +142,6 @@ const deliveryAssignmentConfig = {
      */
     pickupAssignmentBatchSize: parseEnvInt('PICKUP_ASSIGNMENT_BATCH_SIZE', 50, 1, 200),
 
-    /**
-     * Job run interval in milliseconds
-     * Environment: PICKUP_ASSIGNMENT_JOB_INTERVAL_MS
-     * Default: 600000 (10 minutes)
-     * Min: 10000, Max: 600000
-     */
-    pickupAssignmentJobIntervalMs: parseEnvInt('PICKUP_ASSIGNMENT_JOB_INTERVAL_MS', 600000, 10000, 600000),
 };
 
 /**
@@ -161,7 +154,6 @@ function getPickupAssignmentConfig() {
         maxStaffLimit: deliveryAssignmentConfig.pickupAssignmentMaxStaffLimit,
         expirySeconds: deliveryAssignmentConfig.pickupAssignmentExpirySeconds,
         batchSize: deliveryAssignmentConfig.pickupAssignmentBatchSize,
-        jobIntervalMs: deliveryAssignmentConfig.pickupAssignmentJobIntervalMs,
     };
 }
 

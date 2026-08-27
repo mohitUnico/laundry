@@ -28,17 +28,9 @@ const validateUuidParam = (paramName) => {
  *
  * Endpoints:
  * - GET  /api/v1/admin/delivery-ops/nearby-staff
- * - GET  /api/v1/admin/delivery-ops/pickup-assignment-status (debug)
  * - POST /api/v1/admin/delivery-ops/assignment-requests
  * - POST /api/v1/admin/delivery-ops/assignment-requests/:requestId/cancel
  */
-
-router.get(
-    '/pickup-assignment-status',
-    authenticateJWT,
-    authorize('super_admin', 'owner', 'admin', 'manager'),
-    deliveryOperationsController.getPickupAssignmentStatus
-);
 
 router.get(
     '/nearby-staff',

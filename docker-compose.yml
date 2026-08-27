@@ -1,7 +1,11 @@
+# Uses Supabase as database (DATABASE_URL from backend/.env)
+# Optional: run with --profile local-db to use local Postgres instead
 services:
   postgres:
     image: postgres:14-alpine
     container_name: laundry-db
+    profiles:
+      - local-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: "laundry_user"
@@ -19,6 +23,23 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: laundry-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    command: [ "redis-server", "--appendonly", "yes" ]
+    networks:
+      - laundry-network
+    healthcheck:
+      test: [ 'CMD', 'redis-cli', 'ping' ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build:
       context: ./backend
@@ -28,16 +49,22 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      NODE_ENV: production
+      # development: verbose logs, dev CORS behavior (see app.js)
+      NODE_ENV: development
       PORT: 3000
-      DATABASE_URL: postgresql://laundry_user:laundry_pass@postgres:5432/laundry_db?schema=public
+      LOG_LEVEL: debug
+      PICKUP_ASSIGNMENT_USE_QUEUE: "true"
+      REDIS_URL: redis://redis:6379
     ports:
-      - '3000:3000'
+      # Host 3001 → container 3000 (use 3001 if host 3000 is already taken by local npm run dev)
+      - '3001:3000'
     volumes:
+      # Mount host .env so /app/.env exists for dotenv (env_file alone can mis-parse or set empty DATABASE_URL on Windows)
+      - ./backend/.env:/app/.env:ro
       - ./backend/logs:/app/logs
       - ./backend/uploads:/app/uploads
     depends_on:
-      postgres:
+      redis:
         condition: service_healthy
     networks:
       - laundry-network
@@ -63,6 +90,8 @@ services:
 
 volumes:
   postgres_data:
+    driver: local
+  redis_data:
     driver: local
 
 networks:

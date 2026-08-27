@@ -17,7 +17,17 @@ class EnvManager extends EventEmitter {
     }
 
     load() {
-        const result = dotenv.config({ path: this.envPath, override: true });
+        // Docker Compose env_file can set vars to "" (empty string). With override:false, dotenv
+        // would not replace them; remove empty critical keys so .env on disk can populate.
+        const clearIfEmpty = ['DATABASE_URL', 'DIRECT_URL', 'REDIS_URL'];
+        for (const key of clearIfEmpty) {
+            if (process.env[key] !== undefined && String(process.env[key]).trim() === '') {
+                delete process.env[key];
+            }
+        }
+
+        // false: do not overwrite vars already set by Docker/K8s; file fills missing keys only.
+        const result = dotenv.config({ path: this.envPath, override: false });
 
         if (result.error) {
             if (result.error.code !== 'ENOENT') {
@@ -46,6 +56,15 @@ class EnvManager extends EventEmitter {
     }
 
     watch() {
+        const isTestRun =
+            process.env.NODE_ENV === 'test' ||
+            process.env.npm_lifecycle_event === 'test' ||
+            typeof process.env.JEST_WORKER_ID !== 'undefined' ||
+            process.argv.some((a) => /jest(?:\.cmd)?$/i.test(a) || a === 'jest');
+        if (isTestRun) {
+            return;
+        }
+
         if (this.isWatching) {
             return;
         }

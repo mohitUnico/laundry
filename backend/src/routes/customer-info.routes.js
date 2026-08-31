@@ -70,7 +70,7 @@ router.patch(
 );
 
 // POST /api/v1/customer-info/profile-image/upload
-// Upload profile image to Supabase Storage and save the public URL in DB
+// Upload profile image to Cloudinary and save the public URL in DB
 // multipart/form-data with field name: file
 router.post(
     '/profile-image/upload',

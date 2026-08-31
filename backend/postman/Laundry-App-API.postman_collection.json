@@ -1207,7 +1207,7 @@
                 "config"
               ]
             },
-            "description": "Returns `{ success, data: { supabase: { url, anonKey } | null } }`.",
+            "description": "Returns `{ success, data: { polling: { ordersIntervalMs, couponsIntervalMs, trackingIntervalMs, deliveryHomeIntervalMs } } }`.",
             "auth": {
               "type": "noauth"
             }

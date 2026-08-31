@@ -10,7 +10,7 @@
  */
 
 // IMPORTANT: Use the shared Prisma client from config/database.
-// Creating multiple PrismaClient instances can exhaust the DB pool (especially with Supabase connection_limit=3)
+// Creating multiple PrismaClient instances can exhaust the DB connection pool.
 // and cause P2024 timeouts under normal app polling.
 const prisma = require('../config/database');
 const logger = require('../utils/logger');

@@ -3,7 +3,7 @@ const logger = require('../utils/logger');
 /**
  * Very small in-memory SSE hub.
  * - Works without extra dependencies.
- * - In multi-instance deployments, replace with Redis/pubsub or Supabase Realtime.
+ * - In multi-instance deployments, replace with Redis/pubsub.
  */
 class RealtimeService {
     constructor() {

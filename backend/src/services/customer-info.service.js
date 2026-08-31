@@ -1,7 +1,7 @@
 const prisma = require('../config/database');
 const logger = require('../utils/logger');
 const { NotFoundError, ValidationError, AppError } = require('../utils/errors');
-const { getSupabaseClient } = require('../config/supabase');
+const { uploadBuffer } = require('./cloudinary-upload.service');
 const { v4: uuidv4 } = require('uuid');
 
 const UUID_REGEX =
@@ -210,33 +210,11 @@ exports.uploadCustomerProfileImage = async (customerId, file) => {
         throw new ValidationError('Only JPEG, PNG, or WEBP images are allowed');
     }
 
-    // Default bucket for customer profile images.
-    // Can be overridden via SUPABASE_CUSTOMER_PROFILE_BUCKET env var.
-    const bucket = process.env.SUPABASE_CUSTOMER_PROFILE_BUCKET || 'customer-info';
-    const ext = file.mimetype === 'image/jpeg' ? 'jpg' : file.mimetype === 'image/png' ? 'png' : 'webp';
-    const objectPath = `customers/${customerId}/${uuidv4()}.${ext}`;
-
-    const supabase = getSupabaseClient();
-
-    // Upload to Supabase Storage
-    const { error: uploadError } = await supabase.storage.from(bucket).upload(objectPath, file.buffer, {
-        contentType: file.mimetype,
-        upsert: true,
-        cacheControl: '3600',
+    const publicUrl = await uploadBuffer({
+        buffer: file.buffer,
+        folder: `customers/${customerId}`,
+        mimetype: file.mimetype,
     });
-
-    if (uploadError) {
-        logger.error('Supabase upload failed', { error: uploadError.message, bucket, objectPath });
-        throw new AppError('Failed to upload image', 500);
-    }
-
-    const { data: publicUrlData } = supabase.storage.from(bucket).getPublicUrl(objectPath);
-    const publicUrl = publicUrlData?.publicUrl;
-
-    if (!publicUrl) {
-        logger.error('Supabase getPublicUrl returned empty url', { bucket, objectPath });
-        throw new AppError('Failed to resolve image URL', 500);
-    }
 
     return prisma.$transaction(async (tx) => {
         await ensureCustomerExists(tx, customerId);
@@ -258,8 +236,6 @@ exports.uploadCustomerProfileImage = async (customerId, file) => {
 
         logger.info('Customer profile image uploaded', {
             customerId,
-            bucket,
-            objectPath,
         });
 
         return updated;

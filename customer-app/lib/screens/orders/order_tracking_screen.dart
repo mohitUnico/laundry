@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../theme/app_text_styles.dart';
 import '../home/widgets/home_colors.dart';
@@ -10,7 +9,7 @@ import '../../routes/app_routes.dart';
 import '../../routes/route_args.dart';
 import '../../services/order_tracking_service.dart';
 import '../../services/google_directions_service.dart';
-import '../../utils/supabase_config.dart';
+import '../../utils/polling_config.dart';
 
 class OrderTrackingScreen extends StatefulWidget {
   const OrderTrackingScreen({super.key});
@@ -26,8 +25,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   String _orderType = 'both';
 
   String? _orderId;
-  RealtimeChannel? _orderChannel;
-  RealtimeChannel? _driverChannel;
+  Timer? _trackingPollTimer;
 
   final _trackingService = OrderTrackingService();
   final _directionsService = GoogleDirectionsService();
@@ -49,7 +47,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Read orderId from route arguments once and subscribe to realtime updates.
+    // Read orderId from route arguments once and start polling.
     if (_orderId == null) {
       final args = ModalRoute.of(context)?.settings.arguments;
       if (args is OrderTrackingArgs) {
@@ -62,86 +60,62 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           _orderType = args.orderType!.trim();
         }
 
-        _subscribeToOrderRealtime();
+        _startPolling();
         _loadTracking();
       }
     }
   }
 
+  void _startPolling() {
+    _trackingPollTimer?.cancel();
+    _trackingPollTimer = Timer.periodic(PollingConfig.orderTracking, (_) {
+      _pollTracking(silent: true);
+    });
+  }
+
+  void _stopPolling() {
+    _trackingPollTimer?.cancel();
+    _trackingPollTimer = null;
+  }
+
   @override
   void dispose() {
-    _orderChannel?.unsubscribe();
-    _driverChannel?.unsubscribe();
+    _stopPolling();
     _routeDebounce?.cancel();
     super.dispose();
   }
 
-  void _subscribeToOrderRealtime() {
-    if (!SupabaseConfig.isEnabled) return;
+  Future<void> _pollTracking({bool silent = false}) async {
     final id = _orderId;
     if (id == null || id.isEmpty) return;
 
     try {
-      final client = Supabase.instance.client;
-      _orderChannel = client
-          .channel('orders:track:$id')
-          .onPostgresChanges(
-            event: PostgresChangeEvent.update,
-            schema: 'public',
-            table: 'orders',
-            callback: (payload) {
-              // Ignore updates for other orders if the channel receives them.
-              final updatedId = payload.newRecord['order_id'] as String?;
-              if (updatedId == null || updatedId != id) return;
+      final data = await _trackingService.getOrderTracking(orderId: id);
+      if (!mounted) return;
 
-              final newStatus = payload.newRecord['order_status'] as String?;
-              if (newStatus == null || newStatus.isEmpty) return;
-              if (!mounted) return;
-              
-              final oldStatus = _backendStatus?.toLowerCase().trim() ?? '';
-              final statusLower = newStatus.toLowerCase().trim();
-              
-              // Update status in UI directly from realtime (no API call needed)
-              // This reduces egress requests by avoiding polling
-              final mappedIndex = _mapStatusToStepIndex(newStatus, _orderType);
-              setState(() {
-                _activeIndex = mappedIndex;
-                _backendStatus = newStatus;
-                // Update tracking data status if it exists (in-place update, no API call)
-                if (_tracking != null) {
-                  _tracking = OrderTrackingData(
-                    orderId: _tracking!.orderId,
-                    orderStatus: newStatus,
-                    orderType: _tracking!.orderType,
-                    shopName: _tracking!.shopName,
-                    shop: _tracking!.shop,
-                    pickup: _tracking!.pickup,
-                    delivery: _tracking!.delivery,
-                    pickupLeg: _tracking!.pickupLeg,
-                    dropLeg: _tracking!.dropLeg,
-                  );
-                }
-              });
-              
-              // Only fetch full tracking data when driver is first assigned
-              // This is necessary to get delivery leg info and staff details for map tracking
-              final driverJustAssigned = (statusLower == 'pickup_assigned' || statusLower == 'dispatch_assigned') &&
-                  oldStatus != 'pickup_assigned' && oldStatus != 'dispatch_assigned';
-              
-              if (driverJustAssigned) {
-                // Only fetch when we need delivery leg info (driver assignment)
-                // This is the only case where we need to make an API call
-                _loadTracking();
-              } else if (_tracking != null) {
-                // For other status updates, just update driver location subscription if needed
-                // No API call - just refresh driver realtime subscription
-                _subscribeToDriverRealtime();
-              }
-            },
-          )
-          .subscribe();
-    } catch (_) {
-      // Ignore realtime errors; UI will still work with initial data.
+      final leg = _activeLeg(data);
+      final staff = leg?.staff;
+      LatLng? nextDriver;
+      if (staff?.latitude != null && staff?.longitude != null) {
+        nextDriver = LatLng(staff!.latitude!, staff.longitude!);
+      }
+
+      setState(() {
+        _tracking = data;
+        _orderType = data.orderType;
+        _backendStatus = data.orderStatus;
+        _activeIndex = _mapStatusToStepIndex(data.orderStatus, data.orderType);
+        if (!silent) _isLoading = false;
+        if (nextDriver != null) _driverLatLng = nextDriver;
+      });
+
+      await _refreshRoute();
+    } catch (e) {
+      if (!mounted || silent) return;
+      setState(() {
+        _error = e.toString().replaceFirst('Exception: ', '').trim();
+        _isLoading = false;
+      });
     }
   }
 
@@ -154,27 +128,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       _error = null;
     });
 
-    try {
-      final data = await _trackingService.getOrderTracking(orderId: id);
-      if (!mounted) return;
-
-      setState(() {
-        _tracking = data;
-        _orderType = data.orderType;
-        _backendStatus = data.orderStatus;
-        _activeIndex = _mapStatusToStepIndex(data.orderStatus, data.orderType);
-        _isLoading = false;
-      });
-
-      _subscribeToDriverRealtime();
-      await _refreshRoute();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '').trim();
-        _isLoading = false;
-      });
-    }
+    await _pollTracking(silent: false);
   }
 
   OrderTrackingDeliveryLeg? _activeLeg(OrderTrackingData data) {
@@ -189,57 +143,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
 
     if (isDropPhase) return data.dropLeg ?? data.pickupLeg;
     return data.pickupLeg ?? data.dropLeg;
-  }
-
-  void _subscribeToDriverRealtime() {
-    if (!SupabaseConfig.isEnabled) return;
-    final t = _tracking;
-    if (t == null) return;
-
-    final leg = _activeLeg(t);
-    final staffId = leg?.staffId;
-    if (staffId == null || staffId.isEmpty) return;
-
-    // Seed with current position if available (from tracking API).
-    final staff = leg?.staff;
-    if (staff?.latitude != null && staff?.longitude != null) {
-      _driverLatLng = LatLng(staff!.latitude!, staff.longitude!);
-    }
-
-    try {
-      final client = Supabase.instance.client;
-      _driverChannel?.unsubscribe();
-      _driverChannel = client
-          .channel('delivery_staffs:track:$staffId')
-          .onPostgresChanges(
-            event: PostgresChangeEvent.update,
-            schema: 'public',
-            table: 'delivery_staffs',
-            callback: (payload) {
-              final updatedId = payload.newRecord['staff_id'] as String?;
-              if (updatedId == null || updatedId != staffId) return;
-
-              double? toDouble(dynamic v) {
-                if (v == null) return null;
-                if (v is num) return v.toDouble();
-                if (v is String) return double.tryParse(v);
-                return null;
-              }
-
-              final lat = toDouble(payload.newRecord['current_latitude']);
-              final lng = toDouble(payload.newRecord['current_longitude']);
-              if (lat == null || lng == null) return;
-              if (!mounted) return;
-              setState(() {
-                _driverLatLng = LatLng(lat, lng);
-              });
-              _scheduleRouteRefresh();
-            },
-          )
-          .subscribe();
-    } catch (_) {
-      // ignore realtime errors (map will still show static markers)
-    }
   }
 
   void _scheduleRouteRefresh() {

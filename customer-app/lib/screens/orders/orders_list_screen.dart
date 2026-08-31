@@ -1,7 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../home/widgets/home_colors.dart';
 import '../../theme/app_text_styles.dart';
@@ -12,7 +13,7 @@ import 'order_invoice_screen.dart';
 import '../../utils/pricing.dart';
 import '../../routes/app_routes.dart';
 import '../../routes/route_args.dart';
-import '../../utils/supabase_config.dart';
+import '../../utils/polling_config.dart';
 import '../cart/delivery_options_screen.dart';
 import '../cart/schedule_date_time_screen.dart';
 
@@ -33,7 +34,7 @@ class OrdersListScreen extends StatefulWidget {
 class _OrdersListScreenState extends State<OrdersListScreen>
     with WidgetsBindingObserver {
   _OrdersFilter _filter = _OrdersFilter.all;
-  RealtimeChannel? _ordersChannel;
+  Timer? _ordersPollTimer;
 
   @override
   void initState() {
@@ -42,60 +43,41 @@ class _OrdersListScreenState extends State<OrdersListScreen>
     // Fetch orders from backend when screen loads
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _fetchOrders();
-      _subscribeToOrdersRealtime();
+      _startPolling();
     });
+  }
+
+  void _startPolling() {
+    _ordersPollTimer?.cancel();
+    _ordersPollTimer = Timer.periodic(PollingConfig.orders, (_) {
+      if (mounted) _fetchOrders();
+    });
+  }
+
+  void _stopPolling() {
+    _ordersPollTimer?.cancel();
+    _ordersPollTimer = null;
   }
 
   @override
   void dispose() {
-    _ordersChannel?.unsubscribe();
+    _stopPolling();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
-  }
-
-  void _subscribeToOrdersRealtime() {
-    if (!SupabaseConfig.isEnabled) return;
-
-    try {
-      final client = Supabase.instance.client;
-      _ordersChannel = client
-          .channel('orders_list:orders')
-          .onPostgresChanges(
-            event: PostgresChangeEvent.all,
-            schema: 'public',
-            table: 'orders',
-            callback: (payload) {
-              if (!mounted) return;
-              final eventType = payload.eventType.name;
-              final newRow =
-                  (payload.newRecord as Map?)?.cast<String, dynamic>();
-              final oldRow =
-                  (payload.oldRecord as Map?)?.cast<String, dynamic>();
-              context.read<OrderProvider>().applyOrdersRealtimeChange(
-                    eventType: eventType,
-                    newRow: newRow,
-                    oldRow: oldRow,
-                  );
-            },
-          )
-          .subscribe();
-    } catch (_) {
-      // Ignore; rely on manual refresh
-    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    // Refresh orders when app comes back to foreground
-    // This ensures orders are up-to-date after returning from notification panel or background
     if (state == AppLifecycleState.resumed && mounted) {
-      // Add a small delay to ensure app is fully resumed
       Future.delayed(const Duration(milliseconds: 300), () {
         if (mounted) {
           _fetchOrders();
+          _startPolling();
         }
       });
+    } else if (state == AppLifecycleState.paused) {
+      _stopPolling();
     }
   }
 

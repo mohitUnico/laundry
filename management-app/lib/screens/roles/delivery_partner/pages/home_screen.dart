@@ -5,18 +5,16 @@ import 'package:geolocator/geolocator.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../theme/app_colors.dart';
 import '../../../../theme/app_text_styles.dart';
 import '../../../../routes/app_routes.dart';
 import '../../../../services/delivery_shift_service.dart';
 import '../../../../services/delivery_staff_app_service.dart';
-import '../../../../services/delivery_location_service.dart';
 import '../../../../services/delivery_events_service.dart';
 import '../../../../services/notification_service.dart';
 import '../../../../utils/auth_storage.dart';
 import '../../../../utils/date_time_ist.dart';
-import '../../../../utils/supabase_config.dart';
+import '../../../../utils/polling_config.dart';
 import '../../../common/widgets/order_summary_card.dart';
 import '../../../common/widgets/task_card.dart';
 import '../../../common/widgets/bottom_nav_bar.dart';
@@ -42,13 +40,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final ImagePicker _imagePicker = ImagePicker();
   final DeliveryShiftService _shiftService = DeliveryShiftService();
   final DeliveryStaffAppService _deliveryStaffAppService = DeliveryStaffAppService();
-  final DeliveryLocationService _locationService = DeliveryLocationService();
   final DeliveryEventsService _eventsService = DeliveryEventsService();
 
   bool _isShiftActive = false; // Driven by GET /delivery-staff/shift/status; default Start Shift
   bool _isShiftToggling = false;
   bool _shiftStatusLoaded = false; // true after first shift status fetch
-  String? _currentShiftId; // Track active shift ID for Supabase location inserts
+  String? _currentShiftId;
   Future<Map<String, dynamic>?> _userFuture = _loadStoredUser();
   Future<_HomeStatsUi> _statsFuture = Future.value(const _HomeStatsUi(inProgress: 0, completed: 0));
   Future<List<_AcceptedTaskUi>> _acceptedFuture = Future.value(const <_AcceptedTaskUi>[]);
@@ -67,14 +64,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final List<Map<String, dynamic>> _pendingAssignmentRequests = [];
   final Set<String> _processingRequestIds = {};
   PageController? _requestPageController;
+  Timer? _homePollTimer;
   Timer? _refreshDebounce;
-  DateTime? _lastRealtimeEventAt;
   Position? _lastPosition;
   DateTime? _lastPositionAt;
   Position? _lastSentPosition;
   DateTime? _lastSentAt;
-  RealtimeChannel? _deliveriesChannel;
-  RealtimeChannel? _ordersChannel;
 
   bool _isFirstBuild = true;
 
@@ -123,7 +118,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     // Register FCM token so backend can send assignment request push when app is closed
     NotificationService().refreshAndSaveToken();
-    // Fetch shift status and then start location/events/realtime if shift is active
+    // Fetch shift status and then start location/events/polling if shift is active
     _loadShiftStatus();
   }
 
@@ -147,7 +142,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (_isShiftActive) {
         _startLiveLocation();
         _startEvents();
-        _subscribeToRealtime();
+        _startHomePolling();
       }
     } catch (_) {
       if (!mounted) return;
@@ -179,7 +174,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _expiryTimer?.cancel();
     _stopLiveLocation();
     _stopEvents();
-    _unsubscribeFromRealtime();
+    _stopHomePolling();
     _refreshDebounce?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _removeIncomingPopup();
@@ -190,15 +185,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && _isShiftActive) {
-      // Only refresh if we haven't received realtime updates recently
-      // This avoids unnecessary API calls when realtime is working
-      final lastEvent = _lastRealtimeEventAt;
-      if (lastEvent == null || DateTime.now().difference(lastEvent).inSeconds > 30) {
-        _refreshHomeData();
-      }
-      _startEvents(); // if stream died in background, ensure reconnect
-      _startLiveLocation(); // ensure continuous DB updates after background
-      _subscribeToRealtime(); // ensure realtime subscriptions are active
+      _refreshHomeData();
+      _startEvents();
+      _startLiveLocation();
+      _startHomePolling();
+    } else if (state == AppLifecycleState.paused) {
+      _stopHomePolling();
     }
   }
 
@@ -235,13 +227,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _scheduleHomeRefresh({bool forceApiCall = false}) {
-    _lastRealtimeEventAt = DateTime.now();
     _refreshDebounce?.cancel();
-    // Only make API calls when forceApiCall is true (e.g., new assignment needs full data)
-    // Otherwise, rely on Supabase realtime to update UI directly
     if (forceApiCall) {
       _refreshDebounce = Timer(const Duration(milliseconds: 400), _refreshHomeData);
     }
+  }
+
+  void _startHomePolling() {
+    _homePollTimer?.cancel();
+    if (!_isShiftActive) return;
+    _homePollTimer = Timer.periodic(PollingConfig.deliveryHome, (_) {
+      if (mounted && _isShiftActive) _refreshHomeData();
+    });
+  }
+
+  void _stopHomePolling() {
+    _homePollTimer?.cancel();
+    _homePollTimer = null;
   }
 
   Future<void> _refreshStatsInPlace() async {
@@ -375,17 +377,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ? cached
           : await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
 
-      // Push latest position to backend immediately (in addition to periodic updates).
-      final user = await _userFuture;
-      final staffId = (user?['userId'] ?? '').toString().trim();
-      if (staffId.isNotEmpty) {
-        await _locationService.updateLocation(
-          staffId: staffId,
-          shiftId: _currentShiftId,
+      await _deliveryStaffAppService.updateLiveLocation(
           latitude: pos.latitude,
           longitude: pos.longitude,
         );
-      }
       _lastPosition = pos;
       _lastPositionAt = DateTime.now();
 
@@ -519,8 +514,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     _eventsSub = _eventsService.connect().listen(
       (evt) {
-        _lastRealtimeEventAt = DateTime.now();
-
         // Known events from backend SSE:
         // - connected
         // - notification (type: assignment_request, direct_assignment, assignment_cancelled, ...)
@@ -587,10 +580,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             );
           }
-          final lastEvent = _lastRealtimeEventAt;
-          if (lastEvent == null || DateTime.now().difference(lastEvent).inSeconds > 30) {
-            _scheduleHomeRefresh(forceApiCall: true);
-          }
+          _scheduleHomeRefresh(forceApiCall: true);
         }
       },
       onError: (_) async {
@@ -629,191 +619,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _eventsSub?.cancel();
     _eventsSub = null;
     _eventsConnecting = false;
-  }
-
-  void _subscribeToRealtime() {
-    if (!SupabaseConfig.isEnabled) return;
-
-    try {
-      final client = Supabase.instance.client;
-      final user = _userFuture;
-      
-      // Subscribe to deliveries table changes for this delivery partner
-      user.then((u) async {
-        if (u == null || !mounted) return;
-        final staffId = (u['userId'] ?? '').toString().trim();
-        if (staffId.isEmpty) return;
-
-        // Subscribe to deliveries where this staff is assigned
-        _deliveriesChannel = client
-            .channel('delivery_partner:deliveries:$staffId')
-            .onPostgresChanges(
-              event: PostgresChangeEvent.all,
-              schema: 'public',
-              table: 'deliveries',
-              callback: (payload) {
-                if (!mounted) return;
-                _lastRealtimeEventAt = DateTime.now();
-                
-                final eventType = payload.eventType.name.toLowerCase();
-                final newRow = (payload.newRecord as Map?)?.cast<String, dynamic>();
-                final oldRow = (payload.oldRecord as Map?)?.cast<String, dynamic>();
-                
-                // Update UI directly from realtime payload (no API call)
-                _applyDeliveryRealtimeChange(
-                  eventType: eventType,
-                  newRow: newRow,
-                  oldRow: oldRow,
-                  staffId: staffId,
-                );
-              },
-            )
-            .subscribe();
-
-        // Subscribe to orders table changes (for order status updates)
-        _ordersChannel = client
-            .channel('delivery_partner:orders:$staffId')
-            .onPostgresChanges(
-              event: PostgresChangeEvent.update,
-              schema: 'public',
-              table: 'orders',
-              callback: (payload) {
-                if (!mounted) return;
-                _lastRealtimeEventAt = DateTime.now();
-                
-                final newRow = (payload.newRecord as Map?)?.cast<String, dynamic>();
-                if (newRow == null) return;
-                
-                // Update order status in accepted tasks list directly
-                _applyOrderRealtimeChange(newRow: newRow);
-              },
-            )
-            .subscribe();
-      }).catchError((_) {
-        // Ignore errors - app will work without realtime
-      });
-    } catch (_) {
-      // Ignore errors - app will work without realtime
-    }
-  }
-
-  void _unsubscribeFromRealtime() {
-    _deliveriesChannel?.unsubscribe();
-    _deliveriesChannel = null;
-    _ordersChannel?.unsubscribe();
-    _ordersChannel = null;
-  }
-
-  void _applyDeliveryRealtimeChange({
-    required String eventType,
-    required Map<String, dynamic>? newRow,
-    required Map<String, dynamic>? oldRow,
-    required String staffId,
-  }) {
-    if (eventType == 'delete') {
-      // Remove delivery from accepted tasks
-      final deliveryId = _readString(oldRow, 'delivery_id');
-      if (deliveryId.isNotEmpty) {
-        setState(() {
-          _acceptedCache = _acceptedCache.where((t) => t.deliveryId != deliveryId).toList();
-          // Update stats - decrement inProgress
-          if (_statsCache.inProgress > 0) {
-            _statsCache = _HomeStatsUi(
-              inProgress: _statsCache.inProgress - 1,
-              completed: _statsCache.completed,
-            );
-          }
-        });
-      }
-      return;
-    }
-
-    // INSERT / UPDATE
-    final row = newRow ?? const <String, dynamic>{};
-    if (row.isEmpty) return;
-
-    final deliveryId = _readString(row, 'delivery_id');
-    final assignedStaffId = _readString(row, 'staff_id');
-    
-    // Only process if this delivery is assigned to current staff
-    if (deliveryId.isEmpty || assignedStaffId != staffId) return;
-
-    final deliveryStatus = _readString(row, 'delivery_status');
-    final orderId = _readString(row, 'order_id');
-    
-    // Update existing task in accepted list
-    final existingIndex = _acceptedCache.indexWhere((t) => t.deliveryId == deliveryId);
-    if (existingIndex >= 0) {
-      // Update existing task
-      final existing = _acceptedCache[existingIndex];
-      setState(() {
-        _acceptedCache[existingIndex] = _AcceptedTaskUi(
-          deliveryId: deliveryId,
-          orderId: orderId.isNotEmpty ? orderId : existing.orderId,
-          taskType: existing.taskType,
-          scheduledTime: existing.scheduledTime,
-          customerName: existing.customerName,
-          phoneNumber: existing.phoneNumber,
-          address: existing.address,
-          itemCount: existing.itemCount,
-          amount: existing.amount,
-          buttonText: existing.buttonText,
-          iconPath: existing.iconPath,
-          destinationLat: existing.destinationLat,
-          destinationLng: existing.destinationLng,
-          orderStatus: deliveryStatus.isNotEmpty ? deliveryStatus : existing.orderStatus,
-        );
-        
-        // Update stats based on status change
-        if (deliveryStatus == 'completed' || deliveryStatus == 'delivered') {
-          if (existing.orderStatus != 'completed' && existing.orderStatus != 'delivered') {
-            _statsCache = _HomeStatsUi(
-              inProgress: _statsCache.inProgress > 0 ? _statsCache.inProgress - 1 : 0,
-              completed: _statsCache.completed + 1,
-            );
-          }
-        }
-      });
-    } else if (eventType == 'insert' && deliveryStatus != 'completed' && deliveryStatus != 'delivered') {
-      // New delivery assigned - need to fetch full details via API
-      _scheduleHomeRefresh(forceApiCall: true);
-    }
-  }
-
-  void _applyOrderRealtimeChange({required Map<String, dynamic> newRow}) {
-    final orderId = _readString(newRow, 'order_id');
-    final orderStatus = _readString(newRow, 'order_status');
-    
-    if (orderId.isEmpty) return;
-
-    // Update order status in accepted tasks
-    final updated = _acceptedCache.map<_AcceptedTaskUi>((t) {
-      if (t.orderId == orderId) {
-        return _AcceptedTaskUi(
-          deliveryId: t.deliveryId,
-          orderId: t.orderId,
-          taskType: t.taskType,
-          scheduledTime: t.scheduledTime,
-          customerName: t.customerName,
-          phoneNumber: t.phoneNumber,
-          address: t.address,
-          itemCount: t.itemCount,
-          amount: t.amount,
-          buttonText: t.buttonText,
-          iconPath: t.iconPath,
-          destinationLat: t.destinationLat,
-          destinationLng: t.destinationLng,
-          orderStatus: orderStatus.isNotEmpty ? orderStatus : t.orderStatus,
-        );
-      }
-      return t;
-    }).toList();
-
-    if (updated != _acceptedCache) {
-      setState(() {
-        _acceptedCache = updated;
-      });
-    }
   }
 
   void _removeIncomingPopup() {
@@ -1393,6 +1198,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         });
         _stopLiveLocation();
         _stopEvents();
+        _stopHomePolling();
         _removeIncomingPopup();
       } else {
         final body = await _shiftService.startShift();
@@ -1403,9 +1209,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _isShiftActive = isActive is bool ? isActive : true;
           _currentShiftId = shiftId?.isNotEmpty == true ? shiftId : null;
         });
-        // Subscribe to SSE event-stream to receive assignment_request notifications; keep until end shift.
         _startLiveLocation();
         _startEvents();
+        _startHomePolling();
       }
 
       if (!mounted) return;

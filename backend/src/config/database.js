@@ -31,14 +31,6 @@ function readDatabaseUrlFromEnvFile() {
     }
 }
 
-// Allow overriding the Prisma connection string with a Supabase-specific URL.
-// This keeps local DATABASE_URL values intact while enabling Supabase via env only.
-const supabaseUrl = (process.env.SUPABASE_DATABASE_URL || '').trim();
-if (supabaseUrl) {
-    process.env.DATABASE_URL = supabaseUrl;
-    logger.info('Using Supabase connection string from SUPABASE_DATABASE_URL');
-}
-
 let databaseUrl = (process.env.DATABASE_URL || '').trim();
 if (!databaseUrl) {
     databaseUrl = readDatabaseUrlFromEnvFile();
@@ -49,7 +41,7 @@ if (!databaseUrl) {
 }
 if (!databaseUrl) {
     throw new Error(
-        'DATABASE_URL is not set or is empty. Set DATABASE_URL in backend/.env (or SUPABASE_DATABASE_URL). ' +
+        'DATABASE_URL is not set or is empty. Set DATABASE_URL in backend/.env. ' +
             'In Docker, ensure docker-compose passes env_file: ./backend/.env and the variable is present.'
     );
 }
@@ -80,10 +72,7 @@ function isTestRun() {
 }
 
 // Connection Pooling:
-// Prisma automatically handles connection pooling internally.
-// For Supabase, connection pooling is handled by Supabase's PgBouncer.
-// No additional connection pool parameters are needed in the DATABASE_URL.
-// Prisma's default connection pool settings are optimized for most use cases.
+// Prisma handles connection pooling internally for local PostgreSQL.
 
 // Log queries in development
 if (process.env.NODE_ENV === 'development') {

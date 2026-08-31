@@ -6,7 +6,7 @@ import '../utils/auth_storage.dart';
 class ApiService {
   late Dio _dio;
 
-  static const String baseUrl = '${ApiConfig.backendBaseUrl}/api/v1';
+  static String get baseUrl => '${ApiConfig.backendBaseUrl}/api/v1';
 
   ApiService() {
     _dio = Dio(

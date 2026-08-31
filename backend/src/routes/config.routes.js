@@ -2,27 +2,21 @@ const express = require('express');
 const router = express.Router();
 
 /**
- * Public configuration endpoint
- * Returns client-side configuration (Supabase credentials, etc.)
- * No authentication required - these are public keys meant for client apps
+ * Public configuration endpoint for mobile clients.
+ * Returns polling intervals (ms) used instead of Supabase Realtime.
  */
-// Mounted at /api/v1/config, so expose GET / here.
 router.get('/', (req, res) => {
-    const SUPABASE_URL = process.env.SUPABASE_URL;
-    const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
-
     res.status(200).json({
         success: true,
         data: {
-            supabase: SUPABASE_URL && SUPABASE_ANON_KEY
-                ? {
-                      url: SUPABASE_URL,
-                      anonKey: SUPABASE_ANON_KEY,
-                  }
-                : null,
+            polling: {
+                ordersIntervalMs: parseInt(process.env.POLLING_ORDERS_MS || '15000', 10),
+                couponsIntervalMs: parseInt(process.env.POLLING_COUPONS_MS || '30000', 10),
+                trackingIntervalMs: parseInt(process.env.POLLING_TRACKING_MS || '5000', 10),
+                deliveryHomeIntervalMs: parseInt(process.env.POLLING_DELIVERY_HOME_MS || '15000', 10),
+            },
         },
     });
 });
 
 module.exports = router;
-

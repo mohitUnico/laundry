@@ -1,7 +1,7 @@
 const prisma = require('../config/database');
 const logger = require('../utils/logger');
 const { NotFoundError, ValidationError, ConflictError, AppError } = require('../utils/errors');
-const { getSupabaseClient } = require('../config/supabase');
+const { uploadBuffer } = require('./cloudinary-upload.service');
 const { uploadDeliveryProofImage } = require('./delivery-staff-media.service');
 const { v4: uuidv4 } = require('uuid');
 const { notifyOrderStatusChange } = require('./fcm.service');
@@ -439,34 +439,11 @@ exports.uploadProfileImage = async ({ staffId, file }) => {
         throw new ValidationError('Only JPEG, PNG, or WEBP images are allowed');
     }
 
-    const bucket = process.env.SUPABASE_DELIVERY_PROFILE_BUCKET || 'delivery-staff';
-    const ext = file.mimetype === 'image/jpeg' ? 'jpg' : file.mimetype === 'image/png' ? 'png' : 'webp';
-    const objectPath = `delivery-staff/${staffId}/${uuidv4()}.${ext}`;
-
-    const supabase = getSupabaseClient();
-
-    const { error: uploadError } = await supabase.storage.from(bucket).upload(objectPath, file.buffer, {
-        contentType: file.mimetype,
-        upsert: true,
-        cacheControl: '3600',
+    const publicUrl = await uploadBuffer({
+        buffer: file.buffer,
+        folder: `delivery-staff/${staffId}`,
+        mimetype: file.mimetype,
     });
-
-    if (uploadError) {
-        logger.error('Supabase upload failed (delivery staff profile)', {
-            error: uploadError.message,
-            bucket,
-            objectPath,
-        });
-        throw new AppError('Failed to upload image', 500);
-    }
-
-    const { data: publicUrlData } = supabase.storage.from(bucket).getPublicUrl(objectPath);
-    const publicUrl = publicUrlData?.publicUrl;
-
-    if (!publicUrl) {
-        logger.error('Supabase getPublicUrl returned empty url (delivery staff profile)', { bucket, objectPath });
-        throw new AppError('Failed to resolve image URL', 500);
-    }
 
     const updated = await prisma.deliveryStaff.update({
         where: { staff_id: staffId },

@@ -685,7 +685,7 @@ const completeDeliveryRegistration = async (req, res, next) => {
     const { sessionToken, deliveryData } = req.body;
 
     // If request is multipart, files are available on req.files (multer).
-    // We upload them to Supabase Storage and persist the resulting public URLs.
+    // Multipart uploads are stored in Cloudinary; URLs are persisted in the database.
     const registrationKey = crypto.createHash('sha256').update(String(sessionToken || '')).digest('hex');
     const files = req.files || {};
 

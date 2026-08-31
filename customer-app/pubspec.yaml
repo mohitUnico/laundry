@@ -31,8 +31,6 @@ dependencies:
   google_maps_flutter: ^2.5.0
   geolocator: ^10.1.0
   geocoding: ^2.1.1
-  # Supabase Realtime (for live order status updates)
-  supabase_flutter: ^2.5.0
   
   # Image Handling
   image_picker: ^1.0.5

@@ -1,6 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../routes/app_routes.dart';
@@ -18,7 +19,7 @@ import 'widgets/pro_clean_bottom_sheet.dart';
 import 'widgets/regular_wash_bottom_sheet.dart';
 import 'widgets/service_tile.dart';
 import '../../models/service_item.dart';
-import '../../utils/supabase_config.dart';
+import '../../utils/polling_config.dart';
 import '../../repositories/customer_info_repository.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -29,8 +30,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
-  RealtimeChannel? _ordersChannel;
-  RealtimeChannel? _couponsChannel;
+  Timer? _ordersPollTimer;
+  Timer? _couponsPollTimer;
   String _locationText = 'Select location';
 
   @override
@@ -39,7 +40,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      // Force refresh so newly added categories in Supabase show up even if we have cached data.
+      // Force refresh so newly added categories show up even if we have cached data.
       context
           .read<ServiceCatalogProvider>()
           .fetchServiceCategories(isActive: true, force: true);
@@ -48,16 +49,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // Fetch active orders for the home screen
       _refreshActiveOrders();
       _refreshDefaultAddress();
-      _subscribeToOrdersRealtime();
-      _subscribeToCouponsRealtime();
+      _startPolling();
     });
+  }
+
+  void _startPolling() {
+    _ordersPollTimer?.cancel();
+    _couponsPollTimer?.cancel();
+    _ordersPollTimer = Timer.periodic(PollingConfig.orders, (_) {
+      if (mounted) _refreshActiveOrders();
+    });
+    _couponsPollTimer = Timer.periodic(PollingConfig.coupons, (_) {
+      if (!mounted) return;
+      context.read<CouponsProvider>().fetchApplicableCoupons(force: true);
+    });
+  }
+
+  void _stopPolling() {
+    _ordersPollTimer?.cancel();
+    _couponsPollTimer?.cancel();
+    _ordersPollTimer = null;
+    _couponsPollTimer = null;
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _ordersChannel?.unsubscribe();
-    _couponsChannel?.unsubscribe();
+    _stopPolling();
     super.dispose();
   }
 
@@ -68,9 +86,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // This ensures delivered orders are removed from the active orders section
     if (state == AppLifecycleState.resumed && mounted) {
       _refreshActiveOrders();
-      // Refresh coupons so expired offers disappear without needing a restart.
       context.read<CouponsProvider>().fetchApplicableCoupons(force: true);
       _refreshDefaultAddress();
+      _startPolling();
+    } else if (state == AppLifecycleState.paused) {
+      _stopPolling();
     }
   }
 
@@ -103,75 +123,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       setState(() => _locationText = text.isEmpty ? 'Select location' : text);
     } catch (_) {
       // Keep UI stable even if address fetch fails (e.g. not logged in yet).
-    }
-  }
-
-  void _subscribeToOrdersRealtime() {
-    if (!SupabaseConfig.isEnabled) return;
-
-    try {
-      final client = Supabase.instance.client;
-      _ordersChannel = client
-          .channel('public:orders')
-          .onPostgresChanges(
-            event: PostgresChangeEvent.all,
-            schema: 'public',
-            table: 'orders',
-            callback: (payload) {
-              if (!mounted) return;
-              final eventType = payload.eventType.name;
-              final newRow =
-                  (payload.newRecord as Map?)?.cast<String, dynamic>();
-              final oldRow =
-                  (payload.oldRecord as Map?)?.cast<String, dynamic>();
-              context.read<OrderProvider>().applyOrdersRealtimeChange(
-                    eventType: eventType,
-                    newRow: newRow,
-                    oldRow: oldRow,
-                  );
-            },
-          )
-          .subscribe();
-    } catch (_) {
-      // If Supabase isn't initialized or channel fails, ignore and rely on manual refresh.
-    }
-  }
-
-  void _subscribeToCouponsRealtime() {
-    if (!SupabaseConfig.isEnabled) return;
-
-    try {
-      final client = Supabase.instance.client;
-      if (kDebugMode) {
-        debugPrint('[HomeScreen] Subscribing to coupons realtime...');
-      }
-      _couponsChannel = client
-          .channel('public:coupons')
-          .onPostgresChanges(
-            event: PostgresChangeEvent.all,
-            schema: 'public',
-            table: 'coupons',
-            callback: (payload) {
-              if (!mounted) return;
-              if (kDebugMode) {
-                debugPrint(
-                    '[HomeScreen] coupons realtime payload event=${payload.eventType}');
-              }
-              final eventType = payload.eventType.name;
-              final newRow =
-                  (payload.newRecord as Map?)?.cast<String, dynamic>();
-              final oldRow =
-                  (payload.oldRecord as Map?)?.cast<String, dynamic>();
-              context.read<CouponsProvider>().applyRealtimeChange(
-                    eventType: eventType,
-                    newRow: newRow,
-                    oldRow: oldRow,
-                  );
-            },
-          )
-          .subscribe();
-    } catch (_) {
-      // ignore
     }
   }
 

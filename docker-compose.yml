@@ -1,11 +1,11 @@
-# Uses Supabase as database (DATABASE_URL from backend/.env)
-# Optional: run with --profile local-db to use local Postgres instead
+# Local development: PostgreSQL + Redis + Backend API + pgAdmin
+# Start: docker compose up -d
+# API on host: http://localhost:3001  (or http://<LAN_IP>:3001 for mobile on Wi-Fi)
+# pgAdmin: http://localhost:5050  (login below; register server Host=postgres)
 services:
   postgres:
     image: postgres:14-alpine
     container_name: laundry-db
-    profiles:
-      - local-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: "laundry_user"
@@ -22,6 +22,24 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: laundry-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@local.dev
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - '5050:80'
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - laundry-network
 
   redis:
     image: redis:7-alpine
@@ -49,21 +67,22 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      # development: verbose logs, dev CORS behavior (see app.js)
       NODE_ENV: development
       PORT: 3000
       LOG_LEVEL: debug
       PICKUP_ASSIGNMENT_USE_QUEUE: "true"
       REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://laundry_user:laundry_pass@postgres:5432/laundry_db?connection_limit=10&pool_timeout=20
+      DIRECT_URL: postgresql://laundry_user:laundry_pass@postgres:5432/laundry_db
     ports:
-      # Host 3001 → container 3000 (use 3001 if host 3000 is already taken by local npm run dev)
       - '3001:3000'
     volumes:
-      # Mount host .env so /app/.env exists for dotenv (env_file alone can mis-parse or set empty DATABASE_URL on Windows)
       - ./backend/.env:/app/.env:ro
       - ./backend/logs:/app/logs
       - ./backend/uploads:/app/uploads
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
@@ -74,22 +93,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-  # Frontend service (ready for future implementation)
-  # frontend:
-  #   build:
-  #     context: ./mart-admin
-  #     dockerfile: Dockerfile
-  #   container_name: laundry-frontend
-  #   restart: unless-stopped
-  #   ports:
-  #     - '3000:80'
-  #   depends_on:
-  #     - backend
-  #   networks:
-  #     - laundry-network
 
 volumes:
   postgres_data:
+    driver: local
+  pgadmin_data:
     driver: local
   redis_data:
     driver: local

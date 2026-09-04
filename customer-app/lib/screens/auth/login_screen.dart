@@ -119,7 +119,6 @@ class _LoginScreenState extends State<LoginScreen> {
         _otpInputKey.currentState?.focusFirst();
       });
 
-      _maybeAutoSubmitOtp();
     } catch (e) {
       if (!mounted) return;
       final message = AuthErrorMessages.getAuthErrorMessage(e, operation: 'send OTP');
@@ -169,11 +168,11 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _maybeAutoSubmitOtp() async {
+  Future<void> _maybeAutoSubmitOtp({required String otp}) async {
     if (!_otpRequested) return;
 
     // Reset guard if user edits OTP (e.g., deletes a digit).
-    if (_otp.length != 6) {
+    if (otp.length != 6) {
       _otpAutoSubmitting = false;
       setState(() {
         _otpError = null;
@@ -182,7 +181,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     // Validate OTP
-    final otpError = Validators.otp(_otp);
+    final otpError = Validators.otp(otp);
     if (otpError != null) {
       setState(() {
         _otpError = otpError;
@@ -196,7 +195,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     FocusScope.of(context).unfocus();
 
-    final email = _emailController.text.trim();
+    final email = _emailController.text.trim().toLowerCase();
 
     setState(() {
       _isVerifyingOtp = true;
@@ -205,7 +204,7 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final result = await context.read<AuthProvider>().verifyCustomerOtp(
             email: email,
-            otp: _otp,
+            otp: otp,
           );
 
       if (!mounted) return;
@@ -315,15 +314,14 @@ class _LoginScreenState extends State<LoginScreen> {
                               _otp = value;
                               _otpError = null;
                             });
-                            _maybeAutoSubmitOtp();
+                            _maybeAutoSubmitOtp(otp: value);
                           },
                           onCompleted: (value) {
-                            // This also handles paste-to-fill scenarios.
                             setState(() {
                               _otp = value;
                               _otpError = null;
                             });
-                            _maybeAutoSubmitOtp();
+                            _maybeAutoSubmitOtp(otp: value);
                           },
                         ),
                         const SizedBox(height: 10),

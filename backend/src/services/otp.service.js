@@ -195,6 +195,16 @@ const sendOtp = async (email, userType) => {
         // Check rate limiting
         await _checkRateLimit(email, userType);
 
+        // Invalidate previous unused OTPs so verify always targets the latest code.
+        await prisma.otpVerification.deleteMany({
+            where: {
+                email,
+                user_type: userType,
+                purpose: PURPOSE.LOGIN_OR_SIGNUP,
+                is_verified: false,
+            },
+        });
+
         // Generate OTP
         const otp = _generateOtp();
         const expiresAt = _getExpiryTime(OTP_EXPIRY_MINUTES);
@@ -243,16 +253,16 @@ const sendOtp = async (email, userType) => {
  */
 const verifyOtp = async (email, otp, userType, options = {}) => {
     try {
-        // Normalize email
+        // Normalize email and OTP
         email = email.toLowerCase().trim();
+        const normalizedOtp = String(otp ?? '').trim();
 
-        // Find OTP
+        // Always verify against the most recently issued OTP for this email.
         const otpRecord = await prisma.otpVerification.findFirst({
             where: {
                 email,
                 user_type: userType,
                 purpose: PURPOSE.LOGIN_OR_SIGNUP,
-                is_verified: false
             },
             orderBy: {
                 created_at: 'desc'
@@ -261,6 +271,10 @@ const verifyOtp = async (email, otp, userType, options = {}) => {
 
         if (!otpRecord) {
             throw new AuthenticationError('No OTP found. Please request a new OTP.');
+        }
+
+        if (otpRecord.is_verified) {
+            throw new AuthenticationError('OTP already used. Please request a new OTP.');
         }
 
         // Check if expired
@@ -274,7 +288,7 @@ const verifyOtp = async (email, otp, userType, options = {}) => {
         }
 
         // Verify OTP
-        if (otpRecord.otp_code !== otp) {
+        if (otpRecord.otp_code !== normalizedOtp) {
             // Increment attempts
             await _incrementAttempts(otpRecord.otp_id);
 

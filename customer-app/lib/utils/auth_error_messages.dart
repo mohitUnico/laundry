@@ -106,6 +106,9 @@ class AuthErrorMessages {
     final lower = backendMessage.toLowerCase();
     
     // OTP related
+    if (lower.contains('otp') && lower.contains('already used')) {
+      return 'This OTP was already used. Please request a new one.';
+    }
     if (lower.contains('otp') && lower.contains('invalid')) {
       return 'The OTP code you entered is incorrect. Please check and try again.';
     }

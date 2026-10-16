@@ -472,7 +472,11 @@ exports.updateAcceptedOrderStatus = async ({ staffId, deliveryId, action, proofU
     assertUuid(staffId, 'staffId');
     assertUuid(deliveryId, 'deliveryId');
 
-    if (!['start_delivery', 'picked_up', 'submitted_to_cm', 'dropped'].includes(action)) {
+    if (['picked_up', 'submitted_to_cm', 'dropped'].includes(action)) {
+        const { AppError } = require('../utils/errors');
+        throw new AppError('Use the door, submit-to-cm, and mark-delivered endpoints.', 410, 'ORDER_FLOW_CHANGED');
+    }
+    if (!['start_delivery'].includes(action)) {
         throw new ValidationError('Invalid action');
     }
 
@@ -538,7 +542,6 @@ exports.updateAcceptedOrderStatus = async ({ staffId, deliveryId, action, proofU
                 data: {
                     pickup_status: 'picked_up',
                     pickup_time: now,
-                    ...(proofUrl ? { pickup_proof: proofUrl } : {}),
                 },
             });
 
@@ -699,7 +702,6 @@ exports.getPerKgItems = async ({ staffId, orderId }) => {
         where: { order_id: orderId },
         select: {
             order_id: true,
-            pricing_model: true,
             total_amount: true,
             updated_at: true,
         },
@@ -793,7 +795,6 @@ exports.updatePerKgWeights = async ({ staffId, orderId, items }) => {
             where: { order_id: orderId },
             select: {
                 order_id: true,
-                pricing_model: true,
             },
         });
 
@@ -860,7 +861,6 @@ exports.updatePerKgWeights = async ({ staffId, orderId, items }) => {
             data: { total_amount: newTotal },
             select: {
                 order_id: true,
-                pricing_model: true,
                 total_amount: true,
                 updated_at: true,
                 order_items: {

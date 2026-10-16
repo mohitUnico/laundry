@@ -65,6 +65,7 @@ exports.errorHandler = (err, req, res, next) => {
         message: error.message || 'Internal Server Error',
         errorCode: error.code || 'INTERNAL_ERROR',
         ...(error.errors && { errors: error.errors }),
+        ...(error.details && { details: error.details }),
         ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
         timestamp: new Date().toISOString(),
         path: req.originalUrl,

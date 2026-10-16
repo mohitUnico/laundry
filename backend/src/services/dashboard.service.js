@@ -50,7 +50,7 @@ class DashboardService {
                 // Total orders: non-draft orders created in this period
                 const totalOrders = await prisma.order.count({
                     where: {
-                        order_status: { not: 'draft' },
+                        order_status: { not: 'cancelled' },
                         created_at: { gte: dateStart, lt: dateEnd },
                     },
                 });
@@ -194,7 +194,7 @@ class DashboardService {
                     where: {
                         ...(martId ? { mart_id: martId } : {}),
                         order_status: {
-                            in: ['delivered', 'closed'],
+                            in: ['delivered'],
                         },
                     },
                 });

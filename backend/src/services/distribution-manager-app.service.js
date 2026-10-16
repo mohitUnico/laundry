@@ -95,8 +95,6 @@ exports.getOrderItems = async ({ orderId }) => {
             where: { order_id: orderId },
             select: {
                 order_id: true,
-                pricing_model: true,
-                order_type: true,
                 order_status: true,
                 created_at: true,
                 delivery_address: {
@@ -248,7 +246,7 @@ exports.verifyOrder = async ({ staffId, orderId }) => {
     return prisma.$transaction(async (tx) => {
         const order = await tx.order.findUnique({
             where: { order_id: orderId },
-            select: { order_id: true, order_status: true, verified_at: true },
+            select: { order_id: true, order_status: true },
         });
         if (!order) throw new NotFoundError('Order');
         if (order.order_status !== 'services_completed') {
@@ -263,10 +261,9 @@ exports.verifyOrder = async ({ staffId, orderId }) => {
         const updated = await tx.order.update({
             where: { order_id: orderId },
             data: {
-                verified_by_distribution_manager_id: staffId,
-                verified_at: now,
+                order_status: 'services_completed',
             },
-            select: { order_id: true, verified_at: true },
+            select: { order_id: true, order_status: true },
         });
 
         return { orderId: updated.order_id, verifiedAt: updated.verified_at };
@@ -309,7 +306,7 @@ exports.dispatchOrder = async ({ staffId, orderId, radiusKm, limit, expiresInSec
 
     const order = await prisma.order.findUnique({
         where: { order_id: orderId },
-        select: { order_id: true, order_status: true, order_type: true, verified_at: true, dispatched_at: true },
+        select: { order_id: true, order_status: true },
     });
     if (!order) throw new NotFoundError('Order');
     if (order.order_status !== 'services_completed') throw new ConflictError('Order is not ready for dispatch');
@@ -334,16 +331,13 @@ exports.dispatchOrder = async ({ staffId, orderId, radiusKm, limit, expiresInSec
     const updated = await prisma.order.update({
         where: { order_id: orderId },
         data: {
-            dispatched_by_distribution_manager_id: staffId,
-            dispatched_at: now,
-            // This means "dispatch initiated"; delivery staff acceptance may set it again.
-            order_status: 'dispatch_assigned',
+            order_status: 'out_for_delivery',
         },
-        select: { order_id: true, dispatched_at: true, order_status: true },
+        select: { order_id: true, order_status: true },
     });
 
     // Notify customer via FCM and WhatsApp (fire-and-forget)
-    notifyOrderStatusChange({ orderId: updated.order_id, status: 'dispatch_assigned' }).catch(() => {});
+    notifyOrderStatusChange({ orderId: updated.order_id, status: 'out_for_delivery' }).catch(() => {});
 
     return {
         orderId: updated.order_id,
@@ -359,7 +353,7 @@ exports.assignDropDirect = async ({ staffId, orderId, deliveryStaffId }) => {
 
     const order = await prisma.order.findUnique({
         where: { order_id: orderId },
-        select: { order_id: true, order_status: true, order_type: true, verified_at: true, dispatched_at: true },
+        select: { order_id: true, order_status: true },
     });
     if (!order) throw new NotFoundError('Order');
     if (order.order_status !== 'services_completed') throw new ConflictError('Order is not ready for delivery assignment');
@@ -376,7 +370,7 @@ exports.assignDropDirect = async ({ staffId, orderId, deliveryStaffId }) => {
         deliveryStaffId,
         orderUpdateData: {
             dispatched_by_distribution_manager_id: staffId,
-            order_status: 'dispatch_assigned',
+            order_status: 'out_for_delivery',
         },
         assignedBy: {
             role: 'distribution_manager',
@@ -396,10 +390,6 @@ exports.submitToCustomer = async ({ staffId, orderId }) => {
             select: {
                 order_id: true,
                 order_status: true,
-                order_type: true,
-                verified_at: true,
-                dispatched_at: true,
-                payment_confirmed_at: true,
             },
         });
 
@@ -426,14 +416,9 @@ exports.submitToCustomer = async ({ staffId, orderId }) => {
         const updated = await tx.order.update({
             where: { order_id: orderId },
             data: {
-                // We treat store handover as "delivered" (payment confirmed).
                 order_status: 'delivered',
-                payment_confirmed_at: order.payment_confirmed_at || now,
-                // Keep a record of who performed this action in distribution module.
-                dispatched_by_distribution_manager_id: staffId,
-                dispatched_at: order.dispatched_at || now,
             },
-            select: { order_id: true, order_status: true, payment_confirmed_at: true, dispatched_at: true },
+            select: { order_id: true, order_status: true },
         });
 
         return {

@@ -14,7 +14,16 @@ const { NotFoundError, ValidationError } = require('../utils/errors');
  * @param {string} [paymentData.payment_status] - Payment status (pending, completed, failed)
  * @returns {Promise<object>} Updated bill details
  */
-exports.processPayment = async (customerId, orderId, paymentData) => {
+exports.processPayment = async () => {
+    const { AppError } = require('../utils/errors');
+    throw new AppError(
+        'Customers pay with a UPI intent or the captain records cash. This endpoint is closed.',
+        410,
+        'PAYMENT_FLOW_CHANGED'
+    );
+};
+
+exports.processPaymentLegacyRemoved = async (customerId, orderId, paymentData) => {
     const { payment_method, transaction_id, payment_status = 'completed' } = paymentData;
 
     if (!payment_method) {
@@ -42,7 +51,6 @@ exports.processPayment = async (customerId, orderId, paymentData) => {
             },
             select: {
                 order_id: true,
-                pricing_model: true,
             },
         });
 
@@ -207,10 +215,7 @@ exports.getInvoiceByOrderId = async (customerId, orderId) => {
         },
         select: {
             order_id: true,
-            billing_status: true,
             order_status: true,
-            pricing_model: true,
-            order_type: true,
             bill: {
                 select: {
                     bill_id: true,

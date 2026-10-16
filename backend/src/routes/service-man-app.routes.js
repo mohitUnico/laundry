@@ -21,6 +21,15 @@ router.get(
     serviceManAppController.listQueue
 );
 
+router.patch(
+    '/queue/:queueId/status',
+    authenticateJWT,
+    authorize('service_man'),
+    validateUuidParam('queueId'),
+    validate(updateServiceQueueItemSchema),
+    serviceManAppController.updateQueueItem
+);
+
 // PATCH queue item status
 router.patch(
     '/queue/:queueId',

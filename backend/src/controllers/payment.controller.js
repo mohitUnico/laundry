@@ -1,101 +1,109 @@
 const paymentService = require('../services/payment.service');
-const { AuthorizationError } = require('../utils/errors');
+const doorService = require('../services/door.service');
+const checkout = require('../services/payments/checkout.service');
+const { AuthorizationError, AppError } = require('../utils/errors');
 
-/**
- * Process payment for an order
- * POST /api/v1/payments/process/:orderId
- */
 exports.processPayment = async (req, res, next) => {
     try {
-        if (req.user.role !== 'customer') {
-            throw new AuthorizationError('Only customers can process payments');
-        }
-
-        const customerId = req.user.user_id;
-        const { orderId } = req.params;
-        const { payment_method, transaction_id, payment_status } = req.body;
-
-        const bill = await paymentService.processPayment(customerId, orderId, {
-            payment_method,
-            transaction_id,
-            payment_status,
-        });
-
-        res.status(200).json({
-            success: true,
-            data: bill,
-            message: 'Payment processed successfully',
-        });
+        await paymentService.processPayment();
+        res.status(200).json({ success: true });
     } catch (error) {
         next(error);
     }
 };
 
-/**
- * Get bill/payment details for an order
- * GET /api/v1/payments/bill/:orderId
- */
-exports.getBillByOrderId = async (req, res, next) => {
+async function sendBill(req, res, next) {
     try {
-        if (req.user.role !== 'customer') {
-            throw new AuthorizationError('Only customers can view their bills');
-        }
-
-        const customerId = req.user.user_id;
-        const { orderId } = req.params;
-
-        const bill = await paymentService.getBillByOrderId(customerId, orderId);
-
-        if (!bill) {
-            return res.status(200).json({
-                success: true,
-                data: null,
-                message: 'Bill not found for this order',
-            });
-        }
-
-        res.status(200).json({
-            success: true,
-            data: bill,
-            message: 'Bill fetched successfully',
-        });
+        if (req.user.role !== 'customer') throw new AuthorizationError('Only customers can view their bills');
+        const data = await doorService.getCustomerBill(req.user.user_id, req.params.orderId);
+        res.status(200).json({ success: true, data, message: 'Bill fetched successfully' });
     } catch (error) {
         next(error);
     }
-};
+}
 
-/**
- * Get invoice (bill + line items) for an order
- * GET /api/v1/payments/invoice/:orderId
- */
-exports.getInvoiceByOrderId = async (req, res, next) => {
+exports.getBillByOrderId = sendBill;
+exports.getInvoiceByOrderId = sendBill;
+
+exports.applyCoupon = async (req, res, next) => {
     try {
-        if (req.user.role !== 'customer') {
-            throw new AuthorizationError('Only customers can view their invoices');
-        }
-
-        const customerId = req.user.user_id;
-        const { orderId } = req.params;
-
-        const invoice = await paymentService.getInvoiceByOrderId(customerId, orderId);
-
-        if (!invoice) {
-            return res.status(200).json({
-                success: true,
-                data: null,
-                message: 'Invoice not generated for this order',
-            });
-        }
-
-        res.status(200).json({
-            success: true,
-            data: invoice,
-            message: 'Invoice fetched successfully',
+        if (req.user.role !== 'customer') throw new AuthorizationError('Only customers can apply a coupon');
+        const data = await checkout.applyCoupon({
+            customerId: req.user.user_id,
+            orderId: req.params.orderId,
+            code: req.body.code,
         });
+        res.status(200).json({ success: true, data });
     } catch (error) {
         next(error);
     }
 };
 
-module.exports = exports;
+exports.removeCoupon = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'customer') throw new AuthorizationError('Only customers can remove a coupon');
+        const data = await checkout.removeCoupon({
+            customerId: req.user.user_id,
+            orderId: req.params.orderId,
+        });
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
+};
 
+exports.createPayIntent = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'customer') throw new AuthorizationError('Only customers can pay');
+        const data = await checkout.createPayIntent({
+            customerId: req.user.user_id,
+            orderId: req.params.orderId,
+            idempotencyKey: req.get('Idempotency-Key') || null,
+        });
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.paymentStatus = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'customer') throw new AuthorizationError('Only customers can view payment status');
+        const data = await checkout.paymentStatus({
+            customerId: req.user.user_id,
+            orderId: req.params.orderId,
+        });
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.webhook = async (req, res, next) => {
+    try {
+        const rawBody = req.rawBody || JSON.stringify(req.body || {});
+        const data = await checkout.applyWebhook({
+            providerName: req.params.provider,
+            headers: req.headers,
+            rawBody,
+        });
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.mockComplete = async (req, res, next) => {
+    try {
+        if (process.env.NODE_ENV === 'production') {
+            throw new AppError('Not found', 404, 'NOT_FOUND');
+        }
+        const data = await checkout.devForceAttempt({
+            attemptId: req.params.attemptId,
+            status: req.body.status,
+        });
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
+};

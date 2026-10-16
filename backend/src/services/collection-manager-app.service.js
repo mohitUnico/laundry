@@ -127,8 +127,6 @@ exports.getOrderItems = async ({ orderId }) => {
         where: { order_id: orderId },
         select: {
             order_id: true,
-            pricing_model: true,
-            order_type: true,
             order_status: true,
             created_at: true,
             pickup_address: {
@@ -266,7 +264,7 @@ exports.createPickupAssignment = async ({ orderId, radiusKm, limit, expiresInSec
 
     const order = await prisma.order.findUnique({
         where: { order_id: orderId },
-        select: { order_id: true, order_type: true },
+        select: { order_id: true },
     });
     if (!order) throw new NotFoundError('Order');
 
@@ -289,7 +287,7 @@ exports.assignPickupDirect = async ({ staffId, orderId, deliveryStaffId }) => {
 
     const order = await prisma.order.findUnique({
         where: { order_id: orderId },
-        select: { order_id: true, order_type: true },
+        select: { order_id: true },
     });
     if (!order) throw new NotFoundError('Order');
 
@@ -396,7 +394,7 @@ exports.submitOrderToServices = async ({ staffId, orderId }) => {
             serviceIds.map(async (sid) => {
                 const agg = await tx.serviceQueueItem.aggregate({
                     where: { service_id: sid },
-                    _max: { priority: true },
+                    _max: { assigned_at: true },
                 });
                 maxPriorityByService.set(sid, (agg?._max?.priority != null) ? agg._max.priority : 0);
             })
@@ -416,7 +414,6 @@ exports.submitOrderToServices = async ({ staffId, orderId }) => {
                 quantity: (it.quantity != null) ? it.quantity : null,
                 weight_kg: (it.weight_kg != null) ? it.weight_kg : null,
                 queue_status: 'pending',
-                priority: nextPriority,
                 assigned_at: now,
             };
         });
@@ -458,7 +455,6 @@ exports.getPerKgItems = async ({ orderId }) => {
         where: { order_id: orderId },
         select: {
             order_id: true,
-            pricing_model: true,
             total_amount: true,
             updated_at: true,
         },
@@ -529,7 +525,6 @@ exports.updatePerKgWeights = async ({ staffId, orderId, items }) => {
             select: {
                 order_id: true,
                 order_status: true,
-                pricing_model: true,
             },
         });
 
@@ -617,9 +612,7 @@ exports.generateInvoice = async ({ staffId, orderId }) => {
             select: {
                 order_id: true,
                 order_status: true,
-                billing_status: true,
                 customer_id: true,
-                pricing_model: true,
                 total_amount: true,
                 bill: { select: { bill_id: true, payment_status: true, payment_method: true } },
                 order_items: {
@@ -737,7 +730,6 @@ exports.generateInvoice = async ({ staffId, orderId }) => {
             where: { order_id: orderId },
             data: {
                 total_amount: newSubtotal,
-                billing_status: 'generated',
             },
         });
 

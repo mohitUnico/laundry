@@ -21,6 +21,7 @@ const distributionManagerAppRoutes = require('./distribution-manager-app.routes'
 const serviceManAppRoutes = require('./service-man-app.routes');
 const couponsRoutes = require('./coupons.routes');
 const configRoutes = require('./config.routes');
+const adminConfigRoutes = require('./admin-config.routes');
 const notificationRoutes = require('./notification.routes');
 
 const router = express.Router();
@@ -101,7 +102,21 @@ router.use('/staff-app/collection-manager', collectionManagerAppRoutes);
 router.use('/staff-app/distribution-manager', distributionManagerAppRoutes);
 router.use('/staff-app/service-man', serviceManAppRoutes);
 router.use('/config', configRoutes);
+router.use('/admin/config', adminConfigRoutes);
+const adminCatalogueRoutes = require('./admin-catalogue.routes');
+router.use('/admin/services', adminCatalogueRoutes);
 router.use('/notifications', notificationRoutes);
+
+const { authenticateJWT } = require('../middleware/auth.middleware');
+router.get('/catalog/pricing', authenticateJWT, async (req, res, next) => {
+    try {
+        const orderRead = require('../services/order-read.service');
+        const data = await orderRead.pricingCatalogue();
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
+});
 
 module.exports = router;
 

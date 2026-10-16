@@ -4,83 +4,47 @@ const distributionManagerAppController = require('../controllers/distribution-ma
 const { authenticateJWT, authorize } = require('../middleware/auth.middleware');
 const { validate, validateQuery } = require('../middleware/validation.middleware');
 const { validateUuidParam } = require('../middleware/delivery-staff-app.middleware');
-const { listPaginationQuerySchema, assignDeliverySchema, directAssignDeliverySchema } = require('../validators/staff-app.validator');
+const { listPaginationQuerySchema, directAssignDeliverySchema } = require('../validators/staff-app.validator');
 
 const router = express.Router();
 
-// GET orders ready to verify (services_completed & not verified)
 router.get(
-    '/orders/ready-to-verify',
+    '/orders/in-plant',
     authenticateJWT,
     authorize('distribution_manager'),
-    validateQuery(listPaginationQuerySchema),
-    distributionManagerAppController.listReadyToVerify
+    distributionManagerAppController.listInPlant
 );
 
-// POST verify order
-router.post(
-    '/orders/:orderId/verify',
-    authenticateJWT,
-    authorize('distribution_manager'),
-    validateUuidParam('orderId'),
-    distributionManagerAppController.verifyOrder
-);
-
-// GET order items (for staff app UI)
 router.get(
-    '/orders/:orderId/items',
+    '/orders/ready-to-dispatch',
     authenticateJWT,
     authorize('distribution_manager'),
-    validateUuidParam('orderId'),
-    distributionManagerAppController.getOrderItems
+    distributionManagerAppController.listReadyToDispatch
 );
 
-// GET verified orders (services_completed & verified & not dispatched)
-router.get(
-    '/orders/verified',
-    authenticateJWT,
-    authorize('distribution_manager'),
-    validateQuery(listPaginationQuerySchema),
-    distributionManagerAppController.listVerifiedOrders
-);
-
-// POST dispatch (creates drop assignment request)
-router.post(
-    '/orders/:orderId/dispatch',
-    authenticateJWT,
-    authorize('distribution_manager'),
-    validateUuidParam('orderId'),
-    validate(assignDeliverySchema),
-    distributionManagerAppController.dispatchOrder
-);
-
-// POST manually assign drop to a specific delivery staff (no accept/reject)
-router.post(
-    '/orders/:orderId/assign-drop-direct',
-    authenticateJWT,
-    authorize('distribution_manager'),
-    validateUuidParam('orderId'),
-    validate(directAssignDeliverySchema),
-    distributionManagerAppController.assignDropDirect
-);
-
-// POST submit to customer (pickup_only: customer collects from store; no drop delivery)
-router.post(
-    '/orders/:orderId/submit-to-customer',
-    authenticateJWT,
-    authorize('distribution_manager'),
-    validateUuidParam('orderId'),
-    distributionManagerAppController.submitToCustomer
-);
-
-// GET dispatch history
 router.get(
     '/orders/history',
     authenticateJWT,
     authorize('distribution_manager'),
     validateQuery(listPaginationQuerySchema),
-    distributionManagerAppController.listDispatchHistory
+    distributionManagerAppController.listHistory
+);
+
+router.get(
+    '/orders/:orderId/assignable-staff',
+    authenticateJWT,
+    authorize('distribution_manager'),
+    validateUuidParam('orderId'),
+    distributionManagerAppController.listAssignableStaff
+);
+
+router.post(
+    '/orders/:orderId/assign-drop',
+    authenticateJWT,
+    authorize('distribution_manager'),
+    validateUuidParam('orderId'),
+    validate(directAssignDeliverySchema),
+    distributionManagerAppController.assignDrop
 );
 
 module.exports = router;
-

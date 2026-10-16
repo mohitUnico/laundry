@@ -47,14 +47,56 @@ exports.getCustomerOrders = async (req, res, next) => {
             throw new AuthorizationError('Only customers can view their orders');
         }
 
+        const orderRead = require('../services/order-read.service');
         const customerId = req.user.user_id;
-        const result = await orderService.getCustomerOrders(customerId, req.query);
+        const result = await orderRead.listOrders({
+            customerId,
+            bucket: req.query.bucket || 'active',
+            page: req.query.page,
+            limit: req.query.limit,
+        });
 
         res.status(200).json({
             success: true,
             data: result,
             message: 'Orders fetched successfully',
         });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.cancelOrder = async (req, res, next) => {
+    try {
+        const lifecycle = require('../services/order-lifecycle.service');
+        const data = await lifecycle.cancelOrder(req.user.user_id, req.params.orderId, req.body?.reason);
+        res.status(200).json({ success: true, data, message: 'Order cancelled' });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.rescheduleOrder = async (req, res, next) => {
+    try {
+        const lifecycle = require('../services/order-lifecycle.service');
+        const data = await lifecycle.rescheduleOrder(req.user.user_id, req.params.orderId, req.body || {});
+        res.status(200).json({ success: true, data, message: 'Order rescheduled' });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.getOrder = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'customer') {
+            throw new AuthorizationError('Only customers can view their orders');
+        }
+        const orderRead = require('../services/order-read.service');
+        const data = await orderRead.getOrderDetail({
+            customerId: req.user.user_id,
+            orderId: req.params.orderId,
+        });
+        res.status(200).json({ success: true, data });
     } catch (error) {
         next(error);
     }
@@ -69,7 +111,8 @@ exports.getOrderTracking = async (req, res, next) => {
         const customerId = req.user.user_id;
         const { orderId } = req.params;
 
-        const data = await orderService.getOrderTrackingForCustomer({ customerId, orderId });
+        const orderRead = require('../services/order-read.service');
+        const data = await orderRead.getTracking({ customerId, orderId });
 
         res.status(200).json({
             success: true,

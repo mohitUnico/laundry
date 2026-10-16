@@ -132,13 +132,13 @@ function humanizeOrderStatus(status) {
         submitted_to_services: 'Submitted to Services',
         services_in_progress: 'Services In Progress',
         services_completed: 'Services Completed',
-        dispatch_assigned: 'Dispatch Assigned',
         out_for_delivery: 'Out for Delivery',
-        payment_pending: 'Payment Pending',
         delivered: 'Delivered',
-        closed: 'Closed',
         cancelled: 'Cancelled',
-        draft: 'Draft',
+        bill_ready: 'Bill ready',
+        received_at_plant: 'Received at the plant',
+        payment_received: 'Payment received',
+        payment_failed: 'Payment failed',
     };
     return map[s] || status;
 }

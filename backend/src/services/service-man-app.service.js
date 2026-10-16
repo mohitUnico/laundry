@@ -80,14 +80,13 @@ exports.listQueue = async ({ staffId, status, page, limit } = {}) => {
         prisma.serviceQueueItem.count({ where }),
         prisma.serviceQueueItem.findMany({
             where,
-            orderBy: [{ priority: 'asc' }, { assigned_at: 'asc' }],
+            orderBy: [{ assigned_at: 'asc' }],
             skip,
             take: safeLimit,
             include: {
                 order: {
                     select: {
                         order_status: true,
-                        order_type: true,
                         customer: { select: { customer_id: true, full_name: true, phone: true } },
                     },
                 },
@@ -207,7 +206,7 @@ exports.updateQueueItem = async ({ staffId, queueId, action, comments }) => {
 
             const agg = await tx.serviceQueueItem.aggregate({
                 where: { service_man_id: staffId, queue_status: 'pending' },
-                _max: { priority: true },
+                _count: { queue_id: true },
             });
             const newPriority = ((agg?._max?.priority != null) ? agg._max.priority : 0) + 1;
 
@@ -215,7 +214,6 @@ exports.updateQueueItem = async ({ staffId, queueId, action, comments }) => {
                 where: { queue_id: queueId },
                 data: {
                     queue_status: 'pending',
-                    priority: newPriority,
                     started_at: null,
                     ...(typeof comments === 'string' ? { comments } : {}),
                 },
@@ -233,7 +231,6 @@ exports.updateQueueItem = async ({ staffId, queueId, action, comments }) => {
                 order: {
                     select: {
                         order_status: true,
-                        order_type: true,
                         customer: { select: { customer_id: true, full_name: true, phone: true } },
                     },
                 },
@@ -268,7 +265,6 @@ exports.listCompleted = async ({ staffId, page, limit } = {}) => {
                 order: {
                     select: {
                         order_status: true,
-                        order_type: true,
                         customer: { select: { customer_id: true, full_name: true, phone: true } },
                     },
                 },

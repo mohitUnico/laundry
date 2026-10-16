@@ -5,7 +5,7 @@
 
 const prisma = require('../config/database');
 const logger = require('../utils/logger');
-const { AppError, ValidationError, NotFoundError } = require('../utils/errors');
+const { AppError, ValidationError, NotFoundError, ConflictError } = require('../utils/errors');
 
 class ClothesService {
     /**
@@ -107,7 +107,13 @@ class ClothesService {
                 where: { category_id: categoryId },
             });
             if (serviceCount > 0) {
-                throw new ValidationError('Cannot delete category while services exist under it');
+                throw new ConflictError('Deactivate this category instead of deleting it', 'IN_USE_DEACTIVATE_INSTEAD');
+            }
+            const ordered = await prisma.orderItem.count({
+                where: { service: { category_id: categoryId } },
+            });
+            if (ordered > 0) {
+                throw new ConflictError('Deactivate this category instead of deleting it', 'IN_USE_DEACTIVATE_INSTEAD');
             }
 
             await prisma.serviceCategory.delete({ where: { category_id: categoryId } });
@@ -138,6 +144,8 @@ class ClothesService {
                     description: data.description || null,
                     base_price: data.basePrice,
                     per_kg_price: data.perKgPrice ?? null,
+                    includes: data.includes || [],
+                    excludes: data.excludes || [],
                     estimated_hours: data.estimatedHours,
                     icon_url: data.iconUrl || null,
                     is_active: data.isActive ?? true,
@@ -222,6 +230,15 @@ class ClothesService {
                 this._ensureFound('ServiceCategory', category);
             }
 
+            if (data.perKgPrice !== undefined || data.isActive === false) {
+                logger.info('Catalogue price or active flag changed', {
+                    user_id: data.actorUserId || null,
+                    serviceId,
+                    field: data.perKgPrice !== undefined ? 'per_kg_price' : 'is_active',
+                    newValue: data.perKgPrice !== undefined ? data.perKgPrice : data.isActive,
+                });
+            }
+
             const service = await prisma.service.update({
                 where: { service_id: serviceId },
                 data: {
@@ -230,6 +247,8 @@ class ClothesService {
                     ...(data.description !== undefined && { description: data.description }),
                     ...(data.basePrice !== undefined && { base_price: data.basePrice }),
                     ...(data.perKgPrice !== undefined && { per_kg_price: data.perKgPrice }),
+                    ...(data.includes !== undefined && { includes: data.includes }),
+                    ...(data.excludes !== undefined && { excludes: data.excludes }),
                     ...(data.estimatedHours !== undefined && { estimated_hours: data.estimatedHours }),
                     ...(data.iconUrl !== undefined && { icon_url: data.iconUrl }),
                     ...(data.isActive !== undefined && { is_active: data.isActive }),
@@ -250,17 +269,17 @@ class ClothesService {
         try {
             await this.getServiceById(serviceId);
 
-            const [clothesCount, cartCount, queueCount, staffCount] = await Promise.all([
+            const [clothesCount, cartCount, queueCount, staffCount, orderCount] = await Promise.all([
                 prisma.clothesItem.count({ where: { service_id: serviceId } }),
                 prisma.cartItem.count({ where: { service_id: serviceId } }),
                 prisma.serviceQueueItem.count({ where: { service_id: serviceId } }),
                 prisma.staff.count({ where: { service_id: serviceId } }),
+                prisma.orderItem.count({ where: { service_id: serviceId } }),
             ]);
 
-            if (clothesCount > 0) throw new ValidationError('Cannot delete service while clothes items exist under it');
-            if (cartCount > 0) throw new ValidationError('Cannot delete service while it is referenced by cart items');
-            if (queueCount > 0) throw new ValidationError('Cannot delete service while it is referenced by service queue items');
-            if (staffCount > 0) throw new ValidationError('Cannot delete service while a staff member is assigned to it');
+            if (clothesCount || cartCount || queueCount || staffCount || orderCount) {
+                throw new ConflictError('Deactivate this service instead of deleting it', 'IN_USE_DEACTIVATE_INSTEAD');
+            }
 
             await prisma.service.delete({ where: { service_id: serviceId } });
             logger.info('Service deleted', { serviceId });
@@ -288,7 +307,7 @@ class ClothesService {
             const existing = await prisma.clothesItem.findFirst({
                 where: { service_id: data.serviceId, item_name: data.itemName },
             });
-            if (existing) throw new ValidationError('A clothes item with this name already exists for this service');
+            if (existing) throw new ConflictError('A clothes item with this name already exists for this service', 'DUPLICATE_CLOTH');
 
             // Create clothes item
             const item = await prisma.clothesItem.create({
@@ -379,7 +398,7 @@ class ClothesService {
                     },
                     select: { cloth_id: true },
                 });
-                if (dup) throw new ValidationError('A clothes item with this name already exists for this service');
+                if (dup) throw new ConflictError('A clothes item with this name already exists for this service', 'DUPLICATE_CLOTH');
             }
 
             const item = await prisma.clothesItem.update({
@@ -409,16 +428,13 @@ class ClothesService {
         try {
             await this.getClothesItemById(clothId);
 
-            const [orderItemCount, cartSelCount] = await Promise.all([
-                prisma.orderItem.count({ where: { item_id: clothId } }),
-                prisma.cartItemSelection.count({ where: { cloth_id: clothId } }),
+            const [orderItemCount, selectionCount] = await Promise.all([
+                prisma.orderItem.count({ where: { clothes_id: clothId } }),
+                prisma.orderItemSelection.count({ where: { cloth_id: clothId } }),
             ]);
 
-            if (orderItemCount > 0) {
-                throw new ValidationError('Cannot delete clothes item while it is referenced by order items');
-            }
-            if (cartSelCount > 0) {
-                throw new ValidationError('Cannot delete clothes item while it is referenced by cart item selections');
+            if (orderItemCount > 0 || selectionCount > 0) {
+                throw new ConflictError('Deactivate this cloth item instead of deleting it', 'IN_USE_DEACTIVATE_INSTEAD');
             }
 
             await prisma.clothesItem.delete({ where: { cloth_id: clothId } });

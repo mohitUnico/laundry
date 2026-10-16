@@ -9,7 +9,6 @@ const {
     listAcceptedOrdersQuerySchema,
     listOrderHistoryQuerySchema,
     updateDeliveryStatusSchema,
-    updatePerKgWeightsSchema,
 } = require('../validators/delivery-staff-app.validator');
 
 const router = express.Router();
@@ -46,20 +45,63 @@ router.get(
 );
 
 router.get(
-    '/orders/:orderId/items/weights',
+    '/orders/:orderId/door',
     authenticateJWT,
     authorize('delivery_staff'),
     validateUuidParam('orderId'),
-    deliveryStaffAppController.getPerKgItems
+    deliveryStaffAppController.getDoor
 );
 
 router.patch(
-    '/orders/:orderId/items/weights',
+    '/orders/:orderId/door/services/:orderItemId',
     authenticateJWT,
     authorize('delivery_staff'),
     validateUuidParam('orderId'),
-    validate(updatePerKgWeightsSchema),
-    deliveryStaffAppController.updatePerKgWeights
+    validateUuidParam('orderItemId'),
+    deliveryStaffAppController.saveDoorDraft
+);
+
+router.post(
+    '/orders/:orderId/door/services/:orderItemId/photo',
+    authenticateJWT,
+    authorize('delivery_staff'),
+    validateUuidParam('orderId'),
+    validateUuidParam('orderItemId'),
+    upload.single('file'),
+    deliveryStaffAppController.saveDoorPhoto
+);
+
+router.post(
+    '/orders/:orderId/door/confirm',
+    authenticateJWT,
+    authorize('delivery_staff'),
+    validateUuidParam('orderId'),
+    deliveryStaffAppController.confirmDoor
+);
+
+router.post(
+    '/orders/:orderId/submit-to-cm',
+    authenticateJWT,
+    authorize('delivery_staff'),
+    validateUuidParam('orderId'),
+    deliveryStaffAppController.submitToCm
+);
+
+router.post(
+    '/orders/:orderId/record-cash',
+    authenticateJWT,
+    authorize('delivery_staff'),
+    validateUuidParam('orderId'),
+    deliveryStaffAppController.recordCash
+);
+
+router.post(
+    '/orders/:orderId/mark-delivered',
+    authenticateJWT,
+    authorize('delivery_staff'),
+    validateUuidParam('orderId'),
+    upload.single('file'),
+    deliveryStaffAppController.markDelivered
 );
 
 router.patch(
@@ -71,23 +113,6 @@ router.patch(
     deliveryStaffAppController.updateDeliveryStatus
 );
 
-router.post(
-    '/deliveries/:deliveryId/mark-picked-up',
-    authenticateJWT,
-    authorize('delivery_staff'),
-    validateUuidParam('deliveryId'),
-    upload.single('file'),
-    deliveryStaffAppController.markPickedUpWithProof
-);
-
-router.post(
-    '/deliveries/:deliveryId/mark-delivered',
-    authenticateJWT,
-    authorize('delivery_staff'),
-    validateUuidParam('deliveryId'),
-    upload.single('file'),
-    deliveryStaffAppController.markDeliveredWithProof
-);
 
 router.get(
     '/orders/history',

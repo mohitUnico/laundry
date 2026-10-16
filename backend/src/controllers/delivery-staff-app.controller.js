@@ -219,5 +219,96 @@ exports.getPerKgItems = async (req, res, next) => {
     }
 };
 
+const doorService = require('../services/door.service');
+const handshakeService = require('../services/handshake.service');
+const checkout = require('../services/payments/checkout.service');
+
+function assertPartner(req) {
+    if (req.user.role !== 'delivery_staff') {
+        throw new AuthorizationError('Only delivery staff can access this endpoint');
+    }
+    return req.user.user_id;
+}
+
+exports.getDoor = async (req, res, next) => {
+    try {
+        const data = await doorService.getDoor({ staffId: assertPartner(req), orderId: req.params.orderId });
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.saveDoorDraft = async (req, res, next) => {
+    try {
+        const data = await doorService.saveDraft({
+            staffId: assertPartner(req),
+            orderId: req.params.orderId,
+            orderItemId: req.params.orderItemId,
+            body: req.body || {},
+        });
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.saveDoorPhoto = async (req, res, next) => {
+    try {
+        const data = await doorService.savePhoto({
+            staffId: assertPartner(req),
+            orderId: req.params.orderId,
+            orderItemId: req.params.orderItemId,
+            file: req.file,
+        });
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.confirmDoor = async (req, res, next) => {
+    try {
+        const data = await doorService.confirmDoor({ staffId: assertPartner(req), orderId: req.params.orderId });
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.submitToCm = async (req, res, next) => {
+    try {
+        const data = await handshakeService.submitToCollectionManager({
+            staffId: assertPartner(req),
+            orderId: req.params.orderId,
+        });
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.recordCash = async (req, res, next) => {
+    try {
+        const data = await checkout.recordCash({ staffId: assertPartner(req), orderId: req.params.orderId });
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.markDelivered = async (req, res, next) => {
+    try {
+        const data = await checkout.markDelivered({
+            staffId: assertPartner(req),
+            orderId: req.params.orderId,
+            file: req.file,
+        });
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = exports;
 

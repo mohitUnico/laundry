@@ -201,20 +201,22 @@ RESTful API endpoints follow this pattern:
 
 ### Order Lifecycle States
 
-**Order Status (New Workflow):**
-1. **placed**: Customer places order from cart
-2. **pickup_assigned**: Delivery partner assigned for pickup (auto or manual)
-3. **picked_up**: Order picked up from customer with photo proof
-4. **received_by_collection**: Collection Manager receives order at collection center
-5. **submitted_to_services**: Order items distributed to service men queues
-6. **services_in_progress**: Service men working on items
-7. **services_completed**: All service items completed
-8. **dispatch_assigned**: Delivery partner assigned for final delivery
-9. **out_for_delivery**: Order being delivered to customer
-10. **payment_pending**: Delivered, awaiting payment confirmation
-11. **delivered**: Payment confirmed by delivery partner
-12. **closed**: Order completed and closed
-13. **cancelled**: Order cancelled
+**Order Status (v2, 11 live values):**
+1. **placed**: Customer placed the order. Pickup search may be running (a ring).
+2. **pickup_assigned**: A pickup partner accepted or was force-assigned after timeout.
+3. **picked_up**: Partner confirmed the door count. The bill exists. The pickup leg is still open.
+4. **submitted_to_cm**: Partner submitted the order to the collection manager (handshake).
+5. **received_by_collection**: Collection manager marked it received. The pickup leg completes here.
+6. **submitted_to_services**: One queue item per service. Each service has its own queue.
+7. **services_in_progress**: At least one service has started.
+8. **services_completed**: Every service is done. Drop search starts by delivery mode.
+9. **out_for_delivery**: Drop partner accepted or was force-assigned. There is no dispatch_assigned state.
+10. **delivered**: Payment is complete and the drop photo is saved.
+11. **cancelled**: Only from placed.
+
+**Express**: both legs instant, express fee snapshotted on the bill, queue band ahead of ordinary work.
+**Ring**: widening radius offers to on-shift verified delivery staff. After timeout a manager may force-assign any verified active staff.
+**Handshake**: partner submits to the collection manager; the manager marks received. The manager cannot skip the submit.
 
 **Order Item Status:**
 - **pending**: Item waiting in service queue

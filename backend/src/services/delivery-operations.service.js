@@ -3,7 +3,7 @@ const logger = require('../utils/logger');
 const realtimeService = require('./realtime.service');
 const { notifyOrderStatusChange, sendToToken } = require('./fcm.service');
 const { NotFoundError, ValidationError, ConflictError } = require('../utils/errors');
-const { getDefaultAssignmentConfig, validateAssignmentParams } = require('../config/delivery-assignment.config');
+const DEFAULT_ASSIGNMENT = { radiusKm: 10, limit: 100, expiresInSeconds: 120, sendToAll: true };
 
 const DEFAULT_ASSIGNMENT_EXPIRES_SECONDS = 120;
 
@@ -38,7 +38,6 @@ async function _getOrderForAssignment(orderId) {
         select: {
             order_id: true,
             order_status: true,
-            pricing_model: true,
             pickup_address: {
                 select: {
                     full_address: true,
@@ -361,17 +360,10 @@ exports.createAssignmentRequest = async ({
     if (!['pickup', 'drop'].includes(deliveryType)) throw new ValidationError('deliveryType must be pickup or drop');
 
     // Get default configuration and merge with provided parameters
-    const defaultConfig = getDefaultAssignmentConfig();
-    const params = {
-        radiusKm: radiusKm !== null && radiusKm !== undefined ? radiusKm : defaultConfig.radiusKm,
-        limit: limit !== null && limit !== undefined ? limit : defaultConfig.limit,
-        expiresInSeconds: expiresInSeconds !== null && expiresInSeconds !== undefined ? expiresInSeconds : defaultConfig.expiresInSeconds,
-        sendToAll: sendToAll !== null && sendToAll !== undefined ? sendToAll : defaultConfig.sendToAll,
-    };
-
-    // Validate and clamp parameters against configuration limits
-    const validatedParams = validateAssignmentParams(params);
-    const { radiusKm: validatedRadiusKm, limit: validatedLimit, expiresInSeconds: validatedExpiresInSeconds, sendToAll: validatedSendToAll } = validatedParams;
+    const validatedRadiusKm = radiusKm != null ? radiusKm : DEFAULT_ASSIGNMENT.radiusKm;
+    const validatedLimit = limit != null ? limit : DEFAULT_ASSIGNMENT.limit;
+    const validatedExpiresInSeconds = expiresInSeconds != null ? expiresInSeconds : DEFAULT_ASSIGNMENT.expiresInSeconds;
+    const validatedSendToAll = sendToAll != null ? sendToAll : DEFAULT_ASSIGNMENT.sendToAll;
 
     const [order, laundry] = await Promise.all([_getOrderForAssignment(orderId), _getActiveLaundryConfig()]);
 
@@ -406,7 +398,6 @@ exports.createAssignmentRequest = async ({
                     delivery_type: deliveryType,
                     delivery_status: 'unassigned',
                     delivery_fee: (order.bill?.delivery_fee != null) ? order.bill.delivery_fee : 0,
-                    needs_weight_machine: needsWeightMachine,
                 },
             });
         }
@@ -667,12 +658,16 @@ exports.directAssignDelivery = async ({
     if (!staff.is_active) throw new ValidationError('Delivery staff is inactive');
     if (!staff.is_verified_by_admin) throw new ValidationError('Delivery staff is not verified by admin');
 
-    const activeShift = await prisma.deliveryStaffShift.findFirst({
-        where: { staff_id: deliveryStaffId, is_active: true, ended_at: null },
-        orderBy: { started_at: 'desc' },
-        select: { shift_id: true },
-    });
-    if (!activeShift) throw new ConflictError('Delivery staff shift is not active');
+    const engine = require('./assignment/assignment-engine.service');
+    const assignState = await engine.getAssignState(orderId, deliveryType);
+    if (assignState.state !== 'enabled') {
+        const err = new ConflictError(
+            'Force-assign is available only after the search times out',
+            'ASSIGNMENT_NOT_ENABLED'
+        );
+        err.details = { state: assignState.state, endsAt: assignState.endsAt || null };
+        throw err;
+    }
 
     if (!order.pickup_address || !order.delivery_address) {
         throw new ValidationError('Order is missing pickup or delivery address');
@@ -685,7 +680,7 @@ exports.directAssignDelivery = async ({
         : 0;
     const when = nowUtc();
 
-    const requiredOrderStatus = deliveryType === 'pickup' ? 'pickup_assigned' : 'dispatch_assigned';
+    const requiredOrderStatus = deliveryType === 'pickup' ? 'pickup_assigned' : 'out_for_delivery';
 
     const result = await prisma.$transaction(async (tx) => {
         let delivery = await tx.delivery.findFirst({
@@ -701,7 +696,6 @@ exports.directAssignDelivery = async ({
                     delivery_type: deliveryType,
                     delivery_status: 'unassigned',
                     delivery_fee: (order.bill?.delivery_fee != null) ? order.bill.delivery_fee : 0,
-                    needs_weight_machine: needsWeightMachine,
                 },
             });
         }
@@ -789,23 +783,23 @@ exports.directAssignDelivery = async ({
         }
 
         const normalizedOrderUpdate = { ...(orderUpdateData || {}) };
-        // If caller sets dispatched_by_distribution_manager_id but not dispatched_at, auto-fill it.
-        if (
-            deliveryType === 'drop' &&
-            normalizedOrderUpdate.dispatched_by_distribution_manager_id &&
-            !normalizedOrderUpdate.dispatched_at
-        ) {
-            normalizedOrderUpdate.dispatched_at = when;
-        }
+        delete normalizedOrderUpdate.dispatched_by_distribution_manager_id;
+        delete normalizedOrderUpdate.dispatched_at;
+        delete normalizedOrderUpdate.verified_by_distribution_manager_id;
+        delete normalizedOrderUpdate.verified_at;
+        delete normalizedOrderUpdate.payment_confirmed_at;
 
-        await tx.order.update({
-            where: { order_id: orderId },
+        const fromStatus = deliveryType === 'pickup' ? 'placed' : 'services_completed';
+        const moved = await tx.order.updateMany({
+            where: { order_id: orderId, order_status: fromStatus },
             data: {
                 ...normalizedOrderUpdate,
                 order_status: requiredOrderStatus,
             },
-            select: { order_id: true },
         });
+        if (moved.count === 0) {
+            throw new ConflictError('Order is not in a state that can be force-assigned', 'ASSIGNMENT_NOT_ENABLED');
+        }
 
         return {
             deliveryId: delivery.delivery_id,
@@ -845,6 +839,13 @@ exports.directAssignDelivery = async ({
     });
 
     // Fire a dedicated SSE event so apps can refresh accepted orders immediately
+    realtimeService.emitToDeliveryStaff(deliveryStaffId, 'forced_assignment', {
+        orderId,
+        deliveryId: result.deliveryId,
+        deliveryType,
+        assignedAt: result.assignedAt,
+    });
+
     realtimeService.emitToDeliveryStaff(deliveryStaffId, 'direct_assignment', {
         orderId,
         deliveryId: result.deliveryId,
@@ -867,6 +868,13 @@ exports.directAssignDelivery = async ({
         paymentStatus: order.bill?.payment_status ?? null,
         mode: 'direct',
     });
+
+    if (deliveryType === 'pickup') {
+        await prisma.deliveryAssignmentRequest.updateMany({
+            where: { order_id: orderId, delivery_type: 'pickup', status: 'expired' },
+            data: { ended_reason: 'forced' },
+        });
+    }
 
     logger.info('Direct delivery assignment completed', {
         orderId,
@@ -1035,6 +1043,15 @@ exports.respondToAssignmentRequest = async ({ staffId, requestId, action, reject
         if (reqRow.status !== 'pending') {
             throw new ConflictError('Assignment request is not pending');
         }
+        if (reqRow.delivery_type === 'pickup' || reqRow.delivery_type === 'drop') {
+            const order = await tx.order.findUnique({
+                where: { order_id: reqRow.order_id },
+                select: { order_status: true },
+            });
+            const { assertTransition } = require('../constants/order-flow');
+            const nextStatus = reqRow.delivery_type === 'pickup' ? 'pickup_assigned' : 'out_for_delivery';
+            assertTransition(order?.order_status, nextStatus);
+        }
         if (reqRow.expires_at && new Date(reqRow.expires_at) < when) {
             await tx.deliveryAssignmentRequest.update({
                 where: { request_id: requestId },
@@ -1085,24 +1102,30 @@ exports.respondToAssignmentRequest = async ({ staffId, requestId, action, reject
                 where: { delivery_id: reqRow.delivery_id },
                 data: { pickup_status: 'assigned', pickup_time: null },
             });
-            await tx.order.update({
-                where: { order_id: reqRow.order_id },
+            const moved = await tx.order.updateMany({
+                where: { order_id: reqRow.order_id, order_status: 'placed' },
                 data: { order_status: 'pickup_assigned' },
             });
+            if (moved.count === 0) {
+                throw new ConflictError('Order is no longer waiting for pickup', 'ACCEPT_NOT_ALLOWED');
+            }
         } else {
             await tx.dropForDelivery.update({
                 where: { delivery_id: reqRow.delivery_id },
                 data: { drop_status: 'assigned', drop_time: null },
             });
-            await tx.order.update({
-                where: { order_id: reqRow.order_id },
-                data: { order_status: 'dispatch_assigned' },
+            const moved = await tx.order.updateMany({
+                where: { order_id: reqRow.order_id, order_status: 'services_completed' },
+                data: { order_status: 'out_for_delivery' },
             });
+            if (moved.count === 0) {
+                throw new ConflictError('Order is not ready for delivery', 'ACCEPT_NOT_ALLOWED');
+            }
         }
 
         await tx.deliveryAssignmentRequest.update({
             where: { request_id: requestId },
-            data: { status: 'accepted', responded_at: when },
+            data: { status: 'accepted', responded_at: when, ended_reason: 'accepted' },
         });
 
         if (recipient) {
@@ -1190,9 +1213,16 @@ exports.respondToAssignmentRequest = async ({ staffId, requestId, action, reject
             status: 'accepted',
             notificationId: notification.notification_id,
             _orderId: reqRow.order_id,
-            _statusToNotify: reqRow.delivery_type === 'pickup' ? 'pickup_assigned' : 'dispatch_assigned',
+            _statusToNotify: reqRow.delivery_type === 'pickup' ? 'pickup_assigned' : 'out_for_delivery',
         };
     });
+
+    try {
+        const engine = require('./assignment/assignment-engine.service');
+        await engine.markEnded(requestId, 'accepted');
+    } catch {
+        // jobs are optional
+    }
 
     // Push notify after transaction commits (non-blocking)
     notifyOrderStatusChange({ orderId: txResult._orderId, status: txResult._statusToNotify }).catch(() => { });

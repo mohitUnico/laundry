@@ -5,7 +5,7 @@ const { AppError } = require('../utils/errors');
 const { v4: uuidv4 } = require('uuid');
 
 // For dashboard/day-overview, "completed" is treated as 'delivered'.
-// Keeping this aligned avoids double-counting when orders later transition to 'closed'.
+// Completed means delivered. Cancelled orders are counted separately.
 const COMPLETED_ORDER_STATUSES = ['delivered'];
 
 const startOfUtcDay = (date) =>
@@ -33,7 +33,7 @@ class DailyMetricsService {
      *
      * Semantics (day-wise):
      * - total_orders: number of non-draft orders created on that day (UTC)
-     * - completed_orders: number of orders that became delivered/closed on that day (UTC, based on updated_at)
+     * - completed_orders: number of orders that became delivered on that day (UTC, based on updated_at)
      * - cancelled_orders: number of orders that became cancelled on that day (UTC, based on updated_at)
      * - total_revenue: sum of completed orders' bill.final_amount (fallback: order.total_amount) for completions that day
      * - total_customers: distinct customers who created orders that day
@@ -49,7 +49,7 @@ class DailyMetricsService {
             const [totalOrders, completedOrders, cancelledOrders, newCustomers] = await Promise.all([
                 prisma.order.count({
                     where: {
-                        order_status: { not: 'draft' },
+                        order_status: { not: 'cancelled' },
                         created_at: { gte: start, lt: end },
                     },
                 }),
@@ -75,7 +75,7 @@ class DailyMetricsService {
             const customersGrouped = await prisma.order.groupBy({
                 by: ['customer_id'],
                 where: {
-                    order_status: { not: 'draft' },
+                    order_status: { not: 'cancelled' },
                     created_at: { gte: start, lt: end },
                 },
             });

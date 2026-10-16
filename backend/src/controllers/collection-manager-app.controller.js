@@ -8,7 +8,8 @@ exports.listIncomingOrders = async (req, res, next) => {
         }
 
         const { page, limit } = req.query;
-        const data = await collectionManagerAppService.listIncomingOrders({ page, limit });
+        const handshake = require('../services/handshake.service');
+        const data = await handshake.listIncoming({ page, limit });
 
         res.status(200).json({
             success: true,
@@ -93,12 +94,27 @@ exports.markOrderReceived = async (req, res, next) => {
 
         const staffId = req.user.user_id;
         const { orderId } = req.params;
-        const data = await collectionManagerAppService.markOrderReceived({ staffId, orderId });
+        const handshake = require('../services/handshake.service');
+        const data = await handshake.markReceived({ staffId, orderId });
 
         res.status(200).json({
             success: true,
             data,
             message: 'Order marked as received',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.listAssignableStaff = async (req, res, next) => {
+    try {
+        const engine = require('../services/assignment/assignment-engine.service');
+        const staff = await engine.listAssignableStaff(req.params.orderId);
+        const state = await engine.getAssignState(req.params.orderId, 'pickup');
+        res.status(200).json({
+            success: true,
+            data: { assign: state, staff },
         });
     } catch (error) {
         next(error);
@@ -184,7 +200,8 @@ exports.submitToServices = async (req, res, next) => {
 
         const staffId = req.user.user_id;
         const { orderId } = req.params;
-        const data = await collectionManagerAppService.submitOrderToServices({ staffId, orderId });
+        const plant = require('../services/plant-queue.service');
+        const data = await plant.submitToServices({ staffId, orderId });
 
         res.status(200).json({
             success: true,

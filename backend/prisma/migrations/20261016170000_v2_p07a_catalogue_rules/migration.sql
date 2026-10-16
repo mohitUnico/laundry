@@ -1,0 +1,3 @@
+ALTER TABLE "services"
+  ADD COLUMN "includes" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  ADD COLUMN "excludes" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

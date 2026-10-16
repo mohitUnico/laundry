@@ -46,11 +46,11 @@ exports.updateOrderStatus = async (req, res, next) => {
     try {
         const userId = req.user?.user_id;
         const { orderId } = req.params;
-        const { status } = req.body;
+        const { status, reason } = req.body;
 
         logger.info('Admin update order status request', { userId, orderId, status });
 
-        const data = await adminOrderManagementService.updateOrderStatus(orderId, status, userId);
+        const data = await adminOrderManagementService.updateOrderStatus(orderId, status, userId, reason);
 
         res.status(200).json({
             success: true,

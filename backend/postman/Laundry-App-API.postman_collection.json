@@ -99,6 +99,117 @@
   ],
   "item": [
     {
+      "name": "v2",
+      "description": "Order-flow v2. Empty folders are filled as each backend phase ships. Use tokens from `node scripts/dev-tokens.js`.",
+      "item": [
+        { "name": "Phase 0 — Foundation", "item": [] },
+        {
+          "name": "Phase 1 — Config",
+          "item": [
+            {
+              "name": "GET public config",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": "{{baseUrl}}/api/v1/config"
+              }
+            },
+            {
+              "name": "GET admin config",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+                "url": "{{baseUrl}}/api/v1/admin/config"
+              }
+            },
+            {
+              "name": "PUT admin config key",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": { "mode": "raw", "raw": "{\n  \"value\": 10\n}" },
+                "url": "{{baseUrl}}/api/v1/admin/config/ASSIGNMENT_TIMEOUT_MINUTES"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Phase 2 — Booking",
+          "item": [
+            {
+              "name": "POST cart items",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"items\": [\n    { \"service_id\": \"{{serviceId}}\", \"pricing_type\": \"per_kg\" }\n  ]\n}"
+                },
+                "url": "{{baseUrl}}/api/v1/carts/items"
+              }
+            },
+            {
+              "name": "POST create order (express)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"cart_id\": \"{{cartId}}\",\n  \"pickup_address_id\": \"{{addressId}}\",\n  \"delivery_address_id\": \"{{addressId}}\",\n  \"is_express\": true\n}"
+                },
+                "url": "{{baseUrl}}/api/v1/orders/create_order"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Phase 3 — Assignment engine (pickup)",
+          "item": [
+            {
+              "name": "GET assignable staff",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+                "url": "{{baseUrl}}/api/v1/staff-app/collection-manager/orders/{{orderId}}/assignable-staff"
+              }
+            },
+            {
+              "name": "POST force-assign pickup",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": { "mode": "raw", "raw": "{\n  \"deliveryStaffId\": \"{{deliveryStaffId}}\"\n}" },
+                "url": "{{baseUrl}}/api/v1/staff-app/collection-manager/orders/{{orderId}}/assign-pickup-direct"
+              }
+            }
+          ]
+        },
+        { "name": "Phase 4 — Cancel and reschedule", "item": [] },
+        { "name": "Phase 5 — Door count and bill", "item": [] },
+        { "name": "Phase 6 — CM handshake", "item": [] },
+        { "name": "Phase 7 — Plant queue", "item": [] },
+        { "name": "Phase 7A — Admin catalogue", "item": [] },
+        { "name": "Phase 8 — Drop assignment and DM", "item": [] },
+        { "name": "Phase 9 — Payment and delivered", "item": [] },
+        { "name": "Phase 10 — Customer read APIs", "item": [] },
+        { "name": "Phase 11 — Notifications admin metrics", "item": [] },
+        { "name": "Phase 12 — Cleanup", "item": [] },
+        { "name": "Phase 13 — Docs", "item": [] }
+      ]
+    },
+    {
       "name": "00 — Health & API root",
       "item": [
         {

@@ -1,5 +1,67 @@
 const distributionManagerAppService = require('../services/distribution-manager-app.service');
+const dmDispatch = require('../services/dm-dispatch.service');
+const plantQueue = require('../services/plant-queue.service');
 const { AuthorizationError } = require('../utils/errors');
+
+function assertDm(req) {
+    if (req.user.role !== 'distribution_manager') {
+        throw new AuthorizationError('Only distribution managers can access this endpoint');
+    }
+}
+
+exports.listInPlant = async (req, res, next) => {
+    try {
+        assertDm(req);
+        const data = await plantQueue.listInPlant();
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.listReadyToDispatch = async (req, res, next) => {
+    try {
+        assertDm(req);
+        const data = await dmDispatch.readyToDispatch();
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.listHistory = async (req, res, next) => {
+    try {
+        assertDm(req);
+        const data = await dmDispatch.history(req.query);
+        res.status(200).json({ success: true, data: data.orders, pagination: data.pagination });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.listAssignableStaff = async (req, res, next) => {
+    try {
+        assertDm(req);
+        const data = await dmDispatch.assignableStaff(req.params.orderId);
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.assignDrop = async (req, res, next) => {
+    try {
+        assertDm(req);
+        const data = await dmDispatch.assignDrop({
+            orderId: req.params.orderId,
+            deliveryStaffId: req.body.deliveryStaffId,
+            assignedBy: req.user.user_id,
+        });
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
+};
 
 exports.listReadyToVerify = async (req, res, next) => {
     try {

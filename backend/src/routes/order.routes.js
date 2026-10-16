@@ -22,7 +22,31 @@ router.get(
     orderController.getCustomerOrders
 );
 
+router.post(
+    '/:orderId/cancel',
+    authenticateJWT,
+    authorize('customer'),
+    validateUuidParam('orderId'),
+    orderController.cancelOrder
+);
+
+router.patch(
+    '/:orderId/schedule',
+    authenticateJWT,
+    authorize('customer'),
+    validateUuidParam('orderId'),
+    orderController.rescheduleOrder
+);
+
 // GET /api/v1/orders/:orderId/tracking - Get order tracking data (map markers + assigned driver)
+router.get(
+    '/:orderId',
+    authenticateJWT,
+    authorize('customer'),
+    validateUuidParam('orderId'),
+    orderController.getOrder
+);
+
 router.get(
     '/:orderId/tracking',
     authenticateJWT,

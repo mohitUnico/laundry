@@ -12,7 +12,7 @@ services:
       POSTGRES_PASSWORD: "laundry_pass"
       POSTGRES_DB: "laundry_db"
     ports:
-      - '5432:5432'
+      - '55432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -70,7 +70,6 @@ services:
       NODE_ENV: development
       PORT: 3000
       LOG_LEVEL: debug
-      PICKUP_ASSIGNMENT_USE_QUEUE: "true"
       REDIS_URL: redis://redis:6379
       DATABASE_URL: postgresql://laundry_user:laundry_pass@postgres:5432/laundry_db?connection_limit=10&pool_timeout=20
       DIRECT_URL: postgresql://laundry_user:laundry_pass@postgres:5432/laundry_db

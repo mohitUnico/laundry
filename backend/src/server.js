@@ -19,15 +19,15 @@ try {
     prisma = require('./config/database');
     const portalAuth = require('./services/portal-auth.service');
     const dailyMetricsJob = require('./jobs/daily-metrics.job');
-    const pickupCatchupJob = require('./jobs/pickup-assignment-catchup.job');
-    const pickupWorker = require('./workers/pickup-assignment.worker');
+    const pickupCatchupJob = require('./services/assignment/assignment-catchup.job');
+    const pickupWorker = require('./services/assignment/assignment.worker');
     const redis = require('./config/redis');
     startCleanupJob = portalAuth.startCleanupJob;
     startDailyMetricsJob = dailyMetricsJob.startDailyMetricsJob;
-    startPickupAssignmentCatchupJob = pickupCatchupJob.startPickupAssignmentCatchupJob;
-    stopPickupAssignmentCatchupJob = pickupCatchupJob.stopPickupAssignmentCatchupJob;
-    startPickupAssignmentWorker = pickupWorker.startPickupAssignmentWorker;
-    stopPickupAssignmentWorker = pickupWorker.stopPickupAssignmentWorker;
+    startPickupAssignmentCatchupJob = pickupCatchupJob.startAssignmentCatchupJob;
+    stopPickupAssignmentCatchupJob = pickupCatchupJob.stopAssignmentCatchupJob;
+    startPickupAssignmentWorker = pickupWorker.startAssignmentWorker;
+    stopPickupAssignmentWorker = pickupWorker.stopAssignmentWorker;
     closeRedisConnection = redis.closeRedisConnection;
 } catch (err) {
     console.error('❌ Startup failed (require/load):', err);
@@ -58,19 +58,14 @@ process.on('unhandledRejection', (reason, promise) => {
 const gracefulShutdown = async (signal) => {
     logger.info(`${signal} received. Starting graceful shutdown...`);
     
-    // Stop queue-based pickup assignment services
-    const useQueueAssignment = process.env.PICKUP_ASSIGNMENT_USE_QUEUE === 'true';
-    if (useQueueAssignment) {
-        await stopPickupAssignmentWorker();
-        stopPickupAssignmentCatchupJob();
-    }
+    await stopPickupAssignmentWorker();
+    stopPickupAssignmentCatchupJob();
 
     server.close(async () => {
         logger.info('✅ HTTP server closed');
 
         try {
-            // Close Redis connection if queue mode is enabled
-            if (useQueueAssignment && closeRedisConnection) {
+            if (closeRedisConnection) {
                 await closeRedisConnection();
             }
             
@@ -102,24 +97,12 @@ const server = app.listen(PORT, () => {
             startDailyMetricsJob();
         }
         
-        // Pickup assignment: queue-based mode only (polling/webhook removed)
-        const useQueueAssignment = process.env.PICKUP_ASSIGNMENT_USE_QUEUE === 'true';
-        
-        if (useQueueAssignment) {
-            // Queue-based assignment (BullMQ + Redis)
-            try {
-                startPickupAssignmentWorker();
-                logger.info('✅ Pickup assignment worker started (queue-based mode)');
-                
-                // Start catch-up job as safety net (handles Redis data loss)
-                startPickupAssignmentCatchupJob();
-                logger.info('✅ Pickup assignment catch-up job started (safety net)');
-            } catch (error) {
-                logger.error('❌ Failed to start pickup assignment worker:', error);
-                // Don't exit - app can still run without worker (jobs will queue but not process)
-            }
-        } else {
-            logger.info('ℹ️ Pickup assignment queue mode disabled (no automatic assignment scheduler running)');
+        try {
+            startPickupAssignmentWorker();
+            startPickupAssignmentCatchupJob();
+            logger.info('Assignment worker and catch-up job started');
+        } catch (error) {
+            logger.error('Failed to start assignment worker', { error: error.message });
         }
     } catch (err) {
         logger.error('❌ Error during server startup (in listen callback):', err);

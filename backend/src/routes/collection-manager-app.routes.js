@@ -6,9 +6,7 @@ const { validate, validateQuery } = require('../middleware/validation.middleware
 const { validateUuidParam } = require('../middleware/delivery-staff-app.middleware');
 const {
     listPaginationQuerySchema,
-    assignDeliverySchema,
     directAssignDeliverySchema,
-    updatePerKgWeightsSchema,
 } = require('../validators/staff-app.validator');
 
 const router = express.Router();
@@ -31,36 +29,16 @@ router.get(
     collectionManagerAppController.getOrderItems
 );
 
-// GET per-kg items for weight entry (delivery_only / drop-only orders)
+// GET verified staff the manager may force-assign after timeout
 router.get(
-    '/orders/:orderId/items/weights',
+    '/orders/:orderId/assignable-staff',
     authenticateJWT,
     authorize('collection_manager'),
     validateUuidParam('orderId'),
-    collectionManagerAppController.getPerKgItems
+    collectionManagerAppController.listAssignableStaff
 );
 
-// PATCH update per-kg weights (for delivery_only orders - no pickup, CM enters weights)
-router.patch(
-    '/orders/:orderId/items/weights',
-    authenticateJWT,
-    authorize('collection_manager'),
-    validateUuidParam('orderId'),
-    validate(updatePerKgWeightsSchema),
-    collectionManagerAppController.updatePerKgWeights
-);
-
-// POST create pickup assignment request (only pickup_only/both)
-router.post(
-    '/orders/:orderId/assign-pickup',
-    authenticateJWT,
-    authorize('collection_manager'),
-    validateUuidParam('orderId'),
-    validate(assignDeliverySchema),
-    collectionManagerAppController.assignPickupDelivery
-);
-
-// POST manually assign pickup to a specific delivery staff (no accept/reject)
+// POST manually assign pickup to a specific delivery staff (only after search timeout)
 router.post(
     '/orders/:orderId/assign-pickup-direct',
     authenticateJWT,
@@ -70,7 +48,6 @@ router.post(
     collectionManagerAppController.assignPickupDirect
 );
 
-// POST mark received_by_collection
 router.post(
     '/orders/:orderId/receive',
     authenticateJWT,
@@ -79,13 +56,12 @@ router.post(
     collectionManagerAppController.markOrderReceived
 );
 
-// POST generate invoice (bill) for an order after received
 router.post(
-    '/orders/:orderId/generate-invoice',
+    '/orders/:orderId/mark-received',
     authenticateJWT,
     authorize('collection_manager'),
     validateUuidParam('orderId'),
-    collectionManagerAppController.generateInvoice
+    collectionManagerAppController.markOrderReceived
 );
 
 // GET received orders

@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>WashBee UI prototype</title>
+  <link rel="stylesheet" href="proto.css" />
+</head>
+<body>
+<div class="studio">
+  <aside class="rail">
+    <h1>WashBee prototype</h1>
+    <div class="sub">Designer click-through · locked flow</div>
+    <button class="gal-btn" id="gal-btn" type="button">Show gallery of all screens</button>
+    <h2>Customer</h2>
+    <a data-go="c-login">Login OTP</a>
+    <a data-go="c-home">Home</a>
+    <a data-go="c-how">How we work</a>
+    <a data-go="c-pricing">Pricing tab</a>
+    <a data-go="c-account">Account</a>
+    <a data-go="c-services">Pick services</a>
+    <a data-go="c-cart">Cart</a>
+    <a data-go="c-checkout">Checkout ordinary</a>
+    <a data-go="c-checkout-ex">Checkout Express</a>
+    <a data-go="c-orders-placed">Orders · placed</a>
+    <a data-go="c-cancel">Cancel sheet</a>
+    <a data-go="c-resched">Reschedule</a>
+    <a data-go="c-cancelled">Orders · cancelled</a>
+    <a data-go="c-orders-bill">Orders · bill ready</a>
+    <a data-go="c-track-pu">Track · out for pickup</a>
+    <a data-go="c-track-done">Track · pickup done</a>
+    <a data-go="c-track-ip">Track · in process</a>
+    <a data-go="c-track-ofd">Track · out for delivery</a>
+    <a data-go="c-pay">Pay UPI</a>
+    <a data-go="c-done">Delivered</a>
+    <h2>Pickup boy</h2>
+    <a data-go="p-jobs">Jobs</a>
+    <a data-go="p-accept">Accept job</a>
+    <a data-go="p-door">Door · services</a>
+    <a data-go="p-expand">Door · expand</a>
+    <a data-go="p-wait">Waiting for CM</a>
+    <h2>Collection manager</h2>
+    <a data-go="cm-in">Incoming</a>
+    <a data-go="cm-force">Force-assign pickup</a>
+    <a data-go="cm-rec">Received</a>
+    <a data-go="cm-hist">History</a>
+    <h2>Service man</h2>
+    <a data-go="sm-q">Queue</a>
+    <a data-go="sm-work">In progress</a>
+    <a data-go="sm-done">Completed</a>
+    <h2>Distribution manager</h2>
+    <a data-go="dm-plant">In-plant</a>
+    <a data-go="dm-wait">Ready · assign locked</a>
+    <a data-go="dm-asg">Ready · assign on</a>
+    <a data-go="dm-hist">History</a>
+    <h2>Delivery captain</h2>
+    <a data-go="d-jobs">Jobs</a>
+    <a data-go="d-accept">Drop offer</a>
+    <a data-go="d-ofd">Out for delivery</a>
+    <a data-go="d-cash">Paid in cash</a>
+    <a data-go="d-fin">Photo + delivered</a>
+    <h2>Admin</h2>
+    <a data-go="a-config">Config</a>
+  </aside>
+
+  <main class="stage">
+    <div>
+      <div class="tiny" style="text-align:center;margin-bottom:8px" id="scr-label">Home</div>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="status"><span>9:41</span><span>WashBee</span></div>
+
+        <!-- CUSTOMER -->
+        <article class="scr" id="c-home" data-title="Customer · Home">
+          <div class="body" style="padding-top:0">
+            <div class="row" style="margin-bottom:12px">
+              <div class="row click" data-go="c-account" style="gap:8px">
+                <div class="avatar">A</div>
+                <div><div class="tiny">Hello</div><b>Ananya</b></div>
+              </div>
+              <div class="muted">Koramangala ▾</div>
+            </div>
+            <div class="card click" data-go="c-track-pu" style="background:linear-gradient(90deg,#eaf1ff,#fff)">
+              <div class="row"><span class="chip chip-info">Out for pickup</span><span class="tiny">#WB1042</span></div>
+              <div class="tiny" style="margin-top:6px">Rahul is on the way</div>
+            </div>
+            <p class="tiny">Book a service</p>
+            <div class="g2">
+              <div class="tile click" data-go="c-services" style="background:#2f6bff;grid-row:span 2;min-height:140px"><b>Regular Wash</b><span class="tiny">from ₹49/kg</span></div>
+              <div class="tile click" data-go="c-services" style="background:#0e9f8e"><b>Pro Clean</b></div>
+              <div class="tile click" data-go="c-services" style="background:#e08a00"><b>Home Linens</b></div>
+            </div>
+            <div class="tile click" data-go="c-services" style="background:#7c4dff"><b>Luxury Care</b></div>
+            <div class="card click" data-go="c-how">
+              <b>How we work</b>
+              <div class="tiny">Pickup to delivery in 6 steps</div>
+            </div>
+            <div class="brand">WashBee<br><span class="tiny" style="color:#e8e6ff">Fresh. On time. At your door.</span></div>
+          </div>
+          <div class="nav">
+            <button class="on">Home</button>
+            <button data-go="c-orders-placed">Orders</button>
+            <button data-go="c-cart">Cart</button>
+            <button data-go="c-pricing">Pricing</button>
+          </div>
+        </article>
+
+        <article class="scr" id="c-how" data-title="Customer · How we work">
+          <div class="top"><button class="back" data-go="c-home">‹</button> How we work</div>
+          <div class="body">
+            <div class="card"><div class="ph" style="background:#2f6bff">1 · Out for pickup</div><b>We come to your door</b><p class="tiny">A partner is assigned and heads to you.</p></div>
+            <div class="card"><div class="ph" style="background:#2c3ca5">2 · Counted at door</div><b>Listed in front of you</b><p class="tiny">Items or kg are counted. Bill is generated. You don’t pay yet.</p></div>
+            <div class="card"><div class="ph" style="background:#0e9f8e">3 · In process</div><b>Cleaned at the hub</b></div>
+            <div class="card"><div class="ph" style="background:#16a34a">4 · Ready</div><b>All services done</b></div>
+            <div class="card"><div class="ph" style="background:#7c4dff">5 · Out for delivery</div><b>On the way back</b></div>
+            <div class="card"><div class="ph" style="background:#e08a00">6 · Delivered</div><b>Pay on your phone</b><p class="tiny">UPI, or cash to the captain if UPI fails.</p></div>
+          </div>
+        </article>
+
+        <article class="scr" id="c-pricing" data-title="Customer · Pricing">
+          <div class="top">Pricing</div>
+          <div class="body">
+            <div class="row" style="margin-bottom:8px">
+              <span class="chip chip-info">Regular Wash</span>
+              <span class="chip">Pro Clean</span>
+              <span class="chip">Linens</span>
+            </div>
+            <div class="card">
+              <div class="row"><b>Wash &amp; Fold</b><span class="chip chip-ok">₹49/kg</span></div>
+              <p class="tiny"><b>Includes</b> wash, dry, fold · hygiene bag</p>
+              <div class="list-item"><span>Shirt</span><b>₹40</b></div>
+              <div class="list-item"><span>Pants</span><b>₹50</b></div>
+              <div class="list-item"><span>Kurta</span><b>₹55</b></div>
+            </div>
+            <p class="tiny">Browse only — book from Home.</p>
+          </div>
+          <div class="nav">
+            <button data-go="c-home">Home</button>
+            <button data-go="c-orders-placed">Orders</button>
+            <button data-go="c-cart">Cart</button>
+            <button class="on">Pricing</button>
+          </div>
+        </article>
+
+        <article class="scr" id="c-account" data-title="Customer · Account">
+          <div class="top"><button class="back" data-go="c-home">‹</button> Account</div>
+          <div class="body">
+            <div class="card row"><div class="avatar">A</div><div><b>Ananya Rao</b><div class="tiny">+91 98765 11111</div></div></div>
+            <div class="card click">Addresses</div>
+            <div class="card click">Support &amp; legal</div>
+          </div>
+        </article>
+
+        <article class="scr" id="c-services" data-title="Customer · Services">
+          <div class="top"><button class="back" data-go="c-home">‹</button> Regular Wash</div>
+          <div class="body">
+            <div class="card click"><div class="row"><b>Wash &amp; Fold</b><span class="chip chip-info">Per kg</span></div></div>
+            <div class="card click"><div class="row"><b>Wash &amp; Iron</b><span class="chip chip-info">Per unit</span></div></div>
+            <div class="card click"><div class="row"><b>Iron only</b><span class="chip">Per unit</span></div></div>
+            <p class="tiny">No cloth SKUs here. Pickup boy counts at the door.</p>
+            <button class="btn" data-go="c-cart">Add to cart</button>
+          </div>
+        </article>
+
+        <article class="scr" id="c-cart" data-title="Customer · Cart">
+          <div class="top"><button class="back" data-go="c-home">‹</button> Cart</div>
+          <div class="body">
+            <div class="card"><div class="row"><b>Wash &amp; Fold</b><span class="tiny">Per kg</span></div></div>
+            <div class="card"><div class="row"><b>Steam Press</b><span class="tiny">Per unit</span></div></div>
+            <p class="tiny">Amounts unknown until pickup.</p>
+            <button class="btn" data-go="c-checkout">Checkout</button>
+            <div style="height:8px"></div>
+            <button class="btn ghost" data-go="c-checkout-ex">Checkout as Express</button>
+          </div>
+        </article>
+
+        <article class="scr" id="c-checkout" data-title="Customer · Checkout">
+          <div class="top"><button class="back" data-go="c-cart">‹</button> Schedule</div>
+          <div class="body">
+            <div class="card"><b>Pickup</b>
+              <div class="row" style="margin-top:8px"><span class="chip chip-info">Instant</span><span class="chip">Scheduled</span></div>
+            </div>
+            <div class="card"><b>Delivery</b>
+              <div class="row" style="margin-top:8px"><span class="chip">Instant</span><span class="chip chip-info">Scheduled</span></div>
+              <p class="tiny">Not earlier than pickup + 2 days (PICKUP_DELIVERY_BUFFER_DAYS)</p>
+            </div>
+            <button class="btn" data-go="c-orders-placed">Confirm order</button>
+            <p class="tiny">No itemised bill yet.</p>
+          </div>
+        </article>
+
+        <article class="scr" id="c-checkout-ex" data-title="Customer · Express checkout">
+          <div class="top"><button class="back" data-go="c-cart">‹</button> Express</div>
+          <div class="body">
+            <span class="chip chip-ex">EXPRESS</span>
+            <div class="card" style="margin-top:10px">
+              <b>No schedule</b>
+              <p class="tiny">Pickup and delivery are both instant. Express fee is added when the bill is generated.</p>
+            </div>
+            <button class="btn ex" data-go="c-orders-placed">Confirm Express</button>
+          </div>
+        </article>
+
+        <article class="scr" id="c-orders-placed" data-title="Customer · Orders placed">
+          <div class="top">My orders</div>
+          <div class="body">
+            <div class="card">
+              <div class="row"><b>#WB1042</b><span class="chip chip-wait">Partner not assigned</span></div>
+              <p class="tiny">View details · bill yet to be generated</p>
+              <div class="g2" style="margin-top:8px">
+                <button class="btn ghost" data-go="c-resched">Change schedule</button>
+                <button class="btn ghost" data-go="c-cancel">Cancel</button>
+              </div>
+            </div>
+          </div>
+          <div class="nav">
+            <button data-go="c-home">Home</button>
+            <button class="on">Orders</button>
+            <button data-go="c-cart">Cart</button>
+            <button data-go="c-pricing">Pricing</button>
+          </div>
+        </article>
+
+        <article class="scr" id="c-orders-bill" data-title="Customer · Bill ready">
+          <div class="top">My orders</div>
+          <div class="body">
+            <div class="card">
+              <div class="row"><b>#WB1042</b><span class="chip chip-ok">Pickup done</span></div>
+              <div class="list-item"><span>Wash &amp; Fold 3.2 kg</span><b>₹157</b></div>
+              <div class="list-item"><span>Steam Press × 4</span><b>₹160</b></div>
+              <div class="list-item"><span>Delivery fee</span><b>₹40</b></div>
+              <div class="row"><b>Total</b><b>₹357</b></div>
+              <p class="tiny">View only. Pay at delivery.</p>
+              <button class="btn off">Pay bill</button>
+            </div>
+          </div>
+        </article>
+
+        <article class="scr" id="c-track-pu" data-title="Customer · Out for pickup">
+          <div class="top"><button class="back" data-go="c-home">‹</button> Tracking</div>
+          <div class="body">
+            <div class="map"><div class="path"></div><div class="pin" style="left:30%;top:40%"></div></div>
+            <div class="card row">
+              <div class="avatar">R</div>
+              <div style="flex:1"><b>Rahul</b><div class="tiny">Pickup partner · +91 98XXXX</div></div>
+              <span class="tiny">Call · Msg</span>
+            </div>
+            <div class="card">
+              <div class="step"><div class="dot on"></div><div><b>Out for pickup</b><div class="tiny">Current</div></div></div>
+              <div class="step"><div class="dot"></div><div>Pickup</div></div>
+              <div class="step"><div class="dot"></div><div>In process</div></div>
+              <div class="step"><div class="dot"></div><div>Ready</div></div>
+              <div class="step"><div class="dot"></div><div>Out for delivery</div></div>
+              <div class="step"><div class="dot"></div><div>Delivered</div></div>
+            </div>
+          </div>
+        </article>
+
+        <article class="scr" id="c-track-done" data-title="Customer · Pickup done">
+          <div class="top"><button class="back" data-go="c-home">‹</button> Tracking</div>
+          <div class="body">
+            <div class="card">
+              <div class="step"><div class="dot done"></div><div>Out for pickup</div></div>
+              <div class="step"><div class="dot on"></div><div><b>Pickup done</b></div></div>
+              <div class="step"><div class="dot"></div><div>In process</div></div>
+              <div class="step"><div class="dot"></div><div>Ready</div></div>
+              <div class="step"><div class="dot"></div><div>Out for delivery</div></div>
+              <div class="step"><div class="dot"></div><div>Delivered</div></div>
+            </div>
+            <button class="btn ghost" data-go="c-orders-bill">View bill</button>
+          </div>
+        </article>
+
+        <article class="scr" id="c-track-ip" data-title="Customer · In process">
+          <div class="top"><button class="back" data-go="c-home">‹</button> Tracking</div>
+          <div class="body">
+            <span class="chip chip-ex">EXPRESS</span>
+            <div class="card" style="margin-top:8px">
+              <div class="step"><div class="dot done"></div><div>Out for pickup</div></div>
+              <div class="step"><div class="dot done"></div><div>Pickup</div></div>
+              <div class="step"><div class="dot on"></div><div><b>In process</b></div></div>
+              <div class="step"><div class="dot"></div><div>Ready</div></div>
+              <div class="step"><div class="dot"></div><div>Out for delivery</div></div>
+              <div class="step"><div class="dot"></div><div>Delivered</div></div>
+            </div>
+          </div>
+        </article>
+
+        <article class="scr" id="c-track-ofd" data-title="Customer · Out for delivery">
+          <div class="top"><button class="back" data-go="c-home">‹</button> Tracking</div>
+          <div class="body">
+            <div class="map"><div class="path"></div><div class="pin" style="left:55%;top:28%"></div></div>
+            <div class="card row">
+              <div class="avatar">K</div>
+              <div style="flex:1"><b>Kiran</b><div class="tiny">+91 99XXXX · display only</div></div>
+            </div>
+            <div class="card">
+              <div class="step"><div class="dot done"></div><div>Ready</div></div>
+              <div class="step"><div class="dot on"></div><div><b>Out for delivery</b></div></div>
+              <div class="step"><div class="dot"></div><div>Delivered</div></div>
+            </div>
+            <div class="row"><b>₹357</b></div>
+            <button class="btn" data-go="c-pay">Pay with UPI</button>
+          </div>
+        </article>
+
+        <article class="scr" id="c-pay" data-title="Customer · Pay">
+          <div class="top"><button class="back" data-go="c-track-ofd">‹</button> Pay</div>
+          <div class="body">
+            <input placeholder="Coupon code (one, existing table)" />
+            <div class="card" style="margin-top:10px"><div class="row"><span>Total</span><b>₹357</b></div></div>
+            <button class="btn" data-go="c-done">Pay via GPay / PhonePe</button>
+            <p class="tiny">Opens any UPI app. Cash is not on this screen.</p>
+          </div>
+        </article>
+
+        <article class="scr" id="c-done" data-title="Customer · Delivered">
+          <div class="top"><button class="back" data-go="c-home">‹</button> Tracking</div>
+          <div class="body">
+            <div class="card" style="text-align:center;padding:28px">
+              <div class="chip chip-ok">Delivered</div>
+              <p><b>Paid · ₹357</b></p>
+              <p class="tiny">Photo captured by captain</p>
+            </div>
+          </div>
+        </article>
+
+        <!-- PICKUP -->
+        <article class="scr" id="p-jobs" data-title="Pickup · Jobs">
+          <div class="top">Pickup jobs</div>
+          <div class="body">
+            <div class="card click" data-go="p-accept">
+              <div class="row"><b>#WB1042</b><span class="chip chip-ex">EXPRESS</span></div>
+              <div class="tiny">Koramangala · 1.2 km · Instant</div>
+            </div>
+            <div class="card">
+              <div class="row"><b>#WB1038</b><span class="chip">Scheduled</span></div>
+              <div class="tiny">HSR · 2.4 km</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="scr" id="p-accept" data-title="Pickup · Accept">
+          <div class="top"><button class="back" data-go="p-jobs">‹</button> New job</div>
+          <div class="body">
+            <div class="card">
+              <span class="chip chip-ex">EXPRESS</span>
+              <p><b>Ananya Rao</b></p>
+              <p class="tiny">12th Main, Koramangala · carry weight machine</p>
+            </div>
+            <button class="btn" data-go="p-door">Accept</button>
+            <p class="tiny">First accept wins. If CM assigned you, you cannot reject.</p>
+          </div>
+        </article>
+
+        <article class="scr" id="p-door" data-title="Pickup · Door list">
+          <div class="top"><button class="back" data-go="p-jobs">‹</button> #WB1042</div>
+          <div class="body">
+            <div class="card click" data-go="p-expand">
+              <div class="row"><b>Wash &amp; Fold</b><span class="chip">Per kg</span></div>
+              <div class="tiny">Tap to expand · draft saved</div>
+            </div>
+            <div class="card click" data-go="p-expand">
+              <div class="row"><b>Steam Press</b><span class="chip chip-info">Per unit</span></div>
+            </div>
+            <button class="btn" data-go="p-wait">Mark as picked up</button>
+            <p class="tiny">Enabled only when all services + photos are done.</p>
+          </div>
+        </article>
+
+        <article class="scr" id="p-expand" data-title="Pickup · Expand service">
+          <div class="top"><button class="back" data-go="p-door">‹</button> Steam Press</div>
+          <div class="body">
+            <div class="list-item"><span>Shirt</span><span class="qty"><button>-</button><b>2</b><button>+</button></span></div>
+            <div class="list-item"><span>Kurta</span><span class="qty"><button>-</button><b>1</b><button>+</button></span></div>
+            <div class="ph" style="background:#c5c8d8;color:#333;margin-top:12px">Photo · camera or gallery</div>
+            <button class="btn ghost" data-go="p-door">Save draft</button>
+          </div>
+        </article>
+
+        <article class="scr" id="p-wait" data-title="Pickup · Waiting for CM">
+          <div class="top"><button class="back" data-go="p-jobs">‹</button> #WB1042</div>
+          <div class="body">
+            <div class="card"><b>Bill generated ₹357</b><p class="tiny">Customer can view. Cannot pay.</p></div>
+            <button class="btn off">Waiting for CM verification</button>
+            <p class="tiny">Same button was Mark as picked up → Submit request to CM → this inactive state. Pull to refresh after CM receive.</p>
+          </div>
+        </article>
+
+        <!-- CM -->
+        <article class="scr" id="cm-in" data-title="CM · Incoming">
+          <div class="top">Incoming</div>
+          <div class="body">
+            <div class="card"><div class="row"><b>#WB1048</b><span class="chip">Yet to pick up</span></div></div>
+            <div class="card click" data-go="cm-rec">
+              <div class="row"><b>#WB1042</b><span class="chip chip-ex">EXPRESS</span></div>
+              <div class="tiny">Requested · Submit to CM</div>
+              <button class="btn" style="margin-top:8px">Verified &amp; Received</button>
+            </div>
+          </div>
+        </article>
+
+        <article class="scr" id="cm-rec" data-title="CM · Received">
+          <div class="top">Received</div>
+          <div class="body">
+            <div class="card">
+              <div class="row"><b>#WB1042</b><span class="chip chip-ex">EXPRESS</span></div>
+              <div class="tiny">Wash &amp; Fold · Steam Press</div>
+              <button class="btn" data-go="cm-hist">Send to service queue</button>
+            </div>
+          </div>
+        </article>
+
+        <article class="scr" id="cm-hist" data-title="CM · History">
+          <div class="top">History</div>
+          <div class="body">
+            <div class="card"><div class="row"><b>#WB1042</b><span class="tiny">Sent to queue</span></div></div>
+            <div class="card"><div class="row"><b>#WB0991</b><span class="tiny">Sent to queue</span></div></div>
+          </div>
+        </article>
+
+        <!-- SM -->
+        <article class="scr" id="sm-q" data-title="Service man · Queue">
+          <div class="top">Wash &amp; Fold queue</div>
+          <div class="body">
+            <p class="tiny">Express band</p>
+            <div class="card click" data-go="sm-work" style="border-color:#ffc9cf">
+              <div class="row"><b>#WB1042</b><span class="chip chip-ex">EXPRESS</span></div>
+              <div class="tiny">Assigned 2:14 pm</div>
+            </div>
+            <p class="tiny">Ordinary · new at bottom</p>
+            <div class="card"><div class="row"><b>#WB1033</b><span class="tiny">Assigned 11:02 am</span></div></div>
+            <div class="card"><div class="row"><b>#WB1039</b><span class="tiny">Assigned 1:40 pm</span></div></div>
+            <p class="tiny">Refreshes every 2 minutes while this screen is open.</p>
+          </div>
+        </article>
+
+        <article class="scr" id="sm-work" data-title="Service man · Work">
+          <div class="top"><button class="back" data-go="sm-q">‹</button> #WB1042</div>
+          <div class="body">
+            <span class="chip chip-ex">EXPRESS</span>
+            <div class="card" style="margin-top:8px"><b>Wash &amp; Fold</b><p class="tiny">3.2 kg · assigned 2:14 pm</p></div>
+            <button class="btn" style="margin-bottom:8px">Mark in progress</button>
+            <button class="btn ok" data-go="sm-q">Mark completed</button>
+          </div>
+        </article>
+
+        <!-- DM -->
+        <article class="scr" id="dm-plant" data-title="DM · In-plant">
+          <div class="top">In-plant</div>
+          <div class="body">
+            <div class="card">
+              <div class="row"><b>#WB1042</b><span class="chip chip-ex">EXPRESS</span></div>
+              <p class="tiny">Expand — whole order</p>
+              <div class="list-item"><span>Wash &amp; Fold</span><span class="chip chip-ok">Completed</span></div>
+              <div class="list-item inactive"><span>Steam Press</span><span class="chip">Pending</span></div>
+            </div>
+          </div>
+        </article>
+
+        <article class="scr" id="dm-wait" data-title="DM · Assign locked">
+          <div class="top">Ready to dispatch</div>
+          <div class="body">
+            <div class="card">
+              <div class="row"><b>#WB1042</b><span class="chip chip-ex">EXPRESS</span></div>
+              <p class="tiny">All items done · searching captains</p>
+              <button class="btn off">Assign delivery partner</button>
+              <p class="tiny">Visible, disabled until timeout. If scheduled: Available from {time}</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="scr" id="dm-asg" data-title="DM · Assign on">
+          <div class="top">Ready to dispatch</div>
+          <div class="body">
+            <div class="card">
+              <b>On-shift captains</b>
+              <div class="list-item click" data-go="dm-hist"><span>Kiran · 1.8 km</span><b>Assign</b></div>
+              <div class="list-item"><span>Vikram · 3.1 km</span><b>Assign</b></div>
+              <p class="tiny">Cannot reject once assigned.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="scr" id="dm-hist" data-title="DM · History">
+          <div class="top">History</div>
+          <div class="body">
+            <div class="card"><div class="row"><b>#WB1042</b><span class="chip chip-wait">Out for delivery</span></div></div>
+            <div class="card"><div class="row"><b>#WB1001</b><span class="chip chip-ok">Delivered</span></div></div>
+          </div>
+        </article>
+
+        <!-- DROP -->
+        <article class="scr" id="d-ofd" data-title="Captain · Out for delivery">
+          <div class="top">Out for delivery</div>
+          <div class="body">
+            <span class="chip chip-ex">EXPRESS</span>
+            <div class="map" style="margin-top:8px"><div class="path"></div><div class="pin" style="left:48%;top:36%"></div></div>
+            <div class="card"><b>Ananya Rao</b><div class="tiny">Koramangala · ₹357 pending</div></div>
+            <p class="tiny">Customer pays UPI. If it fails, use Paid in cash.</p>
+            <button class="btn ghost" data-go="d-cash">UPI failed — Paid in cash</button>
+          </div>
+        </article>
+
+        <article class="scr" id="d-cash" data-title="Captain · Cash">
+          <div class="top"><button class="back" data-go="d-ofd">‹</button> Payment</div>
+          <div class="body">
+            <div class="card"><b>₹357 cash received?</b><p class="tiny">Marks payment completed for customer, you, and admin.</p></div>
+            <button class="btn ok" data-go="d-fin">Paid in cash</button>
+          </div>
+        </article>
+
+        <article class="scr" id="d-fin" data-title="Captain · Delivered">
+          <div class="top"><button class="back" data-go="d-ofd">‹</button> Complete</div>
+          <div class="body">
+            <div class="chip chip-ok">Payment completed</div>
+            <div class="ph" style="background:#c5c8d8;color:#333;margin-top:12px">Drop photo · camera or gallery</div>
+            <button class="btn" data-go="p-jobs">Mark as delivered</button>
+            <p class="tiny">Disabled until payment is completed.</p>
+          </div>
+        </article>
+
+        <!-- EXTRA SCREENS -->
+        <article class="scr" id="c-login" data-title="Customer · Login OTP">
+          <div class="body" style="padding-top:40px">
+            <p class="hi">WashBee</p>
+            <p class="tiny">Enter your mobile number</p>
+            <input class="input" value="+91 98765 11111" style="margin:10px 0" />
+            <button class="btn" data-go="c-home">Send OTP</button>
+            <p class="tiny" style="margin-top:14px">OTP · 6 digits</p>
+            <div class="row" style="gap:6px"><input class="input" value="4" style="text-align:center"/><input class="input" value="8" style="text-align:center"/><input class="input" value="1" style="text-align:center"/><input class="input" value="" style="text-align:center"/><input class="input" value="" style="text-align:center"/><input class="input" value="" style="text-align:center"/></div>
+            <button class="btn ghost" style="margin-top:12px" data-go="c-home">Verify and allow location</button>
+          </div>
+        </article>
+
+        <article class="scr" id="c-cancel" data-title="Customer · Cancel sheet">
+          <div class="top"><button class="back" data-go="c-orders-placed">‹</button> Cancel order</div>
+          <div class="body">
+            <div class="card"><b>#WB1050</b><div class="tiny">Placed · no partner assigned yet</div></div>
+            <p class="tiny">Reason (required)</p>
+            <textarea rows="4">Plans changed, will book later</textarea>
+            <button class="btn" style="margin-top:12px" data-go="c-cancelled">Confirm cancel</button>
+            <button class="btn ghost" style="margin-top:8px" data-go="c-orders-placed">Keep order</button>
+          </div>
+        </article>
+
+        <article class="scr" id="c-resched" data-title="Customer · Reschedule">
+          <div class="top"><button class="back" data-go="c-orders-placed">‹</button> Change schedule</div>
+          <div class="body">
+            <div class="card"><b>Pickup</b><div class="tiny">Fri 17 Oct · 10 am to 12 pm</div></div>
+            <div class="card"><b>Delivery</b><div class="tiny">Sun 19 Oct · 6 pm to 8 pm</div></div>
+            <p class="tiny">Delivery must be at least 2 days after pickup (PICKUP_DELIVERY_BUFFER_DAYS). No reason needed.</p>
+            <button class="btn" data-go="c-orders-placed">Save</button>
+          </div>
+        </article>
+
+        <article class="scr" id="c-cancelled" data-title="Customer · Orders history Cancelled">
+          <div class="top">Orders</div>
+          <div class="body">
+            <div class="row" style="margin-bottom:8px"><span class="chip">Active</span><span class="chip chip-info">History</span></div>
+            <div class="card"><div class="row"><b>#WB1050</b><span class="chip">Cancelled</span></div><div class="tiny">Reason: Plans changed, will book later</div></div>
+            <div class="card"><div class="row"><b>#WB1001</b><span class="chip chip-ok">Delivered</span></div><div class="tiny">₹357 · UPI</div></div>
+          </div>
+          <div class="nav">
+            <button data-go="c-home">Home</button>
+            <button class="on">Orders</button>
+            <button data-go="c-cart">Cart</button>
+            <button data-go="c-pricing">Pricing</button>
+          </div>
+        </article>
+
+        <article class="scr" id="cm-force" data-title="CM · Force-assign pickup">
+          <div class="top"><button class="back" data-go="cm-in">‹</button> Assign pickup</div>
+          <div class="body">
+            <div class="card"><div class="row"><b>#WB1048</b><span class="chip chip-wait">Nobody accepted</span></div><div class="tiny">Search ended after 5 min</div></div>
+            <div class="card">
+              <b>On-shift partners</b>
+              <div class="list-item click" data-go="cm-in"><span>Rahul · 1.2 km</span><b>Assign</b></div>
+              <div class="list-item"><span>Imran · 2.9 km</span><b>Assign</b></div>
+              <p class="tiny">Assigned partner cannot reject.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="scr" id="sm-done" data-title="Service man · Completed">
+          <div class="top">Wash &amp; Fold</div>
+          <div class="body">
+            <div class="row" style="margin-bottom:8px"><span class="chip">Queue</span><span class="chip chip-info">Completed</span></div>
+            <div class="card"><div class="row"><b>#WB1042</b><span class="chip chip-ok">Completed</span></div><div class="tiny">Assigned 2:14 pm · done 3:02 pm</div></div>
+            <div class="card"><div class="row"><b>#WB1033</b><span class="chip chip-ok">Completed</span></div><div class="tiny">Assigned 11:02 am · done 12:20 pm</div></div>
+          </div>
+        </article>
+
+        <article class="scr" id="d-jobs" data-title="Captain · Jobs">
+          <div class="top">Jobs</div>
+          <div class="body">
+            <div class="row" style="margin-bottom:8px"><span class="chip chip-ok">On shift</span><span class="tiny">Live location on</span></div>
+            <div class="card click" data-go="d-ofd">
+              <div class="row"><b>#WB1042</b><span class="chip chip-ex">EXPRESS</span></div>
+              <div class="tiny">Drop · Koramangala · Out for delivery</div>
+            </div>
+            <p class="tiny">Waiting for offers appears here when none.</p>
+          </div>
+        </article>
+
+        <article class="scr" id="d-accept" data-title="Captain · Drop offer">
+          <div class="body" style="padding-top:24px">
+            <div class="card" style="border-color:#ffc9cf">
+              <div class="row"><b>New drop</b><span class="chip chip-ex">EXPRESS</span></div>
+              <div class="map" style="margin-top:8px"><div class="path"></div><div class="pin" style="left:60%;top:50%"></div></div>
+              <p class="tiny">#WB1042 · 2.4 km · Koramangala</p>
+              <button class="btn ok" data-go="d-ofd">Accept</button>
+              <p class="tiny">First to accept wins. Offer closes in 5 min.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="scr" id="a-config" data-title="Admin · Config">
+          <div class="top">Settings</div>
+          <div class="body">
+            <div class="card"><div class="row"><span>Delivery fee</span><b>₹30</b></div></div>
+            <div class="card"><div class="row"><span>Express fee</span><b>₹50</b></div></div>
+            <div class="card"><div class="row"><span>Assignment timeout</span><b>5 min</b></div></div>
+            <div class="card"><div class="row"><span>Range slices</span><b>5</b></div></div>
+            <div class="card"><div class="row"><span>Max range</span><b>8 km</b></div></div>
+            <div class="card"><div class="row"><span>Pickup and delivery buffer</span><b>2 days</b></div></div>
+            <div class="card"><div class="row"><span>Coupons</span><b>Existing table</b></div></div>
+          </div>
+        </article>
+
+      </div>
+    </div>
+    <div class="gallery" id="gallery" hidden></div>
+  </main>
+
+  <aside class="notes">
+    <div id="note"></div>
+    <p class="fab-note">Edit the article HTML in index.html. Do not add steps that contradict these notes.</p>
+  </aside>
+</div>
+<script src="proto.js"></script>
+</body>
+</html>

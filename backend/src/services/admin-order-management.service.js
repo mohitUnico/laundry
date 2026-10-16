@@ -1,11 +1,10 @@
 const prisma = require('../config/database');
 const logger = require('../utils/logger');
-const { NotFoundError, ValidationError } = require('../utils/errors');
+const { NotFoundError, ValidationError, ConflictError } = require('../utils/errors');
 const { notifyOrderStatusChange } = require('./fcm.service');
 const { Prisma } = require('@prisma/client');
 
 const ORDER_STATUSES = [
-    'draft',
     'placed',
     'pickup_assigned',
     'picked_up',
@@ -14,10 +13,8 @@ const ORDER_STATUSES = [
     'submitted_to_services',
     'services_in_progress',
     'services_completed',
-    'dispatch_assigned',
     'out_for_delivery',
     'delivered',
-    'closed',
     'cancelled',
 ];
 
@@ -117,7 +114,6 @@ const getAdminOrdersRaw = async ({ statusList, from, to, skip, take }) => {
             o.order_status,
             o.total_amount,
             o.created_at,
-            o.delivery_date,
             c.customer_id,
             c.full_name AS customer_name,
             a.address_id,
@@ -160,7 +156,6 @@ const getAdminOrdersRaw = async ({ statusList, from, to, skip, take }) => {
             o.order_status,
             o.total_amount,
             o.created_at,
-            o.delivery_date,
             c.customer_id,
             c.full_name,
             a.address_id,
@@ -206,7 +201,7 @@ const getAdminOrdersRaw = async ({ statusList, from, to, skip, take }) => {
             }
             : null,
         estimated_delivery_time: {
-            delivery_date: r.delivery_date ? new Date(r.delivery_date).toISOString() : null,
+            deliveryTimeFrom: r.delivery_time_from ? new Date(r.delivery_time_from).toISOString() : null,
             estimated_duration_minutes: (r.estimated_duration != null) ? r.estimated_duration : null,
         },
         actions: {
@@ -257,7 +252,7 @@ const fetchOrdersWithFallback = async ({ where, skip, take }) => {
         order_status: true,
         total_amount: true,
         created_at: true,
-        delivery_date: true,
+        delivery_time_from: true,
         customer: {
             select: {
                 customer_id: true,
@@ -411,7 +406,7 @@ exports.getAdminOrderSummary = async ({ from, to, completedDate } = {}) => {
         // total completed orders, while other buckets can still respect date ranges.
         prisma.order.count({
             where: {
-                order_status: { in: ['delivered', 'closed'] },
+                order_status: 'delivered',
             },
         }),
     ]);
@@ -530,7 +525,7 @@ exports.getAdminOrders = async (query = {}) => {
                 }
                 : null,
             estimated_delivery_time: {
-                delivery_date: o.delivery_date ? o.delivery_date.toISOString() : null,
+                deliveryTimeFrom: o.delivery_time_from ? o.delivery_time_from.toISOString() : null,
                 estimated_duration_minutes: latestDelivery?.estimated_duration ?? null,
             },
             actions: {
@@ -555,7 +550,7 @@ exports.getAdminOrders = async (query = {}) => {
     };
 };
 
-exports.updateOrderStatus = async (orderId, status, actorUserId = null) => {
+exports.updateOrderStatus = async (orderId, status, actorUserId = null, reason = null) => {
     if (!orderId) {
         throw new ValidationError('orderId is required');
     }
@@ -565,40 +560,46 @@ exports.updateOrderStatus = async (orderId, status, actorUserId = null) => {
     if (typeof status !== 'string') {
         throw new ValidationError('status must be a string');
     }
-    if (!ORDER_STATUSES.includes(status)) {
+    if (!reason || String(reason).trim().length < 3) {
+        throw new ValidationError('A reason is required for an admin status override');
+    }
+    const { assertTransition, LIVE_STATUSES } = require('../constants/order-flow');
+    if (!LIVE_STATUSES.includes(status)) {
         throw new ValidationError(`Invalid status: ${status}`);
     }
 
     try {
-        const updated = await prisma.order.update({
+        const current = await prisma.order.findUnique({
             where: { order_id: orderId },
-            data: { order_status: status },
-            select: {
-                order_id: true,
-                order_status: true,
-                updated_at: true,
-            },
+            select: { order_status: true },
         });
-
+        if (!current) throw new NotFoundError('Order');
+        assertTransition(current.order_status, status);
+        const updated = await prisma.order.updateMany({
+            where: { order_id: orderId, order_status: current.order_status },
+            data: { order_status: status },
+        });
+        if (updated.count === 0) throw new ConflictError('Order status changed while updating', 'INVALID_STATUS_TRANSITION');
+        const fresh = await prisma.order.findUnique({
+            where: { order_id: orderId },
+            select: { order_id: true, order_status: true, updated_at: true },
+        });
         logger.info('Admin updated order status', {
             actorUserId,
             orderId,
+            from: current.order_status,
             status,
+            reason: String(reason).trim(),
         });
-
-        // Notify customer via FCM and WhatsApp (fire-and-forget)
-        notifyOrderStatusChange({ orderId: updated.order_id, status: updated.order_status }).catch(() => {});
-
+        notifyOrderStatusChange({ orderId: fresh.order_id, status: fresh.order_status }).catch(() => {});
         return {
-            order_id: updated.order_id,
-            order_status: updated.order_status,
-            updated_at: updated.updated_at,
+            order_id: fresh.order_id,
+            order_status: fresh.order_status,
+            updated_at: fresh.updated_at,
         };
     } catch (error) {
-        // Prisma "Record to update not found."
-        if (error?.code === 'P2025') {
-            throw new NotFoundError('Order');
-        }
+        if (error.statusCode) throw error;
+        logger.error('Failed to update order status', { error: error.message, orderId });
         throw error;
     }
 };

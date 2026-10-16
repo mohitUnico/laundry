@@ -95,8 +95,12 @@ app.use('/api', limiter);
 // Body parsing middleware - optimize for faster parsing
 app.use(express.json({
     limit: '10mb',
-    // Reduce JSON parsing overhead
     strict: false,
+    verify: (req, _res, buf) => {
+        if (req.originalUrl && req.originalUrl.includes('/payments/webhook/')) {
+            req.rawBody = buf.toString('utf8');
+        }
+    },
 }));
 app.use(express.urlencoded({
     extended: true,

@@ -1,0 +1,1095 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WashBee end-to-end: UML, flows, statuses, events</title>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "base",
+      themeVariables: {
+        primaryColor: "#eaf1ff",
+        primaryTextColor: "#101828",
+        primaryBorderColor: "#2c3ca5",
+        lineColor: "#4b5563",
+        secondaryColor: "#fff4e0",
+        tertiaryColor: "#f6f8ff",
+        fontFamily: "Segoe UI, system-ui, sans-serif",
+        fontSize: "14px"
+      },
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, nodeSpacing: 36, rankSpacing: 48 },
+      sequence: { useMaxWidth: false, mirrorActors: false, wrap: true, width: 170 },
+      state: { useMaxWidth: false },
+      er: { useMaxWidth: false },
+      securityLevel: "loose"
+    });
+    window.zoomDiagrams = (d) => {
+      const root = document.documentElement;
+      const cur = parseFloat(getComputedStyle(root).getPropertyValue("--z")) || 1;
+      const next = Math.min(2, Math.max(0.4, cur + d));
+      root.style.setProperty("--z", next.toFixed(2));
+      document.getElementById("zv").textContent = Math.round(next * 100) + "%";
+    };
+  </script>
+  <style>
+    :root { --z: 1; font-family: "Segoe UI", system-ui, sans-serif; color: #101828; background: #f4f2ec; }
+    body { margin: 0; }
+    header.top {
+      position: sticky; top: 0; z-index: 10; background: #1b1f2a; color: #fff;
+      padding: 10px 20px; display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center;
+    }
+    header.top b { font-size: 15px; margin-right: 8px; }
+    header.top a { color: #c5d0ff; font-size: 12.5px; text-decoration: none; padding: 2px 4px; border-radius: 4px; }
+    header.top a:hover { background: #2c3ca5; color: #fff; }
+    .zoom { margin-left: auto; display: flex; gap: 6px; align-items: center; font-size: 12px; }
+    .zoom button { border: 0; border-radius: 6px; width: 26px; height: 26px; cursor: pointer; font-weight: 700; }
+    main { max-width: 1500px; margin: 0 auto; padding: 24px 20px 120px; }
+    h1 { margin: 0 0 6px; font-size: 1.7rem; }
+    h2 { margin: 2.6rem 0 0.4rem; padding-top: 1.4rem; border-top: 2px solid #d9d4c6; font-size: 1.25rem; }
+    h3 { margin: 1.6rem 0 0.3rem; font-size: 1.02rem; color: #2c3ca5; }
+    p, li { line-height: 1.5; font-size: 0.93rem; }
+    .meta { color: #555; }
+    .legend span { display: inline-block; margin-right: 12px; font-size: 12.5px; }
+    .diagram {
+      background: #fff; border: 1px solid #e0dccf; border-radius: 12px; padding: 14px;
+      overflow: auto; margin: 8px 0 14px; max-height: 90vh;
+    }
+    .diagram .mermaid { zoom: var(--z); display: inline-block; min-width: 100%; }
+    table { border-collapse: collapse; width: 100%; background: #fff; font-size: 12.5px; margin: 8px 0 14px; }
+    th, td { border: 1px solid #e0dccf; padding: 6px 8px; text-align: left; vertical-align: top; }
+    th { background: #efeae0; position: sticky; top: 0; }
+    code { background: #eef0f8; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+    .tag { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+    .t-new { background: #e7f7ed; color: #16a34a; }
+    .t-old { background: #eaf1ff; color: #2c3ca5; }
+    .t-ex { background: #ffe9ec; color: #ff4d5e; }
+    .t-no { background: #f1f1f1; color: #666; }
+    .note { background: #fff8e5; border-left: 4px solid #e08a00; padding: 8px 12px; border-radius: 6px; font-size: 13px; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 1100px) { .grid2 { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<header class="top">
+  <b>WashBee end-to-end</b>
+  <a href="#actors">Actors</a>
+  <a href="#usecase">Use cases</a>
+  <a href="#lanes">Swimlanes</a>
+  <a href="#seq">Sequences</a>
+  <a href="#state">States</a>
+  <a href="#er">Data model</a>
+  <a href="#status">Status catalogue</a>
+  <a href="#events">Events</a>
+  <a href="#notif">Notifications</a>
+  <a href="#config">Config</a>
+  <a href="#screens">Screens</a>
+  <a href="#gaps">Gaps / code deltas</a>
+  <span class="zoom">Zoom
+    <button onclick="zoomDiagrams(-0.1)">-</button>
+    <span id="zv">100%</span>
+    <button onclick="zoomDiagrams(0.1)">+</button>
+  </span>
+</header>
+<main>
+  <h1>WashBee end-to-end: customer places order → captain delivers to the doorstep</h1>
+  <p class="meta">Source: <code>order-flow-spec.md</code> (Parts 1–9, locked). Scope: pickup → count → CM → plant → drop → pay → delivered. Includes Express, cancel/reschedule, polling, UPI/cash.<br/>
+  <span class="legend">
+    <span><span class="tag t-new">NEW</span> not in code today</span>
+    <span><span class="tag t-old">TODAY</span> exists in prototype/backend</span>
+    <span><span class="tag t-ex">EXPRESS</span> Express only</span>
+    <span><span class="tag t-no">OUT</span> explicitly not built</span>
+  </span></p>
+  <p class="note">Rule: if a box disagrees with the spec, the spec wins until you correct it. Proposed API names are marked <b>(new)</b> or <b>(today)</b>. Use the +/- zoom at the top-right on large diagrams.</p>
+
+  <!-- ===================== ACTORS ===================== -->
+  <h2 id="actors">1. Actors and apps</h2>
+  <div class="diagram"><pre class="mermaid">
+flowchart LR
+  subgraph apps["Applications"]
+    ca["Customer app Flutter"]
+    sa["Staff app Flutter: pickup and delivery"]
+    ma["Management app Flutter: CM SM DM"]
+    ad["Mart admin React"]
+  end
+  subgraph actors["Human actors"]
+    cu(["Customer"])
+    pb(["Pickup boy"])
+    cmA(["Collection manager"])
+    smA(["Service man one per service"])
+    dmA(["Distribution manager"])
+    cap(["Delivery captain"])
+    adm(["Admin"])
+  end
+  subgraph sys["Backend and services"]
+    api["Express API plus Prisma"]
+    pg[("PostgreSQL")]
+    rq["Redis plus BullMQ assignment queue"]
+    sse["SSE hub in memory staff offers"]
+    gm["Google Maps distance and Directions"]
+    fcm["FCM and WhatsApp status push"]
+    psp["PSP UPI intent merchant account"]
+  end
+  cu --> ca
+  pb --> sa
+  cap --> sa
+  cmA --> ma
+  smA --> ma
+  dmA --> ma
+  adm --> ad
+  ca --> api
+  sa --> api
+  ma --> api
+  ad --> api
+  api --> pg
+  api --> rq
+  api --> sse
+  api --> gm
+  api --> fcm
+  ca -.->|"UPI at delivery"| psp
+  psp -.->|"payment result"| api
+  </pre></div>
+  <p>Same Staff app / management app shell hosts several roles in this codebase; role is decided at login. Pickup boy and captain are the same <code>DeliveryStaff</code> account type (pickup leg vs drop leg).</p>
+
+  <!-- ===================== USE CASE ===================== -->
+  <h2 id="usecase">2. Use-case diagram (every actor, every capability)</h2>
+  <div class="diagram"><pre class="mermaid">
+flowchart LR
+  subgraph UCc["Customer"]
+    c1(["Browse Pricing tab: kg price, cloth prices, Includes"])
+    c2(["Read How we work: 6 steps"])
+    c3(["Book services: per kg or per unit, no SKUs"])
+    c4(["Choose Express: no schedule"])
+    c5(["Schedule pickup and delivery independently"])
+    c6(["Cancel with reason: before assigned"])
+    c7(["Reschedule: before assigned"])
+    c8(["Track: map, name, phone, photo"])
+    c9(["View bill only"])
+    c10(["Apply one coupon and pay UPI"])
+    c11(["History incl Cancelled"])
+    c12(["Account from Home avatar"])
+  end
+  subgraph UCp["Pickup boy"]
+    p1(["Accept offer or be force-assigned"])
+    p2(["Count per service: units or one weight"])
+    p3(["One photo per service: camera or gallery"])
+    p4(["Draft autosave"])
+    p5(["Mark as picked up"])
+    p6(["Submit request to CM"])
+    p7(["Wait for CM verification"])
+  end
+  subgraph UCcm["Collection manager"]
+    m1(["Incoming list: yet to pick up and incoming"])
+    m2(["Force-assign pickup after timeout"])
+    m3(["Verified and Received"])
+    m4(["Send to service queue"])
+    m5(["History"])
+  end
+  subgraph UCsm["Service man"]
+    s1(["See my queue: Express band then assigned_at"])
+    s2(["Start any row, several in progress"])
+    s3(["Complete item"])
+    s4(["Poll every 2 min"])
+  end
+  subgraph UCdm["Distribution manager"]
+    d1(["In-plant list: expand whole order"])
+    d2(["Ready to dispatch list"])
+    d3(["Assign visible disabled until timeout"])
+    d4(["Force-assign drop after timeout"])
+    d5(["History: delivered or not"])
+  end
+  subgraph UCd["Delivery captain"]
+    k1(["Accept drop offer or be force-assigned"])
+    k2(["Out for delivery at once: map and path"])
+    k3(["Paid in cash after UPI fails"])
+    k4(["One drop photo then Mark as delivered"])
+  end
+  subgraph UCa["Admin"]
+    a1(["Edit DELIVERY_FEE and EXPRESS_FEE"])
+    a2(["Edit assignment timeout, slices, max range, buffer days"])
+    a3(["Manage coupons existing table"])
+  end
+  c4 -.->|"extends"| c3
+  c10 -.->|"includes"| c9
+  p5 -.->|"includes"| p3
+  p6 -.->|"requires"| p5
+  m3 -.->|"requires"| p6
+  m4 -.->|"requires"| m3
+  d4 -.->|"after timeout"| d3
+  k4 -.->|"requires paid"| k3
+  </pre></div>
+
+  <!-- ===================== SWIMLANES ===================== -->
+  <h2 id="lanes">3. Swimlane flows (who does what, in order)</h2>
+
+  <h3>3.1 Booking → pickup search → door count → CM handoff</h3>
+  <div class="diagram"><pre class="mermaid">
+flowchart TB
+  subgraph LC["Customer"]
+    c1(["Open app"])
+    c2["Pick services and per kg or per unit"]
+    c3{"Express?"}
+    c4["No schedule: both legs instant"]
+    c5["Pick pickup mode and delivery mode"]
+    c6["Confirm order, no itemised bill"]
+    c7["Cancel or Change schedule visible"]
+    c8["Tracking opens: Out for pickup"]
+    c9["Tracker: Pickup done. View bill"]
+  end
+  subgraph LS["System"]
+    s1[("Order placed: is_express, pickup_mode, delivery_mode")]
+    s2{"Instant or Express?"}
+    s3["Start pickup search now"]
+    s4["Schedule job at pickup_time_from"]
+    s5["Rings grow each slice over ASSIGNMENT_TIMEOUT"]
+    s6{"Accepted before timeout?"}
+    s7[("pickup_assigned: first writer wins")]
+    s8["Assign enabled for CM"]
+    s9["Validate every service filled"]
+    s10[("Bill: lines plus DELIVERY_FEE plus EXPRESS_FEE")]
+    s11[("picked_up")]
+    s12[("submitted_to_cm")]
+    s13[("received_by_collection")]
+  end
+  subgraph LP["Pickup boy"]
+    p1[/"Offer by SSE: on-shift in ring"/]
+    p2["Accept"]
+    p3["Open order: booked services with per kg or per unit"]
+    p4["Expand service: counts or one weight plus one photo"]
+    p5["Draft autosave to server"]
+    p6["Mark as picked up"]
+    p7["Submit request to CM"]
+    p8["Waiting for CM verification: inactive"]
+  end
+  subgraph LM["Collection manager"]
+    m1["Sees order in Incoming"]
+    m2["Force-assign: staff cannot reject"]
+    m3["Verified and Received"]
+  end
+  c1 --> c2 --> c3
+  c3 -->|"yes"| c4 --> c6
+  c3 -->|"no"| c5 --> c6
+  c6 --> s1 --> s2
+  s1 --> c7
+  s2 -->|"yes"| s3
+  s2 -->|"no"| s4 --> s3
+  s3 --> s5 --> p1 --> p2 --> s6
+  s6 -->|"yes"| s7
+  s6 -->|"no, timeout"| s8 --> m2 --> s7
+  s1 --> m1
+  s7 --> c8
+  s7 --> p3 --> p4 --> p5
+  p5 -->|"all services done"| p6
+  p6 --> s9 --> s10 --> s11 --> c9
+  s11 --> p7 --> s12 --> p8
+  s12 --> m3 --> s13
+  </pre></div>
+
+  <h3>3.2 Plant: CM → service men → DM lists</h3>
+  <div class="diagram"><pre class="mermaid">
+flowchart TB
+  subgraph LM2["Collection manager"]
+    a1["Received list"]
+    a2["Send to service queue"]
+    a3["History keeps order"]
+  end
+  subgraph LS2["System"]
+    b1["Create one queue row per OrderItem"]
+    b2["Auto-assign: one service man per service"]
+    b3["Sort: is_express first, then assigned_at"]
+    b4[("submitted_to_services")]
+    b5[("services_in_progress")]
+    b6{"All queue rows completed?"}
+    b7[("services_completed")]
+    b8["Drop search trigger evaluated"]
+  end
+  subgraph LSM["Service man"]
+    c1["Poll queue every 2 min while screen visible"]
+    c2["Start any pending row"]
+    c3["Mark completed"]
+    c4["Completed tab"]
+  end
+  subgraph LDM["Distribution manager"]
+    d1["In-plant: any item completed, not all"]
+    d2["Expand: all items, pending inactive"]
+    d3["Ready to dispatch: all done, no captain yet"]
+  end
+  subgraph LC2["Customer"]
+    e1["Tracker: In Process"]
+    e2["Tracker: Ready"]
+  end
+  a1 --> a2 --> b1 --> b2 --> b3 --> b4
+  a2 --> a3
+  b4 --> e1
+  b3 --> c1 --> c2 --> b5
+  b5 --> e1
+  c2 --> c3 --> c4
+  c3 --> d1 --> d2
+  c3 --> b6
+  b6 -->|"no"| c1
+  b6 -->|"yes"| b7 --> e2
+  b7 --> d3
+  b7 --> b8
+  </pre></div>
+
+  <h3>3.3 Drop search → out for delivery → payment → delivered</h3>
+  <div class="diagram"><pre class="mermaid">
+flowchart TB
+  subgraph LS3["System"]
+    f1{"Delivery mode?"}
+    f2{"Scheduled time reached?"}
+    f3["No search: Assign disabled with Available from time"]
+    f4["Start drop search now"]
+    f5["Rings over ASSIGNMENT_TIMEOUT: on-shift in ring"]
+    f6{"Accepted before timeout?"}
+    f7[("out_for_delivery immediately")]
+    f8["Assign enabled for DM"]
+    f9["Directions path once plus live GPS pin"]
+    f10{"Pin off path?"}
+    f11["Refresh Directions at most every 2 min"]
+    f12[("Bill payment_status completed: upi or cod")]
+    f13{"Payment completed?"}
+    f14[("delivered")]
+  end
+  subgraph LD3["Distribution manager"]
+    g1["Ready to dispatch list"]
+    g2["Assign visible and disabled"]
+    g3["Force-assign: captain cannot reject"]
+    g4["History: delivered or not"]
+  end
+  subgraph LK["Delivery captain"]
+    h1[/"Offer by SSE"/]
+    h2["Accept"]
+    h3["Out for delivery: map, path, live pin"]
+    h4["Paid in cash if UPI failed"]
+    h5["One drop photo"]
+    h6["Mark as delivered"]
+  end
+  subgraph LC3["Customer"]
+    i1["Tracker: Ready"]
+    i2["Tracker: Out for delivery"]
+    i3["Name plus phone display only plus photo"]
+    i4["Optional one coupon"]
+    i5["Pay with UPI via PSP intent"]
+    i6{"UPI success?"}
+    i7["Retry UPI"]
+    i8["Tracker: Delivered"]
+  end
+  f1 -->|"instant or Express"| f4
+  f1 -->|"scheduled"| f2
+  f2 -->|"no"| f3
+  f2 -->|"yes or already late"| f4
+  f3 --> g2
+  f4 --> g2
+  g1 --> g2
+  f4 --> f5 --> h1 --> h2 --> f6
+  f6 -->|"yes"| f7
+  f6 -->|"no, timeout"| f8 --> g3 --> f7
+  f7 --> i2 --> i3
+  f7 --> h3 --> f9 --> f10
+  f10 -->|"yes"| f11 --> f10
+  f7 --> g4
+  i1 --> f1
+  i2 --> i4 --> i5 --> i6
+  i6 -->|"yes"| f12
+  i6 -->|"no"| i7 --> i5
+  i6 -.->|"still failing"| h4 --> f12
+  f12 --> f13
+  f13 -->|"yes"| h5 --> h6 --> f14 --> i8
+  f13 -->|"no"| h4
+  </pre></div>
+
+  <h3>3.4 Cancel and reschedule (only while <code>placed</code>)</h3>
+  <div class="diagram"><pre class="mermaid">
+flowchart TB
+  subgraph CU["Customer"]
+    u1["Orders list: placed"]
+    u2{"Action"}
+    u3[/"Free-text reason required"/]
+    u4["Confirm cancel"]
+    u5["Edit pickup and or delivery times"]
+    u6{"Delivery at least pickup plus BUFFER_DAYS?"}
+    u7["Cancel and Change schedule hidden"]
+    u8["History shows Cancelled"]
+  end
+  subgraph SY["System"]
+    v1[("cancelled plus cancel_reason")]
+    v2["Stop pickup job and pending offers"]
+    v3["Stop current search"]
+    v4{"New pickup instant or time reached?"}
+    v5["Start search again"]
+    v6["Wait for new pickup_time_from"]
+    v7{"Boy assigned?"}
+  end
+  u1 --> v7
+  v7 -->|"no"| u2
+  v7 -->|"yes pickup_assigned"| u7
+  u2 -->|"Cancel"| u3 --> u4 --> v2 --> v1 --> u8
+  u2 -->|"Reschedule"| u5 --> u6
+  u6 -->|"no"| u5
+  u6 -->|"yes"| v3 --> v4
+  v4 -->|"yes"| v5
+  v4 -->|"no"| v6
+  </pre></div>
+
+  <!-- ===================== SEQUENCES ===================== -->
+  <h2 id="seq">4. UML sequence diagrams (messages and side effects)</h2>
+
+  <h3>4.1 Place order and pickup assignment</h3>
+  <div class="diagram"><pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor C as Customer
+  participant CA as Customer app
+  participant API as Backend API
+  participant DB as PostgreSQL
+  participant W as BullMQ worker
+  participant GM as Google Maps
+  participant PA as Pickup boy app
+  actor CM as Collection manager
+  C->>CA: confirm cart plus modes or Express
+  CA->>API: POST order services pricing_type modes is_express
+  API->>DB: insert Order placed no Bill
+  API-->>CA: order placed
+  alt instant or Express
+    API->>W: start pickup search now
+  else scheduled
+    API->>W: schedule at pickup_time_from
+  end
+  loop slice 1 to 5 over ASSIGNMENT_TIMEOUT
+    W->>DB: load on-shift staff and last location
+    W->>GM: road distance to pickup
+    W->>PA: SSE offer to staff in ring not yet pinged
+    opt a staff accepts
+      PA->>API: accept offer
+      API->>DB: first writer wins pickup_assigned
+      API-->>CA: status push and tracking unlocked
+    end
+  end
+  opt timeout and nobody accepted
+    W->>CM: overdue pickup Assign enabled
+    CM->>API: direct assign staff
+    API->>DB: pickup_assigned
+    API->>PA: SSE assigned to you cannot reject
+    API-->>CA: tracking unlocked
+  end
+  </pre></div>
+
+  <h3>4.2 Door count, draft, bill</h3>
+  <div class="diagram"><pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor P as Pickup boy
+  participant PA as Pickup app
+  participant API as Backend API
+  participant DB as PostgreSQL
+  participant ST as Object storage
+  actor C as Customer
+  P->>PA: open assigned order
+  PA->>API: GET booked services with per kg or per unit
+  loop each booked service
+    P->>PA: expand service
+    alt per unit
+      P->>PA: set counts from that service catalogue
+    else per kg
+      P->>PA: enter ONE weight
+    end
+    P->>PA: add ONE photo camera or gallery
+    PA->>ST: upload image
+    PA->>API: PATCH service lines items_confirmed false
+    API->>DB: upsert draft rows
+  end
+  Note over PA,API: app killed: reopen GET draft from DB
+  P->>PA: Mark as picked up
+  PA->>API: POST confirm pickup
+  API->>DB: validate all services filled
+  API->>DB: compute Bill lines plus DELIVERY_FEE plus EXPRESS_FEE
+  API->>DB: items_confirmed true and Order picked_up
+  API-->>C: push Pickup done and View bill
+  API-->>PA: button becomes Submit request to CM
+  </pre></div>
+
+  <h3>4.3 Submit request to CM and Verified and Received</h3>
+  <div class="diagram"><pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor P as Pickup boy
+  participant PA as Pickup app
+  participant API as Backend API
+  participant DB as PostgreSQL
+  participant MA as Management app
+  actor CM as Collection manager
+  P->>PA: tap Submit request to CM
+  PA->>API: POST submit request
+  API->>DB: Order submitted_to_cm
+  API-->>PA: button Waiting for CM verification inactive
+  Note over PA: cannot cancel request or edit items
+  CM->>MA: open Incoming list
+  MA->>API: GET incoming placed pickup_assigned picked_up submitted_to_cm
+  CM->>MA: tap Verified and Received
+  MA->>API: POST receive only if submitted_to_cm
+  API->>DB: Order received_by_collection and pickup Delivery completed
+  P->>PA: pull to refresh
+  PA->>API: GET my jobs
+  API-->>PA: row gone
+  </pre></div>
+
+  <h3>4.4 Plant queue</h3>
+  <div class="diagram"><pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor CM as Collection manager
+  participant MA as Management app
+  participant API as Backend API
+  participant DB as PostgreSQL
+  actor SM as Service man
+  actor DM as Distribution manager
+  actor C as Customer
+  CM->>MA: tap Send to service queue
+  MA->>API: POST send to services
+  API->>DB: one ServiceQueueItem per OrderItem with assigned_at and is_express
+  API->>DB: Order submitted_to_services
+  API-->>MA: order leaves received list into history
+  API-->>C: status push In Process
+  loop every 2 min while queue screen visible
+    SM->>API: GET queue ORDER BY is_express DESC assigned_at ASC
+    API-->>SM: rows with status and assigned_at
+  end
+  SM->>API: PATCH in_progress any row
+  API->>DB: row in_progress and Order services_in_progress
+  SM->>API: PATCH completed
+  API->>DB: row completed
+  opt any item completed
+    DM->>API: GET in-plant list
+    API-->>DM: whole order with completed and pending items
+  end
+  opt last item completed
+    API->>DB: Order services_completed
+    API-->>C: status push Ready
+    API->>API: evaluate drop search trigger
+  end
+  </pre></div>
+
+  <h3>4.5 Drop assignment</h3>
+  <div class="diagram"><pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant API as Backend API
+  participant W as BullMQ worker
+  participant GM as Google Maps
+  participant KA as Captain app
+  actor DM as Distribution manager
+  participant DB as PostgreSQL
+  actor C as Customer
+  API->>API: services_completed
+  alt Express or delivery instant
+    API->>W: start drop search now
+  else scheduled and time reached or already past
+    API->>W: start drop search now
+  else scheduled and still in future
+    API-->>DM: Assign disabled Available from time
+    Note over W: no search until delivery_time_from
+  end
+  loop slice 1 to 5
+    W->>GM: distance to drop address
+    W->>KA: SSE drop offer for staff in ring
+    opt captain accepts
+      KA->>API: accept drop offer
+      API->>DB: first writer wins
+    end
+  end
+  opt timeout no accept
+    API-->>DM: Assign enabled
+    DM->>API: direct assign captain
+    API->>KA: SSE assigned cannot reject
+  end
+  API->>DB: Order out_for_delivery
+  API-->>C: Out for delivery plus name phone photo
+  API-->>C: map path once plus live pin
+  loop captain GPS ticks
+    KA->>API: update live location
+    API-->>C: pin moves
+  end
+  opt pin off path
+    API->>GM: refresh Directions at most every 2 min
+  end
+  </pre></div>
+
+  <h3>4.6 Payment and delivered</h3>
+  <div class="diagram"><pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor C as Customer
+  participant CA as Customer app
+  participant API as Backend API
+  participant PSP as PSP UPI
+  participant UPI as UPI app
+  participant DB as PostgreSQL
+  actor K as Captain
+  participant KA as Captain app
+  Note over C,CA: pay unlocks when out_for_delivery
+  C->>CA: optional enter coupon code
+  CA->>API: apply one existing Coupon
+  API->>DB: Bill discount and final_amount
+  C->>CA: Pay with UPI
+  CA->>API: create payment
+  API->>PSP: create UPI intent for final_amount
+  CA->>UPI: open UPI intent
+  UPI->>PSP: pay
+  alt success
+    PSP->>API: webhook success
+    API->>DB: payment_status completed method upi
+    API-->>CA: paid everywhere customer staff admin
+    API-->>KA: bill shows paid
+  else failure
+    PSP->>API: webhook failed
+    API-->>CA: retry UPI allowed
+    K->>KA: UPI failed so tap Paid in cash
+    KA->>API: record cash
+    API->>DB: payment_status completed method cod
+    API-->>CA: payment completed
+  end
+  K->>KA: take ONE drop photo
+  KA->>API: Mark as delivered only if payment completed
+  API->>DB: drop_proof plus Order delivered plus Delivery completed
+  API-->>CA: Delivered
+  </pre></div>
+
+  <h3>4.7 Cancel and reschedule</h3>
+  <div class="diagram"><pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor C as Customer
+  participant CA as Customer app
+  participant API as Backend API
+  participant DB as PostgreSQL
+  participant W as BullMQ worker
+  C->>CA: open placed order
+  alt Cancel
+    C->>CA: enter reason then Confirm
+    CA->>API: POST cancel with reason
+    API->>DB: check status placed else reject
+    API->>W: cancel pickup job and offers
+    API->>DB: cancelled plus cancel_reason
+    API-->>CA: history Cancelled
+  else Reschedule
+    C->>CA: change pickup and or delivery
+    CA->>API: PATCH schedule
+    API->>API: delivery at least pickup plus PICKUP_DELIVERY_BUFFER_DAYS
+    API->>W: stop current search
+    alt new pickup now or reached
+      API->>W: start search again
+    else future
+      API->>W: schedule new pickup_time_from
+    end
+    API-->>CA: updated order
+  end
+  Note over CA,API: after pickup_assigned both actions are hidden and rejected
+  </pre></div>
+
+  <!-- ===================== STATES ===================== -->
+  <h2 id="state">5. UML state diagrams</h2>
+
+  <h3>5.1 Order status (customer-visible lifecycle)</h3>
+  <div class="diagram"><pre class="mermaid">
+stateDiagram-v2
+  [*] --> placed: Confirm order
+  placed --> cancelled: Customer cancel with reason
+  placed --> placed: Reschedule stops and restarts search
+  placed --> pickup_assigned: Accept or CM force-assign
+  pickup_assigned --> picked_up: Mark as picked up plus Bill
+  picked_up --> submitted_to_cm: Submit request to CM
+  submitted_to_cm --> received_by_collection: CM Verified and Received
+  received_by_collection --> submitted_to_services: CM Send to service queue
+  submitted_to_services --> services_in_progress: First item In progress
+  services_in_progress --> services_in_progress: More items start or finish
+  services_in_progress --> services_completed: Last item completed
+  services_completed --> out_for_delivery: Captain accepts or DM force-assign
+  out_for_delivery --> delivered: Payment completed plus photo plus Mark delivered
+  cancelled --> [*]
+  delivered --> [*]
+  </pre></div>
+  <p class="note">Not used on the new path: <code>dispatch_assigned</code>, <code>payment_pending</code>, <code>closed</code> (enum values exist; spec never sets them).</p>
+
+  <h3>5.2 Service queue item</h3>
+  <div class="diagram"><pre class="mermaid">
+stateDiagram-v2
+  [*] --> pending: Send to service queue sets assigned_at
+  pending --> in_progress: Service man starts any row
+  in_progress --> completed: Service man completes
+  completed --> [*]
+  note right of pending
+    Several rows may be in_progress at once.
+    No mark for later.
+    Order by is_express then assigned_at.
+  end note
+  </pre></div>
+
+  <h3>5.3 Pickup search / drop search engine</h3>
+  <div class="diagram"><pre class="mermaid">
+stateDiagram-v2
+  [*] --> Idle
+  Idle --> Waiting: scheduled and time not reached
+  Waiting --> Searching: time reached
+  Idle --> Searching: instant or Express or services_completed late
+  state Searching {
+    [*] --> Slice1
+    Slice1 --> Slice2: no accept
+    Slice2 --> Slice3: no accept
+    Slice3 --> Slice4: no accept
+    Slice4 --> Slice5: no accept
+  }
+  Searching --> Assigned: first accept wins
+  Searching --> TimedOut: timeout no accept
+  TimedOut --> ManagerAssigned: CM pickup or DM drop assigns
+  Searching --> Stopped: customer cancels or reschedules
+  Assigned --> [*]
+  ManagerAssigned --> [*]
+  Stopped --> Idle: reschedule restarts
+  </pre></div>
+
+  <h3>5.4 Assignment request and recipient (today enums)</h3>
+  <div class="diagram"><pre class="mermaid">
+stateDiagram-v2
+  [*] --> pending: request offered
+  pending --> accepted: staff accepts first
+  pending --> expired: window ended
+  pending --> cancelled: superseded or cancelled or manager assigned
+  pending --> rejected: staff rejects via offer
+  accepted --> [*]
+  expired --> [*]
+  cancelled --> [*]
+  rejected --> [*]
+  note right of pending
+    Manager force-assign: staff cannot reject.
+    Race: DB first writer wins.
+  end note
+  </pre></div>
+
+  <h3>5.5 Bill and payment</h3>
+  <div class="diagram"><pre class="mermaid">
+stateDiagram-v2
+  [*] --> NoBill: order placed
+  NoBill --> BillPending: Mark as picked up writes Bill
+  NoBill --> [*]: cancelled before pickup
+  BillPending --> BillPending: coupon applied or UPI failed
+  BillPending --> PaidUPI: UPI success webhook
+  BillPending --> PaidCash: captain Paid in cash after UPI fail
+  PaidUPI --> [*]
+  PaidCash --> [*]
+  note right of BillPending
+    Customer view only until out_for_delivery.
+    Delivered is blocked until paid.
+  end note
+  </pre></div>
+
+  <h3>5.6 Pickup boy one button</h3>
+  <div class="diagram"><pre class="mermaid">
+stateDiagram-v2
+  [*] --> MarkAsPickedUp: pickup_assigned
+  MarkAsPickedUp --> DraftSaved: autosave each service
+  DraftSaved --> MarkAsPickedUp: still unfinished
+  MarkAsPickedUp --> SubmitRequest: all services filled and bill written
+  SubmitRequest --> Waiting: request sent
+  Waiting --> [*]: CM verified and received
+  note right of Waiting
+    Button label: Waiting for CM verification.
+    Inactive. No cancel. No edit.
+  end note
+  </pre></div>
+
+  <h3>5.7 Delivery leg row</h3>
+  <div class="diagram"><pre class="mermaid">
+stateDiagram-v2
+  state PickupLeg {
+    [*] --> p_assigned
+    p_assigned --> p_in_progress: boy works the job
+    p_in_progress --> p_completed: CM Verified and Received
+  }
+  state DropLeg {
+    [*] --> d_assigned
+    d_assigned --> d_out: assigned equals out for delivery
+    d_out --> d_completed: paid then photo then delivered
+  }
+  [*] --> PickupLeg
+  PickupLeg --> DropLeg: later after plant
+  DropLeg --> [*]
+  </pre></div>
+
+  <!-- ===================== ER ===================== -->
+  <h2 id="er">6. Data model (existing tables + proposed fields)</h2>
+  <div class="diagram"><pre class="mermaid">
+erDiagram
+  CUSTOMER ||--o{ ORDER : places
+  ORDER ||--o{ ORDER_ITEM : contains
+  ORDER_ITEM ||--o{ ORDER_ITEM_SELECTION : counts
+  ORDER_ITEM ||--o| SERVICE_QUEUE_ITEM : queued_as
+  ORDER ||--o| BILL : billed_by
+  ORDER ||--o{ DELIVERY : has_legs
+  DELIVERY ||--o| PICKUP_FOR_DELIVERY : pickup_detail
+  DELIVERY ||--o| DROP_FOR_DELIVERY : drop_detail
+  DELIVERY ||--o{ ASSIGNMENT_REQUEST : offered_via
+  ASSIGNMENT_REQUEST ||--o{ ASSIGNMENT_RECIPIENT : sent_to
+  STAFF ||--o{ SERVICE_QUEUE_ITEM : works
+  SERVICE ||--o| STAFF : one_service_man
+  SERVICE ||--o{ ORDER_ITEM : booked
+  SERVICE ||--o{ CLOTHES_ITEM : prices
+  DELIVERY_STAFF ||--o{ DELIVERY : drives
+  DELIVERY_STAFF ||--o{ SHIFT : on_shift
+  COUPON ||--o{ BILL : discounts
+
+  ORDER {
+    uuid order_id PK
+    enum order_status
+    enum order_type "always both"
+    bool is_express "NEW"
+    enum pickup_mode "NEW instant or scheduled"
+    enum delivery_mode "NEW instant or scheduled"
+    datetime pickup_time_from
+    datetime delivery_time_from
+    text cancel_reason "NEW"
+    datetime cancelled_at "NEW"
+    datetime items_confirmed_at "NEW"
+    datetime received_at
+    datetime submitted_to_services_at
+  }
+  ORDER_ITEM {
+    uuid item_id PK
+    enum pricing_type "per_unit or per_kg"
+    decimal weight_kg "one per kg service"
+    enum item_status
+    text photo_url "NEW one per service"
+  }
+  ORDER_ITEM_SELECTION {
+    uuid selection_id PK
+    int quantity "staff counted"
+  }
+  SERVICE_QUEUE_ITEM {
+    uuid queue_id PK
+    enum queue_status
+    datetime assigned_at "FIFO key"
+    bool is_express "NEW or join order"
+    int priority "unused"
+  }
+  BILL {
+    uuid bill_id PK
+    decimal subtotal
+    decimal delivery_fee "admin variable"
+    decimal express_fee "NEW"
+    decimal discount "one coupon"
+    decimal final_amount
+    enum payment_status
+    string payment_method "upi or cod"
+    string transaction_id
+  }
+  DELIVERY {
+    uuid delivery_id PK
+    enum delivery_type "pickup or drop"
+    string delivery_status
+    datetime completed_at
+  }
+  PICKUP_FOR_DELIVERY {
+    string pickup_proof "legacy single photo"
+  }
+  DROP_FOR_DELIVERY {
+    string drop_proof "one photo at delivered"
+  }
+  COUPON {
+    int id PK
+    string code
+    string discount_type
+    bool is_active
+  }
+  STAFF {
+    uuid staff_id PK
+    enum role "CM SM DM"
+    uuid service_id "unique"
+  }
+  </pre></div>
+
+  <!-- ===================== STATUS TABLES ===================== -->
+  <h2 id="status">7. Status catalogue</h2>
+
+  <h3>7.1 Order status</h3>
+  <table>
+    <tr><th>DB status</th><th>Set by / when</th><th>Customer tracker</th><th>Visible to</th><th>Allowed actions</th><th>Next</th></tr>
+    <tr><td><code>placed</code></td><td>Customer confirms. No Bill.</td><td>No tracking. Orders: Partner not assigned</td><td>Customer; CM Incoming (yet to pick up)</td><td>Customer: cancel, reschedule. CM: force-assign after timeout</td><td>pickup_assigned / cancelled</td></tr>
+    <tr><td><code>pickup_assigned</code></td><td>First accept or CM force-assign</td><td>Out for pickup (map, name, photo)</td><td>Customer; pickup boy; CM Incoming</td><td>Boy: draft, Mark as picked up. Cancel and reschedule hidden</td><td>picked_up</td></tr>
+    <tr><td><code>picked_up</code></td><td>Mark as picked up. Bill written.</td><td>Pickup done. View bill (no pay)</td><td>Customer; pickup boy; CM Incoming</td><td>Boy: Submit request to CM. No edit</td><td>submitted_to_cm</td></tr>
+    <tr><td><code>submitted_to_cm</code></td><td>Boy taps Submit request</td><td>In Process (customer unchanged from Pickup done is OK; spec: not a visible step)</td><td>Pickup boy (Waiting, inactive); CM Incoming</td><td>CM: Verified and Received. No cancel of request</td><td>received_by_collection</td></tr>
+    <tr><td><code>received_by_collection</code></td><td>CM verified</td><td>In Process</td><td>CM Received; row gone from boy on pull-to-refresh</td><td>CM: Send to service queue</td><td>submitted_to_services</td></tr>
+    <tr><td><code>submitted_to_services</code></td><td>CM sends. Queue rows created.</td><td>In Process</td><td>CM History; service men queues</td><td>SM: start any row</td><td>services_in_progress</td></tr>
+    <tr><td><code>services_in_progress</code></td><td>First item In progress; stays until last done</td><td>In Process</td><td>SM; DM In-plant (when any item completed)</td><td>SM: complete. DM: expand only</td><td>services_completed</td></tr>
+    <tr><td><code>services_completed</code></td><td>Last item completed</td><td>Ready</td><td>DM Ready to dispatch</td><td>Auto drop search per mode. DM Assign disabled until timeout or Available from time</td><td>out_for_delivery</td></tr>
+    <tr><td><code>out_for_delivery</code></td><td>Captain accepts or DM force-assign (immediately)</td><td>Out for delivery: map, path, name, phone, photo; Pay unlocked</td><td>Customer; captain; DM History (not delivered yet)</td><td>Customer: coupon plus UPI. Captain: Paid in cash if UPI fails, then photo, delivered</td><td>delivered</td></tr>
+    <tr><td><code>delivered</code></td><td>Payment completed plus one drop photo</td><td>Delivered</td><td>History everywhere</td><td>—</td><td>end</td></tr>
+    <tr><td><code>cancelled</code></td><td>Customer cancel only while placed</td><td>History: Cancelled</td><td>Customer history; CM/boy lists drop it</td><td>—</td><td>end</td></tr>
+    <tr><td><code>dispatch_assigned</code>, <code>payment_pending</code>, <code>closed</code>, <code>draft</code></td><td colspan="5"><span class="tag t-no">UNUSED</span> exist in enum; not part of the locked flow. Do not set them.</td></tr>
+  </table>
+
+  <h3>7.2 Other status fields</h3>
+  <table>
+    <tr><th>Entity</th><th>Values</th><th>Meaning in this flow</th></tr>
+    <tr><td><code>ServiceQueueItem.queue_status</code></td><td>pending · in_progress · completed</td><td>One row per service item. Multiple in_progress OK. No mark-for-later.</td></tr>
+    <tr><td><code>OrderItem.item_status</code></td><td>pending · in_progress · completed</td><td>Mirrors the queue row. DM uses it to grey pending lines.</td></tr>
+    <tr><td><code>Bill.payment_status</code></td><td>pending · completed · failed · refunded</td><td>pending until UPI or cash. completed shows everywhere. refunded unused (no prepay).</td></tr>
+    <tr><td><code>Bill.payment_method</code></td><td>upi · cod</td><td>cod only as boy-recorded fallback after UPI fail. card and wallet not used.</td></tr>
+    <tr><td><code>DeliveryAssignmentRequest.status</code></td><td>pending · accepted · rejected · expired · cancelled</td><td>Offer lifecycle. Manager assign cancels pending offers.</td></tr>
+    <tr><td><code>Delivery.delivery_status</code></td><td>assigned · in_progress · completed · cancelled</td><td>Pickup completes on CM receive. Drop completes on delivered.</td></tr>
+    <tr><td><code>pickup_mode / delivery_mode</code> <span class="tag t-new">NEW</span></td><td>instant · scheduled</td><td>Express forces both to instant.</td></tr>
+    <tr><td><code>is_express</code> <span class="tag t-new">NEW</span></td><td>true · false</td><td>Chip on every card; queue band; EXPRESS_FEE.</td></tr>
+    <tr><td><code>items_confirmed_at</code> <span class="tag t-new">NEW</span></td><td>null · timestamp</td><td>null = draft at door; set on Mark as picked up.</td></tr>
+  </table>
+
+  <h3>7.3 Which list shows which status</h3>
+  <table>
+    <tr><th>List</th><th>Statuses shown</th><th>Remove when</th></tr>
+    <tr><td>Customer Orders / Active</td><td>placed … out_for_delivery</td><td>delivered or cancelled → History</td></tr>
+    <tr><td>Pickup boy jobs</td><td>pickup_assigned · picked_up · submitted_to_cm</td><td>received_by_collection (pull-to-refresh)</td></tr>
+    <tr><td>CM Incoming</td><td>placed · pickup_assigned · picked_up · submitted_to_cm</td><td>received_by_collection</td></tr>
+    <tr><td>CM Received</td><td>received_by_collection</td><td>Send to service queue → History</td></tr>
+    <tr><td>Service man queue</td><td>queue rows pending · in_progress</td><td>completed → Completed tab</td></tr>
+    <tr><td>DM In-plant</td><td>services_in_progress with ≥1 item completed</td><td>all done → Ready</td></tr>
+    <tr><td>DM Ready to dispatch</td><td>services_completed, no captain</td><td>captain assigned → History</td></tr>
+    <tr><td>DM History</td><td>out_for_delivery · delivered</td><td>—</td></tr>
+    <tr><td>Captain jobs</td><td>drop assigned → out_for_delivery</td><td>delivered</td></tr>
+  </table>
+
+  <!-- ===================== EVENTS ===================== -->
+  <h2 id="events">8. Event catalogue</h2>
+  <table>
+    <tr><th>#</th><th>Event</th><th>Actor</th><th>Guard</th><th>Writes</th><th>Visible effect</th><th>API</th></tr>
+    <tr><td>1</td><td>Place order</td><td>Customer</td><td>Services in cart; delivery ≥ pickup + buffer (ordinary)</td><td>Order placed, no Bill</td><td>Orders list; search begins</td><td>POST order <span class="tag t-old">TODAY</span> changes needed</td></tr>
+    <tr><td>2</td><td>Place Express order</td><td>Customer</td><td>No schedule</td><td>is_express, both instant</td><td>Chip on every card</td><td>same POST <span class="tag t-new">NEW</span> flag</td></tr>
+    <tr><td>3</td><td>Cancel</td><td>Customer</td><td>status = placed; reason required</td><td>cancelled, cancel_reason</td><td>History Cancelled; stop job</td><td>POST cancel <span class="tag t-new">NEW</span></td></tr>
+    <tr><td>4</td><td>Reschedule</td><td>Customer</td><td>status = placed; not Express</td><td>times; stop and restart search</td><td>Order card updated</td><td>PATCH schedule <span class="tag t-new">NEW</span></td></tr>
+    <tr><td>5</td><td>Offer pickup</td><td>Worker</td><td>on-shift in ring</td><td>Request + recipients</td><td>Overlay on staff</td><td>BullMQ + SSE <span class="tag t-old">TODAY</span> rings new</td></tr>
+    <tr><td>6</td><td>Accept pickup</td><td>Pickup boy</td><td>first writer</td><td>pickup_assigned</td><td>Tracking opens</td><td>accept offer <span class="tag t-old">TODAY</span></td></tr>
+    <tr><td>7</td><td>Force-assign pickup</td><td>CM</td><td>after timeout</td><td>pickup_assigned</td><td>SSE; cannot reject</td><td>assignPickupDirect <span class="tag t-old">TODAY</span></td></tr>
+    <tr><td>8</td><td>Save draft per service</td><td>Pickup boy</td><td>assigned to him</td><td>items_confirmed=false</td><td>Restores after app kill</td><td>PATCH items <span class="tag t-new">NEW</span></td></tr>
+    <tr><td>9</td><td>Mark as picked up</td><td>Pickup boy</td><td>all services filled + photos</td><td>Bill, items_confirmed, picked_up</td><td>Pickup done; View bill</td><td>POST confirm <span class="tag t-new">NEW</span></td></tr>
+    <tr><td>10</td><td>Submit request to CM</td><td>Pickup boy</td><td>picked_up</td><td>submitted_to_cm</td><td>Button inactive</td><td>delivery action submitted_to_cm <span class="tag t-old">TODAY</span> semantics change</td></tr>
+    <tr><td>11</td><td>Verified and Received</td><td>CM</td><td>submitted_to_cm</td><td>received_by_collection; pickup Delivery completed</td><td>Row leaves boy list</td><td>markOrderReceived <span class="tag t-old">TODAY</span> tighten guard</td></tr>
+    <tr><td>12</td><td>Send to service queue</td><td>CM</td><td>received_by_collection; SM exists per service</td><td>queue rows; submitted_to_services</td><td>CM history; SM queue</td><td>submit-to-services <span class="tag t-old">TODAY</span></td></tr>
+    <tr><td>13</td><td>Poll queue</td><td>Service man</td><td>screen visible</td><td>—</td><td>New rows at bottom of band</td><td>GET queue <span class="tag t-old">TODAY</span></td></tr>
+    <tr><td>14</td><td>Start item</td><td>Service man</td><td>not completed</td><td>in_progress; services_in_progress</td><td>—</td><td>PATCH queue <span class="tag t-old">TODAY</span></td></tr>
+    <tr><td>15</td><td>Complete item</td><td>Service man</td><td>—</td><td>completed; maybe services_completed</td><td>DM in-plant; Ready when last</td><td>PATCH queue <span class="tag t-old">TODAY</span></td></tr>
+    <tr><td>16</td><td>Start drop search</td><td>System</td><td>all done + (instant | Express | time reached)</td><td>Drop request</td><td>DM Assign disabled</td><td>worker twin <span class="tag t-new">NEW</span></td></tr>
+    <tr><td>17</td><td>Accept drop</td><td>Captain</td><td>first writer</td><td>out_for_delivery</td><td>Map + cards</td><td>accept offer <span class="tag t-old">TODAY</span></td></tr>
+    <tr><td>18</td><td>Force-assign drop</td><td>DM</td><td>after timeout</td><td>out_for_delivery</td><td>SSE; cannot reject</td><td>assign-drop-direct <span class="tag t-old">TODAY</span> drop verify gate</td></tr>
+    <tr><td>19</td><td>Apply coupon</td><td>Customer</td><td>out_for_delivery; one code</td><td>Bill.discount</td><td>Total updates</td><td>coupon apply <span class="tag t-new">NEW</span></td></tr>
+    <tr><td>20</td><td>Pay UPI</td><td>Customer</td><td>out_for_delivery</td><td>—</td><td>Opens UPI app</td><td>create payment <span class="tag t-new">NEW</span></td></tr>
+    <tr><td>21</td><td>UPI success</td><td>PSP</td><td>—</td><td>payment completed upi</td><td>Paid everywhere</td><td>webhook <span class="tag t-new">NEW</span></td></tr>
+    <tr><td>22</td><td>Paid in cash</td><td>Captain</td><td>UPI failed and not completed</td><td>payment completed cod</td><td>Paid everywhere</td><td>record cash <span class="tag t-new">NEW</span></td></tr>
+    <tr><td>23</td><td>Mark as delivered</td><td>Captain</td><td>payment completed; one photo</td><td>drop_proof; delivered</td><td>Delivered</td><td>dropped <span class="tag t-old">TODAY</span> add payment gate</td></tr>
+    <tr><td>24</td><td>Location tick</td><td>Captain</td><td>on shift</td><td>current lat/lng</td><td>Pin moves</td><td>updateLiveLocation <span class="tag t-old">TODAY</span></td></tr>
+    <tr><td>25</td><td>Directions refresh</td><td>System</td><td>off path; ≥2 min since last</td><td>—</td><td>Path redrawn</td><td>Directions <span class="tag t-new">NEW</span></td></tr>
+  </table>
+
+  <!-- ===================== NOTIFICATIONS ===================== -->
+  <h2 id="notif">9. Notifications and realtime</h2>
+  <table>
+    <tr><th>Moment</th><th>Who is told</th><th>Channel</th><th>Notes</th></tr>
+    <tr><td>Offer pickup or drop</td><td>On-shift staff in ring</td><td>SSE + FCM (today)</td><td>Overlay; first accept wins</td></tr>
+    <tr><td>Manager force-assign</td><td>Assigned staff</td><td>SSE</td><td>Cannot reject</td></tr>
+    <tr><td>pickup_assigned</td><td>Customer</td><td>Status push (today)</td><td>Tracking appears</td></tr>
+    <tr><td>picked_up</td><td>Customer</td><td>Status push</td><td>Pickup done; View bill. Bill-generated ping to CM/admin: <span class="tag t-no">OUT</span></td></tr>
+    <tr><td>submitted_to_cm</td><td>CM</td><td>List refresh</td><td>No live SSE needed</td></tr>
+    <tr><td>received_by_collection</td><td>Pickup boy</td><td>Pull-to-refresh</td><td>No SSE drop</td></tr>
+    <tr><td>submitted_to_services … services_completed</td><td>Customer</td><td>Status push</td><td>In Process → Ready</td></tr>
+    <tr><td>New queue rows</td><td>Service man</td><td>Poll 1–2 min</td><td>No SSE. No Redis for SM.</td></tr>
+    <tr><td>out_for_delivery</td><td>Customer</td><td>Status push + map</td><td>Name, phone display only, photo</td></tr>
+    <tr><td>Payment completed</td><td>Customer, captain, admin</td><td>Realtime or next GET</td><td>Same bill row everywhere</td></tr>
+    <tr><td>delivered</td><td>Customer</td><td>Status push</td><td>—</td></tr>
+    <tr><td>cancelled</td><td>Customer</td><td>In-app history</td><td>No boy to notify (only while placed)</td></tr>
+  </table>
+
+  <!-- ===================== CONFIG ===================== -->
+  <h2 id="config">10. Config variables</h2>
+  <table>
+    <tr><th>Name</th><th>Default</th><th>Used by</th></tr>
+    <tr><td><code>ASSIGNMENT_TIMEOUT_MINUTES</code></td><td>5 (10 / 20 allowed)</td><td>Pickup and drop search window</td></tr>
+    <tr><td><code>ASSIGNMENT_RANGE_SLICES</code></td><td>5</td><td>Ring steps</td></tr>
+    <tr><td><code>ASSIGNMENT_MAX_RANGE_KM</code></td><td>admin/env</td><td>Outer radius</td></tr>
+    <tr><td><code>PICKUP_DELIVERY_BUFFER_DAYS</code></td><td>2</td><td>Booking + reschedule validation (one constant)</td></tr>
+    <tr><td><code>DELIVERY_FEE</code></td><td>admin-editable</td><td>Bill at Mark as picked up</td></tr>
+    <tr><td><code>EXPRESS_FEE</code></td><td>admin-editable</td><td>Bill when is_express</td></tr>
+    <tr><td><code>SERVICE_QUEUE_POLL_SECONDS</code></td><td>120 (60 allowed)</td><td>Service man queue poll</td></tr>
+    <tr><td>Directions refresh interval</td><td>2 min max</td><td>Map re-route when off path (name TBD)</td></tr>
+  </table>
+
+  <!-- ===================== SCREENS ===================== -->
+  <h2 id="screens">11. Screen map (what each app has)</h2>
+  <p>Click-through phone prototypes: <a href="../ui-prototype/index.html">../ui-prototype/index.html</a> (use <b>Gallery</b> to see every screen at once). Screen ids in brackets are the prototype articles.</p>
+  <div class="diagram"><pre class="mermaid">
+flowchart LR
+  subgraph CS["Customer app"]
+    c0["Login OTP and location [c-login]"]
+    c1["Home [c-home]"]
+    c2["Pricing tab [c-pricing]"]
+    c3["Services [c-services]"]
+    c4["Cart [c-cart]"]
+    c5["Checkout [c-checkout] or Express [c-checkout-ex]"]
+    c6["Orders [c-orders-placed] [c-orders-bill] [c-cancelled]"]
+    c7["Tracking [c-track-*]"]
+    c8["Pay UPI [c-pay]"]
+    c9["Delivered [c-done]"]
+    c10["How we work [c-how]"]
+    c11["Account [c-account]"]
+  end
+  subgraph PS["Pickup boy"]
+    p1["Jobs [p-jobs]"]
+    p2["Accept [p-accept]"]
+    p3["Door list [p-door]"]
+    p4["Expand service [p-expand]"]
+    p5["Waiting [p-wait]"]
+  end
+  subgraph MS["Management app"]
+    m1["CM Incoming [cm-in]"]
+    m2["CM Force assign [cm-force]"]
+    m3["CM Received [cm-rec] History [cm-hist]"]
+    m4["SM Queue [sm-q] Work [sm-work] Done [sm-done]"]
+    m5["DM In-plant [dm-plant]"]
+    m6["DM Ready [dm-wait] [dm-asg] History [dm-hist]"]
+  end
+  subgraph KS["Captain"]
+    k1["Jobs [d-jobs]"]
+    k2["Accept drop [d-accept]"]
+    k3["Out for delivery [d-ofd]"]
+    k4["Cash [d-cash] Deliver [d-fin]"]
+  end
+  subgraph AS["Admin"]
+    a1["Config [a-config]"]
+  end
+  c0 --> c1 --> c3 --> c4 --> c5 --> c6 --> c7 --> c8 --> c9
+  c1 --> c2
+  c1 --> c10
+  c1 --> c11
+  p1 --> p2 --> p3 --> p4 --> p5
+  m1 --> m3
+  m1 -.-> m2
+  m3 --> m4 --> m5 --> m6
+  k1 --> k2 --> k3 --> k4
+  </pre></div>
+
+  <!-- ===================== GAPS ===================== -->
+  <h2 id="gaps">12. Spec vs code today (what changes in dev)</h2>
+  <table>
+    <tr><th>Area</th><th>Today</th><th>Needs</th></tr>
+    <tr><td>Booking</td><td>Cloth SKUs required for per unit; order_type pickup/drop/both</td><td>Services only; always both; modes; is_express; no bill at place</td></tr>
+    <tr><td>Assignment</td><td>Fixed expiry, send-to-all, 2 retries</td><td>Rings, one timeout, on-shift, manager only after timeout, drop twin</td></tr>
+    <tr><td>Door</td><td>Weight on existing lines; one proof</td><td>Expander per service; one photo each; draft; bill on Mark</td></tr>
+    <tr><td>Submit to CM</td><td>One tap completes pickup delivery</td><td>Request vs CM receive; delivery completes on receive</td></tr>
+    <tr><td>CM receive guard</td><td>From placed/picked_up/etc.</td><td>Only submitted_to_cm; remove generate-invoice</td></tr>
+    <tr><td>Plant</td><td>priority per service</td><td>Sort assigned_at; Express band; drop mark-for-later in UX; poll</td></tr>
+    <tr><td>DM</td><td>Verify then dispatch</td><td>Two lists; auto drop search; remove verify; Assign disabled states</td></tr>
+    <tr><td>Delivery status</td><td>dispatch_assigned → start → out_for_delivery</td><td>out_for_delivery on assign</td></tr>
+    <tr><td>Payment</td><td>Status PATCH; cod/card/wallet; dropped without pay check</td><td>PSP UPI + coupon; cash fallback; gate delivered on paid</td></tr>
+    <tr><td>Cancel</td><td>Stub dialog</td><td>Real cancel + reason; history</td></tr>
+    <tr><td>Customer UI</td><td>5-step tracker, 4 tabs incl Account</td><td>6 steps, Pricing tab, avatar → Account, How we work, footer</td></tr>
+  </table>
+  <p class="meta">Related files: <code>order-flow-spec.md</code> · <code>../ui-prototype/index.html</code></p>
+</main>
+</body>
+</html>

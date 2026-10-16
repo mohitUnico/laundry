@@ -37,7 +37,7 @@ exports.serviceManQueueQuerySchema = Joi.object({
 });
 
 exports.updateServiceQueueItemSchema = Joi.object({
-    action: Joi.string().valid('in_progress', 'completed', 'mark_for_later').required(),
+    action: Joi.string().valid('in_progress', 'completed').required(),
     comments: Joi.string().allow('', null).optional(),
 });
 

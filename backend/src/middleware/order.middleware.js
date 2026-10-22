@@ -12,7 +12,7 @@ const createOrderSchema = Joi.object({
     pickup_time_to: Joi.date().iso().optional(),
     delivery_time_from: Joi.date().iso().optional(),
     delivery_time_to: Joi.date().iso().optional(),
-    special_instructions: Joi.string().allow('', null).optional(),
+    special_instructions: Joi.string().max(500).allow('', null).optional(),
     order_type: Joi.forbidden(),
     pickup_date: Joi.forbidden(),
     delivery_date: Joi.forbidden(),
@@ -21,6 +21,36 @@ const createOrderSchema = Joi.object({
     preferred_delivery_slot_from: Joi.forbidden(),
     preferred_delivery_slot_to: Joi.forbidden(),
 }).unknown(false);
+
+const updateOrderSchema = Joi.object({
+    pickup_address_id: Joi.string().uuid(),
+    delivery_address_id: Joi.string().uuid(),
+    pickup_mode: Joi.string().valid('instant', 'scheduled'),
+    delivery_mode: Joi.string().valid('instant', 'scheduled'),
+    pickup_time_from: Joi.date().iso().allow(null),
+    pickup_time_to: Joi.date().iso().allow(null),
+    delivery_time_from: Joi.date().iso().allow(null),
+    delivery_time_to: Joi.date().iso().allow(null),
+})
+    .min(1)
+    .unknown(false);
+
+exports.validateUpdateOrder = (req, res, next) => {
+    const { error, value } = updateOrderSchema.validate(req.body, {
+        abortEarly: false,
+        stripUnknown: false,
+    });
+    if (error) {
+        return next(
+            new ValidationError(
+                'Invalid order payload',
+                error.details.map((d) => d.message)
+            )
+        );
+    }
+    req.body = value;
+    next();
+};
 
 exports.validateCreateOrder = (req, res, next) => {
     const { error, value } = createOrderSchema.validate(req.body, {

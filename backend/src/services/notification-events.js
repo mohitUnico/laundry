@@ -69,6 +69,37 @@ async function legStaffId(orderId, deliveryType) {
     return delivery?.staff_id || null;
 }
 
+async function recordCustomerNotice(orderId, event, title) {
+    const order = await prisma.order.findUnique({
+        where: { order_id: orderId },
+        select: { customer_id: true },
+    });
+    if (!order) return;
+    await prisma.customerNotification.create({
+        data: {
+            customer_id: order.customer_id,
+            event,
+            title,
+            order_id: orderId,
+        },
+    });
+}
+
+async function listForCustomer(customerId) {
+    const items = await prisma.customerNotification.findMany({
+        where: { customer_id: customerId },
+        orderBy: { created_at: 'desc' },
+        select: {
+            notification_id: true,
+            event: true,
+            title: true,
+            order_id: true,
+            created_at: true,
+        },
+    });
+    return { count: items.length, items };
+}
+
 async function emitOrderEvent(event, { orderId, deliveryType = null, staffIds = null } = {}) {
     const spec = MATRIX[event];
     if (!spec || !orderId) return { skipped: true };
@@ -77,6 +108,11 @@ async function emitOrderEvent(event, { orderId, deliveryType = null, staffIds = 
             const fresh = await claim(orderId, event, 'customer', 'push');
             if (fresh) {
                 await notifyOrderStatusChange({ orderId, status: event });
+                try {
+                    await recordCustomerNotice(orderId, event, spec.title);
+                } catch (error) {
+                    logger.warn('Customer inbox write failed', { error: error.message, orderId, event });
+                }
             }
         }
         const sseTargets = [];
@@ -120,4 +156,5 @@ async function emitOrderEvent(event, { orderId, deliveryType = null, staffIds = 
 module.exports = {
     MATRIX,
     emitOrderEvent,
+    listForCustomer,
 };

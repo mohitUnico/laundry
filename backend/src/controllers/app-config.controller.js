@@ -1,8 +1,18 @@
 const configService = require('../services/config.service');
 
+function money(value) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num.toFixed(2) : '0.00';
+}
+
 exports.getPublicConfig = async (req, res, next) => {
     try {
-        const v2 = await configService.getPublicClientConfig();
+        const [v2, deliveryFee, expressFee, bufferDays] = await Promise.all([
+            configService.getPublicClientConfig(),
+            configService.getNumber('DELIVERY_FEE'),
+            configService.getNumber('EXPRESS_FEE'),
+            configService.getInt('PICKUP_DELIVERY_BUFFER_DAYS'),
+        ]);
         res.status(200).json({
             success: true,
             data: {
@@ -13,6 +23,9 @@ exports.getPublicConfig = async (req, res, next) => {
                     deliveryHomeIntervalMs: parseInt(process.env.POLLING_DELIVERY_HOME_MS || '15000', 10),
                 },
                 ...v2,
+                delivery_fee: money(deliveryFee),
+                express_fee: money(expressFee),
+                pickup_delivery_buffer_days: bufferDays,
             },
         });
     } catch (error) {

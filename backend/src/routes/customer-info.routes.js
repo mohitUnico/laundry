@@ -69,6 +69,16 @@ router.patch(
     customerInfoController.updateProfileImageUrl
 );
 
+// POST /api/v1/customer-info/profile-image
+// Contract alias of /profile-image/upload. Same handler.
+router.post(
+    '/profile-image',
+    authenticateJWT,
+    authorize('customer'),
+    upload.single('file'),
+    customerInfoController.uploadProfileImage
+);
+
 // POST /api/v1/customer-info/profile-image/upload
 // Upload profile image to Cloudinary and save the public URL in DB
 // multipart/form-data with field name: file

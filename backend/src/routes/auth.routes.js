@@ -27,6 +27,7 @@ const {
   completeDistributionManagerRegistrationSchema,
   completeServiceManRegistrationSchema,
   completeCustomerRegistrationSchema,
+  customerContractCreateSchema,
   completeDeliveryRegistrationSchema,
   resendOtpSchema,
   refreshTokenSchema
@@ -298,6 +299,16 @@ router.post(
  * @access  Public
  * @body    { email: "customer@example.com" }
  */
+router.post('/otp', validate(sendOtpSchema), authController.createCustomerOtp);
+
+router.post('/sessions', validate(verifyOtpSchema), authController.createCustomerSession);
+
+router.post(
+  '/customers',
+  validate(customerContractCreateSchema),
+  authController.createCustomer
+);
+
 router.post(
   '/customer/send-otp',
   validate(sendOtpSchema),

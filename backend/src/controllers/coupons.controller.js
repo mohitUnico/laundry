@@ -1,6 +1,25 @@
 const couponsService = require('../services/coupons-service');
 const { NotFoundError } = require('../utils/errors');
 
+function money(value) {
+    if (value == null) return null;
+    const num = Number(value);
+    return Number.isFinite(num) ? num.toFixed(2) : null;
+}
+
+function presentCustomerCoupon(coupon) {
+    return {
+        id: coupon.id,
+        code: coupon.code,
+        description: coupon.description ?? null,
+        discount_type: coupon.discount_type,
+        discount_value: money(coupon.discount_value),
+        max_discount: money(coupon.max_discount),
+        min_order_value: money(coupon.min_order_value),
+        valid_till: coupon.valid_till ?? null,
+    };
+}
+
 function isCurrentlyValidCoupon(coupon) {
     if (!coupon) return false;
     if (coupon.is_active !== true) return false;
@@ -23,9 +42,10 @@ exports.listCoupons = async (req, res, next) => {
         const query = role === 'customer' ? { ...req.query, valid_now: true, is_active: true } : req.query;
 
         const result = await couponsService.listCoupons(query);
+        const coupons = role === 'customer' ? result.coupons.map(presentCustomerCoupon) : result.coupons;
         res.status(200).json({
             success: true,
-            data: result.coupons,
+            data: coupons,
             pagination: result.pagination,
             message: 'Coupons fetched successfully',
         });

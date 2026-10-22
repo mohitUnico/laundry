@@ -197,6 +197,7 @@ exports.createOrder = async (customerId, payload) => {
                 delivery_time_from: order.delivery_time_from,
                 delivery_time_to: order.delivery_time_to,
                 total_amount: '0.00',
+                special_instructions: order.special_instructions,
                 bill: null,
                 can_cancel: true,
                 can_reschedule: !order.is_express,

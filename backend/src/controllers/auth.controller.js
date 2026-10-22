@@ -10,9 +10,10 @@
 const otpService = require('../services/otp.service');
 const portalAuthService = require('../services/portal-auth.service');
 const deliveryStaffMediaService = require('../services/delivery-staff-media.service');
+const prisma = require('../config/database');
 const logger = require('../utils/logger');
 const crypto = require('crypto');
-const { ValidationError } = require('../utils/errors');
+const { ValidationError, AuthenticationError } = require('../utils/errors');
 
 // ============================================================================
 // PORTAL AUTHENTICATION (EMAIL/PHONE OTP)
@@ -521,6 +522,100 @@ const completeManagerRegistration = async (req, res, next) => {
  * Send OTP to customer email
  * POST /api/v1/auth/customer/send-otp
  */
+const createCustomerOtp = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    const result = await otpService.sendOtp(email, otpService.USER_TYPES.CUSTOMER);
+    res.status(200).json({
+      success: true,
+      data: {
+        email,
+        expires_in: result.expiresIn,
+      },
+    });
+  } catch (error) {
+    logger.error('Send customer OTP failed', { error: error.message });
+    next(error);
+  }
+};
+
+const createCustomerSession = async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+    const result = await otpService.verifyOtp(email, otp, otpService.USER_TYPES.CUSTOMER);
+
+    if (result.isNewUser) {
+      res.status(200).json({
+        success: true,
+        data: {
+          is_new_user: true,
+          session_token: result.sessionToken,
+          expires_in: result.expiresIn,
+        },
+      });
+      return;
+    }
+
+    const customer = await prisma.customer.findUnique({
+      where: { customer_id: result.user.userId },
+      select: {
+        customer_id: true,
+        full_name: true,
+        email: true,
+        phone: true,
+        profile_image_url: true,
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        is_new_user: false,
+        access_token: result.token,
+        refresh_token: result.refreshToken,
+        customer,
+      },
+    });
+  } catch (error) {
+    logger.error('Verify customer OTP failed', { error: error.message });
+    next(error);
+  }
+};
+
+const createCustomer = async (req, res, next) => {
+  try {
+    const header = req.headers.authorization || '';
+    const sessionToken = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+    if (!sessionToken) {
+      throw new AuthenticationError('No token provided');
+    }
+
+    const fullName = `${req.body.first_name} ${req.body.last_name}`.replace(/\s+/g, ' ').trim();
+    const result = await otpService.completeCustomerRegistration(sessionToken, {
+      fullName,
+      phone: req.body.phone,
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        access_token: result.token,
+        refresh_token: result.refreshToken,
+        customer: {
+          customer_id: result.customer.customerId,
+          full_name: result.customer.fullName,
+          email: result.customer.email,
+          phone: result.customer.phone,
+          profile_image_url: null,
+        },
+      },
+    });
+  } catch (error) {
+    logger.error('Complete customer registration failed', { error: error.message });
+    next(error);
+  }
+};
+
 const sendCustomerOtp = async (req, res, next) => {
   try {
     const { email } = req.body;
@@ -1111,6 +1206,9 @@ module.exports = {
   completeManagerRegistration,
 
   // Customer
+  createCustomerOtp,
+  createCustomerSession,
+  createCustomer,
   sendCustomerOtp,
   verifyCustomerOtp,
   completeCustomerRegistration,

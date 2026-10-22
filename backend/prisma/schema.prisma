@@ -69,6 +69,7 @@ model Customer {
   addresses         CustomerAddress[]
   orders            Order[]
   carts             Cart[]
+  notifications     CustomerNotification[]
 
   @@map("customers")
 }
@@ -834,6 +835,20 @@ model NotificationDelivery {
   @@unique([order_id, event, recipient_key, channel])
   @@index([order_id, event])
   @@map("notification_deliveries")
+}
+
+// Customer inbox. notification_deliveries only records that a push was sent.
+model CustomerNotification {
+  notification_id String   @id @default(uuid())
+  customer_id     String
+  event           String   @db.VarChar(60)
+  title           String   @db.VarChar(120)
+  order_id        String?
+  created_at      DateTime @default(now())
+  customer        Customer @relation(fields: [customer_id], references: [customer_id], onDelete: Cascade)
+
+  @@index([customer_id, created_at])
+  @@map("customer_notifications")
 }
 
 // ==================== APP CONFIG (order-flow v2 tunables) ====================

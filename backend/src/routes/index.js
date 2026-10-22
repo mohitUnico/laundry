@@ -109,7 +109,17 @@ router.use('/admin/catalog', adminCatalogRoutes);
 router.use('/admin/services', adminCatalogueRoutes);
 router.use('/notifications', notificationRoutes);
 
-const { authenticateJWT } = require('../middleware/auth.middleware');
+const { authenticateJWT, authorize } = require('../middleware/auth.middleware');
+router.get('/catalog', authenticateJWT, authorize('customer'), async (req, res, next) => {
+    try {
+        const orderRead = require('../services/order-read.service');
+        const data = await orderRead.customerCatalog();
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
+});
+
 router.get('/catalog/pricing', authenticateJWT, async (req, res, next) => {
     try {
         const orderRead = require('../services/order-read.service');

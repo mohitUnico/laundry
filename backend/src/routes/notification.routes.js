@@ -7,6 +7,14 @@ const { saveFcmTokenSchema } = require('../validators/notification.validator');
 
 const router = express.Router();
 
+// GET /api/v1/notifications - customer inbox. count is the badge.
+router.get(
+    '/',
+    authenticateJWT,
+    authorize('customer'),
+    notificationController.listMyNotifications
+);
+
 // POST /api/v1/notifications/fcm-token
 router.post(
     '/fcm-token',

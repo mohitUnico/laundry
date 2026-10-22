@@ -283,6 +283,12 @@ const completeServiceManRegistrationSchema = Joi.object({
 // CUSTOMER REGISTRATION VALIDATORS
 // ============================================================================
 
+const customerContractCreateSchema = Joi.object({
+  first_name: Joi.string().trim().min(1).max(100).required(),
+  last_name: Joi.string().trim().min(1).max(100).required(),
+  phone: Joi.string().trim().max(20).required(),
+}).unknown(false);
+
 const completeCustomerRegistrationSchema = Joi.object({
   sessionToken: sessionTokenSchema,
   customerData: Joi.object({
@@ -433,6 +439,7 @@ module.exports = {
   completeDistributionManagerRegistrationSchema,
   completeServiceManRegistrationSchema,
   completeCustomerRegistrationSchema,
+  customerContractCreateSchema,
   completeDeliveryRegistrationSchema,
 
   // Common

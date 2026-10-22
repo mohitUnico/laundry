@@ -1,6 +1,27 @@
 const customerInfoService = require('../services/customer-info.service');
 const { AuthorizationError } = require('../utils/errors');
 
+function decimalString(value) {
+    if (value == null) return null;
+    const num = Number(value);
+    return Number.isFinite(num) ? num.toFixed(8) : String(value);
+}
+
+function presentAddress(row) {
+    return {
+        address_id: row.address_id,
+        customer_id: row.customer_id,
+        address_label: row.address_label,
+        full_address: row.full_address,
+        latitude: decimalString(row.latitude),
+        longitude: decimalString(row.longitude),
+        is_default: row.is_default,
+        delivery_note: row.delivery_note ?? null,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+    };
+}
+
 exports.createAddress = async (req, res, next) => {
     try {
         if (req.user.role !== 'customer') {
@@ -12,7 +33,7 @@ exports.createAddress = async (req, res, next) => {
 
         res.status(201).json({
             success: true,
-            data: address,
+            data: presentAddress(address),
             message: 'Address created successfully',
         });
     } catch (error) {
@@ -31,7 +52,7 @@ exports.getAddresses = async (req, res, next) => {
 
         res.status(200).json({
             success: true,
-            data: addresses,
+            data: addresses.map(presentAddress),
             message: 'Addresses fetched successfully',
         });
     } catch (error) {

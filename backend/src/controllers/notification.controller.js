@@ -1,5 +1,19 @@
 const prisma = require('../config/database');
 const { ValidationError } = require('../utils/errors');
+const { listForCustomer } = require('../services/notification-events');
+
+exports.listMyNotifications = async (req, res, next) => {
+    try {
+        const customerId = req.user?.user_id;
+        if (!customerId) {
+            throw new ValidationError('Missing customer identity');
+        }
+        const data = await listForCustomer(customerId);
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
+};
 
 /**
  * Save/update the customer's FCM token.

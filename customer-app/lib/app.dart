@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'routes/app_routes.dart';
 import 'routes/route_args.dart';
 import 'theme/app_theme.dart';
+import 'utils/android_phone_frame.dart';
 import 'utils/no_scrollbar_behavior.dart';
 import 'services/notification_service.dart';
 import 'providers/order_provider.dart';
@@ -61,6 +62,11 @@ class _LaundryCustomerAppState extends State<LaundryCustomerApp> {
       theme: AppTheme.lightTheme,
       scrollBehavior: const NoScrollbarBehavior(),
       navigatorKey: _navigatorKey,
+      builder: (context, child) {
+        return AndroidPhoneFrame(
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
       // Start via Bootstrap so we can restore auth + onboarding state.
       initialRoute: AppRoutes.bootstrap,
       routes: AppRoutes.routes,

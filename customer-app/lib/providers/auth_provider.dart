@@ -151,42 +151,30 @@ class AuthProvider with ChangeNotifier {
 
   Future<void> hydrateFromStorage() async {
     final stored = await _authRepository.getStoredToken();
-    if (stored != null && stored.isNotEmpty) {
-      if (JwtUtils.isExpired(stored)) {
-        try {
-          final refreshed = await _authRepository.refreshSession();
-          _token = refreshed.token;
-          _userOrCustomer = refreshed.user ?? _userOrCustomer;
-          _isAuthenticated = true;
-        } catch (_) {
-          await _authRepository.clearSession();
-          _token = null;
-          _userOrCustomer = null;
-          _isAuthenticated = false;
-        }
-      } else {
-        _token = stored;
-        _isAuthenticated = true;
-      }
-      
-      // Fetch full profile from backend to ensure phone and other data are up-to-date
-      // This ensures phone number is always available after app restart
-      if (_isAuthenticated) {
-        try {
-          final profile = await _customerInfoRepository.getProfile();
-          _userOrCustomer = {
-            ...?_userOrCustomer,
-            ...profile,
-          };
-        } catch (e) {
-          // Silently fail - profile will be fetched when needed
-          // This prevents blocking app startup if profile fetch fails
-          debugPrint('Failed to fetch profile during hydration: $e');
-        }
-      }
-      
+    if (stored == null || stored.isEmpty) return;
+
+    // Open from the saved session. A server round-trip is not required to
+    // leave the startup screen, and it must not sit on the 30s API timeout.
+    if (!JwtUtils.isExpired(stored)) {
+      _token = stored;
+      _isAuthenticated = true;
       notifyListeners();
+      return;
     }
+
+    try {
+      final refreshed = await _authRepository
+          .refreshSession()
+          .timeout(const Duration(seconds: 4));
+      _token = refreshed.token;
+      _userOrCustomer = refreshed.user ?? _userOrCustomer;
+      _isAuthenticated = true;
+    } catch (_) {
+      _token = null;
+      _userOrCustomer = null;
+      _isAuthenticated = false;
+    }
+    notifyListeners();
   }
 
   Future<CustomerSendOtpResult> sendCustomerOtp(String email) async {

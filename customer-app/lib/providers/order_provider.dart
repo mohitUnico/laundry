@@ -137,15 +137,32 @@ class OrderProvider with ChangeNotifier {
     }
 
     _isFetching = true;
-    _isLoading = true;
     _error = null;
-    notifyListeners();
+    if (_orders.isEmpty) {
+      _isLoading = true;
+      notifyListeners();
+    }
 
-    final local = await _localOrders.load();
+    late final List<OrderRecord> local;
+    try {
+      local = await _localOrders.load();
+      _orders
+        ..clear()
+        ..addAll(local);
+      _isLoading = false;
+      notifyListeners();
+    } catch (e) {
+      _isLoading = false;
+      _isFetching = false;
+      notifyListeners();
+      debugPrint('Error loading local orders: $e');
+      return;
+    }
 
     try {
-      final result =
-          await _repo.getOrders(page: page, limit: limit, status: status);
+      final result = await _repo
+          .getOrders(page: page, limit: limit, status: status)
+          .timeout(const Duration(seconds: 3));
       final ordersList = (result['orders'] as List?) ?? [];
 
       final newOrders = <OrderRecord>[];

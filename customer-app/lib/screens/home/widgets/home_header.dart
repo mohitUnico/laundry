@@ -25,28 +25,32 @@ class HomeHeader extends StatelessWidget {
     final imageUrl = profileImageUrl;
     return Row(
       children: [
-        ClipOval(
-          child: (imageUrl != null && imageUrl.isNotEmpty)
-              ? Image.network(
-                  imageUrl,
-                  width: 44,
-                  height: 44,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Image.asset(
-                      'assets/icons/profile_pic_demo.png',
-                      width: 44,
-                      height: 44,
-                      fit: BoxFit.cover,
-                    );
-                  },
-                )
-              : Image.asset(
-                  'assets/icons/profile_pic_demo.png',
-                  width: 44,
-                  height: 44,
-                  fit: BoxFit.cover,
-                ),
+        InkWell(
+          onTap: () => Navigator.of(context).pushNamed(AppRoutes.profile),
+          customBorder: const CircleBorder(),
+          child: ClipOval(
+            child: (imageUrl != null && imageUrl.isNotEmpty)
+                ? Image.network(
+                    imageUrl,
+                    width: 44,
+                    height: 44,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Image.asset(
+                        'assets/icons/profile_pic_demo.png',
+                        width: 44,
+                        height: 44,
+                        fit: BoxFit.cover,
+                      );
+                    },
+                  )
+                : Image.asset(
+                    'assets/icons/profile_pic_demo.png',
+                    width: 44,
+                    height: 44,
+                    fit: BoxFit.cover,
+                  ),
+          ),
         ),
         const SizedBox(width: 12),
         Expanded(

@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 
 class AuthIllustration extends StatelessWidget {
-  const AuthIllustration({super.key});
+  final String asset;
+
+  const AuthIllustration({
+    super.key,
+    this.asset = 'assets/images/auth/person.png',
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -9,7 +14,7 @@ class AuthIllustration extends StatelessWidget {
     final height = (h * 0.32).clamp(220.0, 320.0);
 
     return Image.asset(
-      'assets/images/auth/person.png',
+      asset,
       height: height,
       fit: BoxFit.contain,
     );

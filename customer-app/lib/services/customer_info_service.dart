@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_service.dart';
 
@@ -34,27 +36,50 @@ class CustomerAddress {
       deliveryNote: json['delivery_note'] as String?,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'address_id': addressId,
+      'address_label': addressLabel,
+      'full_address': fullAddress,
+      'latitude': latitude,
+      'longitude': longitude,
+      'is_default': isDefault,
+      'delivery_note': deliveryNote,
+    };
+  }
+
+  CustomerAddress copyWith({
+    String? addressLabel,
+    String? fullAddress,
+    double? latitude,
+    double? longitude,
+    bool? isDefault,
+    String? deliveryNote,
+    bool clearDeliveryNote = false,
+  }) {
+    return CustomerAddress(
+      addressId: addressId,
+      addressLabel: addressLabel ?? this.addressLabel,
+      fullAddress: fullAddress ?? this.fullAddress,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      isDefault: isDefault ?? this.isDefault,
+      deliveryNote: clearDeliveryNote ? null : (deliveryNote ?? this.deliveryNote),
+    );
+  }
 }
 
 class CustomerInfoService {
   final ApiService _api;
 
+  /// Addresses are stored on the device until the customer API is used again.
+  static const _addressesKey = 'local_customer_addresses';
+
   CustomerInfoService({ApiService? api}) : _api = api ?? ApiService();
 
   Future<List<CustomerAddress>> getAddresses() async {
-    try {
-      final res = await _api.get('/customer-info/addresses');
-      final data = (res.data as Map<String, dynamic>)['data'] as List?;
-      return (data ?? [])
-          .whereType<Map<String, dynamic>>()
-          .map((json) => CustomerAddress.fromJson(json))
-          .toList();
-    } on DioException catch (e) {
-      final msg = _extractErrorMessage(e, 'Failed to fetch addresses');
-      throw Exception(msg);
-    } catch (e) {
-      throw Exception('Failed to fetch addresses: $e');
-    }
+    return _readLocalAddresses();
   }
 
   Future<CustomerAddress> createAddress({
@@ -65,36 +90,27 @@ class CustomerInfoService {
     bool isDefault = false,
     String? deliveryNote,
   }) async {
-    try {
-      // Validate latitude and longitude ranges as per backend
-      if (latitude < -90 || latitude > 90) {
-        throw Exception('Latitude must be between -90 and 90');
-      }
-      if (longitude < -180 || longitude > 180) {
-        throw Exception('Longitude must be between -180 and 180');
-      }
+    _validateCoordinates(latitude, longitude);
 
-      final payload = <String, dynamic>{
-        'address_label': addressLabel,
-        'full_address': fullAddress,
-        'latitude': latitude,
-        'longitude': longitude,
-        'is_default': isDefault,
-      };
+    final existing = await _readLocalAddresses();
+    final makeDefault = isDefault || existing.isEmpty;
+    final saved = CustomerAddress(
+      addressId: 'local-${DateTime.now().microsecondsSinceEpoch}',
+      addressLabel: addressLabel,
+      fullAddress: fullAddress,
+      latitude: latitude,
+      longitude: longitude,
+      isDefault: makeDefault,
+      deliveryNote: (deliveryNote == null || deliveryNote.isEmpty) ? null : deliveryNote,
+    );
 
-      if (deliveryNote != null && deliveryNote.isNotEmpty) {
-        payload['delivery_note'] = deliveryNote;
-      }
-
-      final res = await _api.post('/customer-info/addresses', data: payload);
-      final data = (res.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
-      return CustomerAddress.fromJson(data);
-    } on DioException catch (e) {
-      final msg = _extractErrorMessage(e, 'Failed to create address');
-      throw Exception(msg);
-    } catch (e) {
-      throw Exception('Failed to create address: $e');
-    }
+    final next = [
+      for (final address in existing)
+        makeDefault && address.isDefault ? address.copyWith(isDefault: false) : address,
+      saved,
+    ];
+    await _writeLocalAddresses(next);
+    return saved;
   }
 
   Future<Map<String, dynamic>> getProfile() async {
@@ -141,58 +157,87 @@ class CustomerInfoService {
     bool? isDefault,
     String? deliveryNote,
   }) async {
-    try {
-      final payload = <String, dynamic>{};
-
-      if (addressLabel != null) {
-        payload['address_label'] = addressLabel;
-      }
-      if (fullAddress != null) {
-        payload['full_address'] = fullAddress;
-      }
-      if (latitude != null) {
-        if (latitude < -90 || latitude > 90) {
-          throw Exception('Latitude must be between -90 and 90');
-        }
-        payload['latitude'] = latitude;
-      }
-      if (longitude != null) {
-        if (longitude < -180 || longitude > 180) {
-          throw Exception('Longitude must be between -180 and 180');
-        }
-        payload['longitude'] = longitude;
-      }
-      if (isDefault != null) {
-        payload['is_default'] = isDefault;
-      }
-      if (deliveryNote != null) {
-        payload['delivery_note'] = deliveryNote.isEmpty ? null : deliveryNote;
-      }
-
-      if (payload.isEmpty) {
-        throw Exception('At least one field must be provided for update');
-      }
-
-      final res = await _api.patch('/customer-info/addresses/$addressId', data: payload);
-      final data = (res.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
-      return CustomerAddress.fromJson(data);
-    } on DioException catch (e) {
-      final msg = _extractErrorMessage(e, 'Failed to update address');
-      throw Exception(msg);
-    } catch (e) {
-      throw Exception('Failed to update address: $e');
+    if (addressLabel == null &&
+        fullAddress == null &&
+        latitude == null &&
+        longitude == null &&
+        isDefault == null &&
+        deliveryNote == null) {
+      throw Exception('At least one field must be provided for update');
     }
+    if (latitude != null) _validateCoordinates(latitude, longitude ?? 0);
+    if (longitude != null) _validateCoordinates(latitude ?? 0, longitude);
+
+    final existing = await _readLocalAddresses();
+    final index = existing.indexWhere((address) => address.addressId == addressId);
+    if (index < 0) {
+      throw Exception('Address not found');
+    }
+
+    final current = existing[index];
+    final makeDefault = isDefault == true;
+    final updated = current.copyWith(
+      addressLabel: addressLabel,
+      fullAddress: fullAddress,
+      latitude: latitude,
+      longitude: longitude,
+      isDefault: isDefault,
+      deliveryNote: deliveryNote,
+      clearDeliveryNote: deliveryNote != null && deliveryNote.isEmpty,
+    );
+
+    final next = [
+      for (var i = 0; i < existing.length; i++)
+        if (i == index)
+          updated
+        else if (makeDefault && existing[i].isDefault)
+          existing[i].copyWith(isDefault: false)
+        else
+          existing[i],
+    ];
+    await _writeLocalAddresses(next);
+    return updated;
   }
 
   Future<void> deleteAddress(String addressId) async {
-    try {
-      await _api.delete('/customer-info/addresses/$addressId');
-    } on DioException catch (e) {
-      final msg = _extractErrorMessage(e, 'Failed to delete address');
-      throw Exception(msg);
-    } catch (e) {
-      throw Exception('Failed to delete address: $e');
+    final existing = await _readLocalAddresses();
+    final removed = existing.where((address) => address.addressId == addressId).toList();
+    if (removed.isEmpty) return;
+
+    final next = existing.where((address) => address.addressId != addressId).toList();
+    if (removed.first.isDefault && next.isNotEmpty && !next.any((address) => address.isDefault)) {
+      next[0] = next[0].copyWith(isDefault: true);
     }
+    await _writeLocalAddresses(next);
+  }
+
+  void _validateCoordinates(double latitude, double longitude) {
+    if (latitude < -90 || latitude > 90) {
+      throw Exception('Latitude must be between -90 and 90');
+    }
+    if (longitude < -180 || longitude > 180) {
+      throw Exception('Longitude must be between -180 and 180');
+    }
+  }
+
+  Future<List<CustomerAddress>> _readLocalAddresses() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_addressesKey);
+    if (raw == null || raw.isEmpty) return [];
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) return [];
+    return decoded
+        .whereType<Map>()
+        .map((json) => CustomerAddress.fromJson(Map<String, dynamic>.from(json)))
+        .toList();
+  }
+
+  Future<void> _writeLocalAddresses(List<CustomerAddress> addresses) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _addressesKey,
+      jsonEncode(addresses.map((address) => address.toJson()).toList()),
+    );
   }
 
   Future<Map<String, dynamic>> uploadProfileImage({required File file}) async {

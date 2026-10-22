@@ -34,6 +34,7 @@ class OrderRecord {
   // Billing info from backend (orders + bill tables)
   final String? billingStatus; // e.g. generated, pending
   final String? billPaymentStatus; // e.g. completed, pending, failed
+  final bool isExpress;
 
   const OrderRecord({
     required this.id,
@@ -59,6 +60,7 @@ class OrderRecord {
     this.pickupLng,
     this.billingStatus,
     this.billPaymentStatus,
+    this.isExpress = false,
   });
 
   OrderRecord copyWith({
@@ -85,6 +87,7 @@ class OrderRecord {
     double? pickupLng,
     String? billingStatus,
     String? billPaymentStatus,
+    bool? isExpress,
   }) {
     return OrderRecord(
       id: id ?? this.id,
@@ -110,6 +113,7 @@ class OrderRecord {
       pickupLng: pickupLng ?? this.pickupLng,
       billingStatus: billingStatus ?? this.billingStatus,
       billPaymentStatus: billPaymentStatus ?? this.billPaymentStatus,
+      isExpress: isExpress ?? this.isExpress,
     );
   }
 

@@ -73,6 +73,9 @@ class _ProCleanBottomSheetState extends State<ProCleanBottomSheet> {
         padding: EdgeInsets.only(bottom: bottomInset),
         child: Container(
           width: double.infinity,
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * 0.92,
+          ),
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.only(
@@ -80,8 +83,9 @@ class _ProCleanBottomSheetState extends State<ProCleanBottomSheet> {
               topRight: Radius.circular(26),
             ),
           ),
-          padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
-          child: Column(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
+            child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Center(
@@ -94,14 +98,16 @@ class _ProCleanBottomSheetState extends State<ProCleanBottomSheet> {
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
-              Text(
-                'Choose the service',
-                textAlign: TextAlign.center,
-                style: AppTextStyles.header(color: HomeColors.text)
-                    .copyWith(fontSize: 12),
+              const SizedBox(height: 14),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Choose the service',
+                  style: AppTextStyles.header(color: HomeColors.text)
+                      .copyWith(fontSize: 12),
+                ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               for (final c in _categories) ...[
                 _ServiceRow(
                   title: c.title,
@@ -110,7 +116,7 @@ class _ProCleanBottomSheetState extends State<ProCleanBottomSheet> {
                   isSelected: c.title == _selectedCategory,
                   onTap: () => setState(() => _selectedCategory = c.title),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
               ],
               const SizedBox(height: 6),
               Container(
@@ -164,7 +170,7 @@ class _ProCleanBottomSheetState extends State<ProCleanBottomSheet> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: _BottomButton(
-                      label: 'Next',
+                      label: 'Add to cart',
                       variant: _BottomButtonVariant.filled,
                       onTap: () => Navigator.of(context).pop(
                         ProCleanSelection(
@@ -178,6 +184,7 @@ class _ProCleanBottomSheetState extends State<ProCleanBottomSheet> {
               ),
             ],
           ),
+        ),
         ),
       ),
     );
@@ -302,7 +309,6 @@ class _PricingRow extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 2),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
@@ -311,36 +317,22 @@ class _PricingRow extends StatelessWidget {
               margin: const EdgeInsets.only(top: 2),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: dotColor, width: 2),
+                color: dotColor,
               ),
-              child: isSelected
-                  ? Center(
-                      child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: HomeColors.primary,
-                        ),
-                      ),
-                    )
-                  : null,
             ),
             const SizedBox(width: 10),
-            Flexible(
+            Expanded(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     title,
-                    textAlign: TextAlign.center,
                     style: AppTextStyles.header(color: HomeColors.text)
                         .copyWith(fontSize: 12),
                   ),
                   const SizedBox(height: 3),
                   Text(
                     subtitle,
-                    textAlign: TextAlign.center,
                     style: AppTextStyles.body(color: HomeColors.muted)
                         .copyWith(fontSize: 10),
                   ),

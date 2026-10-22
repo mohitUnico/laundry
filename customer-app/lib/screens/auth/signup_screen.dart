@@ -133,7 +133,11 @@ class _SignupScreenState extends State<SignupScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Center(child: AuthIllustration()),
+                      const Center(
+                        child: AuthIllustration(
+                          asset: 'assets/images/join_the_fresh_side.png',
+                        ),
+                      ),
                       const SizedBox(height: 18),
                       const Text(
                         'Join the fresh side!',

@@ -126,7 +126,11 @@ class _ProfilePhotoScreenState extends State<ProfilePhotoScreen> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Center(child: AuthIllustration()),
+                            const Center(
+                              child: AuthIllustration(
+                                asset: 'assets/images/show_your_best_smile.png',
+                              ),
+                            ),
                             const SizedBox(height: 18),
                             const Text(
                               'Show your best smile!',

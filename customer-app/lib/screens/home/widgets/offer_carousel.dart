@@ -59,18 +59,21 @@ class _OfferCarouselState extends State<OfferCarousel> {
   @override
   Widget build(BuildContext context) {
     if (widget.banners.isEmpty) return const SizedBox.shrink();
-    final textScale = MediaQuery.textScalerOf(context).scale(1);
-    // Taller banners per design request.
-    final bannerHeight = (160 * textScale).clamp(160.0, 210.0);
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final cardWidth = screenWidth * 0.88 - 12;
+    final bannerHeight = cardWidth * 196 / 383;
     final totalPages = widget.banners.length * _loopMultiplier;
 
-    // Indicator should feel "attached" to the banner, so we overlay it inside
-    // the banner area instead of putting it below the banner.
+    // Indicator sits just under the banner, clear of the code pill.
     return SizedBox(
-      height: bannerHeight + 40, // content + container padding
+      height: bannerHeight + 22,
       child: Stack(
         children: [
-          Positioned.fill(
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            height: bannerHeight,
             child: PageView.builder(
               controller: _controller,
               itemCount: totalPages,
@@ -81,41 +84,50 @@ class _OfferCarouselState extends State<OfferCarousel> {
                 final b = widget.banners[i % widget.banners.length];
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 6),
-                  child: Container(
-                    width: double.infinity,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 18, vertical: 20),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(22),
-                    color: Colors.white,
-                    border: Border.all(color: HomeColors.borderSoft),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x14000000),
-                        blurRadius: 18,
-                        offset: Offset(0, 10),
-                      ),
-                    ],
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.center,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(22),
+                    child: Stack(
+                      fit: StackFit.expand,
                       children: [
-                        Text(
-                          b.headline,
-                          style: AppTextStyles.offerHeadline(
-                            color: HomeColors.text,
+                        Transform.scale(
+                          scale: 1.12,
+                          child: Image.asset(
+                            'assets/images/coupon_1.png',
+                            fit: BoxFit.cover,
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          b.subhead,
-                          style: AppTextStyles.offerSubhead(
-                            color: HomeColors.muted,
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(120, 18, 16, 62),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                b.headline,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTextStyles.offerHeadline(
+                                  color: Colors.white,
+                                ).copyWith(fontSize: 26, height: 1.05),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                b.subhead,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTextStyles.offerSubhead(
+                                  color: Colors.white,
+                                ).copyWith(fontSize: 13, height: 1.2),
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 16),
-                        Flexible(child: _CodePill(code: b.code)),
+                        Positioned(
+                          left: 14,
+                          right: 14,
+                          bottom: 12,
+                          child: _CodePill(code: b.code),
+                        ),
                       ],
                     ),
                   ),
@@ -126,7 +138,7 @@ class _OfferCarouselState extends State<OfferCarousel> {
           Positioned(
             left: 0,
             right: 0,
-            bottom: 10,
+            bottom: 0,
             child: IgnorePointer(
               child: _Indicator(
                 currentIndex: _index,
@@ -182,8 +194,8 @@ class _CodePill extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               child: const Icon(
-                Icons.copy_rounded,
-                size: 16,
+                Icons.chevron_right_rounded,
+                size: 18,
                 color: HomeColors.primary,
               ),
             ),

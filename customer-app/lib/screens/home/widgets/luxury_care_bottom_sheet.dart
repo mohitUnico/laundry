@@ -151,7 +151,7 @@ class _LuxuryCareBottomSheetState extends State<LuxuryCareBottomSheet> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: _BottomButton(
-                      label: 'Next',
+                      label: 'Add to cart',
                       variant: _BottomButtonVariant.filled,
                       onTap: () => Navigator.of(context).pop(
                         LuxuryCareSelection(

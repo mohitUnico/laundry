@@ -32,14 +32,30 @@ class RegularWashBottomSheet extends StatefulWidget {
 }
 
 class _RegularWashBottomSheetState extends State<RegularWashBottomSheet> {
-  String _selectedService = 'Wash & Fold';
+  String _selectedService = _services.first.title;
   RegularWashPricingType _pricingType = RegularWashPricingType.kgWise;
 
-  static const _services = <String>[
-    'Wash & Fold',
-    'Wash & Iron',
-    'Iron only',
-    'Hand Wash',
+  static const _services = <_RegularWashService>[
+    _RegularWashService(
+      title: 'Wash & Fold',
+      subtitle: 'Washed, dried, and neatly folded',
+      imageAsset: 'assets/images/regular_wash/top_wear.png',
+    ),
+    _RegularWashService(
+      title: 'Wash & Iron',
+      subtitle: 'Washed and ironed',
+      imageAsset: 'assets/images/regular_wash/bottom_wear.png',
+    ),
+    _RegularWashService(
+      title: 'Iron only',
+      subtitle: 'Ironing only, no wash',
+      imageAsset: 'assets/images/regular_wash/kurta.png',
+    ),
+    _RegularWashService(
+      title: 'Hand Wash',
+      subtitle: 'Gentle wash by hand',
+      imageAsset: 'assets/images/regular_wash/saree.png',
+    ),
   ];
 
   @override
@@ -53,6 +69,9 @@ class _RegularWashBottomSheetState extends State<RegularWashBottomSheet> {
         padding: EdgeInsets.only(bottom: bottomInset),
         child: Container(
           width: double.infinity,
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * 0.92,
+          ),
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.only(
@@ -60,8 +79,9 @@ class _RegularWashBottomSheetState extends State<RegularWashBottomSheet> {
               topRight: Radius.circular(26),
             ),
           ),
-          padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
-          child: Column(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
+            child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -75,21 +95,25 @@ class _RegularWashBottomSheetState extends State<RegularWashBottomSheet> {
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
-              Text(
-                'Choose the service',
-                textAlign: TextAlign.center,
-                style: AppTextStyles.header(color: HomeColors.text)
-                    .copyWith(fontSize: 12),
-              ),
-              const SizedBox(height: 10),
-              for (final s in _services) ...[
-                _ServicePill(
-                  label: s,
-                  isSelected: s == _selectedService,
-                  onTap: () => setState(() => _selectedService = s),
+              const SizedBox(height: 14),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Choose the service',
+                  style: AppTextStyles.header(color: HomeColors.text)
+                      .copyWith(fontSize: 12),
                 ),
-                const SizedBox(height: 10),
+              ),
+              const SizedBox(height: 12),
+              for (final s in _services) ...[
+                _ServiceRow(
+                  title: s.title,
+                  subtitle: s.subtitle,
+                  imageAsset: s.imageAsset,
+                  isSelected: s.title == _selectedService,
+                  onTap: () => setState(() => _selectedService = s.title),
+                ),
+                const SizedBox(height: 12),
               ],
               const SizedBox(height: 6),
               Container(
@@ -143,7 +167,7 @@ class _RegularWashBottomSheetState extends State<RegularWashBottomSheet> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: _BottomButton(
-                      label: 'Next',
+                      label: 'Add to cart',
                       variant: _BottomButtonVariant.filled,
                       onTap: () => Navigator.of(context).pop(
                         RegularWashSelection(
@@ -158,18 +182,35 @@ class _RegularWashBottomSheetState extends State<RegularWashBottomSheet> {
             ],
           ),
         ),
+        ),
       ),
     );
   }
 }
 
-class _ServicePill extends StatelessWidget {
-  final String label;
+class _RegularWashService {
+  final String title;
+  final String subtitle;
+  final String imageAsset;
+
+  const _RegularWashService({
+    required this.title,
+    required this.subtitle,
+    required this.imageAsset,
+  });
+}
+
+class _ServiceRow extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final String imageAsset;
   final bool isSelected;
   final VoidCallback onTap;
 
-  const _ServicePill({
-    required this.label,
+  const _ServiceRow({
+    required this.title,
+    required this.subtitle,
+    required this.imageAsset,
     required this.isSelected,
     required this.onTap,
   });
@@ -178,27 +219,55 @@ class _ServicePill extends StatelessWidget {
   Widget build(BuildContext context) {
     final borderColor =
         isSelected ? HomeColors.primary : const Color(0xFFE5E7EB);
-    final bgColor = isSelected ? HomeColors.primary : Colors.white;
-    final textColor = isSelected ? Colors.white : HomeColors.text;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
-        height: 40,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        alignment: Alignment.center,
+        height: 58,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: borderColor, width: 1.2),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: borderColor),
         ),
-        child: Text(
-          label,
-          // Per design spec: Poppins 15, w500, height 1.0
-          style: AppTextStyles.listItemTitle(color: textColor),
-          textAlign: TextAlign.center,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+        child: Row(
+          children: [
+            SizedBox(
+              width: 42,
+              height: 42,
+              child: Image.asset(imageAsset, fit: BoxFit.contain),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTextStyles.listItemTitle(color: HomeColors.text),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTextStyles.body(color: HomeColors.muted),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Icon(
+              isSelected
+                  ? Icons.radio_button_checked_rounded
+                  : Icons.radio_button_off_rounded,
+              size: 18,
+              color: isSelected ? HomeColors.primary : const Color(0xFF9AA3B2),
+            ),
+          ],
         ),
       ),
     );
@@ -227,7 +296,6 @@ class _PricingRow extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 2),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
@@ -236,36 +304,22 @@ class _PricingRow extends StatelessWidget {
               margin: const EdgeInsets.only(top: 2),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: dotColor, width: 2),
+                color: dotColor,
               ),
-              child: isSelected
-                  ? Center(
-                      child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: HomeColors.primary,
-                        ),
-                      ),
-                    )
-                  : null,
             ),
             const SizedBox(width: 10),
-            Flexible(
+            Expanded(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     title,
-                    textAlign: TextAlign.center,
                     style: AppTextStyles.header(color: HomeColors.text)
                         .copyWith(fontSize: 12),
                   ),
                   const SizedBox(height: 3),
                   Text(
                     subtitle,
-                    textAlign: TextAlign.center,
                     style: AppTextStyles.body(color: HomeColors.muted)
                         .copyWith(fontSize: 10),
                   ),

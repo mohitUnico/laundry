@@ -7,6 +7,7 @@ import '../../theme/app_text_styles.dart';
 import '../../utils/pricing.dart';
 import '../home/widgets/home_bottom_nav.dart';
 import '../home/widgets/home_colors.dart';
+import '../home/widgets/home_linen_bottom_sheet.dart';
 import 'pro_clean/widgets/others_field.dart';
 
 class HomeLinensScreen extends StatefulWidget {
@@ -52,6 +53,23 @@ class _HomeLinensScreenState extends State<HomeLinensScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final selection =
+        ModalRoute.of(context)?.settings.arguments as HomeLinenSelection?;
+    final serviceName = selection?.serviceName ?? 'Home Linen';
+    final showPrices =
+        selection == null || selection.pricingType == HomeLinenPricingType.perPiece;
+
+    String? priceFor(String itemName) {
+      if (!showPrices) return null;
+      return Pricing.inrPerPc(
+        Pricing.unitPriceInr(
+          category: 'Home Linens',
+          serviceName: serviceName,
+          itemName: itemName,
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: HomeColors.background,
       body: SafeArea(
@@ -59,7 +77,7 @@ class _HomeLinensScreenState extends State<HomeLinensScreen> {
           children: [
             const SizedBox(height: 8),
             _TopBar(
-              title: 'Home Linens',
+              title: serviceName,
               onBack: () => Navigator.of(context).maybePop(),
             ),
             const SizedBox(height: 10),
@@ -72,13 +90,7 @@ class _HomeLinensScreenState extends State<HomeLinensScreen> {
                     _ItemCard(
                       title: 'Bed Sheets',
                       imageAsset: 'assets/images/home_linen/bedsheets.png',
-                      priceText: Pricing.inrPerPc(
-                        Pricing.unitPriceInr(
-                          category: 'Home Linens',
-                          serviceName: 'Home Linens',
-                          itemName: 'Bed Sheets',
-                        ),
-                      ),
+                      priceText: priceFor('Bed Sheets'),
                       value: _qty[_HomeLinenItem.bedSheets]!,
                       onMinus: () => setState(() {
                         _qty[_HomeLinenItem.bedSheets] =
@@ -93,13 +105,7 @@ class _HomeLinensScreenState extends State<HomeLinensScreen> {
                     _ItemCard(
                       title: 'Carpets',
                       imageAsset: 'assets/images/home_linen/carpets.png',
-                      priceText: Pricing.inrPerPc(
-                        Pricing.unitPriceInr(
-                          category: 'Home Linens',
-                          serviceName: 'Home Linens',
-                          itemName: 'Carpets',
-                        ),
-                      ),
+                      priceText: priceFor('Carpets'),
                       value: _qty[_HomeLinenItem.carpets]!,
                       onMinus: () => setState(() {
                         _qty[_HomeLinenItem.carpets] =
@@ -114,13 +120,7 @@ class _HomeLinensScreenState extends State<HomeLinensScreen> {
                     _ItemCard(
                       title: 'Blankets & Quilts',
                       imageAsset: 'assets/images/home_linen/blankets.png',
-                      priceText: Pricing.inrPerPc(
-                        Pricing.unitPriceInr(
-                          category: 'Home Linens',
-                          serviceName: 'Home Linens',
-                          itemName: 'Blankets & Quilts',
-                        ),
-                      ),
+                      priceText: priceFor('Blankets & Quilts'),
                       value: _qty[_HomeLinenItem.blanketsAndQuilts]!,
                       onMinus: () => setState(() {
                         _qty[_HomeLinenItem.blanketsAndQuilts] =
@@ -137,13 +137,7 @@ class _HomeLinensScreenState extends State<HomeLinensScreen> {
                     _ItemCard(
                       title: 'Curtains',
                       imageAsset: 'assets/images/home_linen/curtains.png',
-                      priceText: Pricing.inrPerPc(
-                        Pricing.unitPriceInr(
-                          category: 'Home Linens',
-                          serviceName: 'Home Linens',
-                          itemName: 'Curtains',
-                        ),
-                      ),
+                      priceText: priceFor('Curtains'),
                       value: _qty[_HomeLinenItem.curtains]!,
                       onMinus: () => setState(() {
                         _qty[_HomeLinenItem.curtains] =
@@ -158,13 +152,7 @@ class _HomeLinensScreenState extends State<HomeLinensScreen> {
                     _ItemCard(
                       title: 'Tablecloths & Napkins',
                       imageAsset: 'assets/images/home_linen/tablecloths.png',
-                      priceText: Pricing.inrPerPc(
-                        Pricing.unitPriceInr(
-                          category: 'Home Linens',
-                          serviceName: 'Home Linens',
-                          itemName: 'Tablecloths & Napkins',
-                        ),
-                      ),
+                      priceText: priceFor('Tablecloths & Napkins'),
                       value: _qty[_HomeLinenItem.tableclothsAndNapkins]!,
                       onMinus: () => setState(() {
                         _qty[_HomeLinenItem.tableclothsAndNapkins] =
@@ -190,8 +178,9 @@ class _HomeLinensScreenState extends State<HomeLinensScreen> {
                       onTap: () {
                         context.read<CartProvider>().addOrMerge(
                               category: 'Home Linens',
-                              serviceName: 'Home Linens',
+                              serviceName: serviceName,
                               imageAsset: 'assets/images/home_linen/bedsheets.png',
+                              isPerPiece: showPrices,
                               quantities: {
                                 'Bed Sheets': _qty[_HomeLinenItem.bedSheets] ?? 0,
                                 'Carpets': _qty[_HomeLinenItem.carpets] ?? 0,
@@ -224,7 +213,7 @@ class _HomeLinensScreenState extends State<HomeLinensScreen> {
             0 => AppRoutes.home,
             1 => AppRoutes.orders,
             2 => AppRoutes.cart,
-            _ => AppRoutes.profile,
+            _ => AppRoutes.pricing,
           };
           Navigator.of(context).pushNamedAndRemoveUntil(route, (r) => false);
         },
@@ -294,7 +283,7 @@ class _TopBar extends StatelessWidget {
 class _ItemCard extends StatelessWidget {
   final String title;
   final String imageAsset;
-  final String priceText;
+  final String? priceText;
   final int value;
   final VoidCallback onMinus;
   final VoidCallback onPlus;
@@ -348,14 +337,16 @@ class _ItemCard extends StatelessWidget {
                   style: AppTextStyles.header(color: HomeColors.text)
                       .copyWith(fontSize: 13),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  priceText,
-                  style: AppTextStyles.body(color: HomeColors.primary).copyWith(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+                if (priceText != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    priceText!,
+                    style: AppTextStyles.body(color: HomeColors.primary).copyWith(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),

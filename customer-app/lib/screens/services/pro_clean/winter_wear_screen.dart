@@ -234,7 +234,7 @@ class _WinterWearScreenState extends State<WinterWearScreen> {
             0 => AppRoutes.home,
             1 => AppRoutes.orders,
             2 => AppRoutes.cart,
-            _ => AppRoutes.profile,
+            _ => AppRoutes.pricing,
           };
           Navigator.of(context).pushNamedAndRemoveUntil(route, (r) => false);
         },

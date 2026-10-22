@@ -6,19 +6,20 @@ import 'package:flutter/foundation.dart';
 
 import '../../routes/app_routes.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/cart_provider.dart';
 import '../../providers/coupons_provider.dart';
-import '../../providers/service_catalog_provider.dart';
 import '../../providers/order_provider.dart';
 import '../../models/order_record.dart';
 import 'widgets/home_colors.dart';
 import 'widgets/home_header.dart';
+import 'widgets/how_laundry_card.dart';
 import 'widgets/offer_carousel.dart';
 import 'widgets/active_orders_carousel.dart';
+import 'widgets/home_linen_bottom_sheet.dart';
 import 'widgets/luxury_care_bottom_sheet.dart';
 import 'widgets/pro_clean_bottom_sheet.dart';
 import 'widgets/regular_wash_bottom_sheet.dart';
 import 'widgets/service_tile.dart';
-import '../../models/service_item.dart';
 import '../../utils/polling_config.dart';
 import '../../repositories/customer_info_repository.dart';
 
@@ -40,8 +41,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      // Show the saved catalogue immediately, then refresh it so admin additions appear.
-      context.read<ServiceCatalogProvider>().syncCatalog();
       // Fetch coupons for home screen offers
       context.read<CouponsProvider>().fetchApplicableCoupons(force: true);
       // Fetch active orders for the home screen
@@ -124,100 +123,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  String _pickCategoryName(
-    List<String> defaults,
-    List<String> candidates,
-    String fallback,
-  ) {
-    final normalizedCandidates =
-        candidates.map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
-    if (normalizedCandidates.isEmpty) return fallback;
-
-    // Try to match by contains for stability.
-    final fallbackKey = fallback.toLowerCase();
-    for (final c in normalizedCandidates) {
-      if (c.toLowerCase().contains(fallbackKey)) return c;
-    }
-
-    // Otherwise, try to pick by the fallback's index in the default list.
-    final idx = defaults.indexOf(fallback);
-    if (idx >= 0 && idx < normalizedCandidates.length)
-      return normalizedCandidates[idx];
-
-    return normalizedCandidates.first;
-  }
-
-  String? _findCategoryIdForTitle({
-    required List<String> availableNames,
-    required List<String> availableIds,
-    required String title,
-  }) {
-    final lowerTitle = title.trim().toLowerCase();
-    for (var i = 0; i < availableNames.length; i++) {
-      if (availableNames[i].trim().toLowerCase() == lowerTitle)
-        return availableIds[i];
-    }
-    for (var i = 0; i < availableNames.length; i++) {
-      if (availableNames[i].trim().toLowerCase().contains(lowerTitle))
-        return availableIds[i];
-    }
-    return null;
-  }
-
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final catalog = context.watch<ServiceCatalogProvider>();
-    final categories = [...catalog.categories]
-      ..sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
-    final names = categories.map((c) => c.categoryName).toList();
-    final ids = categories.map((c) => c.categoryId).toList();
-
-    const defaultNames = <String>[
-      'Regular Wash',
-      'Pro Clean',
-      'Home Linens',
-      'Luxury Care',
-    ];
-
-    final regularWashTitle =
-        _pickCategoryName(defaultNames, names, defaultNames[0]);
-    final proCleanTitle =
-        _pickCategoryName(defaultNames, names, defaultNames[1]);
-    final homeLinensTitle =
-        _pickCategoryName(defaultNames, names, defaultNames[2]);
-    final luxuryCareTitle =
-        _pickCategoryName(defaultNames, names, defaultNames[3]);
-
-    final regularWashCategoryId = _findCategoryIdForTitle(
-      availableNames: names,
-      availableIds: ids,
-      title: regularWashTitle,
-    );
-    final proCleanCategoryId = _findCategoryIdForTitle(
-      availableNames: names,
-      availableIds: ids,
-      title: proCleanTitle,
-    );
-    final homeLinensCategoryId = _findCategoryIdForTitle(
-      availableNames: names,
-      availableIds: ids,
-      title: homeLinensTitle,
-    );
-    final luxuryCareCategoryId = _findCategoryIdForTitle(
-      availableNames: names,
-      availableIds: ids,
-      title: luxuryCareTitle,
-    );
-
-    String? iconFor(String title) {
-      final lower = title.trim().toLowerCase();
-      for (final category in categories) {
-        final name = category.categoryName.trim().toLowerCase();
-        if (name == lower || name.contains(lower)) return category.iconUrl;
-      }
-      return null;
-    }
 
     return Scaffold(
       backgroundColor: HomeColors.background,
@@ -241,18 +149,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               const SizedBox(height: 14),
               Expanded(
                 child: _HomeContent(
-                  regularWashTitle: regularWashTitle,
-                  proCleanTitle: proCleanTitle,
-                  homeLinensTitle: homeLinensTitle,
-                  luxuryCareTitle: luxuryCareTitle,
-                  regularWashCategoryId: regularWashCategoryId,
-                  proCleanCategoryId: proCleanCategoryId,
-                  homeLinensCategoryId: homeLinensCategoryId,
-                  luxuryCareCategoryId: luxuryCareCategoryId,
-                  regularWashIconUrl: iconFor(regularWashTitle),
-                  proCleanIconUrl: iconFor(proCleanTitle),
-                  homeLinensIconUrl: iconFor(homeLinensTitle),
-                  luxuryCareIconUrl: iconFor(luxuryCareTitle),
+                  regularWashTitle: 'Regular Wash',
+                  proCleanTitle: 'Pro Clean',
+                  homeLinensTitle: 'Home Linens',
+                  luxuryCareTitle: 'Luxury Care',
+                  regularWashImageAsset: 'assets/images/home/regular_wash.png',
+                  proCleanImageAsset: 'assets/images/home/pro_clean.png',
+                  homeLinensImageAsset: 'assets/images/home/home_linen.png',
+                  luxuryCareImageAsset: 'assets/images/home/luxury_care.png',
                 ),
               ),
             ],
@@ -268,28 +172,20 @@ class _HomeContent extends StatelessWidget {
   final String proCleanTitle;
   final String homeLinensTitle;
   final String luxuryCareTitle;
-  final String? regularWashCategoryId;
-  final String? proCleanCategoryId;
-  final String? homeLinensCategoryId;
-  final String? luxuryCareCategoryId;
-  final String? regularWashIconUrl;
-  final String? proCleanIconUrl;
-  final String? homeLinensIconUrl;
-  final String? luxuryCareIconUrl;
+  final String regularWashImageAsset;
+  final String proCleanImageAsset;
+  final String homeLinensImageAsset;
+  final String luxuryCareImageAsset;
 
   const _HomeContent({
     required this.regularWashTitle,
     required this.proCleanTitle,
     required this.homeLinensTitle,
     required this.luxuryCareTitle,
-    required this.regularWashCategoryId,
-    required this.proCleanCategoryId,
-    required this.homeLinensCategoryId,
-    required this.luxuryCareCategoryId,
-    required this.regularWashIconUrl,
-    required this.proCleanIconUrl,
-    required this.homeLinensIconUrl,
-    required this.luxuryCareIconUrl,
+    required this.regularWashImageAsset,
+    required this.proCleanImageAsset,
+    required this.homeLinensImageAsset,
+    required this.luxuryCareImageAsset,
   });
 
   @override
@@ -297,6 +193,7 @@ class _HomeContent extends StatelessWidget {
     final w = MediaQuery.sizeOf(context).width;
     final gridHeight = (w * 0.78).clamp(280.0, 330.0);
     final rightTileHeight = (gridHeight - 12) / 2;
+    final bannerHeight = (w * 0.34).clamp(124.0, 150.0);
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
@@ -387,39 +284,18 @@ class _HomeContent extends StatelessWidget {
                     fullWidthImage: true,
                     title: regularWashTitle,
                     subtitle: 'Fast & Fresh Laundry',
-                    imageUrl: regularWashIconUrl,
+                    imageAsset: regularWashImageAsset,
                     onTap: () async {
-                      if (regularWashCategoryId != null) {
-                        await context
-                            .read<ServiceCatalogProvider>()
-                            .fetchServicesForCategory(
-                              categoryId: regularWashCategoryId!,
-                              isActive: true,
-                              force: true,
-                            );
-                      }
-                      final categoryId = regularWashCategoryId;
-                      final provider = context.read<ServiceCatalogProvider>();
-                      final services = categoryId == null
-                          ? const <ServiceItem>[]
-                          : provider.servicesForCategory(categoryId).toList();
-                      final sel = await RegularWashBottomSheet.show(
-                        context,
-                        services: services,
-                        isLoading: categoryId != null &&
-                            provider.isLoadingServices(categoryId),
-                      );
+                      final sel = await RegularWashBottomSheet.show(context);
                       if (!context.mounted || sel == null) return;
-                      final route = switch (sel.serviceName) {
-                        'Wash & Fold' => AppRoutes.washAndFold,
-                        'Wash & Iron' => AppRoutes.washAndIron,
-                        'Iron only' => AppRoutes.ironOnly,
-                        'Hand Wash' => AppRoutes.handWash,
-                        _ => null,
-                      };
-                      if (route != null) {
-                        Navigator.of(context).pushNamed(route, arguments: sel);
-                      }
+                      _addServiceToCart(
+                        context,
+                        category: 'Regular Wash',
+                        serviceName: sel.serviceName,
+                        isPerPiece:
+                            sel.pricingType == RegularWashPricingType.perPiece,
+                        imageAsset: regularWashImageAsset,
+                      );
                     },
                   ),
                 ),
@@ -433,54 +309,19 @@ class _HomeContent extends StatelessWidget {
                       child: ServiceTile(
                         title: proCleanTitle,
                         subtitle: 'Expert dry cleaning',
-                        imageUrl: proCleanIconUrl,
+                        imageAsset: proCleanImageAsset,
                         imageSize: 132,
                         onTap: () async {
-                          if (proCleanCategoryId != null) {
-                            await context
-                                .read<ServiceCatalogProvider>()
-                                .fetchServicesForCategory(
-                                  categoryId: proCleanCategoryId!,
-                                  isActive: true,
-                                  force: true,
-                                );
-                          }
-                          final categoryId = proCleanCategoryId;
-                          final provider =
-                              context.read<ServiceCatalogProvider>();
-                          final services = categoryId == null
-                              ? const <ServiceItem>[]
-                              : provider
-                                  .servicesForCategory(categoryId)
-                                  .toList();
-                          final sel = await ProCleanBottomSheet.show(
-                            context,
-                            services: services,
-                            isLoading: categoryId != null &&
-                                provider.isLoadingServices(categoryId),
-                          );
+                          final sel = await ProCleanBottomSheet.show(context);
                           if (!context.mounted || sel == null) return;
-                          // IMPORTANT:
-                          // Backend service names can vary (e.g. "Stain removal", "Winter wear cleaning", "Delicate wash").
-                          // Route using tolerant matching, and fall back to the generic ProCleanScreen which
-                          // will still fetch clothes items using serviceId.
-                          final n = sel.categoryName.trim().toLowerCase();
-                          String route;
-                          if (n.contains('dry')) {
-                            route = AppRoutes.dryCleaning;
-                          } else if (n.contains('stain')) {
-                            route = AppRoutes.stainTreatment;
-                          } else if (n.contains('shoe')) {
-                            route = AppRoutes.shoeCleaning;
-                          } else if (n.contains('winter')) {
-                            route = AppRoutes.winterWear;
-                          } else if (n.contains('delicate')) {
-                            route = AppRoutes.delicateFabrics;
-                          } else {
-                            route = AppRoutes.proClean;
-                          }
-                          Navigator.of(context)
-                              .pushNamed(route, arguments: sel);
+                          _addServiceToCart(
+                            context,
+                            category: 'Pro Clean',
+                            serviceName: sel.categoryName,
+                            isPerPiece:
+                                sel.pricingType == ProCleanPricingType.perPiece,
+                            imageAsset: proCleanImageAsset,
+                          );
                         },
                       ),
                     ),
@@ -490,38 +331,18 @@ class _HomeContent extends StatelessWidget {
                       child: ServiceTile(
                         title: homeLinensTitle,
                         subtitle: 'Household items',
-                        imageUrl: homeLinensIconUrl,
+                        imageAsset: homeLinensImageAsset,
                         imageSize: 132,
                         onTap: () async {
-                          if (homeLinensCategoryId != null) {
-                            await context
-                                .read<ServiceCatalogProvider>()
-                                .fetchServicesForCategory(
-                                  categoryId: homeLinensCategoryId!,
-                                  isActive: true,
-                                  force: true,
-                                );
-                          }
-
-                          final categoryId = homeLinensCategoryId;
-                          final provider =
-                              context.read<ServiceCatalogProvider>();
-                          final services = categoryId == null
-                              ? const <ServiceItem>[]
-                              : provider
-                                  .servicesForCategory(categoryId)
-                                  .toList();
-
-                          final sel = await RegularWashBottomSheet.show(
-                            context,
-                            services: services,
-                            isLoading: categoryId != null &&
-                                provider.isLoadingServices(categoryId),
-                          );
+                          final sel = await HomeLinenBottomSheet.show(context);
                           if (!context.mounted || sel == null) return;
-                          Navigator.of(context).pushNamed(
-                            AppRoutes.homeLinens,
-                            arguments: sel,
+                          _addServiceToCart(
+                            context,
+                            category: 'Home Linens',
+                            serviceName: sel.serviceName,
+                            isPerPiece:
+                                sel.pricingType == HomeLinenPricingType.perPiece,
+                            imageAsset: homeLinensImageAsset,
                           );
                         },
                       ),
@@ -533,42 +354,56 @@ class _HomeContent extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           SizedBox(
-            height: (w * 0.34).clamp(124.0, 150.0),
+            height: bannerHeight,
             child: ServiceTile(
               isPrimary: true,
               title: luxuryCareTitle,
               subtitle: 'Delicate fabric treatment',
-              imageUrl: luxuryCareIconUrl,
+              imageAsset: luxuryCareImageAsset,
               onTap: () async {
-                if (luxuryCareCategoryId != null) {
-                  await context
-                      .read<ServiceCatalogProvider>()
-                      .fetchServicesForCategory(
-                        categoryId: luxuryCareCategoryId!,
-                        isActive: true,
-                        force: true,
-                      );
-                }
-                final categoryId = luxuryCareCategoryId;
-                final provider = context.read<ServiceCatalogProvider>();
-                final services = categoryId == null
-                    ? const <ServiceItem>[]
-                    : provider.servicesForCategory(categoryId).toList();
-                final sel = await LuxuryCareBottomSheet.show(
-                  context,
-                  services: services,
-                  isLoading: categoryId != null &&
-                      provider.isLoadingServices(categoryId),
-                );
+                final sel = await LuxuryCareBottomSheet.show(context);
                 if (!context.mounted || sel == null) return;
-                Navigator.of(context)
-                    .pushNamed(AppRoutes.luxuryCare, arguments: sel);
+                _addServiceToCart(
+                  context,
+                  category: 'Luxury Care',
+                  serviceName: sel.serviceName,
+                  isPerPiece: sel.pricingType == LuxuryCarePricingType.perPiece,
+                  imageAsset: luxuryCareImageAsset,
+                );
               },
             ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            height: bannerHeight,
+            child: const HowLaundryCard(),
           ),
           const SizedBox(height: 18),
         ],
       ),
     );
   }
+}
+
+void _addServiceToCart(
+  BuildContext context, {
+  required String category,
+  required String serviceName,
+  required bool isPerPiece,
+  String? imageAsset,
+}) {
+  final added = context.read<CartProvider>().addService(
+        category: category,
+        serviceName: serviceName,
+        isPerPiece: isPerPiece,
+        imageAsset: imageAsset,
+      );
+  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(added ? 'Added to cart' : 'Already in your cart'),
+      duration: const Duration(seconds: 2),
+    ),
+  );
 }

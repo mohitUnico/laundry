@@ -1,14 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../providers/cart_provider.dart';
 import '../home/widgets/home_colors.dart';
 import '../../theme/app_text_styles.dart';
-import '../../routes/app_routes.dart';
 import '../../providers/service_catalog_provider.dart';
-import '../../utils/profile_service_error_messages.dart';
-import '../home/widgets/pro_clean_bottom_sheet.dart';
-import '../home/widgets/regular_wash_bottom_sheet.dart';
-import '../../models/service_item.dart';
 
 enum FavoritePricingType { perPiece, perKg }
 
@@ -151,122 +147,19 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   }
 
   Future<void> _navigateToService(FavoriteService favorite, BuildContext context) async {
-    final provider = context.read<ServiceCatalogProvider>();
-    
-    try {
-      // Ensure categories are loaded (should be cached from preload)
-      if (provider.categories.isEmpty) {
-        await provider.fetchServiceCategories(isActive: true, force: false);
-      }
-      
-      // Find the category ID by matching category name
-      final categories = provider.categories.toList();
-      final category = categories.firstWhere(
-        (c) => c.categoryName.toLowerCase().contains(favorite.category.toLowerCase()) ||
-               favorite.category.toLowerCase().contains(c.categoryName.toLowerCase()),
-        orElse: () => throw Exception('Category not found: ${favorite.category}'),
-      );
-      
-      // Fetch services (should be cached from preload, so this is fast)
-      final services = provider.servicesForCategory(category.categoryId);
-      if (services.isEmpty) {
-        await provider.fetchServicesForCategory(
-          categoryId: category.categoryId,
-          isActive: true,
-          force: false,
+    final added = context.read<CartProvider>().addService(
+          category: favorite.category,
+          serviceName: favorite.category == 'Home Linens' ? 'Home Linen' : favorite.name,
+          isPerPiece: favorite.pricingType == FavoritePricingType.perPiece,
         );
-      }
-      
-      // Find the service by name
-      final allServices = provider.servicesForCategory(category.categoryId).toList();
-      final service = allServices.firstWhere(
-        (s) => s.serviceName.toLowerCase() == favorite.name.toLowerCase() ||
-               s.serviceName.toLowerCase().contains(favorite.name.toLowerCase()),
-        orElse: () => allServices.isNotEmpty ? allServices.first : throw Exception('Service not found: ${favorite.name}'),
-      );
-
-      String route;
-      dynamic arguments;
-
-      // Map service to route based on category and name
-      if (favorite.category == 'Regular Wash') {
-        route = switch (favorite.name) {
-          'Wash & Fold' => AppRoutes.washAndFold,
-          'Wash & Iron' => AppRoutes.washAndIron,
-          'Iron only' => AppRoutes.ironOnly,
-          'Hand Wash' => AppRoutes.handWash,
-          _ => AppRoutes.washAndFold,
-        };
-        
-        // Use the favorite's pricing type preference
-        final pricingType = favorite.pricingType == FavoritePricingType.perPiece
-            ? RegularWashPricingType.perPiece
-            : RegularWashPricingType.kgWise;
-        
-        // Create RegularWashSelection argument
-        arguments = RegularWashSelection(
-          serviceId: service.serviceId,
-          serviceName: service.serviceName,
-          pricingType: pricingType,
-        );
-      } else if (favorite.category == 'Pro Clean') {
-        // Map Pro Clean service to route
-        final serviceNameLower = favorite.name.toLowerCase();
-        if (serviceNameLower.contains('dry')) {
-          route = AppRoutes.dryCleaning;
-        } else if (serviceNameLower.contains('stain')) {
-          route = AppRoutes.stainTreatment;
-        } else if (serviceNameLower.contains('shoe')) {
-          route = AppRoutes.shoeCleaning;
-        } else if (serviceNameLower.contains('winter')) {
-          route = AppRoutes.winterWear;
-        } else if (serviceNameLower.contains('delicate')) {
-          route = AppRoutes.delicateFabrics;
-        } else {
-          route = AppRoutes.proClean;
-        }
-        
-        // Use the favorite's pricing type preference
-        final pricingType = favorite.pricingType == FavoritePricingType.perPiece
-            ? ProCleanPricingType.perPiece
-            : ProCleanPricingType.kgWise;
-        
-        // Create ProCleanSelection argument
-        arguments = ProCleanSelection(
-          serviceId: service.serviceId,
-          categoryName: service.serviceName,
-          pricingType: pricingType,
-        );
-      } else {
-        // Default navigation for other categories
-        route = AppRoutes.proClean;
-        final pricingType = favorite.pricingType == FavoritePricingType.perPiece
-            ? ProCleanPricingType.perPiece
-            : ProCleanPricingType.kgWise;
-        arguments = ProCleanSelection(
-          serviceId: service.serviceId,
-          categoryName: service.serviceName,
-          pricingType: pricingType,
-        );
-      }
-
-      if (context.mounted) {
-        Navigator.of(context).pushNamed(route, arguments: arguments);
-      }
-    } catch (e) {
-      if (context.mounted) {
-        final message = ProfileServiceErrorMessages.getServiceErrorMessage(
-          e,
-          operation: 'load service',
-        );
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    }
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(added ? 'Added to cart' : 'Already in your cart'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   @override

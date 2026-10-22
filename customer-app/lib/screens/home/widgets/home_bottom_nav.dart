@@ -18,7 +18,7 @@ class HomeBottomNav extends StatelessWidget {
   Widget build(BuildContext context) {
     // Get cart item count from CartProvider
     final cart = context.watch<CartProvider>();
-    final cartItemCount = cart.items.fold<int>(0, (sum, item) => sum + item.totalQuantity);
+    final cartItemCount = cart.items.length;
     
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     const barHeight = 82.0;
@@ -108,9 +108,8 @@ class HomeBottomNav extends StatelessWidget {
                             badgeCount: cartItemCount > 0 ? cartItemCount : null,
                           ),
                           _Item(
-                            iconAsset:
-                                'assets/icons/bottom_navbar/account_icon.png',
-                            label: 'Account',
+                            iconAsset: 'assets/images/pricing_icon.png',
+                            label: 'Pricing',
                             isActive: currentIndex == 3,
                             onTap: () => onTap?.call(3),
                           ),

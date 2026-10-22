@@ -1,0 +1,167 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Customer addresses",
+    "version": "0.1.0",
+    "description": "Address list for the homepage dropdown. The selected address is kept on the device. This contract has no current-address resource."
+  },
+  "servers": [{ "url": "/api/v1" }],
+  "tags": [{ "name": "addresses" }],
+  "security": [{ "customerBearer": [] }],
+  "paths": {
+    "/customer-info/addresses": {
+      "get": {
+        "tags": ["addresses"],
+        "operationId": "listMyAddresses",
+        "summary": "List my addresses",
+        "description": "Every address saved for this customer. The app shows the dropdown and stores the chosen address_id. is_default is the suggested selection when the app has none saved.",
+        "x-current": {
+          "path": "GET /api/v1/customer-info/addresses",
+          "storage": "customer_addresses"
+        },
+        "responses": {
+          "200": {
+            "description": "Address list",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Envelope" },
+                "example": {
+                  "success": true,
+                  "data": [
+                    {
+                      "address_id": "a1b2c3d4-e5f6-4789-a012-3456789abcde",
+                      "address_label": "home",
+                      "full_address": "12 Home Street, Bengaluru",
+                      "latitude": "12.97159870",
+                      "longitude": "77.59456270",
+                      "is_default": true,
+                      "delivery_note": null
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "tags": ["addresses"],
+        "operationId": "createMyAddress",
+        "summary": "Save the signup location",
+        "description": "Allow your location, then Done. Required for a new customer before the homepage. Uses the customer access_token from POST /auth/customers. latitude and longitude come from the device. full_address is the address the phone resolves for that point. address_label defaults to home. is_default is true for this first address.",
+        "x-current": {
+          "path": "POST /api/v1/customer-info/addresses",
+          "storage": "customer_addresses.address_label, full_address, latitude, longitude, is_default"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateAddress" },
+              "example": {
+                "address_label": "home",
+                "full_address": "12 Home Street, Bengaluru",
+                "latitude": 12.9715987,
+                "longitude": 77.5945627,
+                "is_default": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Address saved. The app may open the homepage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "data": { "$ref": "#/components/schemas/Address" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing coordinates or address text",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "customerBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing or invalid customer token",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "CreateAddress": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["address_label", "full_address", "latitude", "longitude"],
+        "properties": {
+          "address_label": { "type": "string", "maxLength": 50 },
+          "full_address": { "type": "string", "minLength": 3 },
+          "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
+          "longitude": { "type": "number", "minimum": -180, "maximum": 180 },
+          "is_default": { "type": "boolean" }
+        }
+      },
+      "Address": {
+        "type": "object",
+        "required": ["address_id", "address_label", "full_address", "latitude", "longitude", "is_default"],
+        "properties": {
+          "address_id": { "type": "string", "format": "uuid" },
+          "address_label": { "type": "string", "description": "Label such as home or work." },
+          "full_address": { "type": "string" },
+          "latitude": { "type": "string", "description": "Decimal string." },
+          "longitude": { "type": "string", "description": "Decimal string." },
+          "is_default": { "type": "boolean" },
+          "delivery_note": { "type": "string", "nullable": true }
+        }
+      },
+      "Envelope": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "data": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Address" }
+          }
+        }
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": ["success", "message"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [false] },
+          "message": { "type": "string" },
+          "errorCode": { "type": "string" }
+        }
+      }
+    }
+  }
+}

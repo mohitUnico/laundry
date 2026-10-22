@@ -13,7 +13,7 @@ const logger = require('../utils/logger');
 exports.addService = async (req, res, next) => {
     try {
         const martId = req.user.mart_id; // Extracted from JWT token
-        const serviceData = req.body;
+        const serviceData = req.catalogIconUrl ? { ...req.body, iconUrl: req.catalogIconUrl } : req.body;
 
         const service = await serviceService.addService(martId, serviceData);
 
@@ -81,7 +81,7 @@ exports.updateService = async (req, res, next) => {
     try {
         const { serviceId } = req.params;
         const martId = req.user.mart_id; // Extracted from JWT token
-        const updateData = req.body;
+        const updateData = req.catalogIconUrl ? { ...req.body, iconUrl: req.catalogIconUrl } : req.body;
 
         const service = await serviceService.updateService(serviceId, martId, updateData);
 

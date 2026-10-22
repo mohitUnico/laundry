@@ -284,7 +284,7 @@ async function confirmDoor({ staffId, orderId }) {
         const locked = await tx.$queryRaw`
             SELECT order_status::text AS order_status, items_confirmed_at
             FROM orders
-            WHERE order_id = ${orderId}::uuid
+            WHERE order_id::text = ${orderId}
             FOR UPDATE
         `;
         const row = locked[0];

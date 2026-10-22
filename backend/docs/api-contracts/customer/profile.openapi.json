@@ -1,0 +1,145 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Customer profile",
+    "version": "0.1.0",
+    "description": "Homepage profile for the signed-in customer. Partial customer-app contract."
+  },
+  "servers": [{ "url": "/api/v1" }],
+  "tags": [{ "name": "profile" }],
+  "security": [{ "customerBearer": [] }],
+  "paths": {
+    "/customer-info/profile": {
+      "get": {
+        "tags": ["profile"],
+        "operationId": "getMyProfile",
+        "summary": "My profile",
+        "description": "The signed-in customer's own details. Password and fcm_token are not returned.",
+        "x-current": {
+          "path": "GET /api/v1/customer-info/profile",
+          "storage": "customers.customer_id, full_name, email, phone, profile_image_url, created_at, updated_at"
+        },
+        "responses": {
+          "200": {
+            "description": "Profile",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Envelope" },
+                "example": {
+                  "success": true,
+                  "data": {
+                    "customer_id": "6f1c0c3e-1c0a-4a3e-9b2a-0c1d2e3f4a5b",
+                    "full_name": "Asha Rao",
+                    "email": "customer@washbee.test",
+                    "phone": "9876543210",
+                    "profile_image_url": "https://cdn.example/profile.jpg",
+                    "created_at": "2026-01-04T10:00:00.000Z",
+                    "updated_at": "2026-10-16T08:00:00.000Z"
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/customer-info/profile-image": {
+      "post": {
+        "tags": ["profile"],
+        "operationId": "uploadMyProfileImage",
+        "summary": "Upload the profile photo",
+        "description": "Show your best smile. Optional. Skip does not call this. Take a Picture and Upload from Gallery both send one image in the multipart field file. JPEG, PNG, or WEBP. The stored value is profile_image_url. Call this with the customer access_token, after the customer exists.",
+        "x-current": {
+          "path": "POST /api/v1/customer-info/profile-image/upload",
+          "storage": "customers.profile_image_url"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["file"],
+                "properties": {
+                  "file": { "type": "string", "format": "binary" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Photo saved",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Envelope" }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing file, or a type other than JPEG, PNG, or WEBP",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "customerBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Customer access token. The user_id claim is customer_id."
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing or invalid customer token",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Profile": {
+        "type": "object",
+        "required": ["customer_id", "full_name", "email", "profile_image_url", "phone"],
+        "properties": {
+          "customer_id": { "type": "string", "format": "uuid" },
+          "full_name": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "phone": { "type": "string", "nullable": true },
+          "profile_image_url": { "type": "string", "nullable": true },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Envelope": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "data": { "$ref": "#/components/schemas/Profile" }
+        }
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": ["success", "message"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [false] },
+          "message": { "type": "string" },
+          "errorCode": { "type": "string" }
+        }
+      }
+    }
+  }
+}

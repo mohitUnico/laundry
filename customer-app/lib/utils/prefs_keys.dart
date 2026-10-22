@@ -2,6 +2,7 @@ class PrefsKeys {
   static const String onboardingSeen = 'onboarding_seen';
   static const String catalogCategoriesJson = 'catalog_categories_json';
   static const String catalogServicesByCategoryJson = 'catalog_services_by_category_json';
+  static const String catalogClothesByServiceJson = 'catalog_clothes_by_service_json';
   static const String catalogLastRefreshMs = 'catalog_last_refresh_ms';
 
   static const String couponsJson = 'coupons_json';

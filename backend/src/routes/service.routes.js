@@ -8,6 +8,7 @@ const router = express.Router();
 const serviceController = require('../controllers/service.controller');
 const { validate } = require('../middleware/validation.middleware');
 const { authenticateJWT, authorize } = require('../middleware/auth.middleware');
+const { catalogUpload, coerceCatalogFields } = require('../middleware/catalog-upload.middleware');
 const Joi = require('joi');
 
 // ============================================================================
@@ -44,11 +45,6 @@ const addServiceSchema = Joi.object({
             'number.min': 'estimatedHours must be at least 1',
             'any.required': 'estimatedHours is required'
         }),
-    iconUrl: Joi.string().uri().max(500).allow(null, '')
-        .messages({
-            'string.uri': 'iconUrl must be a valid URL',
-            'string.max': 'iconUrl must not exceed 500 characters'
-        }),
     isActive: Joi.boolean().default(true),
     displayOrder: Joi.number().integer().min(0).default(0)
         .messages({
@@ -83,11 +79,6 @@ const updateServiceSchema = Joi.object({
         .messages({
             'number.integer': 'estimatedHours must be an integer',
             'number.min': 'estimatedHours must be at least 1'
-        }),
-    iconUrl: Joi.string().uri().max(500).allow(null, '')
-        .messages({
-            'string.uri': 'iconUrl must be a valid URL',
-            'string.max': 'iconUrl must not exceed 500 characters'
         }),
     isActive: Joi.boolean(),
     displayOrder: Joi.number().integer().min(0)
@@ -131,6 +122,8 @@ router.post(
     '/',
     authenticateJWT,
     authorize('admin', 'manager'),
+    catalogUpload('services', { required: false }),
+    coerceCatalogFields,
     validate(addServiceSchema),
     serviceController.addService
 );
@@ -143,7 +136,12 @@ router.patch(
     '/:serviceId',
     authenticateJWT,
     authorize('admin', 'manager'),
-    validate(updateServiceSchema),
+    catalogUpload('services', { required: false }),
+    coerceCatalogFields,
+    (req, res, next) => {
+        if (req.catalogIconUrl && Object.keys(req.body).length === 0) return next();
+        return validate(updateServiceSchema)(req, res, next);
+    },
     serviceController.updateService
 );
 

@@ -9,6 +9,7 @@ import '../../../utils/profile_service_error_messages.dart';
 import '../../../widgets/cart_success_dialog.dart';
 import '../../home/widgets/home_bottom_nav.dart';
 import '../../home/widgets/home_colors.dart';
+import '../../../widgets/catalog_image.dart';
 import '../../../widgets/per_kg_price_banner.dart';
 
 class RegularWashServiceScreen extends StatefulWidget {
@@ -90,15 +91,6 @@ class _RegularWashServiceScreenState extends State<RegularWashServiceScreen> {
 
   String _priceText(double perUnitPrice) => '₹${perUnitPrice.toStringAsFixed(0)}/pc';
 
-  String _assetForItemName(String itemName) {
-    final n = itemName.toLowerCase();
-    if (n.contains('top')) return 'assets/images/regular_wash/top_wear.png';
-    if (n.contains('bottom')) return 'assets/images/regular_wash/bottom_wear.png';
-    if (n.contains('saree')) return 'assets/images/regular_wash/saree.png';
-    if (n.contains('kurta')) return 'assets/images/regular_wash/kurta.png';
-    return 'assets/images/regular_wash/top_wear.png';
-  }
-
   @override
   Widget build(BuildContext context) {
     final serviceId = widget.serviceId;
@@ -146,7 +138,7 @@ class _RegularWashServiceScreenState extends State<RegularWashServiceScreen> {
                     for (final it in effectiveItems) ...[
                       _ItemCard(
                         title: it.itemName,
-                        imageAsset: _assetForItemName(it.itemName),
+                        imageAsset: it.iconUrl,
                         priceText: widget.showPrices ? _priceText(it.perUnitPrice) : null,
                         value: _qtyByItemName[it.itemName] ?? 0,
                         onMinus: () => setState(() {
@@ -197,7 +189,7 @@ class _RegularWashServiceScreenState extends State<RegularWashServiceScreen> {
                                     category: 'Regular Wash',
                                     serviceName: widget.serviceTitle,
                                     serviceId: sid,
-                                    imageAsset: 'assets/images/regular_wash/top_wear.png',
+                                    imageAsset: firstCatalogUrl(effectiveItems.map((it) => it.iconUrl)),
                                     isPerPiece: widget.showPrices,
                                     quantities: Map<String, int>.from(_qtyByItemName),
                                     clothIdByItemName: clothIdByName,
@@ -296,7 +288,7 @@ class _TopBar extends StatelessWidget {
 
 class _ItemCard extends StatelessWidget {
   final String title;
-  final String imageAsset;
+  final String? imageAsset;
   final String? priceText;
   final int value;
   final VoidCallback onMinus;
@@ -340,8 +332,8 @@ class _ItemCard extends StatelessWidget {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(14),
-              child: Image.asset(
-                imageAsset,
+              child: CatalogImage(
+                url: imageAsset,
                 fit: BoxFit.cover,
               ),
             ),

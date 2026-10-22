@@ -1,0 +1,547 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Admin catalogue images",
+    "version": "0.1.0",
+    "description": "Admin creates a category, a service, or a cloth item together with its picture. The server uploads the file to Cloudinary and stores the HTTPS URL in icon_url. The client never sends icon_url. Customer reads the URL from GET /catalog."
+  },
+  "servers": [{ "url": "/api/v1" }],
+  "tags": [{ "name": "admin-catalog" }],
+  "security": [{ "adminBearer": [] }],
+  "paths": {
+    "/admin/catalog/categories": {
+      "post": {
+        "tags": ["admin-catalog"],
+        "operationId": "createCategory",
+        "summary": "Create a category with its image",
+        "description": "Multipart. file is required. JPEG, PNG, or WEBP. The server uploads it to Cloudinary folder catalog/categories and sets service_categories.icon_url to the secure URL. foreground_color and background_color are the card colors, six hex digits, no hash.",
+        "x-current": {
+          "path": "POST /api/v1/clothes/service-categories",
+          "body": "JSON. categoryName, description, iconUrl, displayOrder, isActive. iconUrl is an optional client-supplied URL. No file upload.",
+          "auth": "admin or manager",
+          "storage": "service_categories.icon_url"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": { "$ref": "#/components/schemas/CreateCategory" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Category saved with icon_url",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CategoryEnvelope" },
+                "example": {
+                  "success": true,
+                  "data": {
+                    "category_id": "11111111-1111-4111-8111-111111111111",
+                    "category_name": "Regular Wash",
+                    "description": "Fast & Fresh Laundry",
+                    "icon_url": "https://res.cloudinary.example/laundry-app/catalog/categories/regular-wash.png",
+                    "foreground_color": "2841CF",
+                    "background_color": "FFFFFF",
+                    "display_order": 1,
+                    "is_active": true
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/admin/catalog/categories/{categoryId}": {
+      "patch": {
+        "tags": ["admin-catalog"],
+        "operationId": "updateCategory",
+        "summary": "Update a category, and replace its image when a file is sent",
+        "description": "JSON changes the text and colors and leaves icon_url unchanged. Multipart with file uploads a new image and replaces icon_url. icon_url is never accepted as a field. At least one field is required.",
+        "x-current": {
+          "path": "PUT /api/v1/clothes/service-categories/{categoryId}",
+          "body": "JSON. Optional iconUrl is stored as given. No file upload."
+        },
+        "parameters": [{ "$ref": "#/components/parameters/categoryId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateCategory" }
+            },
+            "multipart/form-data": {
+              "schema": { "$ref": "#/components/schemas/ReplaceCategoryImage" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Category updated",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CategoryEnvelope" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/admin/catalog/services": {
+      "post": {
+        "tags": ["admin-catalog"],
+        "operationId": "createService",
+        "summary": "Create a service with its image",
+        "description": "Multipart. file is required. The server uploads it to Cloudinary folder catalog/services and sets services.icon_url. category_id must be an existing category. per_kg_price is omitted when the service is not sold by weight. base_price is stored as 0.00 when omitted. v2 pricing does not use base_price.",
+        "x-current": {
+          "path": "POST /api/v1/clothes/services",
+          "body": "JSON. categoryId, serviceName, description, basePrice (required today), perKgPrice, includes, excludes, estimatedHours, iconUrl, isActive, displayOrder. iconUrl is an optional client-supplied URL. No file upload.",
+          "storage": "services.icon_url"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": { "$ref": "#/components/schemas/CreateService" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Service saved with icon_url",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ServiceEnvelope" },
+                "example": {
+                  "success": true,
+                  "data": {
+                    "service_id": "22222222-2222-4222-8222-222222222222",
+                    "category_id": "11111111-1111-4111-8111-111111111111",
+                    "service_name": "Dry Cleaning",
+                    "description": "Deep cleaning for garments that need dry clean",
+                    "icon_url": "https://res.cloudinary.example/laundry-app/catalog/services/dry-cleaning.png",
+                    "per_kg_price": null,
+                    "base_price": "0.00",
+                    "estimated_hours": 72,
+                    "includes": [],
+                    "excludes": [],
+                    "display_order": 1,
+                    "is_active": true
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/admin/catalog/services/{serviceId}": {
+      "patch": {
+        "tags": ["admin-catalog"],
+        "operationId": "updateService",
+        "summary": "Update a service, and replace its image when a file is sent",
+        "description": "JSON leaves icon_url unchanged. Multipart with file replaces icon_url. icon_url is never accepted as a field. At least one field is required.",
+        "x-current": {
+          "path": "PUT /api/v1/clothes/services/{serviceId}",
+          "body": "JSON. Optional iconUrl is stored as given. No file upload."
+        },
+        "parameters": [{ "$ref": "#/components/parameters/serviceId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateService" }
+            },
+            "multipart/form-data": {
+              "schema": { "$ref": "#/components/schemas/ReplaceServiceImage" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Service updated",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ServiceEnvelope" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/admin/catalog/clothes-items": {
+      "post": {
+        "tags": ["admin-catalog"],
+        "operationId": "createClothesItem",
+        "summary": "Create a cloth item with its image",
+        "description": "Multipart. file is required. The server uploads it to Cloudinary folder catalog/clothes and sets clothes_items.icon_url. service_id must be an existing service. The same picture may be uploaded again for the same item name on another service. Each row keeps its own icon_url.",
+        "x-current": {
+          "path": "POST /api/v1/clothes/clothes-items",
+          "alias": "POST /api/v1/clothes",
+          "body": "JSON. serviceId, itemName, perUnitPrice, iconUrl, isActive, displayOrder. iconUrl is an optional client-supplied URL. No file upload.",
+          "storage": "clothes_items.icon_url"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": { "$ref": "#/components/schemas/CreateClothesItem" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Cloth item saved with icon_url",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ClothesItemEnvelope" },
+                "example": {
+                  "success": true,
+                  "data": {
+                    "cloth_id": "33333333-3333-4333-8333-333333333333",
+                    "service_id": "22222222-2222-4222-8222-222222222222",
+                    "item_name": "Sneakers",
+                    "per_unit_price": "150.00",
+                    "icon_url": "https://res.cloudinary.example/laundry-app/catalog/clothes/sneakers.png",
+                    "display_order": 1,
+                    "is_active": true
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/admin/catalog/clothes-items/{clothId}": {
+      "patch": {
+        "tags": ["admin-catalog"],
+        "operationId": "updateClothesItem",
+        "summary": "Update a cloth item, and replace its image when a file is sent",
+        "description": "JSON leaves icon_url unchanged. Multipart with file replaces icon_url. icon_url is never accepted as a field. At least one field is required.",
+        "x-current": {
+          "path": "PUT /api/v1/clothes/clothes-items/{clothId}",
+          "body": "JSON. Optional iconUrl is stored as given. No file upload."
+        },
+        "parameters": [{ "$ref": "#/components/parameters/clothId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateClothesItem" }
+            },
+            "multipart/form-data": {
+              "schema": { "$ref": "#/components/schemas/ReplaceClothesImage" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cloth item updated",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ClothesItemEnvelope" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "adminBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Admin access token."
+      }
+    },
+    "parameters": {
+      "categoryId": {
+        "name": "categoryId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "format": "uuid" }
+      },
+      "serviceId": {
+        "name": "serviceId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "format": "uuid" }
+      },
+      "clothId": {
+        "name": "clothId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "format": "uuid" }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Missing file on create, a type other than JPEG, PNG, or WEBP, or an invalid field",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Missing or invalid admin token",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Signed in, but not an admin",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Category, service, or cloth item does not exist, or the parent id on create does not exist",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ImageFile": {
+        "type": "string",
+        "format": "binary",
+        "description": "JPEG, PNG, or WEBP."
+      },
+      "CreateCategory": {
+        "type": "object",
+        "required": ["category_name", "file"],
+        "properties": {
+          "category_name": { "type": "string", "minLength": 2, "maxLength": 100 },
+          "description": { "type": "string", "maxLength": 1000 },
+          "foreground_color": { "type": "string", "pattern": "^[0-9A-Fa-f]{6}$", "default": "2841CF" },
+          "background_color": { "type": "string", "pattern": "^[0-9A-Fa-f]{6}$", "default": "FFFFFF" },
+          "display_order": { "type": "integer", "minimum": 0, "default": 0 },
+          "is_active": { "type": "boolean", "default": true },
+          "file": { "$ref": "#/components/schemas/ImageFile" }
+        }
+      },
+      "UpdateCategory": {
+        "type": "object",
+        "minProperties": 1,
+        "properties": {
+          "category_name": { "type": "string", "minLength": 2, "maxLength": 100 },
+          "description": { "type": "string", "maxLength": 1000, "nullable": true },
+          "foreground_color": { "type": "string", "pattern": "^[0-9A-Fa-f]{6}$" },
+          "background_color": { "type": "string", "pattern": "^[0-9A-Fa-f]{6}$" },
+          "display_order": { "type": "integer", "minimum": 0 },
+          "is_active": { "type": "boolean" }
+        }
+      },
+      "ReplaceCategoryImage": {
+        "type": "object",
+        "required": ["file"],
+        "properties": {
+          "category_name": { "type": "string", "minLength": 2, "maxLength": 100 },
+          "description": { "type": "string", "maxLength": 1000 },
+          "foreground_color": { "type": "string", "pattern": "^[0-9A-Fa-f]{6}$" },
+          "background_color": { "type": "string", "pattern": "^[0-9A-Fa-f]{6}$" },
+          "display_order": { "type": "integer", "minimum": 0 },
+          "is_active": { "type": "boolean" },
+          "file": { "$ref": "#/components/schemas/ImageFile" }
+        }
+      },
+      "CreateService": {
+        "type": "object",
+        "required": ["category_id", "service_name", "estimated_hours", "file"],
+        "properties": {
+          "category_id": { "type": "string", "format": "uuid" },
+          "service_name": { "type": "string", "minLength": 2, "maxLength": 255 },
+          "description": { "type": "string", "maxLength": 2000 },
+          "per_kg_price": { "type": "string", "description": "Decimal string. Omit when the service is not sold by weight." },
+          "base_price": { "type": "string", "default": "0.00", "description": "Stored for the column. v2 pricing ignores it." },
+          "estimated_hours": { "type": "integer", "minimum": 0 },
+          "includes": { "type": "string", "description": "Optional JSON array of strings. Omitted means empty." },
+          "excludes": { "type": "string", "description": "Optional JSON array of strings. Omitted means empty." },
+          "display_order": { "type": "integer", "minimum": 0, "default": 0 },
+          "is_active": { "type": "boolean", "default": true },
+          "file": { "$ref": "#/components/schemas/ImageFile" }
+        }
+      },
+      "UpdateService": {
+        "type": "object",
+        "minProperties": 1,
+        "properties": {
+          "category_id": { "type": "string", "format": "uuid" },
+          "service_name": { "type": "string", "minLength": 2, "maxLength": 255 },
+          "description": { "type": "string", "maxLength": 2000, "nullable": true },
+          "per_kg_price": { "type": "string", "nullable": true },
+          "base_price": { "type": "string" },
+          "estimated_hours": { "type": "integer", "minimum": 0 },
+          "includes": { "type": "array", "items": { "type": "string" } },
+          "excludes": { "type": "array", "items": { "type": "string" } },
+          "display_order": { "type": "integer", "minimum": 0 },
+          "is_active": { "type": "boolean" }
+        }
+      },
+      "ReplaceServiceImage": {
+        "type": "object",
+        "required": ["file"],
+        "properties": {
+          "category_id": { "type": "string", "format": "uuid" },
+          "service_name": { "type": "string", "minLength": 2, "maxLength": 255 },
+          "description": { "type": "string", "maxLength": 2000 },
+          "per_kg_price": { "type": "string" },
+          "base_price": { "type": "string" },
+          "estimated_hours": { "type": "integer", "minimum": 0 },
+          "includes": { "type": "string", "description": "Optional JSON array of strings." },
+          "excludes": { "type": "string", "description": "Optional JSON array of strings." },
+          "display_order": { "type": "integer", "minimum": 0 },
+          "is_active": { "type": "boolean" },
+          "file": { "$ref": "#/components/schemas/ImageFile" }
+        }
+      },
+      "CreateClothesItem": {
+        "type": "object",
+        "required": ["service_id", "item_name", "per_unit_price", "file"],
+        "properties": {
+          "service_id": { "type": "string", "format": "uuid" },
+          "item_name": { "type": "string", "minLength": 2, "maxLength": 100 },
+          "per_unit_price": { "type": "string", "description": "Decimal string greater than 0." },
+          "display_order": { "type": "integer", "minimum": 0, "default": 0 },
+          "is_active": { "type": "boolean", "default": true },
+          "file": { "$ref": "#/components/schemas/ImageFile" }
+        }
+      },
+      "UpdateClothesItem": {
+        "type": "object",
+        "minProperties": 1,
+        "properties": {
+          "service_id": { "type": "string", "format": "uuid" },
+          "item_name": { "type": "string", "minLength": 2, "maxLength": 100 },
+          "per_unit_price": { "type": "string" },
+          "display_order": { "type": "integer", "minimum": 0 },
+          "is_active": { "type": "boolean" }
+        }
+      },
+      "ReplaceClothesImage": {
+        "type": "object",
+        "required": ["file"],
+        "properties": {
+          "service_id": { "type": "string", "format": "uuid" },
+          "item_name": { "type": "string", "minLength": 2, "maxLength": 100 },
+          "per_unit_price": { "type": "string" },
+          "display_order": { "type": "integer", "minimum": 0 },
+          "is_active": { "type": "boolean" },
+          "file": { "$ref": "#/components/schemas/ImageFile" }
+        }
+      },
+      "Category": {
+        "type": "object",
+        "required": ["category_id", "category_name", "icon_url", "foreground_color", "background_color", "display_order", "is_active"],
+        "properties": {
+          "category_id": { "type": "string", "format": "uuid" },
+          "category_name": { "type": "string" },
+          "description": { "type": "string", "nullable": true },
+          "icon_url": { "type": "string" },
+          "foreground_color": { "type": "string" },
+          "background_color": { "type": "string" },
+          "display_order": { "type": "integer" },
+          "is_active": { "type": "boolean" }
+        }
+      },
+      "Service": {
+        "type": "object",
+        "required": ["service_id", "category_id", "service_name", "icon_url", "base_price", "estimated_hours", "includes", "excludes", "display_order", "is_active"],
+        "properties": {
+          "service_id": { "type": "string", "format": "uuid" },
+          "category_id": { "type": "string", "format": "uuid" },
+          "service_name": { "type": "string" },
+          "description": { "type": "string", "nullable": true },
+          "icon_url": { "type": "string" },
+          "per_kg_price": { "type": "string", "nullable": true },
+          "base_price": { "type": "string" },
+          "estimated_hours": { "type": "integer" },
+          "includes": { "type": "array", "items": { "type": "string" } },
+          "excludes": { "type": "array", "items": { "type": "string" } },
+          "display_order": { "type": "integer" },
+          "is_active": { "type": "boolean" }
+        }
+      },
+      "ClothesItem": {
+        "type": "object",
+        "required": ["cloth_id", "service_id", "item_name", "per_unit_price", "icon_url", "display_order", "is_active"],
+        "properties": {
+          "cloth_id": { "type": "string", "format": "uuid" },
+          "service_id": { "type": "string", "format": "uuid" },
+          "item_name": { "type": "string" },
+          "per_unit_price": { "type": "string" },
+          "icon_url": { "type": "string" },
+          "display_order": { "type": "integer" },
+          "is_active": { "type": "boolean" }
+        }
+      },
+      "CategoryEnvelope": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "data": { "$ref": "#/components/schemas/Category" }
+        }
+      },
+      "ServiceEnvelope": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "data": { "$ref": "#/components/schemas/Service" }
+        }
+      },
+      "ClothesItemEnvelope": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "data": { "$ref": "#/components/schemas/ClothesItem" }
+        }
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": ["success", "message"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [false] },
+          "message": { "type": "string" },
+          "errorCode": { "type": "string" }
+        }
+      }
+    }
+  }
+}

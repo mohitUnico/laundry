@@ -104,6 +104,8 @@ router.use('/staff-app/service-man', serviceManAppRoutes);
 router.use('/config', configRoutes);
 router.use('/admin/config', adminConfigRoutes);
 const adminCatalogueRoutes = require('./admin-catalogue.routes');
+const adminCatalogRoutes = require('./admin-catalog.routes');
+router.use('/admin/catalog', adminCatalogRoutes);
 router.use('/admin/services', adminCatalogueRoutes);
 router.use('/notifications', notificationRoutes);
 

@@ -184,7 +184,7 @@ async function updateQueueStatus({ staffId, queueId, action }) {
 
         let allDone = false;
         if (action === 'completed') {
-            await tx.$queryRaw`SELECT order_id FROM orders WHERE order_id = ${item.order_id}::uuid FOR UPDATE`;
+            await tx.$queryRaw`SELECT order_id FROM orders WHERE order_id::text = ${item.order_id} FOR UPDATE`;
             await tx.orderItem.update({
                 where: { item_id: item.item_id },
                 data: { item_status: 'completed', completed_at: now },
@@ -224,9 +224,11 @@ async function updateQueueStatus({ staffId, queueId, action }) {
     if (outcome.servicesStarted) emitOrderEvent('services_started', { orderId: outcome.orderId }).catch(() => {});
     if (outcome.allDone) {
         emitOrderEvent('services_completed', { orderId: outcome.orderId }).catch(() => {});
-        dropTrigger.evaluate(outcome.orderId).catch((error) => {
+        try {
+            await dropTrigger.evaluate(outcome.orderId);
+        } catch (error) {
             require('../utils/logger').warn('Drop trigger failed', { error: error.message, orderId: outcome.orderId });
-        });
+        }
     }
     return outcome;
 }

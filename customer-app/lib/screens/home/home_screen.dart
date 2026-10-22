@@ -40,10 +40,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      // Force refresh so newly added categories show up even if we have cached data.
-      context
-          .read<ServiceCatalogProvider>()
-          .fetchServiceCategories(isActive: true, force: true);
+      // Show the saved catalogue immediately, then refresh it so admin additions appear.
+      context.read<ServiceCatalogProvider>().syncCatalog();
       // Fetch coupons for home screen offers
       context.read<CouponsProvider>().fetchApplicableCoupons(force: true);
       // Fetch active orders for the home screen
@@ -212,6 +210,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       title: luxuryCareTitle,
     );
 
+    String? iconFor(String title) {
+      final lower = title.trim().toLowerCase();
+      for (final category in categories) {
+        final name = category.categoryName.trim().toLowerCase();
+        if (name == lower || name.contains(lower)) return category.iconUrl;
+      }
+      return null;
+    }
+
     return Scaffold(
       backgroundColor: HomeColors.background,
       body: SafeArea(
@@ -242,6 +249,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   proCleanCategoryId: proCleanCategoryId,
                   homeLinensCategoryId: homeLinensCategoryId,
                   luxuryCareCategoryId: luxuryCareCategoryId,
+                  regularWashIconUrl: iconFor(regularWashTitle),
+                  proCleanIconUrl: iconFor(proCleanTitle),
+                  homeLinensIconUrl: iconFor(homeLinensTitle),
+                  luxuryCareIconUrl: iconFor(luxuryCareTitle),
                 ),
               ),
             ],
@@ -261,6 +272,10 @@ class _HomeContent extends StatelessWidget {
   final String? proCleanCategoryId;
   final String? homeLinensCategoryId;
   final String? luxuryCareCategoryId;
+  final String? regularWashIconUrl;
+  final String? proCleanIconUrl;
+  final String? homeLinensIconUrl;
+  final String? luxuryCareIconUrl;
 
   const _HomeContent({
     required this.regularWashTitle,
@@ -271,6 +286,10 @@ class _HomeContent extends StatelessWidget {
     required this.proCleanCategoryId,
     required this.homeLinensCategoryId,
     required this.luxuryCareCategoryId,
+    required this.regularWashIconUrl,
+    required this.proCleanIconUrl,
+    required this.homeLinensIconUrl,
+    required this.luxuryCareIconUrl,
   });
 
   @override
@@ -368,7 +387,7 @@ class _HomeContent extends StatelessWidget {
                     fullWidthImage: true,
                     title: regularWashTitle,
                     subtitle: 'Fast & Fresh Laundry',
-                    imageAsset: 'assets/images/home/regular_wash.png',
+                    imageUrl: regularWashIconUrl,
                     onTap: () async {
                       if (regularWashCategoryId != null) {
                         await context
@@ -414,7 +433,7 @@ class _HomeContent extends StatelessWidget {
                       child: ServiceTile(
                         title: proCleanTitle,
                         subtitle: 'Expert dry cleaning',
-                        imageAsset: 'assets/images/home/pro_clean.png',
+                        imageUrl: proCleanIconUrl,
                         imageSize: 132,
                         onTap: () async {
                           if (proCleanCategoryId != null) {
@@ -471,7 +490,7 @@ class _HomeContent extends StatelessWidget {
                       child: ServiceTile(
                         title: homeLinensTitle,
                         subtitle: 'Household items',
-                        imageAsset: 'assets/images/home/home_linen.png',
+                        imageUrl: homeLinensIconUrl,
                         imageSize: 132,
                         onTap: () async {
                           if (homeLinensCategoryId != null) {
@@ -519,7 +538,7 @@ class _HomeContent extends StatelessWidget {
               isPrimary: true,
               title: luxuryCareTitle,
               subtitle: 'Delicate fabric treatment',
-              imageAsset: 'assets/images/home/luxury_care.png',
+              imageUrl: luxuryCareIconUrl,
               onTap: () async {
                 if (luxuryCareCategoryId != null) {
                   await context

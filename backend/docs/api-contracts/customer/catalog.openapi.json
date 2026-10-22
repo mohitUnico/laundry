@@ -1,0 +1,168 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Customer catalogue",
+    "version": "0.1.0",
+    "description": "One catalogue for categories, the services under them, cloth prices, and each service per-kg price. The app stores this response locally. It is not fetched per category and not fetched again on every screen."
+  },
+  "servers": [{ "url": "/api/v1" }],
+  "tags": [{ "name": "catalog" }],
+  "security": [{ "customerBearer": [] }],
+  "paths": {
+    "/catalog": {
+      "get": {
+        "tags": ["catalog"],
+        "operationId": "getCatalog",
+        "summary": "Catalogue with prices",
+        "description": "Active categories, each with its active services, each with per_kg_price and active clothes_items. per_kg_price is null when that service is not sold by weight. per_unit_price is the cloth price. base_price is not a customer price and is omitted. Inactive rows are omitted. There is no separate category call and no call that takes a category id.",
+        "x-current": {
+          "path": "GET /api/v1/catalog/pricing",
+          "storage": "service_categories, services, clothes_items",
+          "note": "The live pricing payload uses camelCase (serviceId, perKgPrice, clothId, perUnitPrice). This contract uses the column names."
+        },
+        "responses": {
+          "200": {
+            "description": "Full catalogue",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Envelope" },
+                "example": {
+                  "success": true,
+                  "data": {
+                    "categories": [
+                      {
+                        "category_id": "11111111-1111-4111-8111-111111111111",
+                        "category_name": "Regular Wash",
+                        "description": "Everyday laundry",
+                        "icon_url": null,
+                        "foreground_color": "2841CF",
+                        "background_color": "FFFFFF",
+                        "display_order": 1,
+                        "services": [
+                          {
+                            "service_id": "22222222-2222-4222-8222-222222222222",
+                            "service_name": "Wash and fold",
+                            "description": "Mixed wash by weight",
+                            "icon_url": null,
+                            "display_order": 1,
+                            "per_kg_price": "100.00",
+                            "includes": ["Wash", "Fold"],
+                            "excludes": ["Dry clean"],
+                            "clothes_items": [
+                              {
+                                "cloth_id": "33333333-3333-4333-8333-333333333333",
+                                "item_name": "Shirt",
+                                "per_unit_price": "40.00",
+                                "icon_url": null,
+                                "display_order": 1
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "customerBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing or invalid customer token",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ClothesItem": {
+        "type": "object",
+        "required": ["cloth_id", "item_name", "per_unit_price"],
+        "properties": {
+          "cloth_id": { "type": "string", "format": "uuid" },
+          "item_name": { "type": "string" },
+          "per_unit_price": { "type": "string" },
+          "icon_url": { "type": "string", "nullable": true },
+          "display_order": { "type": "integer" }
+        }
+      },
+      "Service": {
+        "type": "object",
+        "required": ["service_id", "service_name", "per_kg_price", "includes", "excludes", "clothes_items"],
+        "properties": {
+          "service_id": { "type": "string", "format": "uuid" },
+          "service_name": { "type": "string" },
+          "description": { "type": "string", "nullable": true },
+          "icon_url": { "type": "string", "nullable": true },
+          "display_order": { "type": "integer" },
+          "per_kg_price": { "type": "string", "nullable": true },
+          "includes": { "type": "array", "items": { "type": "string" } },
+          "excludes": { "type": "array", "items": { "type": "string" } },
+          "clothes_items": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ClothesItem" }
+          }
+        }
+      },
+      "Category": {
+        "type": "object",
+        "required": ["category_id", "category_name", "services"],
+        "properties": {
+          "category_id": { "type": "string", "format": "uuid" },
+          "category_name": { "type": "string" },
+          "description": { "type": "string", "nullable": true },
+          "icon_url": { "type": "string", "nullable": true },
+          "foreground_color": { "type": "string" },
+          "background_color": { "type": "string" },
+          "display_order": { "type": "integer" },
+          "services": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Service" }
+          }
+        }
+      },
+      "Catalog": {
+        "type": "object",
+        "required": ["categories"],
+        "properties": {
+          "categories": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Category" }
+          }
+        }
+      },
+      "Envelope": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "data": { "$ref": "#/components/schemas/Catalog" }
+        }
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": ["success", "message"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [false] },
+          "message": { "type": "string" },
+          "errorCode": { "type": "string" }
+        }
+      }
+    }
+  }
+}

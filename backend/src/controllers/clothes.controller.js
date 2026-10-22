@@ -4,6 +4,16 @@
  */
 
 const clothesService = require('../services/clothes.service');
+const { BadRequestError } = require('../utils/errors');
+
+function writePayload(req, { requireChange = false } = {}) {
+    const data = { ...req.body };
+    if (req.catalogIconUrl) data.iconUrl = req.catalogIconUrl;
+    if (requireChange && !req.catalogIconUrl && Object.keys(req.body).length === 0) {
+        throw new BadRequestError('At least one field is required');
+    }
+    return data;
+}
 
 // ============================================================================
 // SERVICE CATEGORIES
@@ -11,7 +21,7 @@ const clothesService = require('../services/clothes.service');
 
 exports.createServiceCategory = async (req, res, next) => {
     try {
-        const category = await clothesService.createServiceCategory(req.body);
+        const category = await clothesService.createServiceCategory(writePayload(req));
         res.status(201).json({
             success: true,
             data: category,
@@ -50,7 +60,7 @@ exports.getServiceCategory = async (req, res, next) => {
 
 exports.updateServiceCategory = async (req, res, next) => {
     try {
-        const category = await clothesService.updateServiceCategory(req.params.categoryId, req.body);
+        const category = await clothesService.updateServiceCategory(req.params.categoryId, writePayload(req, { requireChange: true }));
         res.status(200).json({
             success: true,
             data: category,
@@ -80,7 +90,7 @@ exports.deleteServiceCategory = async (req, res, next) => {
 
 exports.createService = async (req, res, next) => {
     try {
-        const service = await clothesService.createService(req.body);
+        const service = await clothesService.createService(writePayload(req));
         res.status(201).json({
             success: true,
             data: service,
@@ -119,7 +129,7 @@ exports.getService = async (req, res, next) => {
 
 exports.updateService = async (req, res, next) => {
     try {
-        const service = await clothesService.updateService(req.params.serviceId, req.body);
+        const service = await clothesService.updateService(req.params.serviceId, writePayload(req, { requireChange: true }));
         res.status(200).json({
             success: true,
             data: service,
@@ -149,7 +159,7 @@ exports.deleteService = async (req, res, next) => {
 
 exports.createClothesItem = async (req, res, next) => {
     try {
-        const item = await clothesService.createClothesItem(req.body);
+        const item = await clothesService.createClothesItem(writePayload(req));
         res.status(201).json({
             success: true,
             data: item,
@@ -188,7 +198,7 @@ exports.getClothesItem = async (req, res, next) => {
 
 exports.updateClothesItem = async (req, res, next) => {
     try {
-        const item = await clothesService.updateClothesItem(req.params.clothId, req.body);
+        const item = await clothesService.updateClothesItem(req.params.clothId, writePayload(req, { requireChange: true }));
         res.status(200).json({
             success: true,
             data: item,

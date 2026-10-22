@@ -7,6 +7,7 @@ import '../../../providers/service_catalog_provider.dart';
 import '../../../theme/app_text_styles.dart';
 import '../../../utils/profile_service_error_messages.dart';
 import '../../../widgets/cart_success_dialog.dart';
+import '../../../widgets/catalog_image.dart';
 import '../../../widgets/per_kg_price_banner.dart';
 import '../../home/widgets/home_bottom_nav.dart';
 import '../../home/widgets/home_colors.dart';
@@ -70,16 +71,6 @@ class _WinterWearScreenState extends State<WinterWearScreen> {
   }
 
   String _priceText(double perUnitPrice) => '₹${perUnitPrice.toStringAsFixed(0)}/pc';
-
-  String _assetForItemName(String itemName) {
-    final n = itemName.toLowerCase();
-    if (n.contains('wool')) return 'assets/images/winter_wear/woolen_wear.png';
-    if (n.contains('jacket')) return 'assets/images/winter_wear/jackets.png';
-    if (n.contains('blazer')) return 'assets/images/winter_wear/blazers.png';
-    if (n.contains('access')) return 'assets/images/winter_wear/accessories.png';
-    if (n.contains('cashmere')) return 'assets/images/winter_wear/cashmere.png';
-    return 'assets/images/winter_wear/jackets.png';
-  }
 
   @override
   void didChangeDependencies() {
@@ -154,7 +145,7 @@ class _WinterWearScreenState extends State<WinterWearScreen> {
                     for (final it in items) ...[
                       _ItemCard(
                         title: it.itemName,
-                        imageAsset: _assetForItemName(it.itemName),
+                        imageAsset: it.iconUrl,
                         priceText: showPrices ? _priceText(it.perUnitPrice) : null,
                         value: _qtyByItemName[it.itemName] ?? 0,
                         onMinus: () => setState(() {
@@ -202,7 +193,7 @@ class _WinterWearScreenState extends State<WinterWearScreen> {
                                     category: 'Pro Clean',
                                     serviceName: serviceName,
                                     serviceId: serviceId,
-                                    imageAsset: 'assets/images/winter_wear/jackets.png',
+                                    imageAsset: firstCatalogUrl(items.map((it) => it.iconUrl)),
                                     isPerPiece: showPrices,
                                     quantities: Map<String, int>.from(_qtyByItemName),
                                     clothIdByItemName: clothIdByName,
@@ -302,7 +293,7 @@ class _TopBar extends StatelessWidget {
 
 class _ItemCard extends StatelessWidget {
   final String title;
-  final String imageAsset;
+  final String? imageAsset;
   final String? priceText;
   final int value;
   final VoidCallback onMinus;
@@ -343,7 +334,7 @@ class _ItemCard extends StatelessWidget {
               width: 56,
               height: 56,
               color: const Color(0xFFF0F2FF),
-              child: Image.asset(imageAsset, fit: BoxFit.cover),
+              child: CatalogImage(url: imageAsset, fit: BoxFit.cover),
             ),
           ),
           const SizedBox(width: 12),

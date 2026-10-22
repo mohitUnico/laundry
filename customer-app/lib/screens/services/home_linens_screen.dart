@@ -10,6 +10,7 @@ import '../../widgets/cart_success_dialog.dart';
 import '../home/widgets/home_bottom_nav.dart';
 import '../home/widgets/home_colors.dart';
 import '../home/widgets/regular_wash_bottom_sheet.dart';
+import '../../widgets/catalog_image.dart';
 import '../../widgets/per_kg_price_banner.dart';
 
 class HomeLinensScreen extends StatefulWidget {
@@ -39,18 +40,6 @@ class _HomeLinensScreenState extends State<HomeLinensScreen> {
   }
 
   String _priceText(double perUnitPrice) => '₹${perUnitPrice.toStringAsFixed(0)}/pc';
-
-  String _assetForItemName(String itemName) {
-    final n = itemName.toLowerCase();
-    if (n.contains('bed')) return 'assets/images/home_linen/bedsheets.png';
-    if (n.contains('carpet')) return 'assets/images/home_linen/carpets.png';
-    if (n.contains('blanket') || n.contains('quilt')) {
-      return 'assets/images/home_linen/blankets.png';
-    }
-    if (n.contains('curtain')) return 'assets/images/home_linen/curtains.png';
-    if (n.contains('table')) return 'assets/images/home_linen/tablecloths.png';
-    return 'assets/images/home_linen/bedsheets.png';
-  }
 
   @override
   void didChangeDependencies() {
@@ -128,7 +117,7 @@ class _HomeLinensScreenState extends State<HomeLinensScreen> {
                     for (final it in items) ...[
                       _ItemCard(
                         title: it.itemName,
-                        imageAsset: _assetForItemName(it.itemName),
+                        imageAsset: it.iconUrl,
                         priceText: showPrices ? _priceText(it.perUnitPrice) : null,
                         value: _qtyByItemName[it.itemName] ?? 0,
                         onMinus: () => setState(() {
@@ -174,7 +163,7 @@ class _HomeLinensScreenState extends State<HomeLinensScreen> {
                                     category: 'Home Linens',
                                     serviceName: serviceName,
                                     serviceId: serviceId,
-                                    imageAsset: 'assets/images/home_linen/bedsheets.png',
+                                    imageAsset: firstCatalogUrl(items.map((it) => it.iconUrl)),
                                     isPerPiece: showPrices,
                                     quantities: {..._qtyByItemName},
                                     clothIdByItemName: clothIdByName,
@@ -273,7 +262,7 @@ class _TopBar extends StatelessWidget {
 
 class _ItemCard extends StatelessWidget {
   final String title;
-  final String imageAsset;
+  final String? imageAsset;
   final String? priceText;
   final int value;
   final VoidCallback onMinus;
@@ -314,7 +303,7 @@ class _ItemCard extends StatelessWidget {
               width: 56,
               height: 56,
               color: const Color(0xFFF0F2FF),
-              child: Image.asset(imageAsset, fit: BoxFit.cover),
+              child: CatalogImage(url: imageAsset, fit: BoxFit.cover),
             ),
           ),
           const SizedBox(width: 12),

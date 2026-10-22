@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../theme/app_text_styles.dart';
 import '../../../models/service_item.dart';
+import '../../../widgets/catalog_image.dart';
 import 'home_colors.dart';
 
 enum LuxuryCarePricingType { kgWise, perPiece }
@@ -51,12 +52,10 @@ class _LuxuryCareBottomSheetState extends State<LuxuryCareBottomSheet> {
     _LuxuryCareService(
       title: 'Steam Press',
       subtitle: 'Steam press for non iron friendly clothes',
-      imageAsset: 'assets/images/luxury_care/steam_press.png',
     ),
     _LuxuryCareService(
       title: 'Designer Wear',
       subtitle: 'Heavy designer or festive or occasional wear',
-      imageAsset: 'assets/images/luxury_care/designer_wear.png',
     ),
   ];
 
@@ -71,7 +70,7 @@ class _LuxuryCareBottomSheetState extends State<LuxuryCareBottomSheet> {
         perKgPrice: services[i].perKgPrice,
         title: services[i].serviceName,
         subtitle: template.subtitle,
-        imageAsset: template.imageAsset,
+        imageUrl: services[i].iconUrl,
       );
     });
   }
@@ -146,7 +145,7 @@ class _LuxuryCareBottomSheetState extends State<LuxuryCareBottomSheet> {
                   _ServiceRow(
                     title: s.title,
                     subtitle: s.subtitle,
-                    imageAsset: s.imageAsset,
+                    imageUrl: s.imageUrl,
                     isSelected: s.title == _selectedService.title,
                     onTap: () => setState(() => _selectedService = s),
                   ),
@@ -235,28 +234,28 @@ class _LuxuryCareService {
   final double? perKgPrice;
   final String title;
   final String subtitle;
-  final String imageAsset;
+  final String? imageUrl;
 
   const _LuxuryCareService({
     this.serviceId,
     this.perKgPrice,
     required this.title,
     required this.subtitle,
-    required this.imageAsset,
+    this.imageUrl,
   });
 }
 
 class _ServiceRow extends StatelessWidget {
   final String title;
   final String subtitle;
-  final String imageAsset;
+  final String? imageUrl;
   final bool isSelected;
   final VoidCallback onTap;
 
   const _ServiceRow({
     required this.title,
     required this.subtitle,
-    required this.imageAsset,
+    required this.imageUrl,
     required this.isSelected,
     required this.onTap,
   });
@@ -284,7 +283,7 @@ class _ServiceRow extends StatelessWidget {
             SizedBox(
               width: 42,
               height: 42,
-              child: Image.asset(imageAsset, fit: BoxFit.contain),
+              child: CatalogImage(url: imageUrl, fit: BoxFit.contain),
             ),
             const SizedBox(width: 10),
             Expanded(

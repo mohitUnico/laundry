@@ -1,0 +1,107 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Customer coupons",
+    "version": "0.1.0",
+    "description": "View-only coupon list for the homepage. Applying a coupon to a bill is a later payment contract, not this list."
+  },
+  "servers": [{ "url": "/api/v1" }],
+  "tags": [{ "name": "coupons" }],
+  "security": [{ "customerBearer": [] }],
+  "paths": {
+    "/coupons": {
+      "get": {
+        "tags": ["coupons"],
+        "operationId": "listViewableCoupons",
+        "summary": "List coupons I can view",
+        "description": "Active coupons whose valid_from/valid_till window includes now. The customer cannot create, edit, or delete from this contract. description is the display name. discount_type is percentage or fixed. discount_value is the percent or the flat amount.",
+        "x-current": {
+          "path": "GET /api/v1/coupons",
+          "storage": "coupons.id, code, description, discount_type, discount_value, max_discount, min_order_value, valid_from, valid_till, is_active",
+          "note": "The live list is shared with admin roles and can return inactive rows. This contract returns only coupons the customer may see."
+        },
+        "responses": {
+          "200": {
+            "description": "Viewable coupons",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Envelope" },
+                "example": {
+                  "success": true,
+                  "data": [
+                    {
+                      "id": 1,
+                      "code": "WASH10",
+                      "description": "10% off",
+                      "discount_type": "percentage",
+                      "discount_value": "10.00",
+                      "max_discount": "100.00",
+                      "min_order_value": "0.00",
+                      "valid_till": "2030-12-31T00:00:00.000Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "customerBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing or invalid customer token",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Coupon": {
+        "type": "object",
+        "required": ["id", "code", "description", "discount_type", "discount_value"],
+        "properties": {
+          "id": { "type": "integer" },
+          "code": { "type": "string" },
+          "description": { "type": "string", "nullable": true },
+          "discount_type": { "type": "string", "enum": ["percentage", "fixed"] },
+          "discount_value": { "type": "string" },
+          "max_discount": { "type": "string", "nullable": true },
+          "min_order_value": { "type": "string", "nullable": true },
+          "valid_till": { "type": "string", "format": "date-time", "nullable": true }
+        }
+      },
+      "Envelope": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "data": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Coupon" }
+          }
+        }
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": ["success", "message"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [false] },
+          "message": { "type": "string" },
+          "errorCode": { "type": "string" }
+        }
+      }
+    }
+  }
+}

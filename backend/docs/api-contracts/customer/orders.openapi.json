@@ -1,0 +1,576 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Customer orders",
+    "version": "0.2.0",
+    "description": "Place an order, list it, read its detail and bill, change the schedule or cancel only after place and before pickup is assigned, and download the invoice. Partial customer-app contract."
+  },
+  "servers": [{ "url": "/api/v1" }],
+  "tags": [{ "name": "orders" }],
+  "security": [{ "customerBearer": [] }],
+  "paths": {
+    "/orders": {
+      "get": {
+        "tags": ["orders"],
+        "operationId": "listMyOrders",
+        "summary": "List my orders",
+        "description": "Active tab and Completed tab. active is every order that is not delivered and not cancelled. completed is delivered only. The Upcoming Pickup card is the active row the app chooses; it is not a separate call. Each row carries the fields that card and the order tile need: express flag, services, pickup window, address, item count, and bill.",
+        "x-current": {
+          "path": "GET /api/v1/orders?bucket=active|history",
+          "note": "history is delivered plus cancelled. This contract uses status=completed for delivered only."
+        },
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": { "type": "string", "enum": ["active", "completed"], "default": "active" }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": { "type": "integer", "minimum": 1, "default": 1 }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order list",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ListEnvelope" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "tags": ["orders"],
+        "operationId": "createOrderFromCart",
+        "summary": "Place the order",
+        "description": "Delivery Options slide action. Creates status placed and returns the Order Successful payload. Express Wash is is_express and forces both legs instant. Instant collect is pickup_mode instant. Schedule writes pickup_time_from and pickup_time_to. Bring-it-back Express on the screen is delivery_mode instant, not a second express flag. Schedule for the return writes delivery_time_from and delivery_time_to. The date chips and 30-minute slots are built on the phone; the server stores the window. special_instructions is the care note, at most 500 characters. No bill row is written.",
+        "x-current": {
+          "path": "POST /api/v1/orders/create_order",
+          "storage": "orders, order_items, deliveries, pickup_for_delivery, drop_for_delivery. The cart row is deleted. bills is not written."
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateOrder" },
+              "examples": {
+                "express": {
+                  "summary": "Express Wash",
+                  "value": {
+                    "cart_id": "44444444-4444-4444-8444-444444444444",
+                    "pickup_address_id": "a1b2c3d4-e5f6-4789-a012-3456789abcde",
+                    "delivery_address_id": "b2c3d4e5-f6a7-4890-b123-456789abcdef",
+                    "is_express": true,
+                    "special_instructions": "Call on arrival"
+                  }
+                },
+                "scheduled": {
+                  "summary": "Scheduled collect and return",
+                  "value": {
+                    "cart_id": "44444444-4444-4444-8444-444444444444",
+                    "pickup_address_id": "a1b2c3d4-e5f6-4789-a012-3456789abcde",
+                    "delivery_address_id": "b2c3d4e5-f6a7-4890-b123-456789abcdef",
+                    "is_express": false,
+                    "pickup_mode": "scheduled",
+                    "pickup_time_from": "2026-12-17T11:30:00.000Z",
+                    "pickup_time_to": "2026-12-17T12:00:00.000Z",
+                    "delivery_mode": "scheduled",
+                    "delivery_time_from": "2026-12-19T11:30:00.000Z",
+                    "delivery_time_to": "2026-12-19T12:00:00.000Z",
+                    "special_instructions": "Do not starch the shirts"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Order placed. bill.generated is false.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CreatedEnvelope" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/orders/{orderId}": {
+      "get": {
+        "tags": ["orders"],
+        "operationId": "getMyOrder",
+        "summary": "Order details",
+        "description": "View Details. Items are grouped by service. A per_kg line has weight_kg and per_kg_price. A per_unit line has selections (item_name and quantity). Prices on a line are catalogue prices before the bill exists, and the snapshotted unit_price after it exists. bill is always an object. Before the door count, bill is { generated: false }. After it, bill.generated is true and the summary lines are the bill columns.",
+        "x-current": {
+          "path": "GET /api/v1/orders/:orderId",
+          "note": "The live detail uses camelCase and bill: null when no bill row exists."
+        },
+        "parameters": [{ "$ref": "#/components/parameters/orderId" }],
+        "responses": {
+          "200": {
+            "description": "Order detail",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DetailEnvelope" },
+                "examples": {
+                  "beforeBill": {
+                    "summary": "Bill not generated",
+                    "value": {
+                      "success": true,
+                      "data": {
+                        "order_id": "55555555-5555-4555-8555-555555555555",
+                        "order_status": "placed",
+                        "is_express": false,
+                        "pickup_mode": "scheduled",
+                        "delivery_mode": "scheduled",
+                        "pickup_time_from": "2026-12-17T12:30:00.000Z",
+                        "pickup_time_to": "2026-12-17T13:00:00.000Z",
+                        "delivery_time_from": "2026-12-19T12:30:00.000Z",
+                        "delivery_time_to": "2026-12-19T13:00:00.000Z",
+                        "special_instructions": null,
+                        "can_cancel": true,
+                        "can_reschedule": true,
+                        "can_change_address": true,
+                        "item_count": null,
+                        "pickup_address": {
+                          "address_id": "a1b2c3d4-e5f6-4789-a012-3456789abcde",
+                          "address_label": "home",
+                          "full_address": "123 Main St, Apartment 4B"
+                        },
+                        "delivery_address": {
+                          "address_id": "b2c3d4e5-f6a7-4890-b123-456789abcdef",
+                          "address_label": "home",
+                          "full_address": "123 Main St, Apartment 4B"
+                        },
+                        "items": [],
+                        "bill": { "generated": false }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "patch": {
+        "tags": ["orders"],
+        "operationId": "updateMyOrder",
+        "summary": "Change schedule or address",
+        "description": "Change Schedule. Schedule fields are accepted only while order_status is placed, which is after the order exists and before a pickup partner is assigned. pickup_assigned and every later status return 409. Express orders stay instant, so schedule fields are also rejected when is_express is true. Address ids, when sent, follow the same placed window and must belong to this customer. At least one field is required. A schedule change restarts pickup search.",
+        "x-current": {
+          "path": "PATCH /api/v1/orders/:orderId/schedule",
+          "note": "The live route changes the time window only. It does not change pickup_address_id or delivery_address_id."
+        },
+        "parameters": [{ "$ref": "#/components/parameters/orderId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateOrder" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated order",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DetailEnvelope" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/orders/{orderId}/cancel": {
+      "post": {
+        "tags": ["orders"],
+        "operationId": "cancelMyOrder",
+        "summary": "Cancel the order",
+        "description": "Cancel on the Upcoming Pickup card. Allowed only while order_status is placed: after place, before a pickup partner is assigned. pickup_assigned and every later status return 409. reason is required, 3 to 500 characters. The order stays in the database with order_status cancelled.",
+        "x-current": { "path": "POST /api/v1/orders/:orderId/cancel" },
+        "parameters": [{ "$ref": "#/components/parameters/orderId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CancelOrder" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "data": {
+                      "type": "object",
+                      "required": ["order_id", "order_status"],
+                      "properties": {
+                        "order_id": { "type": "string", "format": "uuid" },
+                        "order_status": { "type": "string", "enum": ["cancelled"] },
+                        "cancel_reason": { "type": "string" },
+                        "cancelled_at": { "type": "string", "format": "date-time" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/orders/{orderId}/invoice": {
+      "get": {
+        "tags": ["orders"],
+        "operationId": "getMyInvoice",
+        "summary": "Invoice",
+        "description": "Download Invoice. This is the bill, not a separate document and not a PDF. When the bill row does not exist yet, the body is bill { generated: false }. When it exists, the body is the generated bill plus the item lines.",
+        "x-current": {
+          "path": "GET /api/v1/payments/orders/:orderId/invoice",
+          "note": "Also mounted at /payments/invoice/:orderId and /payments/orders/:orderId/bill. The contract keeps a single order sub-resource."
+        },
+        "parameters": [{ "$ref": "#/components/parameters/orderId" }],
+        "responses": {
+          "200": {
+            "description": "Invoice or not generated yet",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InvoiceEnvelope" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "customerBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Customer access token. The user_id claim is customer_id."
+      }
+    },
+    "parameters": {
+      "orderId": {
+        "name": "orderId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "format": "uuid" }
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing or invalid customer token",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+          }
+        }
+      },
+      "Error": {
+        "description": "Validation, not found, or a status that no longer allows the action",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "BillPending": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["generated"],
+        "properties": {
+          "generated": { "type": "boolean", "enum": [false] }
+        }
+      },
+      "BillReady": {
+        "type": "object",
+        "required": ["generated", "bill_id", "subtotal", "delivery_fee", "express_fee", "tax_amount", "discount", "final_amount", "payment_status"],
+        "properties": {
+          "generated": { "type": "boolean", "enum": [true] },
+          "bill_id": { "type": "string", "format": "uuid" },
+          "subtotal": { "type": "string", "description": "Item total." },
+          "delivery_fee": { "type": "string", "description": "One delivery fee for the order. The screen's pickup fee and delivery fee are this single column." },
+          "express_fee": { "type": "string" },
+          "tax_amount": { "type": "string" },
+          "discount": { "type": "string" },
+          "final_amount": { "type": "string", "description": "To pay." },
+          "payment_status": { "type": "string", "enum": ["pending", "completed", "failed", "refunded"], "description": "pending is the Unpaid badge." },
+          "payment_method": { "type": "string", "nullable": true },
+          "coupon_code": { "type": "string", "nullable": true },
+          "paid_at": { "type": "string", "format": "date-time", "nullable": true }
+        }
+      },
+      "Bill": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/BillPending" },
+          { "$ref": "#/components/schemas/BillReady" }
+        ]
+      },
+      "AddressSummary": {
+        "type": "object",
+        "required": ["address_id", "full_address"],
+        "properties": {
+          "address_id": { "type": "string", "format": "uuid" },
+          "address_label": { "type": "string" },
+          "full_address": { "type": "string" }
+        }
+      },
+      "Selection": {
+        "type": "object",
+        "required": ["cloth_id", "item_name", "quantity"],
+        "properties": {
+          "cloth_id": { "type": "string", "format": "uuid" },
+          "item_name": { "type": "string" },
+          "quantity": { "type": "integer", "minimum": 1 },
+          "unit_price": { "type": "string", "nullable": true, "description": "Null until the bill is generated." }
+        }
+      },
+      "DetailItem": {
+        "type": "object",
+        "required": ["item_id", "service_id", "service_name", "pricing_type"],
+        "properties": {
+          "item_id": { "type": "string", "format": "uuid" },
+          "service_id": { "type": "string", "format": "uuid" },
+          "service_name": { "type": "string" },
+          "pricing_type": { "type": "string", "enum": ["per_kg", "per_unit"] },
+          "per_kg_price": { "type": "string", "nullable": true },
+          "unit_price": { "type": "string", "nullable": true },
+          "weight_kg": { "type": "string", "nullable": true },
+          "quantity": { "type": "integer", "nullable": true },
+          "subtotal": { "type": "string", "nullable": true },
+          "selections": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Selection" }
+          }
+        }
+      },
+      "ServiceSummary": {
+        "type": "object",
+        "required": ["service_id", "service_name", "pricing_type"],
+        "properties": {
+          "service_id": { "type": "string", "format": "uuid" },
+          "service_name": { "type": "string" },
+          "pricing_type": { "type": "string", "enum": ["per_kg", "per_unit"] }
+        }
+      },
+      "OrderSummary": {
+        "type": "object",
+        "required": ["order_id", "order_status", "is_express", "can_cancel", "can_reschedule", "bill"],
+        "properties": {
+          "order_id": { "type": "string", "format": "uuid" },
+          "order_status": { "type": "string" },
+          "is_express": { "type": "boolean" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "pickup_mode": { "type": "string", "enum": ["instant", "scheduled"] },
+          "pickup_time_from": { "type": "string", "format": "date-time", "nullable": true },
+          "pickup_time_to": { "type": "string", "format": "date-time", "nullable": true },
+          "pickup_address": { "$ref": "#/components/schemas/AddressSummary" },
+          "services": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ServiceSummary" }
+          },
+          "item_count": { "type": "integer", "nullable": true, "description": "Sum of per-unit quantities. Null until those quantities exist." },
+          "can_cancel": { "type": "boolean", "description": "True only while order_status is placed, before pickup assignment." },
+          "can_reschedule": { "type": "boolean", "description": "True only while order_status is placed and is_express is false. False once pickup is assigned." },
+          "bill": { "$ref": "#/components/schemas/Bill" }
+        }
+      },
+      "OrderDetail": {
+        "allOf": [
+          { "$ref": "#/components/schemas/OrderSummary" },
+          {
+            "type": "object",
+            "required": ["delivery_mode", "delivery_address", "items", "can_change_address"],
+            "properties": {
+              "delivery_mode": { "type": "string", "enum": ["instant", "scheduled"] },
+              "delivery_time_from": { "type": "string", "format": "date-time", "nullable": true },
+              "delivery_time_to": { "type": "string", "format": "date-time", "nullable": true },
+              "special_instructions": { "type": "string", "nullable": true },
+              "delivery_address": { "$ref": "#/components/schemas/AddressSummary" },
+              "items": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/DetailItem" }
+              },
+              "can_change_address": { "type": "boolean", "description": "True only while order_status is placed." }
+            }
+          }
+        ]
+      },
+      "CreateOrder": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["cart_id", "pickup_address_id", "delivery_address_id"],
+        "properties": {
+          "cart_id": { "type": "string", "format": "uuid" },
+          "pickup_address_id": { "type": "string", "format": "uuid" },
+          "delivery_address_id": { "type": "string", "format": "uuid" },
+          "is_express": { "type": "boolean", "default": false },
+          "pickup_mode": { "type": "string", "enum": ["instant", "scheduled"] },
+          "delivery_mode": { "type": "string", "enum": ["instant", "scheduled"] },
+          "pickup_time_from": { "type": "string", "format": "date-time" },
+          "pickup_time_to": { "type": "string", "format": "date-time", "nullable": true },
+          "delivery_time_from": { "type": "string", "format": "date-time" },
+          "delivery_time_to": { "type": "string", "format": "date-time", "nullable": true },
+          "special_instructions": { "type": "string", "maxLength": 500, "nullable": true }
+        }
+      },
+      "UpdateOrder": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "pickup_address_id": { "type": "string", "format": "uuid" },
+          "delivery_address_id": { "type": "string", "format": "uuid" },
+          "pickup_mode": { "type": "string", "enum": ["instant", "scheduled"] },
+          "delivery_mode": { "type": "string", "enum": ["instant", "scheduled"] },
+          "pickup_time_from": { "type": "string", "format": "date-time", "nullable": true },
+          "pickup_time_to": { "type": "string", "format": "date-time", "nullable": true },
+          "delivery_time_from": { "type": "string", "format": "date-time", "nullable": true },
+          "delivery_time_to": { "type": "string", "format": "date-time", "nullable": true }
+        }
+      },
+      "CancelOrder": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reason"],
+        "properties": {
+          "reason": { "type": "string", "minLength": 3, "maxLength": 500 }
+        }
+      },
+      "CreatedOrder": {
+        "type": "object",
+        "required": ["order_id", "order_status", "is_express", "pickup_mode", "delivery_mode", "bill", "can_cancel", "can_reschedule"],
+        "properties": {
+          "order_id": { "type": "string", "format": "uuid" },
+          "order_status": { "type": "string", "enum": ["placed"] },
+          "is_express": { "type": "boolean" },
+          "pickup_mode": { "type": "string", "enum": ["instant", "scheduled"] },
+          "delivery_mode": { "type": "string", "enum": ["instant", "scheduled"] },
+          "pickup_time_from": { "type": "string", "format": "date-time", "nullable": true },
+          "pickup_time_to": { "type": "string", "format": "date-time", "nullable": true },
+          "delivery_time_from": { "type": "string", "format": "date-time", "nullable": true },
+          "delivery_time_to": { "type": "string", "format": "date-time", "nullable": true },
+          "special_instructions": { "type": "string", "nullable": true },
+          "total_amount": { "type": "string", "example": "0.00" },
+          "bill": { "$ref": "#/components/schemas/BillPending" },
+          "can_cancel": { "type": "boolean", "description": "True only while order_status is placed, before pickup assignment." },
+          "can_reschedule": { "type": "boolean", "description": "True only while order_status is placed and is_express is false. False once pickup is assigned." },
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/DetailItem" }
+          }
+        }
+      },
+      "Invoice": {
+        "type": "object",
+        "required": ["order_id", "bill"],
+        "properties": {
+          "order_id": { "type": "string", "format": "uuid" },
+          "bill": { "$ref": "#/components/schemas/Bill" },
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/DetailItem" }
+          }
+        }
+      },
+      "ListEnvelope": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "data": {
+            "type": "object",
+            "required": ["orders", "pagination"],
+            "properties": {
+              "orders": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/OrderSummary" }
+              },
+              "pagination": {
+                "type": "object",
+                "required": ["page", "limit", "total"],
+                "properties": {
+                  "page": { "type": "integer" },
+                  "limit": { "type": "integer" },
+                  "total": { "type": "integer" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "DetailEnvelope": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "data": { "$ref": "#/components/schemas/OrderDetail" }
+        }
+      },
+      "CreatedEnvelope": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "data": { "$ref": "#/components/schemas/CreatedOrder" }
+        }
+      },
+      "InvoiceEnvelope": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "data": { "$ref": "#/components/schemas/Invoice" }
+        }
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": ["success", "message"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [false] },
+          "message": { "type": "string" },
+          "errorCode": { "type": "string" }
+        }
+      }
+    }
+  }
+}

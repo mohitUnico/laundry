@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../theme/app_text_styles.dart';
 import '../../../models/service_item.dart';
+import '../../../widgets/catalog_image.dart';
 import 'home_colors.dart';
 
 enum ProCleanPricingType { kgWise, perPiece }
@@ -51,27 +52,22 @@ class _ProCleanBottomSheetState extends State<ProCleanBottomSheet> {
     _ProCleanCategory(
       title: 'Dry Cleaning',
       subtitle: 'Deep cleaning required',
-      imageAsset: 'assets/images/pro_clean/dry_cleaning.png',
     ),
     _ProCleanCategory(
       title: 'Stain Treatment',
       subtitle: 'Pre-treatment for stains',
-      imageAsset: 'assets/images/pro_clean/stain_treatment.png',
     ),
     _ProCleanCategory(
       title: 'Shoe Cleaning',
       subtitle: 'Fresh and spotless shoes',
-      imageAsset: 'assets/images/pro_clean/shoe_cleaning.png',
     ),
     _ProCleanCategory(
       title: 'Winter Wear',
       subtitle: 'Clean, cozy, and hot',
-      imageAsset: 'assets/images/pro_clean/winter_wear.png',
     ),
     _ProCleanCategory(
       title: 'Delicate Fabrics',
       subtitle: 'Wool, silk, etc.',
-      imageAsset: 'assets/images/pro_clean/delicate_fabrics.png',
     ),
   ];
 
@@ -88,7 +84,7 @@ class _ProCleanBottomSheetState extends State<ProCleanBottomSheet> {
         perKgPrice: services[i].perKgPrice,
         title: services[i].serviceName,
         subtitle: template.subtitle,
-        imageAsset: template.imageAsset,
+        imageUrl: services[i].iconUrl,
       );
     });
   }
@@ -161,7 +157,7 @@ class _ProCleanBottomSheetState extends State<ProCleanBottomSheet> {
                   _ServiceRow(
                     title: c.title,
                     subtitle: c.subtitle,
-                    imageAsset: c.imageAsset,
+                    imageUrl: c.imageUrl,
                     isSelected: c.title == _selectedCategory.title,
                     onTap: () => setState(() => _selectedCategory = c),
                   ),
@@ -250,28 +246,28 @@ class _ProCleanCategory {
   final double? perKgPrice;
   final String title;
   final String subtitle;
-  final String imageAsset;
+  final String? imageUrl;
 
   const _ProCleanCategory({
     this.serviceId,
     this.perKgPrice,
     required this.title,
     required this.subtitle,
-    required this.imageAsset,
+    this.imageUrl,
   });
 }
 
 class _ServiceRow extends StatelessWidget {
   final String title;
   final String subtitle;
-  final String imageAsset;
+  final String? imageUrl;
   final bool isSelected;
   final VoidCallback onTap;
 
   const _ServiceRow({
     required this.title,
     required this.subtitle,
-    required this.imageAsset,
+    required this.imageUrl,
     required this.isSelected,
     required this.onTap,
   });
@@ -303,8 +299,8 @@ class _ServiceRow extends StatelessWidget {
             SizedBox(
               width: 42,
               height: 42,
-              child: Image.asset(
-                imageAsset,
+              child: CatalogImage(
+                url: imageUrl,
                 fit: BoxFit.contain,
               ),
             ),

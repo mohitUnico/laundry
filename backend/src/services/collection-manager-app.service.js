@@ -268,10 +268,6 @@ exports.createPickupAssignment = async ({ orderId, radiusKm, limit, expiresInSec
     });
     if (!order) throw new NotFoundError('Order');
 
-    if (!(order.order_type === 'pickup_only' || order.order_type === 'both')) {
-        throw new ValidationError('Pickup assignment is only allowed for pickup_only or both order types');
-    }
-
     return deliveryOperationsService.createAssignmentRequest({
         orderId,
         deliveryType: 'pickup',
@@ -290,10 +286,6 @@ exports.assignPickupDirect = async ({ staffId, orderId, deliveryStaffId }) => {
         select: { order_id: true },
     });
     if (!order) throw new NotFoundError('Order');
-
-    if (!(order.order_type === 'pickup_only' || order.order_type === 'both')) {
-        throw new ValidationError('Pickup assignment is only allowed for pickup_only or both order types');
-    }
 
     return deliveryOperationsService.directAssignDelivery({
         orderId,

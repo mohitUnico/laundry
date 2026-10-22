@@ -2,12 +2,12 @@ $ErrorActionPreference = "Stop"
 
 param(
   [string]$DeviceId = "",
-  [string]$ApiBaseUrl = "http://127.0.0.1:3001/api/v1"
+  [string]$ApiBaseUrl = "http://192.168.0.6:3001/api/v1"
 )
 
 Write-Host "== Laundry Customer App (USB / LAN) ==" -ForegroundColor Cyan
 Write-Host "API_BASE_URL: $ApiBaseUrl"
-Write-Host "Tip: same Wi-Fi + LAN IP example: http://192.168.1.10:3001/api/v1"
+Write-Host "Same Wi-Fi API: http://192.168.0.6:3001/api/v1"
 
 if ($DeviceId -ne "") {
   Write-Host "Device: $DeviceId"

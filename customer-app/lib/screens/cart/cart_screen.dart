@@ -8,6 +8,7 @@ import '../../theme/app_text_styles.dart';
 import '../../utils/pricing.dart';
 import '../../utils/cart_error_messages.dart';
 import '../../models/cart_item.dart';
+import '../../widgets/catalog_image.dart';
 import '../../services/customer_info_service.dart';
 
 class CartScreen extends StatefulWidget {
@@ -568,8 +569,8 @@ class _ServiceSection extends StatelessWidget {
                       width: 48,
                       height: 48,
                       color: const Color(0xFFF0F2FF),
-                      child: Image.asset(
-                        service.imageAsset!,
+                      child: CatalogImage(
+                        url: service.imageAsset,
                         fit: BoxFit.cover,
                       ),
                     ),

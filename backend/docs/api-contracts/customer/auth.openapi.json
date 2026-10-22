@@ -1,0 +1,299 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Customer auth",
+    "version": "0.1.0",
+    "description": "Email, then a 6-digit OTP. An existing customer receives tokens and opens the homepage. A new email receives a registration session and must finish the profile before the homepage."
+  },
+  "servers": [{ "url": "/api/v1" }],
+  "tags": [{ "name": "auth" }],
+  "paths": {
+    "/auth/otp": {
+      "post": {
+        "tags": ["auth"],
+        "operationId": "createCustomerOtp",
+        "summary": "Send OTP to email",
+        "description": "Starts login and signup. The body is the email only. The code is emailed and is not in the response. Sending again replaces the previous code for that email.",
+        "security": [],
+        "x-current": { "path": "POST /api/v1/auth/customer/send-otp" },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SendOtp" },
+              "example": { "email": "asha@example.com" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OTP sent",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OtpEnvelope" },
+                "example": {
+                  "success": true,
+                  "data": { "email": "asha@example.com", "expires_in": 300 }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/auth/sessions": {
+      "post": {
+        "tags": ["auth"],
+        "operationId": "createCustomerSession",
+        "summary": "Verify OTP",
+        "description": "Checks the 6-digit code for that email. is_new_user false means the customer already exists: access_token and refresh_token are returned and the app opens the homepage. is_new_user true means the email is new: session_token is a short-lived registration credential, not a customer token. The app then collects first name, last name, phone, an optional photo, and location. It does not open the homepage yet.",
+        "security": [],
+        "x-current": {
+          "path": "POST /api/v1/auth/customer/verify-otp",
+          "note": "The live payload uses isNewUser, token, refreshToken, and sessionToken."
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/VerifyOtp" },
+              "example": { "email": "asha@example.com", "otp": "123456" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Existing customer, or a new email that still needs a profile",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SessionEnvelope" },
+                "examples": {
+                  "existing": {
+                    "summary": "Already a customer",
+                    "value": {
+                      "success": true,
+                      "data": {
+                        "is_new_user": false,
+                        "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.customer",
+                        "refresh_token": "refresh-token",
+                        "customer": {
+                          "customer_id": "6f1c0c3e-1c0a-4a3e-9b2a-0c1d2e3f4a5b",
+                          "full_name": "Asha Rao",
+                          "email": "asha@example.com",
+                          "phone": "9876543210",
+                          "profile_image_url": null
+                        }
+                      }
+                    }
+                  },
+                  "new": {
+                    "summary": "New email",
+                    "value": {
+                      "success": true,
+                      "data": {
+                        "is_new_user": true,
+                        "session_token": "registration-session",
+                        "expires_in": 600
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/auth/customers": {
+      "post": {
+        "tags": ["auth"],
+        "operationId": "createCustomer",
+        "summary": "Save the new customer's name and phone",
+        "description": "Used only after is_new_user is true. Authorization is the registration session_token, not a customer JWT. first_name and last_name are joined into customers.full_name. There are no first_name or last_name columns. phone is required. Email comes from the verified session and must not be sent again. The response customer tokens replace the session token. The photo and the location are the next calls, not fields on this body.",
+        "security": [{ "registrationSession": [] }],
+        "x-current": {
+          "path": "POST /api/v1/auth/customer/complete-registration",
+          "storage": "customers.full_name, customers.email, customers.phone",
+          "note": "The live body is { sessionToken, customerData: { fullName, phone, address? } }. Address in that body is optional. This contract collects location on POST /customer-info/addresses instead."
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateCustomer" },
+              "example": {
+                "first_name": "Asha",
+                "last_name": "Rao",
+                "phone": "9876543210"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Customer created. Photo may still be skipped. Location is still required before the homepage.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/RegisteredEnvelope" },
+                "example": {
+                  "success": true,
+                  "data": {
+                    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.customer",
+                    "refresh_token": "refresh-token",
+                    "customer": {
+                      "customer_id": "6f1c0c3e-1c0a-4a3e-9b2a-0c1d2e3f4a5b",
+                      "full_name": "Asha Rao",
+                      "email": "asha@example.com",
+                      "phone": "9876543210",
+                      "profile_image_url": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "registrationSession": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "session_token from POST /auth/sessions when is_new_user is true."
+      }
+    },
+    "responses": {
+      "Error": {
+        "description": "Invalid email, wrong or expired OTP, or a session that cannot register",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "SendOtp": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["email"],
+        "properties": {
+          "email": { "type": "string", "format": "email" }
+        }
+      },
+      "VerifyOtp": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["email", "otp"],
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "otp": { "type": "string", "pattern": "^[0-9]{6}$", "description": "Six digits." }
+        }
+      },
+      "CreateCustomer": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["first_name", "last_name", "phone"],
+        "properties": {
+          "first_name": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "last_name": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "phone": { "type": "string", "maxLength": 20, "description": "Contact number. Required for a new customer." }
+        }
+      },
+      "Customer": {
+        "type": "object",
+        "required": ["customer_id", "full_name", "email"],
+        "properties": {
+          "customer_id": { "type": "string", "format": "uuid" },
+          "full_name": { "type": "string", "description": "first_name and last_name joined with a space." },
+          "email": { "type": "string", "format": "email" },
+          "phone": { "type": "string", "nullable": true },
+          "profile_image_url": { "type": "string", "nullable": true }
+        }
+      },
+      "OtpSent": {
+        "type": "object",
+        "required": ["email", "expires_in"],
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "expires_in": { "type": "integer", "description": "Seconds until the code expires." }
+        }
+      },
+      "ExistingSession": {
+        "type": "object",
+        "required": ["is_new_user", "access_token", "refresh_token", "customer"],
+        "properties": {
+          "is_new_user": { "type": "boolean", "enum": [false] },
+          "access_token": { "type": "string" },
+          "refresh_token": { "type": "string" },
+          "customer": { "$ref": "#/components/schemas/Customer" }
+        }
+      },
+      "NewSession": {
+        "type": "object",
+        "required": ["is_new_user", "session_token", "expires_in"],
+        "properties": {
+          "is_new_user": { "type": "boolean", "enum": [true] },
+          "session_token": { "type": "string" },
+          "expires_in": { "type": "integer" }
+        }
+      },
+      "Registered": {
+        "type": "object",
+        "required": ["access_token", "refresh_token", "customer"],
+        "properties": {
+          "access_token": { "type": "string" },
+          "refresh_token": { "type": "string" },
+          "customer": { "$ref": "#/components/schemas/Customer" }
+        }
+      },
+      "OtpEnvelope": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "data": { "$ref": "#/components/schemas/OtpSent" }
+        }
+      },
+      "SessionEnvelope": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "data": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/ExistingSession" },
+              { "$ref": "#/components/schemas/NewSession" }
+            ]
+          }
+        }
+      },
+      "RegisteredEnvelope": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "data": { "$ref": "#/components/schemas/Registered" }
+        }
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": ["success", "message"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [false] },
+          "message": { "type": "string" },
+          "errorCode": { "type": "string" }
+        }
+      }
+    }
+  }
+}

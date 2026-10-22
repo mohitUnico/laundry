@@ -7,6 +7,7 @@ import '../../../providers/service_catalog_provider.dart';
 import '../../../theme/app_text_styles.dart';
 import '../../../utils/profile_service_error_messages.dart';
 import '../../../widgets/cart_success_dialog.dart';
+import '../../../widgets/catalog_image.dart';
 import '../../../widgets/per_kg_price_banner.dart';
 import '../../home/widgets/home_bottom_nav.dart';
 import '../../home/widgets/home_colors.dart';
@@ -70,15 +71,6 @@ class _DelicateFabricsScreenState extends State<DelicateFabricsScreen> {
   }
 
   String _priceText(double perUnitPrice) => '₹${perUnitPrice.toStringAsFixed(0)}/pc';
-
-  String _assetForItemName(String itemName) {
-    final n = itemName.toLowerCase();
-    if (n.contains('top')) return 'assets/images/regular_wash/top_wear.png';
-    if (n.contains('bottom')) return 'assets/images/regular_wash/bottom_wear.png';
-    if (n.contains('saree')) return 'assets/images/regular_wash/saree.png';
-    if (n.contains('kurta')) return 'assets/images/regular_wash/kurta.png';
-    return 'assets/images/regular_wash/top_wear.png';
-  }
 
   @override
   void didChangeDependencies() {
@@ -153,7 +145,7 @@ class _DelicateFabricsScreenState extends State<DelicateFabricsScreen> {
                     for (final it in items) ...[
                       _ItemCard(
                         title: it.itemName,
-                        imageAsset: _assetForItemName(it.itemName),
+                        imageAsset: it.iconUrl,
                         priceText: showPrices ? _priceText(it.perUnitPrice) : null,
                         value: _qtyByItemName[it.itemName] ?? 0,
                         onMinus: () => setState(() {
@@ -201,7 +193,7 @@ class _DelicateFabricsScreenState extends State<DelicateFabricsScreen> {
                                     category: 'Pro Clean',
                                     serviceName: serviceName,
                                     serviceId: serviceId,
-                                    imageAsset: 'assets/images/regular_wash/top_wear.png',
+                                    imageAsset: firstCatalogUrl(items.map((it) => it.iconUrl)),
                                     isPerPiece: showPrices,
                                     quantities: Map<String, int>.from(_qtyByItemName),
                                     clothIdByItemName: clothIdByName,
@@ -301,7 +293,7 @@ class _TopBar extends StatelessWidget {
 
 class _ItemCard extends StatelessWidget {
   final String title;
-  final String imageAsset;
+  final String? imageAsset;
   final String? priceText;
   final int value;
   final VoidCallback onMinus;
@@ -342,7 +334,7 @@ class _ItemCard extends StatelessWidget {
               width: 56,
               height: 56,
               color: const Color(0xFFF0F2FF),
-              child: Image.asset(imageAsset, fit: BoxFit.cover),
+              child: CatalogImage(url: imageAsset, fit: BoxFit.cover),
             ),
           ),
           const SizedBox(width: 12),

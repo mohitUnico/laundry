@@ -31,8 +31,23 @@ class ClothesItem {
       perUnitPrice: parsePrice(json['per_unit_price']),
       isActive: (json['is_active'] ?? true) as bool,
       displayOrder: (json['display_order'] ?? 0) as int,
-      iconUrl: json['icon_url'] as String?,
+      iconUrl: () {
+        final raw = json['icon_url'] ?? json['iconUrl'];
+        return raw is String && raw.trim().isNotEmpty ? raw : null;
+      }(),
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'cloth_id': clothId,
+      'service_id': serviceId,
+      'item_name': itemName,
+      'per_unit_price': perUnitPrice,
+      'is_active': isActive,
+      'display_order': displayOrder,
+      'icon_url': iconUrl,
+    };
   }
 }
 

@@ -1,0 +1,127 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Customer notifications",
+    "version": "0.1.0",
+    "description": "Homepage notification list. count is the badge, so the app does not call a separate count endpoint."
+  },
+  "servers": [{ "url": "/api/v1" }],
+  "tags": [{ "name": "notifications" }],
+  "security": [{ "customerBearer": [] }],
+  "paths": {
+    "/notifications": {
+      "get": {
+        "tags": ["notifications"],
+        "operationId": "listMyNotifications",
+        "summary": "List my notifications",
+        "description": "Notices for this customer, newest first. count is the number of items in data.items. event values are the customer-facing order events already used by the notification matrix. This list is not the notification_deliveries table; that table only records that a push was sent.",
+        "x-current": {
+          "path": null,
+          "note": "Live routes under /notifications are only fcm-token save and clear. There is no customer inbox table yet. Verification should treat this operation as unimplemented."
+        },
+        "responses": {
+          "200": {
+            "description": "Notification list and badge count",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Envelope" },
+                "example": {
+                  "success": true,
+                  "data": {
+                    "count": 1,
+                    "items": [
+                      {
+                        "notification_id": "9c8b7a6d-5e4f-4321-a098-76543210fedc",
+                        "event": "bill_ready",
+                        "title": "Bill ready",
+                        "order_id": "6f1c0c3e-1c0a-4a3e-9b2a-0c1d2e3f4a5b",
+                        "created_at": "2026-10-16T09:30:00.000Z"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "customerBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing or invalid customer token",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Notification": {
+        "type": "object",
+        "required": ["notification_id", "event", "title", "order_id", "created_at"],
+        "properties": {
+          "notification_id": { "type": "string", "format": "uuid" },
+          "event": {
+            "type": "string",
+            "enum": [
+              "order_placed",
+              "pickup_assigned",
+              "picked_up",
+              "bill_ready",
+              "received_at_plant",
+              "services_started",
+              "services_completed",
+              "out_for_delivery",
+              "payment_received",
+              "payment_failed",
+              "delivered",
+              "cancelled"
+            ]
+          },
+          "title": { "type": "string" },
+          "order_id": { "type": "string", "format": "uuid", "nullable": true },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "NotificationList": {
+        "type": "object",
+        "required": ["count", "items"],
+        "properties": {
+          "count": { "type": "integer", "minimum": 0 },
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Notification" }
+          }
+        }
+      },
+      "Envelope": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "data": { "$ref": "#/components/schemas/NotificationList" }
+        }
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": ["success", "message"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [false] },
+          "message": { "type": "string" },
+          "errorCode": { "type": "string" }
+        }
+      }
+    }
+  }
+}

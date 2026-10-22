@@ -1,0 +1,91 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Customer app config",
+    "version": "0.1.0",
+    "description": "Fees the Delivery Options screen shows before an order exists. These are quotes. They are copied onto the bill only when the door count is confirmed."
+  },
+  "servers": [{ "url": "/api/v1" }],
+  "tags": [{ "name": "config" }],
+  "security": [{ "customerBearer": [] }],
+  "paths": {
+    "/config": {
+      "get": {
+        "tags": ["config"],
+        "operationId": "getCustomerConfig",
+        "summary": "Fees and schedule rules",
+        "description": "Delivery Charges is delivery_fee. A value of 0 is Free. Express Wash does not add a second delivery charge; express_fee is the express surcharge, also snapshotted later onto the bill. Laundry charges are not in this response. There is no handling fee.",
+        "x-current": {
+          "path": "GET /api/v1/config",
+          "note": "The live route is public and does not require a customer token. DELIVERY_FEE and EXPRESS_FEE are not in the public payload today. pickupDeliveryBufferDays is."
+        },
+        "responses": {
+          "200": {
+            "description": "Client config",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Envelope" },
+                "example": {
+                  "success": true,
+                  "data": {
+                    "delivery_fee": "0.00",
+                    "express_fee": "0.00",
+                    "pickup_delivery_buffer_days": 2
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "customerBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing or invalid customer token",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "CustomerConfig": {
+        "type": "object",
+        "required": ["delivery_fee", "express_fee", "pickup_delivery_buffer_days"],
+        "properties": {
+          "delivery_fee": { "type": "string" },
+          "express_fee": { "type": "string" },
+          "pickup_delivery_buffer_days": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "Envelope": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "data": { "$ref": "#/components/schemas/CustomerConfig" }
+        }
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": ["success", "message"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [false] },
+          "message": { "type": "string" },
+          "errorCode": { "type": "string" }
+        }
+      }
+    }
+  }
+}

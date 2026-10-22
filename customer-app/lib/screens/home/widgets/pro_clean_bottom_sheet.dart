@@ -1,107 +1,71 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme/app_text_styles.dart';
-import '../../../models/service_item.dart';
-import '../../../widgets/catalog_image.dart';
 import 'home_colors.dart';
 
 enum ProCleanPricingType { kgWise, perPiece }
 
 class ProCleanSelection {
-  final String? serviceId;
   final String categoryName;
   final ProCleanPricingType pricingType;
-  final double? perKgPrice;
 
   const ProCleanSelection({
-    required this.serviceId,
     required this.categoryName,
     required this.pricingType,
-    this.perKgPrice,
   });
 }
 
 class ProCleanBottomSheet extends StatefulWidget {
-  const ProCleanBottomSheet({super.key, required this.services, this.isLoading = false});
+  const ProCleanBottomSheet({super.key});
 
-  static Future<ProCleanSelection?> show(
-    BuildContext context, {
-    required List<ServiceItem> services,
-    bool isLoading = false,
-  }) {
+  static Future<ProCleanSelection?> show(BuildContext context) {
     return showModalBottomSheet<ProCleanSelection?>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => ProCleanBottomSheet(services: services, isLoading: isLoading),
+      builder: (_) => const ProCleanBottomSheet(),
     );
   }
-
-  final List<ServiceItem> services;
-  final bool isLoading;
 
   @override
   State<ProCleanBottomSheet> createState() => _ProCleanBottomSheetState();
 }
 
 class _ProCleanBottomSheetState extends State<ProCleanBottomSheet> {
-  late _ProCleanCategory _selectedCategory;
+  String _selectedCategory = _categories.first.title;
   ProCleanPricingType _pricingType = ProCleanPricingType.kgWise;
 
   static const _categories = <_ProCleanCategory>[
     _ProCleanCategory(
       title: 'Dry Cleaning',
       subtitle: 'Deep cleaning required',
+      imageAsset: 'assets/images/pro_clean/dry_cleaning.png',
     ),
     _ProCleanCategory(
       title: 'Stain Treatment',
       subtitle: 'Pre-treatment for stains',
+      imageAsset: 'assets/images/pro_clean/stain_treatment.png',
     ),
     _ProCleanCategory(
       title: 'Shoe Cleaning',
       subtitle: 'Fresh and spotless shoes',
+      imageAsset: 'assets/images/pro_clean/shoe_cleaning.png',
     ),
     _ProCleanCategory(
       title: 'Winter Wear',
       subtitle: 'Clean, cozy, and hot',
+      imageAsset: 'assets/images/pro_clean/winter_wear.png',
     ),
     _ProCleanCategory(
       title: 'Delicate Fabrics',
       subtitle: 'Wool, silk, etc.',
+      imageAsset: 'assets/images/pro_clean/delicate_fabrics.png',
     ),
   ];
-
-  List<_ProCleanCategory> get _effectiveCategories {
-    final services = widget.services;
-    if (services.isEmpty) return const [];
-
-    // Keep the design consistent: reuse the existing subtitle/image set by index,
-    // but replace the displayed title with backend service names.
-    return List.generate(services.length, (i) {
-      final template = _categories[i % _categories.length];
-      return _ProCleanCategory(
-        serviceId: services[i].serviceId,
-        perKgPrice: services[i].perKgPrice,
-        title: services[i].serviceName,
-        subtitle: template.subtitle,
-        imageUrl: services[i].iconUrl,
-      );
-    });
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    final list = _effectiveCategories;
-    _selectedCategory = list.isNotEmpty ? list.first : _categories.first;
-  }
 
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
-    final isLoading = widget.isLoading;
-    final items = _effectiveCategories;
-    final canProceed = items.isNotEmpty && !isLoading;
 
     return SafeArea(
       top: false,
@@ -138,31 +102,16 @@ class _ProCleanBottomSheetState extends State<ProCleanBottomSheet> {
                     .copyWith(fontSize: 12),
               ),
               const SizedBox(height: 10),
-              if (isLoading)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 18),
-                  child: Center(child: CircularProgressIndicator()),
-                )
-              else if (items.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Text(
-                    'No services available right now. Please try again.',
-                    textAlign: TextAlign.center,
-                    style: AppTextStyles.body(color: HomeColors.muted).copyWith(fontSize: 12),
-                  ),
-                )
-              else
-                for (final c in items) ...[
-                  _ServiceRow(
-                    title: c.title,
-                    subtitle: c.subtitle,
-                    imageUrl: c.imageUrl,
-                    isSelected: c.title == _selectedCategory.title,
-                    onTap: () => setState(() => _selectedCategory = c),
-                  ),
-                  const SizedBox(height: 10),
-                ],
+              for (final c in _categories) ...[
+                _ServiceRow(
+                  title: c.title,
+                  subtitle: c.subtitle,
+                  imageAsset: c.imageAsset,
+                  isSelected: c.title == _selectedCategory,
+                  onTap: () => setState(() => _selectedCategory = c.title),
+                ),
+                const SizedBox(height: 10),
+              ],
               const SizedBox(height: 6),
               Container(
                 width: double.infinity,
@@ -217,18 +166,12 @@ class _ProCleanBottomSheetState extends State<ProCleanBottomSheet> {
                     child: _BottomButton(
                       label: 'Next',
                       variant: _BottomButtonVariant.filled,
-                      onTap: canProceed
-                          ? () => Navigator.of(context).pop(
-                                ProCleanSelection(
-                                  serviceId: _selectedCategory.serviceId?.isEmpty == true
-                                      ? null
-                                      : _selectedCategory.serviceId,
-                                  categoryName: _selectedCategory.title,
-                                  pricingType: _pricingType,
-                                  perKgPrice: _selectedCategory.perKgPrice,
-                                ),
-                              )
-                          : () {},
+                      onTap: () => Navigator.of(context).pop(
+                        ProCleanSelection(
+                          categoryName: _selectedCategory,
+                          pricingType: _pricingType,
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -242,32 +185,28 @@ class _ProCleanBottomSheetState extends State<ProCleanBottomSheet> {
 }
 
 class _ProCleanCategory {
-  final String? serviceId;
-  final double? perKgPrice;
   final String title;
   final String subtitle;
-  final String? imageUrl;
+  final String imageAsset;
 
   const _ProCleanCategory({
-    this.serviceId,
-    this.perKgPrice,
     required this.title,
     required this.subtitle,
-    this.imageUrl,
+    required this.imageAsset,
   });
 }
 
 class _ServiceRow extends StatelessWidget {
   final String title;
   final String subtitle;
-  final String? imageUrl;
+  final String imageAsset;
   final bool isSelected;
   final VoidCallback onTap;
 
   const _ServiceRow({
     required this.title,
     required this.subtitle,
-    required this.imageUrl,
+    required this.imageAsset,
     required this.isSelected,
     required this.onTap,
   });
@@ -299,8 +238,8 @@ class _ServiceRow extends StatelessWidget {
             SizedBox(
               width: 42,
               height: 42,
-              child: CatalogImage(
-                url: imageUrl,
+              child: Image.asset(
+                imageAsset,
                 fit: BoxFit.contain,
               ),
             ),

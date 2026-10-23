@@ -26,11 +26,11 @@ class OrderProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
 
-  void addOrder(OrderRecord order) {
+  Future<void> addOrder(OrderRecord order) async {
     _orders.removeWhere((existing) => existing.id == order.id);
     _orders.insert(0, order);
     notifyListeners();
-    _localOrders.upsert(order);
+    await _localOrders.upsert(order);
   }
 
   /// Apply Supabase Realtime payload to local orders list without fetching.
@@ -176,11 +176,18 @@ class OrderProvider with ChangeNotifier {
     late final List<OrderRecord> local;
     try {
       local = await _localOrders.load();
+      final live = List<OrderRecord>.from(_orders);
+      final localIds = local.map((order) => order.id).toSet();
+      final pending = live.where((order) => !localIds.contains(order.id)).toList();
       _orders
         ..clear()
+        ..addAll(pending)
         ..addAll(local);
       _isLoading = false;
       notifyListeners();
+      for (final order in pending) {
+        await _localOrders.upsert(order);
+      }
     } catch (e) {
       _isLoading = false;
       _isFetching = false;
@@ -205,16 +212,30 @@ class OrderProvider with ChangeNotifier {
       }
 
       final backendIds = newOrders.map((order) => order.id).toSet();
+      final localIds = local.map((order) => order.id).toSet();
+      final live = List<OrderRecord>.from(_orders);
+      final pending = live
+          .where((order) => !backendIds.contains(order.id) && !localIds.contains(order.id))
+          .toList();
       _orders
         ..clear()
+        ..addAll(pending)
         ..addAll(local.where((order) => !backendIds.contains(order.id)))
         ..addAll(newOrders);
+      for (final order in pending) {
+        await _localOrders.upsert(order);
+      }
 
       _error = null;
     } catch (e) {
+      final live = List<OrderRecord>.from(_orders);
+      final merged = <String, OrderRecord>{
+        for (final order in local) order.id: order,
+        for (final order in live) order.id: order,
+      };
       _orders
         ..clear()
-        ..addAll(local);
+        ..addAll(merged.values);
       _error = null;
       debugPrint('Error fetching orders: $e');
     } finally {

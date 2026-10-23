@@ -381,19 +381,15 @@ class _OrdersListScreenState extends State<OrdersListScreen>
                         }
 
                         for (final order in list) {
-                          final schedule = order.orderType == 'schedule_pickup' ||
-                              order.orderType == 'instant_pickup';
+                          final inProgress = order.status == OrderStatus.inProgress &&
+                              order.backendStatus.toLowerCase() != 'cancelled';
                           children.add(
                             _OrderCard(
                               data: order,
-                              onOpen: schedule
+                              onTrack: inProgress
                                   ? () => _openScheduleTrack(context, order)
                                   : null,
                               onViewDetails: () {
-                                if (schedule) {
-                                  _openScheduleTrack(context, order);
-                                  return;
-                                }
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
                                     builder: (_) => OrderDetailsScreen(order: order),
@@ -796,12 +792,12 @@ class _SecondaryActionButton extends StatelessWidget {
 class _OrderCard extends StatelessWidget {
   final OrderRecord data;
   final VoidCallback onViewDetails;
-  final VoidCallback? onOpen;
+  final VoidCallback? onTrack;
 
   const _OrderCard({
     required this.data,
     required this.onViewDetails,
-    this.onOpen,
+    this.onTrack,
   });
 
   @override
@@ -835,7 +831,7 @@ class _OrderCard extends StatelessWidget {
     final displayId = data.id.startsWith('LD') ? '#${data.id}' : data.shortId;
     final itemLabel = data.totalItems == 1 ? '1 Item' : '${data.totalItems} Items';
 
-    final card = Container(
+    return Container(
       width: double.infinity,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
@@ -969,6 +965,27 @@ class _OrderCard extends StatelessWidget {
                   ),
                 ),
               ),
+              if (onTrack != null) ...[
+                const SizedBox(width: 10),
+                InkWell(
+                  onTap: onTrack,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: HomeColors.primary, width: 1.4),
+                    ),
+                    child: const Icon(
+                      Icons.location_on_outlined,
+                      color: HomeColors.primary,
+                      size: 22,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ],
@@ -977,7 +994,5 @@ class _OrderCard extends StatelessWidget {
         ],
       ),
     );
-    if (onOpen == null) return card;
-    return GestureDetector(onTap: onOpen, child: card);
   }
 }

@@ -3,11 +3,10 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../models/cart_item.dart';
 import '../../models/order_record.dart';
-import '../../routes/app_routes.dart';
 import '../../routes/route_args.dart';
 import '../../utils/pricing.dart';
+import '../cart/schedule_bottom_sheet.dart';
 import '../home/widgets/home_colors.dart';
-import 'order_invoice_screen.dart';
 import 'order_payment_screen.dart';
 
 class OrderDetailsScreen extends StatefulWidget {
@@ -38,17 +37,44 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     _deliveryAddress = line;
   }
 
-  void _trackOrder() {
+  bool get _cancelled => widget.order.backendStatus.toLowerCase() == 'cancelled';
+
+  bool get _canPay => widget.order.status == OrderStatus.inProgress && !_cancelled;
+
+  bool get _showInvoice => widget.order.status == OrderStatus.delivered && !_cancelled;
+
+  OrderTrackingArgs _trackingArgs() {
     final order = widget.order;
-    Navigator.of(context).pushNamed(
-      AppRoutes.orderTracking,
-      arguments: OrderTrackingArgs(
-        orderId: order.id,
-        pickupAddress: order.pickupAddress,
-        pickupLat: order.pickupLat,
-        pickupLng: order.pickupLng,
-        backendStatus: order.backendStatus,
-        orderType: order.orderTypeOrBoth,
+    final instant = order.orderType == 'instant_pickup';
+    final scheduled = order.orderType == 'schedule_pickup';
+    final at = order.scheduledPickupAt;
+    return OrderTrackingArgs(
+      orderId: order.id,
+      pickupAddress: order.pickupAddress,
+      pickupLat: order.pickupLat,
+      pickupLng: order.pickupLng,
+      backendStatus: order.backendStatus,
+      orderType: instant || scheduled ? order.orderType : 'both',
+      slotLabel: instant
+          ? 'Within 20 mins'
+          : (scheduled && at != null && order.timeLabel.isNotEmpty
+              ? schedulePickupHeadline(at, order.timeLabel)
+              : null),
+    );
+  }
+
+  void _payBill(_Bill bill) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => OrderPaymentScreen(
+          itemTotal: bill.items,
+          handling: bill.handling,
+          pickup: bill.pickup,
+          delivery: bill.delivery,
+          toPay: bill.toPay,
+          original: bill.original,
+          tracking: _trackingArgs(),
+        ),
       ),
     );
   }
@@ -215,30 +241,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: ElevatedButton(
-                      onPressed: _trackOrder,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: HomeColors.primary,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      child: Text(
-                        'Track your order',
-                        style: GoogleFonts.poppins(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
                   _Card(
                     child: Column(
                       children: [
@@ -334,55 +336,18 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => OrderPaymentScreen(
-                              itemTotal: bill.items,
-                              handling: bill.handling,
-                              pickup: bill.pickup,
-                              delivery: bill.delivery,
-                              toPay: bill.toPay,
-                              original: bill.original,
-                              tracking: OrderTrackingArgs(
-                                orderId: order.id,
-                                pickupAddress: order.pickupAddress,
-                                pickupLat: order.pickupLat,
-                                pickupLng: order.pickupLng,
-                                backendStatus: order.backendStatus,
-                                orderType: order.orderTypeOrBoth,
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: HomeColors.primary,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      child: Text(
-                        'Pay Bill',
-                        style: GoogleFonts.poppins(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
+                  if (_canPay) ...[
+                    const SizedBox(height: 12),
+                    _PrimaryButton(
+                      label: 'Pay your bill',
+                      onPressed: () => _payBill(bill),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
-            Container(
+            if (_showInvoice)
+              Container(
               color: const Color(0xFFF4F6FB),
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
               child: SizedBox(
@@ -392,7 +357,11 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                   onPressed: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) => OrderInvoiceScreen(orderId: order.id),
+                        builder: (_) => _InvoiceScreen(
+                          order: order,
+                          bill: bill,
+                          itemCount: itemCount,
+                        ),
                       ),
                     );
                   },
@@ -427,6 +396,256 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       if (note.isNotEmpty) return note;
     }
     return _defaultInstructions;
+  }
+}
+
+class _PrimaryButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onPressed;
+
+  const _PrimaryButton({
+    required this.label,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      height: 48,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: HomeColors.primary,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+        child: Text(
+          label,
+          style: GoogleFonts.poppins(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InvoiceScreen extends StatelessWidget {
+  final OrderRecord order;
+  final _Bill bill;
+  final int itemCount;
+
+  const _InvoiceScreen({
+    required this.order,
+    required this.bill,
+    required this.itemCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final displayId = order.id.startsWith('#') ? order.id : '#${order.id}';
+    return Scaffold(
+      backgroundColor: const Color(0xFFF4F6FB),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: SizedBox(
+                height: 44,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Material(
+                        color: Colors.white,
+                        shape: const CircleBorder(),
+                        elevation: 1,
+                        shadowColor: const Color(0x14000000),
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: () => Navigator.of(context).maybePop(),
+                          child: const SizedBox(
+                            width: 36,
+                            height: 36,
+                            child: Icon(
+                              Icons.chevron_left_rounded,
+                              color: Color(0xFF1F2430),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Text(
+                      'Invoice',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF1F2430),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                children: [
+                  _Card(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(displayId, style: _titleStyle(16)),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Placed ${order.placedDateLabel} · ${order.placedTimeLabel}',
+                          style: _mutedStyle(12),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _Card(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Items', style: _titleStyle(15)),
+                        const SizedBox(height: 12),
+                        if (order.items.isEmpty)
+                          Text(
+                            '${order.title} · $itemCount items',
+                            style: _mutedStyle(13),
+                          )
+                        else
+                          for (var i = 0; i < order.items.length; i++) ...[
+                            if (i > 0) const SizedBox(height: 14),
+                            _InvoiceService(item: order.items[i]),
+                          ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _Card(
+                    child: Column(
+                      children: [
+                        _BillRow(
+                          label: 'Item total',
+                          value: Pricing.inr(bill.items),
+                        ),
+                        const SizedBox(height: 10),
+                        _BillRow(
+                          label: 'Handling fee',
+                          value: Pricing.inr(bill.handling),
+                        ),
+                        const SizedBox(height: 10),
+                        _BillRow(
+                          label: 'Pickup fee',
+                          value: Pricing.inr(bill.pickup),
+                          trailing: 'Free',
+                        ),
+                        const SizedBox(height: 10),
+                        _BillRow(
+                          label: 'Delivery fee',
+                          value: Pricing.inr(bill.delivery),
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          child: Divider(height: 1, color: Color(0xFFE8ECF4)),
+                        ),
+                        Row(
+                          children: [
+                            Text('To pay', style: _titleStyle(15)),
+                            const Spacer(),
+                            Text(
+                              Pricing.inr(bill.toPay),
+                              style: GoogleFonts.poppins(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: HomeColors.primary,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Pickup fee waived · you saved ${Pricing.inr(bill.pickup)}',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: const Color(0xFF16A34A),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InvoiceService extends StatelessWidget {
+  final CartItem item;
+
+  const _InvoiceService({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = item.serviceName.trim().isEmpty ? item.category : item.serviceName;
+    final lines = item.quantities.entries.where((entry) => entry.value > 0).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(child: Text(name, style: _titleStyle(14))),
+            Text(
+              Pricing.inr(item.subtotalInr),
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF1F2430),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        if (lines.isEmpty)
+          Text('1 item', style: _mutedStyle(12))
+        else
+          for (final line in lines)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Text(
+                _lineText(item, line.key, line.value),
+                style: _mutedStyle(12),
+              ),
+            ),
+      ],
+    );
+  }
+
+  String _lineText(CartItem item, String name, int qty) {
+    final price = item.unitPricesInr?[name] ?? 0;
+    if (price <= 0) return '$name × $qty';
+    final unit = item.isPerPiece ? '${Pricing.inr(price)}/Pc' : '${Pricing.inr(price)}/kg';
+    return '$name × $qty · $unit · ${Pricing.inr(price * qty)}';
   }
 }
 

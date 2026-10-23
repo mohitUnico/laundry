@@ -9,6 +9,13 @@ import '../models/order_record.dart';
 class LocalOrdersStore {
   static const _key = 'local_customer_orders';
   static const _scheduleLockKey = 'local_order_schedule_locks';
+  Future<void> _tail = Future<void>.value();
+
+  Future<T> _enqueue<T>(Future<T> Function() action) {
+    final result = _tail.then((_) => action());
+    _tail = result.then((_) {}, onError: (_) {});
+    return result;
+  }
 
   static const _seedIds = {
     'LD90021',
@@ -19,7 +26,13 @@ class LocalOrdersStore {
     'LD90026',
   };
 
-  Future<List<OrderRecord>> load() async {
+  Future<List<OrderRecord>> load() => _enqueue(_load);
+
+  Future<void> saveChangedSchedule(OrderRecord order) => _enqueue(() => _saveChangedSchedule(order));
+
+  Future<void> upsert(OrderRecord order) => _enqueue(() => _upsert(order));
+
+  Future<List<OrderRecord>> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final stored = _decode(prefs.getString(_key));
     final locked = prefs.getStringList(_scheduleLockKey)?.toSet() ?? {};
@@ -43,15 +56,15 @@ class LocalOrdersStore {
     return orders;
   }
 
-  Future<void> saveChangedSchedule(OrderRecord order) async {
+  Future<void> _saveChangedSchedule(OrderRecord order) async {
     final prefs = await SharedPreferences.getInstance();
     final locks = prefs.getStringList(_scheduleLockKey)?.toSet() ?? {};
     locks.add(order.id);
     await prefs.setStringList(_scheduleLockKey, locks.toList());
-    await upsert(order);
+    await _upsert(order);
   }
 
-  Future<void> upsert(OrderRecord order) async {
+  Future<void> _upsert(OrderRecord order) async {
     final prefs = await SharedPreferences.getInstance();
     final stored = _decode(prefs.getString(_key));
     final next = [

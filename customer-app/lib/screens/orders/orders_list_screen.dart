@@ -10,7 +10,10 @@ import '../../providers/order_provider.dart';
 import '../../models/order_record.dart';
 import '../../utils/pricing.dart';
 import 'order_details_screen.dart';
+import 'cancel_pickup_screen.dart';
 import '../../utils/polling_config.dart';
+import '../../routes/app_routes.dart';
+import '../../routes/route_args.dart';
 import '../cart/schedule_bottom_sheet.dart';
 
 enum _OrdersFilter { all, active, completed }
@@ -97,6 +100,26 @@ class _OrdersListScreenState extends State<OrdersListScreen>
       // Orders will be preserved if fetch fails
       debugPrint('Failed to fetch orders: $e');
     }
+  }
+
+  void _openScheduleTrack(BuildContext context, OrderRecord order) {
+    final at = order.scheduledPickupAt;
+    final slot = order.timeLabel;
+    Navigator.of(context).pushNamed(
+      AppRoutes.orderTracking,
+      arguments: OrderTrackingArgs(
+        orderId: order.id,
+        pickupAddress: order.pickupAddress,
+        pickupLat: order.pickupLat,
+        pickupLng: order.pickupLng,
+        backendStatus: order.backendStatus,
+        orderType: 'schedule_pickup',
+        scheduleOnly: true,
+        slotLabel: at != null && slot.isNotEmpty
+            ? schedulePickupHeadline(at, slot)
+            : slot,
+      ),
+    );
   }
 
   List<OrderRecord> _filteredOrders(List<OrderRecord> orders) {
@@ -299,6 +322,9 @@ class _OrdersListScreenState extends State<OrdersListScreen>
                                 title: entry.title,
                                 subtitle: entry.subtitle,
                                 forDelivery: false,
+                                onOpen: entry.order.orderType == 'schedule_pickup'
+                                    ? () => _openScheduleTrack(context, entry.order)
+                                    : null,
                               ),
                             );
                             children.add(const SizedBox(height: 12));
@@ -352,10 +378,18 @@ class _OrdersListScreenState extends State<OrdersListScreen>
                         }
 
                         for (final order in list) {
+                          final schedule = order.orderType == 'schedule_pickup';
                           children.add(
                             _OrderCard(
                               data: order,
+                              onOpen: schedule
+                                  ? () => _openScheduleTrack(context, order)
+                                  : null,
                               onViewDetails: () {
+                                if (schedule) {
+                                  _openScheduleTrack(context, order);
+                                  return;
+                                }
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
                                     builder: (_) => OrderDetailsScreen(order: order),
@@ -547,6 +581,7 @@ class _UpcomingPickupCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final bool forDelivery;
+  final VoidCallback? onOpen;
 
   const _UpcomingPickupCard({
     required this.order,
@@ -554,6 +589,7 @@ class _UpcomingPickupCard extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.forDelivery,
+    this.onOpen,
   });
 
   @override
@@ -575,6 +611,11 @@ class _UpcomingPickupCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          InkWell(
+            onTap: onOpen,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
           Row(
             children: [
               const Icon(
@@ -604,6 +645,9 @@ class _UpcomingPickupCard extends StatelessWidget {
                 .copyWith(fontSize: 12),
           ),
           const SizedBox(height: 16),
+              ],
+            ),
+          ),
           Row(
             children: [
               Expanded(
@@ -631,6 +675,20 @@ class _UpcomingPickupCard extends StatelessWidget {
                 child: _SecondaryActionButton(
                   label: 'Cancel',
                   onTap: () {
+                    if (order.orderType == 'schedule_pickup' &&
+                        order.backendStatus.toLowerCase() == 'placed') {
+                      final id = order.id.trim();
+                      final code = id.toUpperCase().startsWith('LD') ? '#$id' : '#${order.shortId}';
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => CancelPickupScreen(
+                            orderId: order.id,
+                            orderCode: code,
+                          ),
+                        ),
+                      );
+                      return;
+                    }
                     showDialog(
                       context: context,
                       builder: (context) => AlertDialog(
@@ -734,28 +792,37 @@ class _SecondaryActionButton extends StatelessWidget {
 class _OrderCard extends StatelessWidget {
   final OrderRecord data;
   final VoidCallback onViewDetails;
+  final VoidCallback? onOpen;
 
   const _OrderCard({
     required this.data,
     required this.onViewDetails,
+    this.onOpen,
   });
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = switch (data.status) {
-      OrderStatus.inProgress => const Color(0xFFF97316),
-      OrderStatus.delivered => const Color(0xFF16A34A),
-    };
+    final cancelled = data.backendStatus.toLowerCase() == 'cancelled';
+    final statusColor = cancelled
+        ? HomeColors.muted
+        : switch (data.status) {
+            OrderStatus.inProgress => const Color(0xFFF97316),
+            OrderStatus.delivered => const Color(0xFF16A34A),
+          };
 
-    final statusText = switch (data.status) {
-      OrderStatus.inProgress => 'In progress',
-      OrderStatus.delivered => 'Delivered',
-    };
+    final statusText = cancelled
+        ? 'Cancelled'
+        : switch (data.status) {
+            OrderStatus.inProgress => 'In progress',
+            OrderStatus.delivered => 'Delivered',
+          };
 
-    final statusIcon = switch (data.status) {
-      OrderStatus.inProgress => Icons.access_time_rounded,
-      OrderStatus.delivered => Icons.check_circle_rounded,
-    };
+    final statusIcon = cancelled
+        ? Icons.cancel_outlined
+        : switch (data.status) {
+            OrderStatus.inProgress => Icons.access_time_rounded,
+            OrderStatus.delivered => Icons.check_circle_rounded,
+          };
 
     final hasKgWiseItems = data.items.any((item) => !item.isPerPiece);
     final hasOnlyPerPiece =
@@ -764,7 +831,7 @@ class _OrderCard extends StatelessWidget {
     final displayId = data.id.startsWith('LD') ? '#${data.id}' : data.shortId;
     final itemLabel = data.totalItems == 1 ? '1 Item' : '${data.totalItems} Items';
 
-    return Container(
+    final card = Container(
       width: double.infinity,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
@@ -906,5 +973,7 @@ class _OrderCard extends StatelessWidget {
         ],
       ),
     );
+    if (onOpen == null) return card;
+    return GestureDetector(onTap: onOpen, child: card);
   }
 }

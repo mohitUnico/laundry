@@ -26,7 +26,14 @@ class PickupCards extends StatelessWidget {
             height: height,
             dayLabel: 'Next - ${next.day}',
             timeLabel: next.time,
-            onTap: () => showScheduleBottomSheet(context),
+            onTap: () async {
+              final picked = await showScheduleBottomSheet(context);
+              if (picked == null || !context.mounted) return;
+              Navigator.of(context).pushNamed(
+                AppRoutes.scheduleConfirm,
+                arguments: picked,
+              );
+            },
           ),
         ),
         SizedBox(width: gap),

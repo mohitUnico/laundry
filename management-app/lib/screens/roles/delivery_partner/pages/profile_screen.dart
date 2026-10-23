@@ -7,6 +7,7 @@ import '../../../../utils/auth_storage.dart';
 import '../../../../utils/role_manager.dart';
 import '../../../../services/delivery_staff_app_service.dart';
 import '../../../../services/notification_service.dart';
+import '../../../../utils/mock_config.dart';
 import '../../../common/widgets/bottom_nav_bar.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -168,6 +169,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         statsFuture: _statsFuture,
                       ),
                       const SizedBox(height: 16),
+                      if (MockConfig.bypassBackend) ...[
+                        _MockLink(
+                          label: 'Active delivery',
+                          onTap: () => Navigator.pushNamed(context, AppRoutes.activeDelivery),
+                        ),
+                        const SizedBox(height: 10),
+                        _MockLink(
+                          label: 'Earnings',
+                          onTap: () => Navigator.pushNamed(context, AppRoutes.earnings),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
                       SizedBox(
                         height: 52,
                         child: DecoratedBox(
@@ -706,6 +719,25 @@ class _DocumentCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _MockLink extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+
+  const _MockLink({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 48,
+      width: double.infinity,
+      child: OutlinedButton(
+        onPressed: onTap,
+        child: Text(label),
       ),
     );
   }

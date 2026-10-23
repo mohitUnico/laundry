@@ -1,5 +1,5 @@
 const { Worker } = require('bullmq');
-const { getRedisConnection } = require('../../config/redis');
+const { getRedisWorkerConnection } = require('../../config/redis');
 const logger = require('../../utils/logger');
 const engine = require('./assignment-engine.service');
 
@@ -25,7 +25,7 @@ function startAssignmentWorker() {
                 await engine.finishTimeout(job.data.requestId);
             }
         },
-        { connection: getRedisConnection() }
+        { connection: getRedisWorkerConnection() }
     );
     worker.on('failed', (job, err) => {
         logger.error('Assignment job failed', { jobId: job?.id, error: err.message });

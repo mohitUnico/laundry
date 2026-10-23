@@ -4,7 +4,9 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 
 import '../services/api_service.dart';
+import '../services/mock/mock_store.dart';
 import '../utils/auth_storage.dart';
+import '../utils/mock_config.dart';
 
 /// Single SSE event from GET /api/v1/delivery-staff/events.
 class DeliverySseEvent {
@@ -51,6 +53,17 @@ class DeliveryEventsService {
   /// and Accept: text/event-stream. Emits parsed SSE events (e.g. "connected", "notification").
   /// Backend returns 403 if the token is not for delivery_staff.
   Stream<DeliverySseEvent> connect() async* {
+    if (MockConfig.bypassBackend) {
+      yield const DeliverySseEvent(event: 'connected', data: {});
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      yield DeliverySseEvent(
+        event: 'notification',
+        data: MockStore.instance.assignmentEvent(),
+      );
+      // Stay open so the home screen does not reconnect in a loop.
+      await Completer<void>().future;
+      return;
+    }
     final response = await _dio.get<ResponseBody>(
       '/delivery-staff/events',
       options: Options(responseType: ResponseType.stream),

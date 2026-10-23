@@ -12,6 +12,7 @@ import '../../../../services/delivery_shift_service.dart';
 import '../../../../services/delivery_staff_app_service.dart';
 import '../../../../services/delivery_events_service.dart';
 import '../../../../services/notification_service.dart';
+import '../../../../utils/mock_config.dart';
 import '../../../../utils/auth_storage.dart';
 import '../../../../utils/date_time_ist.dart';
 import '../../../../utils/polling_config.dart';
@@ -430,6 +431,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // Send first location immediately, then every 2 seconds via PATCH /api/v1/delivery-staff/location
     Future<void> sendLocationUpdate() async {
       if (!_isShiftActive) return;
+      if (MockConfig.bypassBackend) return;
       try {
         await _ensureLocationPermission();
         final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
@@ -1802,35 +1804,103 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  void _showTaskDialog(String deliveryId, String orderId, String customerName, bool isPickup) async {
-    // Fetch per-kg items if it's a pickup order
-    List<Map<String, dynamic>>? perKgItems;
-    if (isPickup && orderId.isNotEmpty) {
-      try {
-        final body = await _deliveryStaffAppService.getPerKgItems(orderId: orderId);
-        final data = body['data'];
-        // Handle null response (no per-kg items)
-        if (data == null) {
-          perKgItems = null;
-        } else if (data is Map) {
-          final items = data['perKgItems'];
-          if (items is List && items.isNotEmpty) {
-            perKgItems = items.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList();
-          } else {
-            perKgItems = null;
-          }
-        } else {
-          perKgItems = null;
-        }
-      } catch (e) {
-        // If fetch fails, continue without per-kg items
-        print('Error fetching per-kg items: $e');
-        perKgItems = null;
-      }
+  void _showTaskDialog(String deliveryId, String orderId, String customerName, bool isPickup) {
+    if (!isPickup) {
+      _showTaskDialogInternal(deliveryId, orderId, customerName, false, null);
+      return;
     }
 
-    if (!mounted) return;
-    _showTaskDialogInternal(deliveryId, orderId, customerName, isPickup, perKgItems);
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.white,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 28),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+          child: _PickupDetailsDialog(
+            customerName: customerName,
+            loadServices: () => _loadPickupServices(orderId),
+            onOpenService: (service) {
+              return Navigator.of(dialogContext).push<_PickupService>(
+                MaterialPageRoute(
+                  builder: (_) => _PickupServicePage(
+                    service: service,
+                    imagePicker: _imagePicker,
+                  ),
+                ),
+              );
+            },
+            onConfirm: (services) => _confirmPickup(
+              dialogContext: dialogContext,
+              deliveryId: deliveryId,
+              orderId: orderId,
+              services: services,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<List<_PickupService>> _loadPickupServices(String orderId) async {
+    if (orderId.isEmpty) return [];
+    try {
+      final body = await _deliveryStaffAppService.getPerKgItems(orderId: orderId);
+      return _pickupServicesFromPayload(body['data']);
+    } catch (e) {
+      debugPrint('Error fetching pickup services: $e');
+      return [];
+    }
+  }
+
+  Future<void> _confirmPickup({
+    required BuildContext dialogContext,
+    required String deliveryId,
+    required String orderId,
+    required List<_PickupService> services,
+  }) async {
+    final kgItems = <Map<String, dynamic>>[];
+    for (final service in services.where((s) => s.perKg)) {
+      if (service.clothes.isNotEmpty) {
+        final pieces = service.clothes.fold<int>(0, (sum, cloth) => sum + cloth.quantity);
+        if (service.orderItemId.isEmpty || pieces <= 0) continue;
+        kgItems.add({'orderItemId': service.orderItemId, 'weightKg': pieces.toDouble()});
+      } else {
+        service.weights.forEach((itemId, weight) {
+          if (itemId.isNotEmpty && weight > 0) {
+            kgItems.add({'orderItemId': itemId, 'weightKg': weight});
+          }
+        });
+      }
+    }
+    if (kgItems.isNotEmpty) {
+      await _deliveryStaffAppService.updatePerKgWeights(orderId: orderId, items: kgItems);
+    }
+
+    XFile? photo;
+    for (final service in services) {
+      if (service.photo != null) {
+        photo = service.photo;
+        break;
+      }
+    }
+    if (photo != null) {
+      await _deliveryStaffAppService.markPickedUpWithProof(deliveryId: deliveryId, file: photo);
+    } else if (!MockConfig.bypassBackend) {
+      throw Exception('Please take a photo first');
+    } else {
+      await _deliveryStaffAppService.markPickedUpWithProof(
+        deliveryId: deliveryId,
+        file: XFile('mock-pickup.jpg'),
+      );
+    }
+
+    _optimisticallyMarkPickupSubmitted(deliveryId);
+    if (!mounted || !dialogContext.mounted) return;
+    Navigator.of(dialogContext).pop();
+    _showSuccessPopup(context, message: 'Pickup Confirmed ✓');
+    _refreshHomeData();
   }
 
   void _showTaskDialogInternal(
@@ -2337,6 +2407,810 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           },
         );
       },
+    );
+  }
+}
+
+List<_PickupService> _pickupServicesFromPayload(dynamic data) {
+  if (data is! Map) return [];
+  final rawServices = data['services'];
+  if (rawServices is List && rawServices.isNotEmpty) {
+    return rawServices
+        .whereType<Map>()
+        .map((row) => _PickupService.fromMap(row.cast<String, dynamic>()))
+        .toList();
+  }
+
+  final perKg = data['perKgItems'];
+  if (perKg is! List || perKg.isEmpty) return [];
+
+  final grouped = <String, _PickupService>{};
+  for (final raw in perKg.whereType<Map>()) {
+    final map = raw.cast<String, dynamic>();
+    final name = (map['serviceName'] ?? map['categoryName'] ?? map['itemName'] ?? 'Service').toString();
+    final itemId = (map['orderItemId'] ?? '').toString();
+    final service = grouped.putIfAbsent(
+      name,
+      () => _PickupService(
+        orderItemId: itemId,
+        name: name,
+        perKg: true,
+        iconUrl: map['iconUrl']?.toString(),
+      ),
+    );
+    final weightRaw = map['weightKg'];
+    final weight = weightRaw is num ? weightRaw.toDouble() : double.tryParse('${weightRaw ?? ''}') ?? 0;
+    if (itemId.isNotEmpty) service.weights[itemId] = weight;
+  }
+  return grouped.values.toList();
+}
+
+class _PickupCloth {
+  final String name;
+  final String? iconUrl;
+  int quantity;
+
+  _PickupCloth({required this.name, this.iconUrl, this.quantity = 0});
+
+  _PickupCloth copy() => _PickupCloth(name: name, iconUrl: iconUrl, quantity: quantity);
+}
+
+class _PickupService {
+  final String orderItemId;
+  final String name;
+  final bool perKg;
+  final String? iconUrl;
+  final List<_PickupCloth> clothes;
+  final Map<String, double> weights;
+  String others;
+  XFile? photo;
+  bool completed;
+
+  _PickupService({
+    required this.orderItemId,
+    required this.name,
+    required this.perKg,
+    this.iconUrl,
+    List<_PickupCloth>? clothes,
+    Map<String, double>? weights,
+    this.others = '',
+    this.photo,
+    this.completed = false,
+  })  : clothes = clothes ?? <_PickupCloth>[],
+        weights = weights ?? <String, double>{};
+
+  String get unitLabel => perKg ? '/kg' : '/Pc';
+
+  bool get filled {
+    if (clothes.isNotEmpty) return clothes.any((cloth) => cloth.quantity > 0);
+    return weights.values.any((weight) => weight > 0);
+  }
+
+  _PickupService copy() {
+    return _PickupService(
+      orderItemId: orderItemId,
+      name: name,
+      perKg: perKg,
+      iconUrl: iconUrl,
+      clothes: clothes.map((cloth) => cloth.copy()).toList(),
+      weights: Map<String, double>.from(weights),
+      others: others,
+      photo: photo,
+      completed: completed,
+    );
+  }
+
+  void apply(_PickupService draft) {
+    clothes
+      ..clear()
+      ..addAll(draft.clothes.map((cloth) => cloth.copy()));
+    weights
+      ..clear()
+      ..addAll(draft.weights);
+    others = draft.others;
+    photo = draft.photo;
+    completed = true;
+  }
+
+  factory _PickupService.fromMap(Map<String, dynamic> map) {
+    final pricing = (map['pricingType'] ?? map['pricing_type'] ?? '').toString();
+    final clothRows = map['clothes'] ?? map['catalogue'] ?? map['selections'];
+    final clothes = <_PickupCloth>[];
+    if (clothRows is List) {
+      for (final raw in clothRows.whereType<Map>()) {
+        final row = raw.cast<String, dynamic>();
+        final name = (row['itemName'] ?? row['clothName'] ?? row['name'] ?? '').toString().trim();
+        if (name.isEmpty) continue;
+        final qtyRaw = row['quantity'];
+        clothes.add(
+          _PickupCloth(
+            name: name,
+            iconUrl: (row['iconUrl'] ?? row['imageUrl'])?.toString(),
+            quantity: qtyRaw is num ? qtyRaw.toInt() : int.tryParse('${qtyRaw ?? ''}') ?? 0,
+          ),
+        );
+      }
+    }
+    final perKg = pricing == 'per_kg' || pricing == 'per-kg' || (pricing.isEmpty && clothes.isEmpty);
+    return _PickupService(
+      orderItemId: (map['orderItemId'] ?? '').toString(),
+      name: (map['serviceName'] ?? map['categoryName'] ?? 'Service').toString(),
+      perKg: perKg,
+      iconUrl: (map['iconUrl'] ?? map['imageUrl'])?.toString(),
+      clothes: clothes,
+    );
+  }
+}
+
+class _PickupDetailsDialog extends StatefulWidget {
+  final String customerName;
+  final Future<List<_PickupService>> Function() loadServices;
+  final Future<_PickupService?> Function(_PickupService service) onOpenService;
+  final Future<void> Function(List<_PickupService> services) onConfirm;
+
+  const _PickupDetailsDialog({
+    required this.customerName,
+    required this.loadServices,
+    required this.onOpenService,
+    required this.onConfirm,
+  });
+
+  @override
+  State<_PickupDetailsDialog> createState() => _PickupDetailsDialogState();
+}
+
+class _PickupDetailsDialogState extends State<_PickupDetailsDialog> {
+  late Future<List<_PickupService>> _future;
+  List<_PickupService> _services = [];
+  bool _confirming = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = widget.loadServices().then((services) {
+      _services = services;
+      return services;
+    });
+  }
+
+  bool get _allDone => _services.isNotEmpty && _services.every((service) => service.completed);
+
+  Future<void> _open(int index) async {
+    final saved = await widget.onOpenService(_services[index].copy());
+    if (!mounted || saved == null) return;
+    setState(() => _services[index].apply(saved));
+  }
+
+  Future<void> _confirm() async {
+    if (!_allDone || _confirming) return;
+    setState(() => _confirming = true);
+    try {
+      await widget.onConfirm(_services);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+      setState(() => _confirming = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final height = MediaQuery.sizeOf(context).height * 0.82;
+    return SizedBox(
+      height: height,
+      child: FutureBuilder<List<_PickupService>>(
+        future: _future,
+        builder: (context, snapshot) {
+          final loading = snapshot.connectionState == ConnectionState.waiting;
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(18, 8, 10, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Pickup Details',
+                        style: AppTextStyles.header(color: const Color(0xFF1B2B4B)).copyWith(fontSize: 22),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close, color: Color(0xFF1B2B4B)),
+                    ),
+                  ],
+                ),
+                const Divider(height: 1, color: Color(0xFFE4E8F0)),
+                const SizedBox(height: 16),
+                RichText(
+                  text: TextSpan(
+                    text: 'Customer: ',
+                    style: AppTextStyles.body(color: const Color(0xFF8B95A7)).copyWith(fontSize: 16),
+                    children: [
+                      TextSpan(
+                        text: widget.customerName,
+                        style: AppTextStyles.title(color: const Color(0xFF1B2B4B)).copyWith(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  'Services',
+                  style: AppTextStyles.header(color: const Color(0xFF1B2B4B)).copyWith(fontSize: 20),
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : snapshot.hasError
+                          ? Center(
+                              child: Text(
+                                snapshot.error.toString().replaceFirst('Exception: ', ''),
+                                style: AppTextStyles.body(color: AppColors.textSecondary),
+                              ),
+                            )
+                          : _services.isEmpty
+                              ? Center(
+                                  child: Text(
+                                    'No services on this order',
+                                    style: AppTextStyles.body(color: AppColors.textSecondary),
+                                  ),
+                                )
+                              : ListView.separated(
+                                  itemCount: _services.length,
+                                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                                  itemBuilder: (context, index) {
+                                    final service = _services[index];
+                                    return _ServiceCard(
+                                      service: service,
+                                      onTap: () => _open(index),
+                                    );
+                                  },
+                                ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: OutlinedButton(
+                    onPressed: _allDone && !_confirming ? _confirm : null,
+                    style: OutlinedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: AppColors.primary,
+                      disabledForegroundColor: const Color(0xFFB7C3D6),
+                      side: BorderSide(
+                        color: _allDone ? AppColors.primary : const Color(0xFFD5DDEA),
+                        width: 1.6,
+                      ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                    ),
+                    child: _confirming
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(
+                            'Confirm Pickup',
+                            style: AppTextStyles.button(
+                              color: _allDone ? AppColors.primary : const Color(0xFFB7C3D6),
+                            ).copyWith(fontSize: 16, fontWeight: FontWeight.w700),
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ServiceCard extends StatelessWidget {
+  final _PickupService service;
+  final VoidCallback onTap;
+
+  const _ServiceCard({required this.service, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFE7ECF4)),
+            boxShadow: const [
+              BoxShadow(color: Color(0x12000000), blurRadius: 16, offset: Offset(0, 6)),
+            ],
+          ),
+          child: Row(
+            children: [
+              _RoundImage(url: service.iconUrl, size: 58),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      service.name,
+                      style: AppTextStyles.title(color: const Color(0xFF1B2B4B)).copyWith(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      service.unitLabel,
+                      style: AppTextStyles.body(color: const Color(0xFF9AA3B2)).copyWith(fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+              if (service.completed)
+                const Icon(Icons.check_circle, color: Color(0xFF22A45D), size: 22)
+              else
+                const Icon(Icons.chevron_right, color: Color(0xFFB0B8C6)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PickupServicePage extends StatefulWidget {
+  final _PickupService service;
+  final ImagePicker imagePicker;
+
+  const _PickupServicePage({required this.service, required this.imagePicker});
+
+  @override
+  State<_PickupServicePage> createState() => _PickupServicePageState();
+}
+
+class _PickupServicePageState extends State<_PickupServicePage> {
+  late final TextEditingController _othersController;
+  late final Map<String, TextEditingController> _weightControllers;
+
+  @override
+  void initState() {
+    super.initState();
+    _othersController = TextEditingController(text: widget.service.others);
+    _weightControllers = {
+      for (final entry in widget.service.weights.entries)
+        entry.key: TextEditingController(text: entry.value > 0 ? entry.value.toString() : ''),
+    };
+  }
+
+  @override
+  void dispose() {
+    _othersController.dispose();
+    for (final controller in _weightControllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  int get _totalPieces => widget.service.clothes.fold<int>(0, (sum, cloth) => sum + cloth.quantity);
+
+  Future<void> _takePhoto() async {
+    final status = await Permission.camera.request();
+    if (!status.isGranted) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Camera permission is required to take photos')),
+      );
+      return;
+    }
+    final image = await widget.imagePicker.pickImage(source: ImageSource.camera, imageQuality: 80);
+    if (image == null || !mounted) return;
+    setState(() => widget.service.photo = image);
+  }
+
+  void _save() {
+    final service = widget.service;
+    service.others = _othersController.text.trim();
+    if (service.clothes.isEmpty) {
+      var valid = _weightControllers.isNotEmpty;
+      _weightControllers.forEach((id, controller) {
+        final weight = double.tryParse(controller.text.trim());
+        if (weight == null || weight <= 0) {
+          valid = false;
+          return;
+        }
+        service.weights[id] = weight;
+      });
+      if (!valid) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Enter a weight for this service')),
+        );
+        return;
+      }
+    } else if (_totalPieces <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add at least one item')),
+      );
+      return;
+    }
+    if (service.photo == null && !MockConfig.bypassBackend) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please take a photo first')),
+      );
+      return;
+    }
+    Navigator.of(context).pop(service);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final service = widget.service;
+    final summary = service.clothes.where((cloth) => cloth.quantity > 0).toList();
+    return Scaffold(
+      backgroundColor: const Color(0xFFF7F8FC),
+      body: SafeArea(
+        child: Column(
+          children: [
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: SizedBox(
+                height: 44,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: InkWell(
+                        onTap: () => Navigator.of(context).pop(),
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: const Color(0xFFE6EAF2)),
+                          ),
+                          child: const Icon(Icons.arrow_back_ios_new_rounded, size: 16, color: Color(0xFF1B2B4B)),
+                        ),
+                      ),
+                    ),
+                    Text(
+                      service.name,
+                      style: AppTextStyles.header(color: const Color(0xFF1B2B4B)).copyWith(fontSize: 18),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                children: [
+                  if (service.clothes.isEmpty)
+                    ...service.weights.keys.map((id) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: TextField(
+                          controller: _weightControllers[id],
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: InputDecoration(
+                            labelText: 'Weight (kg)',
+                            filled: true,
+                            fillColor: Colors.white,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(18)),
+                          ),
+                        ),
+                      );
+                    })
+                  else
+                    ...service.clothes.map((cloth) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _ClothRow(
+                          cloth: cloth,
+                          onMinus: () => setState(() => cloth.quantity = (cloth.quantity - 1).clamp(0, 999)),
+                          onPlus: () => setState(() => cloth.quantity = (cloth.quantity + 1).clamp(0, 999)),
+                        ),
+                      );
+                    }),
+                  if (service.clothes.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    _OthersBox(controller: _othersController),
+                    const SizedBox(height: 12),
+                    _SummaryBox(lines: summary, total: _totalPieces),
+                  ],
+                  const SizedBox(height: 14),
+                  Text(
+                    'Upload Photo*',
+                    style: AppTextStyles.subtitle(color: AppColors.textSecondary),
+                  ),
+                  const SizedBox(height: 10),
+                  _PhotoBox(photo: service.photo, onTap: _takePhoto),
+                  const SizedBox(height: 16),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF2E3CCB), Color(0xFF2F6BFF)],
+                      ),
+                      borderRadius: BorderRadius.circular(28),
+                    ),
+                    child: SizedBox(
+                      height: 54,
+                      width: double.infinity,
+                      child: TextButton(
+                        onPressed: _save,
+                        child: Text(
+                          'Add to Cart',
+                          style: AppTextStyles.button(color: Colors.white).copyWith(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ClothRow extends StatelessWidget {
+  final _PickupCloth cloth;
+  final VoidCallback onMinus;
+  final VoidCallback onPlus;
+
+  const _ClothRow({required this.cloth, required this.onMinus, required this.onPlus});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 76,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE7ECF4)),
+        boxShadow: const [BoxShadow(color: Color(0x0A000000), blurRadius: 16, offset: Offset(0, 8))],
+      ),
+      child: Row(
+        children: [
+          _RoundImage(url: cloth.iconUrl, size: 58, radius: 14),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              cloth.name,
+              style: AppTextStyles.title(color: const Color(0xFF1B2B4B)).copyWith(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          _QtyButton(icon: Icons.remove_rounded, onTap: onMinus),
+          const SizedBox(width: 10),
+          Text(
+            '${cloth.quantity}',
+            style: AppTextStyles.header(color: const Color(0xFF1B2B4B)).copyWith(fontSize: 15),
+          ),
+          const SizedBox(width: 10),
+          _QtyButton(icon: Icons.add_rounded, onTap: onPlus),
+        ],
+      ),
+    );
+  }
+}
+
+class _QtyButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _QtyButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        width: 26,
+        height: 26,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: AppColors.primary),
+        ),
+        child: Icon(icon, size: 16, color: AppColors.primary),
+      ),
+    );
+  }
+}
+
+class _OthersBox extends StatelessWidget {
+  final TextEditingController controller;
+
+  const _OthersBox({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE7ECF4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Others',
+            style: AppTextStyles.title(color: const Color(0xFF1B2B4B)).copyWith(fontSize: 13, fontWeight: FontWeight.w700),
+          ),
+          TextField(
+            controller: controller,
+            decoration: const InputDecoration(
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(vertical: 8),
+              border: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFFE7ECF4))),
+              enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFFE7ECF4))),
+              focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: AppColors.primary)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryBox extends StatelessWidget {
+  final List<_PickupCloth> lines;
+  final int total;
+
+  const _SummaryBox({required this.lines, required this.total});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE7ECF4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Order Summary',
+            style: AppTextStyles.title(color: const Color(0xFF1B2B4B)).copyWith(fontSize: 13, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          ...lines.map(
+            (cloth) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(cloth.name, style: AppTextStyles.body(color: const Color(0xFF1B2B4B)).copyWith(fontSize: 13)),
+                  ),
+                  Text('${cloth.quantity}', style: AppTextStyles.body(color: const Color(0xFF1B2B4B)).copyWith(fontSize: 13)),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Divider(height: 1, color: Color(0xFFE7ECF4)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Total',
+                  style: AppTextStyles.title(color: AppColors.primary).copyWith(fontSize: 14, fontWeight: FontWeight.w700),
+                ),
+              ),
+              Text(
+                '$total',
+                style: AppTextStyles.title(color: AppColors.primary).copyWith(fontSize: 14, fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PhotoBox extends StatelessWidget {
+  final XFile? photo;
+  final VoidCallback onTap;
+
+  const _PhotoBox({required this.photo, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          width: double.infinity,
+          height: photo == null ? 140 : 200,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFE7ECF4)),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: photo == null
+              ? Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: const Color(0xFFE7ECF4)),
+                      ),
+                      child: const Icon(Icons.photo_camera_outlined, color: AppColors.primary),
+                    ),
+                    const SizedBox(height: 8),
+                    Text('Take a Photo', style: AppTextStyles.subtitle(color: AppColors.textSecondary)),
+                  ],
+                )
+              : Image.file(File(photo!.path), fit: BoxFit.cover),
+        ),
+      ),
+    );
+  }
+}
+
+class _RoundImage extends StatelessWidget {
+  final String? url;
+  final double size;
+  final double radius;
+
+  const _RoundImage({required this.url, required this.size, this.radius = 16});
+
+  @override
+  Widget build(BuildContext context) {
+    final child = (url == null || url!.isEmpty)
+        ? const Icon(Icons.local_laundry_service_outlined, color: AppColors.primary)
+        : Image.network(
+            url!,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => const Icon(Icons.local_laundry_service_outlined, color: AppColors.primary),
+          );
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      child: Container(
+        width: size,
+        height: size,
+        color: const Color(0xFFEEF3FF),
+        child: child,
+      ),
     );
   }
 }

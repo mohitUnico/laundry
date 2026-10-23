@@ -2,6 +2,8 @@ import 'package:dio/dio.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../services/api_service.dart';
+import '../services/mock/mock_store.dart';
+import '../utils/mock_config.dart';
 
 class DeliveryStaffAppService {
   final ApiService _api = ApiService();
@@ -22,6 +24,7 @@ class DeliveryStaffAppService {
   }
 
   Future<Map<String, dynamic>> getHomeStats() async {
+    if (MockConfig.bypassBackend) return MockStore.instance.homeStats();
     try {
       final res = await _api.get('/delivery-staff-app/home/stats');
       final body = res.data;
@@ -33,6 +36,13 @@ class DeliveryStaffAppService {
   }
 
   Future<Map<String, dynamic>> getProfile() async {
+    if (MockConfig.bypassBackend) {
+      final current = MockStore.instance.currentDeliveryUser;
+      if (current == null) {
+        throw Exception('No mock profile yet');
+      }
+      return MockStore.instance.deliveryProfile(current);
+    }
     try {
       final res = await _api.get('/delivery-staff-app/profile');
       final body = res.data;
@@ -44,6 +54,7 @@ class DeliveryStaffAppService {
   }
 
   Future<Map<String, dynamic>> listAcceptedOrders({int page = 1, int limit = 20}) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.acceptedOrders();
     try {
       final res = await _api.get(
         '/delivery-staff-app/orders/accepted',
@@ -63,6 +74,7 @@ class DeliveryStaffAppService {
     DateTime? from,
     DateTime? to,
   }) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.deliveryHistory();
     try {
       final qp = <String, dynamic>{
         'page': page,
@@ -84,6 +96,7 @@ class DeliveryStaffAppService {
   }
 
   Future<Map<String, dynamic>> getPerKgItems({required String orderId}) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.perKgItems(orderId);
     try {
       final res = await _api.get('/delivery-staff-app/orders/$orderId/items/weights');
       final body = res.data;
@@ -98,6 +111,7 @@ class DeliveryStaffAppService {
     required String orderId,
     required List<Map<String, dynamic>> items,
   }) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.updateWeights(orderId);
     try {
       final res = await _api.patch(
         '/delivery-staff-app/orders/$orderId/items/weights',
@@ -115,6 +129,7 @@ class DeliveryStaffAppService {
     required String deliveryId,
     required XFile file,
   }) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.markPickedUp(deliveryId);
     try {
       final formData = FormData.fromMap({
         'file': await MultipartFile.fromFile(
@@ -138,6 +153,7 @@ class DeliveryStaffAppService {
     required String deliveryId,
     required XFile file,
   }) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.markDelivered(deliveryId);
     try {
       final formData = FormData.fromMap({
         'file': await MultipartFile.fromFile(
@@ -158,6 +174,7 @@ class DeliveryStaffAppService {
   }
 
   Future<Map<String, dynamic>> markSubmittedToCm({required String deliveryId}) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.markSubmitted(deliveryId);
     try {
       final res = await _api.patch(
         '/delivery-staff-app/deliveries/$deliveryId/status',
@@ -176,6 +193,7 @@ class DeliveryStaffAppService {
     required double latitude,
     required double longitude,
   }) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.updateLocation();
     try {
       final res = await _api.patch(
         '/delivery-staff/location',
@@ -190,6 +208,7 @@ class DeliveryStaffAppService {
   }
 
   Future<Map<String, dynamic>> acceptAssignmentRequest({required String requestId}) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.acceptRequest(requestId);
     try {
       final res = await _api.post('/delivery-staff/assignment-requests/$requestId/accept');
       final body = res.data;
@@ -204,6 +223,7 @@ class DeliveryStaffAppService {
     required String requestId,
     String? rejectionNote,
   }) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.rejectRequest(requestId);
     try {
       final res = await _api.post(
         '/delivery-staff/assignment-requests/$requestId/reject',

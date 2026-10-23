@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 
 import '../services/api_service.dart';
+import '../services/mock/mock_store.dart';
+import '../utils/mock_config.dart';
 
 class ServiceManQueueService {
   final ApiService _api = ApiService();
@@ -43,6 +45,7 @@ class ServiceManQueueService {
     int page = 1,
     int limit = 20,
   }) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.queue(statusCsv: statusCsv);
     try {
       final res = await _api.get(
         '/staff-app/service-man/queue',
@@ -64,6 +67,7 @@ class ServiceManQueueService {
     int page = 1,
     int limit = 20,
   }) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.queueCompleted();
     try {
       final res = await _api.get(
         '/staff-app/service-man/completed',
@@ -82,6 +86,7 @@ class ServiceManQueueService {
     required String action,
     String? comments,
   }) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.updateQueue(queueId, action);
     try {
       final res = await _api.patch(
         '/staff-app/service-man/queue/$queueId',

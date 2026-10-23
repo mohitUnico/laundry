@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 
 import '../services/api_service.dart';
+import '../services/mock/mock_store.dart';
+import '../utils/mock_config.dart';
 
 class AdminDeliveryStaffService {
   final ApiService _api = ApiService();
@@ -46,6 +48,7 @@ class AdminDeliveryStaffService {
     int limit = 20,
     bool onlyOnShift = true,
   }) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.deliveryPartners();
     try {
       // Always send onlyOnShift parameter explicitly for assignment screens
       // This ensures only delivery staff with active shifts are shown

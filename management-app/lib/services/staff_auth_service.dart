@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 
 import '../services/api_service.dart';
+import '../services/mock/mock_store.dart';
+import '../utils/mock_config.dart';
 
 class StaffAuthService {
   final ApiService _api = ApiService();
@@ -40,6 +42,10 @@ class StaffAuthService {
   }
 
   Future<int?> sendCollectionManagerOtp({required String email}) async {
+    if (MockConfig.bypassBackend) {
+      MockStore.instance.setScenarioFromEmail(email);
+      return 300;
+    }
     try {
       final res = await _api.post(
         '/auth/collection-manager/send-otp',
@@ -64,6 +70,9 @@ class StaffAuthService {
     required String email,
     required String otp,
   }) async {
+    if (MockConfig.bypassBackend) {
+      return _mockStaffLogin(role: 'Collection Manager', email: email, otp: otp);
+    }
     try {
       final res = await _api.post(
         '/auth/collection-manager/verify-otp',
@@ -78,6 +87,10 @@ class StaffAuthService {
   }
 
   Future<int?> sendDistributionManagerOtp({required String email}) async {
+    if (MockConfig.bypassBackend) {
+      MockStore.instance.setScenarioFromEmail(email);
+      return 300;
+    }
     try {
       final res = await _api.post(
         '/auth/distribution-manager/send-otp',
@@ -102,6 +115,9 @@ class StaffAuthService {
     required String email,
     required String otp,
   }) async {
+    if (MockConfig.bypassBackend) {
+      return _mockStaffLogin(role: 'Distribution Manager', email: email, otp: otp);
+    }
     try {
       final res = await _api.post(
         '/auth/distribution-manager/verify-otp',
@@ -118,6 +134,10 @@ class StaffAuthService {
   Future<int?> sendServiceManOtp({
     required String email,
   }) async {
+    if (MockConfig.bypassBackend) {
+      MockStore.instance.setScenarioFromEmail(email);
+      return 300;
+    }
     try {
       final res = await _api.post(
         '/auth/service-man/send-otp',
@@ -142,6 +162,9 @@ class StaffAuthService {
     required String email,
     required String otp,
   }) async {
+    if (MockConfig.bypassBackend) {
+      return _mockStaffLogin(role: 'Service Man', email: email, otp: otp);
+    }
     try {
       final res = await _api.post(
         '/auth/service-man/verify-otp',
@@ -153,6 +176,25 @@ class StaffAuthService {
     } catch (e) {
       throw Exception(_extractErrorMessage(e, fallback: 'Failed to verify OTP'));
     }
+  }
+
+  Map<String, dynamic> _mockStaffLogin({
+    required String role,
+    required String email,
+    required String otp,
+  }) {
+    if (otp.trim() == '000000') {
+      throw Exception('Invalid OTP');
+    }
+    MockStore.instance.setScenarioFromEmail(email);
+    return {
+      'success': true,
+      'data': {
+        'isNewUser': false,
+        'token': 'mock-token',
+        'user': MockStore.instance.staffUserForRole(role, email),
+      },
+    };
   }
 }
 

@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 
 import '../services/api_service.dart';
+import '../services/mock/mock_store.dart';
+import '../utils/mock_config.dart';
 
 class CollectionManagerOrdersService {
   final ApiService _api = ApiService();
@@ -42,6 +44,7 @@ class CollectionManagerOrdersService {
     int page = 1,
     int limit = 20,
   }) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.cmIncoming();
     try {
       final res = await _api.get(
         '/staff-app/collection-manager/orders/incoming',
@@ -59,6 +62,7 @@ class CollectionManagerOrdersService {
     int page = 1,
     int limit = 20,
   }) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.cmReceived();
     try {
       final res = await _api.get(
         '/staff-app/collection-manager/orders/received',
@@ -73,6 +77,7 @@ class CollectionManagerOrdersService {
   }
 
   Future<Map<String, dynamic>> getPerKgItems({required String orderId}) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.perKgItems(orderId);
     try {
       final res = await _api.get('/staff-app/collection-manager/orders/$orderId/items/weights');
       final body = res.data;
@@ -87,6 +92,7 @@ class CollectionManagerOrdersService {
     required String orderId,
     required List<Map<String, dynamic>> items,
   }) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.updateWeights(orderId);
     try {
       final res = await _api.patch(
         '/staff-app/collection-manager/orders/$orderId/items/weights',
@@ -101,6 +107,7 @@ class CollectionManagerOrdersService {
   }
 
   Future<Map<String, dynamic>> getOrderItems({required String orderId}) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.orderItems(orderId);
     try {
       final res = await _api.get('/staff-app/collection-manager/orders/$orderId/items');
       final body = res.data;
@@ -112,6 +119,7 @@ class CollectionManagerOrdersService {
   }
 
   Future<Map<String, dynamic>> markOrderReceived({required String orderId}) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.markReceived(orderId);
     try {
       final res = await _api.post('/staff-app/collection-manager/orders/$orderId/receive');
       final body = res.data;
@@ -123,6 +131,7 @@ class CollectionManagerOrdersService {
   }
 
   Future<Map<String, dynamic>> submitToServices({required String orderId}) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.submitToServices(orderId);
     try {
       final res = await _api.post('/staff-app/collection-manager/orders/$orderId/submit-to-services');
       final body = res.data;
@@ -134,6 +143,7 @@ class CollectionManagerOrdersService {
   }
 
   Future<Map<String, dynamic>> generateInvoice({required String orderId}) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.generateInvoice(orderId);
     try {
       final res = await _api.post('/staff-app/collection-manager/orders/$orderId/generate-invoice');
       final body = res.data;
@@ -148,6 +158,7 @@ class CollectionManagerOrdersService {
     required String orderId,
     required String deliveryStaffId,
   }) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.assignPickup(orderId, deliveryStaffId);
     try {
       final res = await _api.post(
         '/staff-app/collection-manager/orders/$orderId/assign-pickup-direct',
@@ -165,6 +176,7 @@ class CollectionManagerOrdersService {
     int page = 1,
     int limit = 20,
   }) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.cmHistory();
     try {
       final res = await _api.get(
         '/staff-app/collection-manager/orders/history',

@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 
 import '../services/api_service.dart';
+import '../services/mock/mock_store.dart';
+import '../utils/mock_config.dart';
 
 class DeliveryAuthService {
   final ApiService _api = ApiService();
@@ -43,6 +45,10 @@ class DeliveryAuthService {
   }
 
   Future<int?> sendOtp({required String email}) async {
+    if (MockConfig.bypassBackend) {
+      MockStore.instance.setScenarioFromEmail(email);
+      return 300;
+    }
     try {
       final res = await _api.post(
         '/auth/delivery/send-otp',
@@ -67,6 +73,32 @@ class DeliveryAuthService {
     required String email,
     required String otp,
   }) async {
+    if (MockConfig.bypassBackend) {
+      if (otp.trim() == '000000') {
+        throw Exception('Invalid OTP');
+      }
+      MockStore.instance.setScenarioFromEmail(email);
+      final existing = MockStore.instance.deliveryUser(email);
+      if (existing != null) {
+        MockStore.instance.lastDeliveryEmail = email.toLowerCase();
+        return {
+          'success': true,
+          'data': {
+            'isNewUser': false,
+            'token': 'mock-token',
+            'user': existing,
+          },
+        };
+      }
+      return {
+        'success': true,
+        'data': {
+          'isNewUser': true,
+          'sessionToken': 'mock-session',
+          'expiresIn': 300,
+        },
+      };
+    }
     try {
       final res = await _api.post(
         '/auth/delivery/verify-otp',

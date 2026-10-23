@@ -5,7 +5,9 @@ import 'package:flutter/foundation.dart';
 import '../models/delivery_registration_draft.dart';
 import '../services/delivery_auth_service.dart';
 import '../services/staff_auth_service.dart';
+import '../services/mock/mock_store.dart';
 import '../utils/auth_storage.dart';
+import '../utils/mock_config.dart';
 import '../utils/role_manager.dart';
 import '../utils/role_constants.dart';
 
@@ -348,11 +350,43 @@ class AuthProvider with ChangeNotifier {
     if (address == null || address.trim().isEmpty) {
       throw Exception('Address is required');
     }
-    if (latitude == null || longitude == null) {
+    final mockMode = MockConfig.bypassBackend;
+    if (!mockMode && (profileImage == null || idProof == null || drivingLicense == null)) {
+      throw Exception('All documents are required');
+    }
+    final resolvedLatitude = latitude ?? (mockMode ? MockConfig.debugLatitude : null);
+    final resolvedLongitude = longitude ?? (mockMode ? MockConfig.debugLongitude : null);
+    if (resolvedLatitude == null || resolvedLongitude == null) {
       throw Exception('Location is required');
     }
-    if (profileImage == null || idProof == null || drivingLicense == null) {
-      throw Exception('All documents are required');
+
+    if (mockMode) {
+      _setLoading(true);
+      _error = null;
+      notifyListeners();
+      try {
+        final deliveryStaff = MockStore.instance.registerDeliveryUser(
+          email: draft.email,
+          fullName: fullName,
+          phone: draft.phone,
+          address: address,
+          vehicleType: vehicleType,
+          vehicleNumber: vehicleNumber,
+        );
+        _partner = deliveryStaff;
+        await AuthStorage.saveDeliveryStaff(deliveryStaff);
+        _currentUser = deliveryStaff;
+        await AuthStorage.saveCurrentUser(deliveryStaff);
+        _token = 'mock-token';
+        await AuthStorage.saveToken(_token!);
+        _isAuthenticated = true;
+        _isVerified = false;
+        _deliveryDraft = null;
+        notifyListeners();
+      } finally {
+        _setLoading(false);
+      }
+      return;
     }
 
     _setLoading(true);
@@ -367,12 +401,12 @@ class AuthProvider with ChangeNotifier {
         vehicleType: vehicleType,
         vehicleNumber: vehicleNumber,
         address: address,
-        latitude: latitude,
-        longitude: longitude,
+        latitude: resolvedLatitude,
+        longitude: resolvedLongitude,
         idProofType: draft.idProofType,
-        profileImage: profileImage,
-        idProofDocument: idProof,
-        drivingLicenseFile: drivingLicense,
+        profileImage: profileImage!,
+        idProofDocument: idProof!,
+        drivingLicenseFile: drivingLicense!,
       );
 
       final data = body['data'];

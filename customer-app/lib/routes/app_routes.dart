@@ -25,6 +25,7 @@ import '../screens/payment/payment_successful_screen.dart';
 import '../screens/orders/order_successful_screen.dart';
 import '../screens/home/widgets/regular_wash_bottom_sheet.dart';
 import '../screens/notifications/notifications_screen.dart';
+import '../screens/profile/profile_screen.dart';
 import '../screens/profile/payment_methods_screen.dart';
 import '../screens/profile/favorites_screen.dart';
 import '../screens/profile/help_center_screen.dart';
@@ -46,6 +47,7 @@ class AppRoutes {
   static const String orders = '/orders';
   static const String cart = '/cart';
   static const String profile = '/profile';
+  static const String pricing = '/pricing';
   static const String washAndFold = '/services/wash-and-fold';
   static const String washAndIron = '/services/regular-wash/wash-and-iron';
   static const String ironOnly = '/services/regular-wash/iron-only';
@@ -84,87 +86,28 @@ class AppRoutes {
       locationPermission: (context) => const LocationPermissionScreen(),
       selectLocation: (context) => const SelectLocationScreen(),
       shell: (context) => const MainShellScreen(),
-      // Keep these legacy routes, but always land in the Shell so bottom nav
-      // is persistent everywhere.
+      // Home, orders, cart, and pricing stay in the shell so the bottom nav
+      // remains on screen. Account opens from the profile photo.
       home: (context) => const MainShellScreen(initialIndex: 0),
       orders: (context) => const MainShellScreen(initialIndex: 1),
       cart: (context) => const MainShellScreen(initialIndex: 2),
-      profile: (context) => const MainShellScreen(initialIndex: 3),
-      washAndFold: (context) =>
-          RegularWashServiceScreen(
+      profile: (context) => const ProfileScreen(showBack: true),
+      pricing: (context) => const MainShellScreen(initialIndex: 3),
+      washAndFold: (context) => RegularWashServiceScreen(
             serviceTitle: 'Wash & Fold',
-            serviceId: (() {
-              final sel =
-                  ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
-              return sel?.serviceId;
-            })(),
-            perKgPrice: (() {
-              final sel =
-                  ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
-              return sel?.perKgPrice;
-            })(),
-            showPrices: (() {
-              final sel =
-                  ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
-              return sel == null ? true : sel.pricingType == RegularWashPricingType.perPiece;
-            })(),
+            showPrices: _regularWashShowsPrices(context),
           ),
-      washAndIron: (context) =>
-          RegularWashServiceScreen(
+      washAndIron: (context) => RegularWashServiceScreen(
             serviceTitle: 'Wash & Iron',
-            serviceId: (() {
-              final sel =
-                  ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
-              return sel?.serviceId;
-            })(),
-            perKgPrice: (() {
-              final sel =
-                  ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
-              return sel?.perKgPrice;
-            })(),
-            showPrices: (() {
-              final sel =
-                  ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
-              return sel == null ? true : sel.pricingType == RegularWashPricingType.perPiece;
-            })(),
+            showPrices: _regularWashShowsPrices(context),
           ),
-      ironOnly: (context) =>
-          RegularWashServiceScreen(
+      ironOnly: (context) => RegularWashServiceScreen(
             serviceTitle: 'Iron only',
-            serviceId: (() {
-              final sel =
-                  ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
-              return sel?.serviceId;
-            })(),
-            perKgPrice: (() {
-              final sel =
-                  ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
-              return sel?.perKgPrice;
-            })(),
-            showPrices: (() {
-              final sel =
-                  ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
-              return sel == null ? true : sel.pricingType == RegularWashPricingType.perPiece;
-            })(),
+            showPrices: _regularWashShowsPrices(context),
           ),
-      handWash: (context) =>
-          RegularWashServiceScreen(
+      handWash: (context) => RegularWashServiceScreen(
             serviceTitle: 'Hand Wash',
-            serviceId: (() {
-              final sel =
-                  ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
-              return sel?.serviceId;
-            })(),
-            perKgPrice: (() {
-              final sel =
-                  ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
-              return sel?.perKgPrice;
-            })(),
-            showPrices: (() {
-              final sel =
-                  ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
-              return sel == null ? true : sel.pricingType == RegularWashPricingType.perPiece;
-            })(),
+            showPrices: _regularWashShowsPrices(context),
           ),
       proClean: (context) => const ProCleanScreen(),
       dryCleaning: (context) => const DryCleaningScreen(),
@@ -198,4 +141,10 @@ class AppRoutes {
       addressForm: (context) => const AddressFormScreen(),
     };
   }
+}
+
+bool _regularWashShowsPrices(BuildContext context) {
+  final sel = ModalRoute.of(context)?.settings.arguments as RegularWashSelection?;
+  if (sel == null) return true;
+  return sel.pricingType == RegularWashPricingType.perPiece;
 }

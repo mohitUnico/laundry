@@ -1,107 +1,71 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme/app_text_styles.dart';
-import '../../../models/service_item.dart';
-import '../../../widgets/catalog_image.dart';
 import 'home_colors.dart';
 
 enum ProCleanPricingType { kgWise, perPiece }
 
 class ProCleanSelection {
-  final String? serviceId;
   final String categoryName;
   final ProCleanPricingType pricingType;
-  final double? perKgPrice;
 
   const ProCleanSelection({
-    required this.serviceId,
     required this.categoryName,
     required this.pricingType,
-    this.perKgPrice,
   });
 }
 
 class ProCleanBottomSheet extends StatefulWidget {
-  const ProCleanBottomSheet({super.key, required this.services, this.isLoading = false});
+  const ProCleanBottomSheet({super.key});
 
-  static Future<ProCleanSelection?> show(
-    BuildContext context, {
-    required List<ServiceItem> services,
-    bool isLoading = false,
-  }) {
+  static Future<ProCleanSelection?> show(BuildContext context) {
     return showModalBottomSheet<ProCleanSelection?>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => ProCleanBottomSheet(services: services, isLoading: isLoading),
+      builder: (_) => const ProCleanBottomSheet(),
     );
   }
-
-  final List<ServiceItem> services;
-  final bool isLoading;
 
   @override
   State<ProCleanBottomSheet> createState() => _ProCleanBottomSheetState();
 }
 
 class _ProCleanBottomSheetState extends State<ProCleanBottomSheet> {
-  late _ProCleanCategory _selectedCategory;
+  String _selectedCategory = _categories.first.title;
   ProCleanPricingType _pricingType = ProCleanPricingType.kgWise;
 
   static const _categories = <_ProCleanCategory>[
     _ProCleanCategory(
       title: 'Dry Cleaning',
       subtitle: 'Deep cleaning required',
+      imageAsset: 'assets/images/pro_clean/dry_cleaning.png',
     ),
     _ProCleanCategory(
       title: 'Stain Treatment',
       subtitle: 'Pre-treatment for stains',
+      imageAsset: 'assets/images/pro_clean/stain_treatment.png',
     ),
     _ProCleanCategory(
       title: 'Shoe Cleaning',
       subtitle: 'Fresh and spotless shoes',
+      imageAsset: 'assets/images/pro_clean/shoe_cleaning.png',
     ),
     _ProCleanCategory(
       title: 'Winter Wear',
       subtitle: 'Clean, cozy, and hot',
+      imageAsset: 'assets/images/pro_clean/winter_wear.png',
     ),
     _ProCleanCategory(
       title: 'Delicate Fabrics',
       subtitle: 'Wool, silk, etc.',
+      imageAsset: 'assets/images/pro_clean/delicate_fabrics.png',
     ),
   ];
-
-  List<_ProCleanCategory> get _effectiveCategories {
-    final services = widget.services;
-    if (services.isEmpty) return const [];
-
-    // Keep the design consistent: reuse the existing subtitle/image set by index,
-    // but replace the displayed title with backend service names.
-    return List.generate(services.length, (i) {
-      final template = _categories[i % _categories.length];
-      return _ProCleanCategory(
-        serviceId: services[i].serviceId,
-        perKgPrice: services[i].perKgPrice,
-        title: services[i].serviceName,
-        subtitle: template.subtitle,
-        imageUrl: services[i].iconUrl,
-      );
-    });
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    final list = _effectiveCategories;
-    _selectedCategory = list.isNotEmpty ? list.first : _categories.first;
-  }
 
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
-    final isLoading = widget.isLoading;
-    final items = _effectiveCategories;
-    final canProceed = items.isNotEmpty && !isLoading;
 
     return SafeArea(
       top: false,
@@ -109,6 +73,9 @@ class _ProCleanBottomSheetState extends State<ProCleanBottomSheet> {
         padding: EdgeInsets.only(bottom: bottomInset),
         child: Container(
           width: double.infinity,
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * 0.92,
+          ),
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.only(
@@ -116,8 +83,9 @@ class _ProCleanBottomSheetState extends State<ProCleanBottomSheet> {
               topRight: Radius.circular(26),
             ),
           ),
-          padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
-          child: Column(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
+            child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Center(
@@ -130,39 +98,26 @@ class _ProCleanBottomSheetState extends State<ProCleanBottomSheet> {
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
-              Text(
-                'Choose the service',
-                textAlign: TextAlign.center,
-                style: AppTextStyles.header(color: HomeColors.text)
-                    .copyWith(fontSize: 12),
+              const SizedBox(height: 14),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Choose the service',
+                  style: AppTextStyles.header(color: HomeColors.text)
+                      .copyWith(fontSize: 12),
+                ),
               ),
-              const SizedBox(height: 10),
-              if (isLoading)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 18),
-                  child: Center(child: CircularProgressIndicator()),
-                )
-              else if (items.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Text(
-                    'No services available right now. Please try again.',
-                    textAlign: TextAlign.center,
-                    style: AppTextStyles.body(color: HomeColors.muted).copyWith(fontSize: 12),
-                  ),
-                )
-              else
-                for (final c in items) ...[
-                  _ServiceRow(
-                    title: c.title,
-                    subtitle: c.subtitle,
-                    imageUrl: c.imageUrl,
-                    isSelected: c.title == _selectedCategory.title,
-                    onTap: () => setState(() => _selectedCategory = c),
-                  ),
-                  const SizedBox(height: 10),
-                ],
+              const SizedBox(height: 12),
+              for (final c in _categories) ...[
+                _ServiceRow(
+                  title: c.title,
+                  subtitle: c.subtitle,
+                  imageAsset: c.imageAsset,
+                  isSelected: c.title == _selectedCategory,
+                  onTap: () => setState(() => _selectedCategory = c.title),
+                ),
+                const SizedBox(height: 12),
+              ],
               const SizedBox(height: 6),
               Container(
                 width: double.infinity,
@@ -215,20 +170,14 @@ class _ProCleanBottomSheetState extends State<ProCleanBottomSheet> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: _BottomButton(
-                      label: 'Next',
+                      label: 'Add to cart',
                       variant: _BottomButtonVariant.filled,
-                      onTap: canProceed
-                          ? () => Navigator.of(context).pop(
-                                ProCleanSelection(
-                                  serviceId: _selectedCategory.serviceId?.isEmpty == true
-                                      ? null
-                                      : _selectedCategory.serviceId,
-                                  categoryName: _selectedCategory.title,
-                                  pricingType: _pricingType,
-                                  perKgPrice: _selectedCategory.perKgPrice,
-                                ),
-                              )
-                          : () {},
+                      onTap: () => Navigator.of(context).pop(
+                        ProCleanSelection(
+                          categoryName: _selectedCategory,
+                          pricingType: _pricingType,
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -236,38 +185,35 @@ class _ProCleanBottomSheetState extends State<ProCleanBottomSheet> {
             ],
           ),
         ),
+        ),
       ),
     );
   }
 }
 
 class _ProCleanCategory {
-  final String? serviceId;
-  final double? perKgPrice;
   final String title;
   final String subtitle;
-  final String? imageUrl;
+  final String imageAsset;
 
   const _ProCleanCategory({
-    this.serviceId,
-    this.perKgPrice,
     required this.title,
     required this.subtitle,
-    this.imageUrl,
+    required this.imageAsset,
   });
 }
 
 class _ServiceRow extends StatelessWidget {
   final String title;
   final String subtitle;
-  final String? imageUrl;
+  final String imageAsset;
   final bool isSelected;
   final VoidCallback onTap;
 
   const _ServiceRow({
     required this.title,
     required this.subtitle,
-    required this.imageUrl,
+    required this.imageAsset,
     required this.isSelected,
     required this.onTap,
   });
@@ -299,8 +245,8 @@ class _ServiceRow extends StatelessWidget {
             SizedBox(
               width: 42,
               height: 42,
-              child: CatalogImage(
-                url: imageUrl,
+              child: Image.asset(
+                imageAsset,
                 fit: BoxFit.contain,
               ),
             ),
@@ -363,7 +309,6 @@ class _PricingRow extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 2),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
@@ -372,36 +317,22 @@ class _PricingRow extends StatelessWidget {
               margin: const EdgeInsets.only(top: 2),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: dotColor, width: 2),
+                color: dotColor,
               ),
-              child: isSelected
-                  ? Center(
-                      child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: HomeColors.primary,
-                        ),
-                      ),
-                    )
-                  : null,
             ),
             const SizedBox(width: 10),
-            Flexible(
+            Expanded(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     title,
-                    textAlign: TextAlign.center,
                     style: AppTextStyles.header(color: HomeColors.text)
                         .copyWith(fontSize: 12),
                   ),
                   const SizedBox(height: 3),
                   Text(
                     subtitle,
-                    textAlign: TextAlign.center,
                     style: AppTextStyles.body(color: HomeColors.muted)
                         .copyWith(fontSize: 10),
                   ),

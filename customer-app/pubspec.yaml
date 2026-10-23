@@ -67,7 +67,9 @@ flutter:
     - assets/images/
     - assets/images/auth/
     - assets/images/cart/
+    - assets/images/delivery_options/
     - assets/images/home/
+    - assets/images/how_we_do_laundry/
     - assets/images/home_linen/
     - assets/images/luxury_care/
     - assets/images/pro_clean/

@@ -5,10 +5,12 @@ import 'package:flutter/foundation.dart';
 import '../models/order_record.dart';
 import '../repositories/order_repository.dart';
 import '../models/cart_item.dart';
+import '../services/local_orders_store.dart';
 
 class OrderProvider with ChangeNotifier {
   final List<OrderRecord> _orders = [];
   final OrderRepository _repo;
+  final LocalOrdersStore _localOrders;
   bool _isLoading = false;
   String? _error;
   bool _isFetching = false; // Prevent concurrent fetches
@@ -16,15 +18,19 @@ class OrderProvider with ChangeNotifier {
   Timer? _reconcileDebounce;
   static const Duration _reconcileDebounceWindow = Duration(milliseconds: 500);
 
-  OrderProvider({OrderRepository? repo}) : _repo = repo ?? OrderRepository();
+  OrderProvider({OrderRepository? repo, LocalOrdersStore? localOrders})
+      : _repo = repo ?? OrderRepository(),
+        _localOrders = localOrders ?? LocalOrdersStore();
 
   List<OrderRecord> get orders => List.unmodifiable(_orders);
   bool get isLoading => _isLoading;
   String? get error => _error;
 
   void addOrder(OrderRecord order) {
+    _orders.removeWhere((existing) => existing.id == order.id);
     _orders.insert(0, order);
     notifyListeners();
+    _localOrders.upsert(order);
   }
 
   /// Apply Supabase Realtime payload to local orders list without fetching.
@@ -131,17 +137,34 @@ class OrderProvider with ChangeNotifier {
     }
 
     _isFetching = true;
-    _isLoading = true;
     _error = null;
-    notifyListeners();
+    if (_orders.isEmpty) {
+      _isLoading = true;
+      notifyListeners();
+    }
+
+    late final List<OrderRecord> local;
+    try {
+      local = await _localOrders.load();
+      _orders
+        ..clear()
+        ..addAll(local);
+      _isLoading = false;
+      notifyListeners();
+    } catch (e) {
+      _isLoading = false;
+      _isFetching = false;
+      notifyListeners();
+      debugPrint('Error loading local orders: $e');
+      return;
+    }
 
     try {
-      final result =
-          await _repo.getOrders(page: page, limit: limit, status: status);
+      final result = await _repo
+          .getOrders(page: page, limit: limit, status: status)
+          .timeout(const Duration(seconds: 3));
       final ordersList = (result['orders'] as List?) ?? [];
 
-      // Only clear orders if fetch was successful
-      // This prevents clearing orders if there's a network issue or error
       final newOrders = <OrderRecord>[];
       for (final orderData in ordersList) {
         final order =
@@ -151,30 +174,18 @@ class OrderProvider with ChangeNotifier {
         }
       }
 
-      // Store previous orders count for validation
-      final hadPreviousOrders = _orders.isNotEmpty;
-
-      // Only update orders list if we successfully fetched data
-      // If we get an empty response but previously had orders, it might be a temporary backend issue
-      // In that case, we'll keep the existing orders to prevent flickering "no orders" state
-      // However, if we explicitly get an empty response and never had orders, that's valid
-      if (newOrders.isNotEmpty || !hadPreviousOrders) {
-        // Only clear if we have new orders OR if we never had orders before
-        // This prevents clearing existing orders when backend returns empty due to timing issues
-        _orders.clear();
-        _orders.addAll(newOrders);
-      } else {
-        // If we had orders before but got empty response, log it but don't clear
-        // This handles cases where backend might return empty temporarily
-        debugPrint(
-            'Received empty orders list but had previous orders. Keeping existing orders to prevent flickering.');
-      }
+      final backendIds = newOrders.map((order) => order.id).toSet();
+      _orders
+        ..clear()
+        ..addAll(local.where((order) => !backendIds.contains(order.id)))
+        ..addAll(newOrders);
 
       _error = null;
     } catch (e) {
-      _error = e.toString();
-      // Keep existing orders on error - don't clear them
-      // This ensures UI doesn't show "no orders" when there's a network issue
+      _orders
+        ..clear()
+        ..addAll(local);
+      _error = null;
       debugPrint('Error fetching orders: $e');
     } finally {
       _isLoading = false;
@@ -479,6 +490,7 @@ class OrderProvider with ChangeNotifier {
         pickupLng: pickupLng,
         billingStatus: billingStatus.isEmpty ? null : billingStatus,
         billPaymentStatus: billPaymentStatus.isEmpty ? null : billPaymentStatus,
+        isExpress: data['is_express'] == true,
       );
     } catch (e) {
       debugPrint('Error mapping order: $e');

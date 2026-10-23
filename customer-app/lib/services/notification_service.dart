@@ -95,8 +95,12 @@ class NotificationService {
         _handleNotificationTap(initialMessage);
       }
 
-      // Get and save FCM token
-      await _getAndSaveToken();
+      // Token upload hits the API. Cap it so a down server cannot hold startup.
+      try {
+        await _getAndSaveToken().timeout(const Duration(seconds: 4));
+      } catch (e) {
+        debugPrint('FCM token setup skipped: $e');
+      }
 
       // Listen for token refresh
       _firebaseMessaging!.onTokenRefresh.listen(_handleTokenRefresh);

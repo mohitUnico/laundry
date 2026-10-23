@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../cart/cart_screen.dart';
 import '../home/home_screen.dart';
 import '../orders/orders_list_screen.dart';
-import '../profile/profile_screen.dart';
+import '../pricing/pricing_screen.dart';
 import '../home/widgets/home_bottom_nav.dart';
 import '../home/widgets/home_colors.dart';
 
@@ -26,7 +26,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
     HomeScreen(),
     OrdersListScreen(showBack: false),
     CartScreen(showBack: false),
-    ProfileScreen(showBack: false),
+    PricingScreen(),
   ];
 
   @override

@@ -8,11 +8,9 @@ import '../home/widgets/home_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../providers/order_provider.dart';
 import '../../models/order_record.dart';
-import '../../models/cart_item.dart';
-import 'order_invoice_screen.dart';
 import '../../utils/pricing.dart';
+import 'order_details_screen.dart';
 import '../../routes/app_routes.dart';
-import '../../routes/route_args.dart';
 import '../../utils/polling_config.dart';
 import '../cart/delivery_options_screen.dart';
 import '../cart/schedule_date_time_screen.dart';
@@ -227,7 +225,9 @@ class _OrdersListScreenState extends State<OrdersListScreen>
                                   pickupCards.add((
                                     order: o,
                                     title: 'Upcoming Pickup',
-                                    subtitle: 'Pickup scheduled',
+                                    subtitle: (o.pickupAddress ?? '').trim().isNotEmpty
+                                    ? o.pickupAddress!.trim()
+                                    : 'Pickup scheduled',
                                     option: DeliveryOptionType.pickupOnly,
                                   ));
                                 }
@@ -240,7 +240,9 @@ class _OrdersListScreenState extends State<OrdersListScreen>
                                   deliveryCards.add((
                                     order: o,
                                     title: 'Upcoming Delivery',
-                                    subtitle: 'Delivery scheduled',
+                                    subtitle: (o.pickupAddress ?? '').trim().isNotEmpty
+                                    ? o.pickupAddress!.trim()
+                                    : 'Delivery scheduled',
                                     option: DeliveryOptionType.deliveryOnly,
                                   ));
                                 }
@@ -253,7 +255,9 @@ class _OrdersListScreenState extends State<OrdersListScreen>
                                   pickupCards.add((
                                     order: o,
                                     title: 'Upcoming Pickup',
-                                    subtitle: 'Pickup scheduled',
+                                    subtitle: (o.pickupAddress ?? '').trim().isNotEmpty
+                                    ? o.pickupAddress!.trim()
+                                    : 'Pickup scheduled',
                                     option: DeliveryOptionType.pickupAndDelivery,
                                   ));
                                 }
@@ -264,7 +268,9 @@ class _OrdersListScreenState extends State<OrdersListScreen>
                                   deliveryCards.add((
                                     order: o,
                                     title: 'Upcoming Delivery',
-                                    subtitle: 'Delivery scheduled',
+                                    subtitle: (o.pickupAddress ?? '').trim().isNotEmpty
+                                    ? o.pickupAddress!.trim()
+                                    : 'Delivery scheduled',
                                     option: DeliveryOptionType.pickupAndDelivery,
                                   ));
                                 }
@@ -357,30 +363,13 @@ class _OrdersListScreenState extends State<OrdersListScreen>
                           children.add(
                             _OrderCard(
                               data: order,
-                              onViewDetails: () =>
-                                  _showOrderDetailsDialog(context, order),
-                              // Navigate immediately to invoice screen; it will show its own loader
-                              // while fetching invoice details, avoiding delay before navigation.
-                              onPayBill: () {
+                              onViewDetails: () {
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
-                                    builder: (_) =>
-                                        OrderInvoiceScreen(orderId: order.id),
+                                    builder: (_) => OrderDetailsScreen(order: order),
                                   ),
                                 );
                               },
-                              onTrackLaundry: () =>
-                                  Navigator.of(context).pushNamed(
-                                AppRoutes.orderTracking,
-                                arguments: OrderTrackingArgs(
-                                  orderId: order.id,
-                                  pickupAddress: order.pickupAddress,
-                                  pickupLat: order.pickupLat,
-                                  pickupLng: order.pickupLng,
-                                  backendStatus: order.backendStatus,
-                                  orderType: order.orderTypeOrBoth,
-                                ),
-                              ),
                             ),
                           );
                           children.add(const SizedBox(height: 12));
@@ -736,14 +725,10 @@ class _SecondaryActionButton extends StatelessWidget {
 class _OrderCard extends StatelessWidget {
   final OrderRecord data;
   final VoidCallback onViewDetails;
-  final VoidCallback onTrackLaundry;
-  final VoidCallback onPayBill;
 
   const _OrderCard({
     required this.data,
     required this.onViewDetails,
-    required this.onTrackLaundry,
-    required this.onPayBill,
   });
 
   @override
@@ -765,18 +750,14 @@ class _OrderCard extends StatelessWidget {
 
     final hasKgWiseItems = data.items.any((item) => !item.isPerPiece);
     final hasOnlyPerPiece =
-        data.items.isNotEmpty && !hasKgWiseItems; // all items per-piece
+        data.items.isNotEmpty && !hasKgWiseItems;
 
-    final isBillPaid =
-        (data.billPaymentStatus ?? '').toLowerCase() == 'completed';
-    // Show bill payment action for:
-    // - Orders that include kg-wise items (invoice-based billing), OR
-    // - Orders whose selected payment mode is COD (so customer can pay the bill later)
-    final isCodPayment = data.paymentMethod == PaymentMethod.cod;
-    final shouldShowBillAction = hasKgWiseItems || isCodPayment;
+    final displayId = data.id.startsWith('LD') ? '#${data.id}' : data.shortId;
+    final itemLabel = data.totalItems == 1 ? '1 Item' : '${data.totalItems} Items';
 
     return Container(
       width: double.infinity,
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
@@ -789,16 +770,30 @@ class _OrderCard extends StatelessWidget {
           ),
         ],
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (data.isExpress)
+            const Padding(
+              padding: EdgeInsets.only(left: 14, top: 10),
+              child: Image(
+                image: AssetImage('assets/images/express_order_type.png'),
+                height: 22,
+                fit: BoxFit.contain,
+                alignment: Alignment.centerLeft,
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
+            child: Column(
         children: [
           Row(
             children: [
               Expanded(
                 child: Text(
-                  data.shortId,
-                  style: AppTextStyles.body(color: const Color(0xFF98A0B5))
-                      .copyWith(fontSize: 12),
+                  displayId,
+                  style: AppTextStyles.body(color: HomeColors.primary)
+                      .copyWith(fontSize: 13, fontWeight: FontWeight.w600),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -832,7 +827,7 @@ class _OrderCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      '${data.totalItems} items',
+                      itemLabel,
                       style: AppTextStyles.body(color: const Color(0xFF98A0B5)),
                     ),
                   ],
@@ -844,15 +839,15 @@ class _OrderCard extends StatelessWidget {
                   if (data.dateLabel.isNotEmpty &&
                       data.timeLabel.isNotEmpty) ...[
                     Text(
-                      'Schedule date & time',
+                      data.dateLabel,
                       style: AppTextStyles.body(color: const Color(0xFF98A0B5))
                           .copyWith(fontSize: 12, fontWeight: FontWeight.w500),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     Text(
-                      '${data.dateLabel} • ${data.timeLabel}',
-                      style: AppTextStyles.body(color: const Color(0xFF1B1F2A))
-                          .copyWith(fontSize: 14, fontWeight: FontWeight.w700),
+                      data.timeLabel,
+                      style: AppTextStyles.body(color: const Color(0xFF98A0B5))
+                          .copyWith(fontSize: 12, fontWeight: FontWeight.w500),
                     ),
                   ],
                 ],
@@ -876,405 +871,31 @@ class _OrderCard extends StatelessWidget {
                 ),
               ],
               const Spacer(),
-              if (shouldShowBillAction) ...[
-                InkWell(
-                  onTap: isBillPaid ? null : onPayBill,
-                  borderRadius: BorderRadius.circular(18),
-                  child: Container(
-                    height: 54,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    decoration: BoxDecoration(
-                      color:
-                          isBillPaid ? const Color(0xFF16A34A) : Colors.white,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(
-                        color: isBillPaid
-                            ? const Color(0xFF16A34A)
-                            : HomeColors.borderSoft,
-                      ),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      isBillPaid ? 'Bill paid' : 'Pay Bill',
-                      style: AppTextStyles.button(
-                        color: isBillPaid ? Colors.white : HomeColors.primary,
-                      ).copyWith(fontSize: 12),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-              ],
-              InkWell(
-                onTap: onTrackLaundry,
-                borderRadius: BorderRadius.circular(18),
-                child: Container(
-                  width: 54,
-                  height: 54,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: HomeColors.borderSoft),
-                  ),
-                  alignment: Alignment.center,
-                  child: const Icon(
-                    Icons.location_on_outlined,
-                    size: 22,
-                    color: HomeColors.primary,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
               InkWell(
                 onTap: onViewDetails,
                 borderRadius: BorderRadius.circular(18),
                 child: Container(
-                  height: 54,
+                  height: 44,
                   padding: const EdgeInsets.symmetric(horizontal: 22),
                   decoration: BoxDecoration(
                     color: HomeColors.primary,
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                   alignment: Alignment.center,
                   child: Text(
                     'View Details',
-                    style: AppTextStyles.button(color: Colors.white),
+                    style: AppTextStyles.button(color: Colors.white)
+                        .copyWith(fontSize: 13),
                   ),
                 ),
               ),
             ],
+          ),
+        ],
+            ),
           ),
         ],
       ),
     );
   }
-}
-
-void _showOrderDetailsDialog(BuildContext context, OrderRecord order) {
-  showDialog(
-    context: context,
-    builder: (context) => Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 18),
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 400, maxHeight: 600),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: HomeColors.borderSoft),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 18, 12, 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Order Details',
-                      style: AppTextStyles.header(color: HomeColors.text)
-                          .copyWith(fontSize: 18),
-                    ),
-                  ),
-                  InkWell(
-                    onTap: () => Navigator.of(context).pop(),
-                    borderRadius: BorderRadius.circular(999),
-                    child: Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: HomeColors.background,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: HomeColors.borderSoft),
-                      ),
-                      child: Icon(
-                        Icons.close_rounded,
-                        size: 18,
-                        color: HomeColors.text,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18),
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: HomeColors.background,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: HomeColors.borderSoft),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Order ID: ${order.shortId}',
-                      style: AppTextStyles.header(color: HomeColors.text)
-                          .copyWith(fontSize: 14),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Placed on',
-                                style:
-                                    AppTextStyles.body(color: HomeColors.muted)
-                                        .copyWith(fontSize: 10),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                order.placedDateLabel,
-                                style:
-                                    AppTextStyles.body(color: HomeColors.text)
-                                        .copyWith(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Time',
-                              style: AppTextStyles.body(color: HomeColors.muted)
-                                  .copyWith(fontSize: 10),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              order.placedTimeLabel,
-                              style: AppTextStyles.body(color: HomeColors.text)
-                                  .copyWith(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    if (order.dateLabel.isNotEmpty &&
-                        order.timeLabel.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      Divider(
-                          height: 1,
-                          thickness: 1,
-                          color: HomeColors.borderSoft),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Schedule date & time',
-                                  style: AppTextStyles.body(
-                                          color: HomeColors.muted)
-                                      .copyWith(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w500),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  '${order.dateLabel} at ${order.timeLabel}',
-                                  style:
-                                      AppTextStyles.body(color: HomeColors.text)
-                                          .copyWith(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w700),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18),
-              child: Text(
-                'Items (${order.totalItems})',
-                style: AppTextStyles.header(color: HomeColors.text)
-                    .copyWith(fontSize: 16),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Flexible(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 18),
-                child: _buildItemsList(order),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18),
-              child: Divider(
-                  height: 1, thickness: 1, color: HomeColors.borderSoft),
-            ),
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 0, 18, 20),
-              child: Row(
-                children: [
-                  Text(
-                    'Total',
-                    style: AppTextStyles.header(color: HomeColors.text)
-                        .copyWith(fontSize: 18),
-                  ),
-                  const Spacer(),
-                  Text(
-                    Pricing.inr(order.totalInr),
-                    style: AppTextStyles.header(color: HomeColors.primary)
-                        .copyWith(fontSize: 18),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
-}
-
-Widget _buildItemsList(OrderRecord order) {
-  // Separate items by pricing type
-  final perPieceItems = order.items.where((x) => x.isPerPiece).toList();
-  final kgWiseItems = order.items.where((x) => !x.isPerPiece).toList();
-
-  // Group per-piece items by category
-  final perPieceByCategory = <String, List<CartItem>>{};
-  for (final item in perPieceItems) {
-    perPieceByCategory.putIfAbsent(item.category, () => []).add(item);
-  }
-
-  // Group kg-wise items by category
-  final kgWiseByCategory = <String, List<CartItem>>{};
-  for (final item in kgWiseItems) {
-    kgWiseByCategory.putIfAbsent(item.category, () => []).add(item);
-  }
-
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      // Per-Piece Items Section
-      if (perPieceItems.isNotEmpty) ...[
-        for (final categoryEntry in perPieceByCategory.entries) ...[
-          Text(
-            categoryEntry.key,
-            style: AppTextStyles.header(color: HomeColors.text)
-                .copyWith(fontSize: 14, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 8),
-          for (final item in categoryEntry.value) ...[
-            // Service name
-            Padding(
-              padding: const EdgeInsets.only(left: 12),
-              child: Text(
-                item.serviceName.isNotEmpty ? item.serviceName : 'Service',
-                style: AppTextStyles.body(color: HomeColors.text)
-                    .copyWith(fontSize: 13, fontWeight: FontWeight.w600),
-              ),
-            ),
-            const SizedBox(height: 6),
-            // Individual cloth items with quantities
-            if (item.quantities.isNotEmpty) ...[
-              for (final qtyEntry in item.quantities.entries) ...[
-                Padding(
-                  padding: const EdgeInsets.only(left: 24),
-                  child: Row(
-                    children: [
-                      // Show cloth item: "Saree - 2"
-                      Expanded(
-                        child: Text(
-                          '${qtyEntry.key} - ${qtyEntry.value}',
-                          style: AppTextStyles.body(color: HomeColors.text)
-                              .copyWith(fontSize: 12),
-                        ),
-                      ),
-                      // Show price for per-piece items
-                      if (item.unitPricesInr != null) ...[
-                        const SizedBox(width: 8),
-                        Text(
-                          Pricing.inr((item.unitPricesInr![qtyEntry.key] ?? 0) *
-                              qtyEntry.value),
-                          style: AppTextStyles.body(color: HomeColors.text)
-                              .copyWith(
-                                  fontSize: 12, fontWeight: FontWeight.w600),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 4),
-              ],
-            ],
-            const SizedBox(height: 12),
-          ],
-        ],
-      ],
-      // Kg-Wise Items Section
-      if (kgWiseItems.isNotEmpty) ...[
-        if (perPieceItems.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          const Divider(height: 1, thickness: 1, color: HomeColors.borderSoft),
-          const SizedBox(height: 12),
-        ],
-        for (final categoryEntry in kgWiseByCategory.entries) ...[
-          Text(
-            categoryEntry.key,
-            style: AppTextStyles.header(color: HomeColors.text)
-                .copyWith(fontSize: 14, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 8),
-          for (final item in categoryEntry.value) ...[
-            // Service name
-            Padding(
-              padding: const EdgeInsets.only(left: 12),
-              child: Text(
-                item.serviceName.isNotEmpty ? item.serviceName : 'Service',
-                style: AppTextStyles.body(color: HomeColors.text)
-                    .copyWith(fontSize: 13, fontWeight: FontWeight.w600),
-              ),
-            ),
-            const SizedBox(height: 6),
-            // Individual cloth items with quantities (similar to cart screen)
-            if (item.quantities.isNotEmpty) ...[
-              for (final qtyEntry in item.quantities.entries) ...[
-                Padding(
-                  padding: const EdgeInsets.only(left: 24),
-                  child: Row(
-                    children: [
-                      // Show cloth item: "Saree - 2" (same style as cart screen)
-                      Expanded(
-                        child: Text(
-                          '${qtyEntry.key} - ${qtyEntry.value}',
-                          style: AppTextStyles.body(color: HomeColors.text)
-                              .copyWith(fontSize: 12),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 4),
-              ],
-            ],
-            const SizedBox(height: 12),
-          ],
-        ],
-      ],
-    ],
-  );
 }

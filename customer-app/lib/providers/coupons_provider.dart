@@ -157,7 +157,9 @@ class CouponsProvider with ChangeNotifier {
       if (_isLoading) notifyListeners();
 
       try {
-        final fresh = await _repo.listApplicableCoupons();
+        final fresh = await _repo
+            .listApplicableCoupons()
+            .timeout(const Duration(seconds: 4));
         if (kDebugMode) {
           debugPrint('[CouponsProvider] fetchApplicableCoupons: backend returned=${fresh.length}');
         }

@@ -110,6 +110,36 @@ class CartProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// Customer adds a service and a pricing type. Cloth counts are taken later
+  /// by the delivery partner, so this line has no item quantities.
+  bool addService({
+    required String category,
+    required String serviceName,
+    required bool isPerPiece,
+    String? imageAsset,
+  }) {
+    final existingIndex = _items.indexWhere(
+      (x) =>
+          x.category == category &&
+          x.serviceName == serviceName &&
+          x.isPerPiece == isPerPiece,
+    );
+    if (existingIndex >= 0) return false;
+
+    _items.add(
+      CartItem(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        category: category,
+        serviceName: serviceName,
+        imageAsset: imageAsset,
+        quantities: const {},
+        isPerPiece: isPerPiece,
+      ),
+    );
+    notifyListeners();
+    return true;
+  }
+
   Future<void> addAndSave({
     required String category,
     required String serviceName,

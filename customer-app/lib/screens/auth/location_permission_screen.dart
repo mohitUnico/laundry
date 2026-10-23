@@ -179,7 +179,11 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Center(child: AuthIllustration()),
+                      const Center(
+                        child: AuthIllustration(
+                          asset: 'assets/images/help_us_reach_u.png',
+                        ),
+                      ),
                       const SizedBox(height: 18),
                       const Text(
                         'Help us reach you',

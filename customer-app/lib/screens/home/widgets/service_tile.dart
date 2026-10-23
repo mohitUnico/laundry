@@ -2,12 +2,11 @@ import 'package:flutter/material.dart';
 
 import 'home_colors.dart';
 import '../../../theme/app_text_styles.dart';
-import '../../../widgets/catalog_image.dart';
 
 class ServiceTile extends StatelessWidget {
   final String title;
   final String subtitle;
-  final String? imageUrl;
+  final String imageAsset;
   final bool isPrimary;
   final bool fullWidthImage;
   final double? imageSize;
@@ -17,7 +16,7 @@ class ServiceTile extends StatelessWidget {
     super.key,
     required this.title,
     required this.subtitle,
-    required this.imageUrl,
+    required this.imageAsset,
     this.isPrimary = false,
     this.fullWidthImage = false,
     this.imageSize,
@@ -61,18 +60,18 @@ class ServiceTile extends StatelessWidget {
                 left: 0,
                 right: 0,
                 bottom: -8,
-                child: CatalogImage(
-                  url: imageUrl,
-                  height: 170,
+                child: Image.asset(
+                  imageAsset,
                   fit: BoxFit.fitWidth,
+                  alignment: Alignment.bottomCenter,
                 ),
               )
             else if (isPrimary)
               Positioned(
                 right: -10,
                 bottom: -6,
-                child: CatalogImage(
-                  url: imageUrl,
+                child: Image.asset(
+                  imageAsset,
                   width: 162,
                   height: 162,
                   fit: BoxFit.contain,
@@ -82,8 +81,8 @@ class ServiceTile extends StatelessWidget {
               Positioned(
                 right: -14,
                 bottom: -10,
-                child: CatalogImage(
-                  url: imageUrl,
+                child: Image.asset(
+                  imageAsset,
                   width: nonPrimaryImageSize,
                   height: nonPrimaryImageSize,
                   fit: BoxFit.contain,

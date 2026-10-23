@@ -25,6 +25,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   String _orderType = 'both';
 
   String? _orderId;
+  OrderTrackingArgs? _args;
   Timer? _trackingPollTimer;
 
   final _trackingService = OrderTrackingService();
@@ -51,6 +52,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     if (_orderId == null) {
       final args = ModalRoute.of(context)?.settings.arguments;
       if (args is OrderTrackingArgs) {
+        _args = args;
         _orderId = args.orderId;
         if (args.backendStatus != null && args.backendStatus!.trim().isNotEmpty) {
           _backendStatus = args.backendStatus!.trim();
@@ -60,11 +62,20 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           _orderType = args.orderType!.trim();
         }
 
-        _startPolling();
-        _loadTracking();
+        // Phone-only orders are not on the server. Draw the screen now
+        // instead of waiting out the API timeout.
+        if (_isLocalOrder(args.orderId)) {
+          _tracking = _fallbackTracking();
+          _isLoading = false;
+        } else {
+          _startPolling();
+          _loadTracking();
+        }
       }
     }
   }
+
+  bool _isLocalOrder(String id) => id.trim().toUpperCase().startsWith('LD');
 
   void _startPolling() {
     _trackingPollTimer?.cancel();
@@ -113,22 +124,57 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     } catch (e) {
       if (!mounted || silent) return;
       setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '').trim();
+        _tracking ??= _fallbackTracking();
+        _error = _tracking == null
+            ? e.toString().replaceFirst('Exception: ', '').trim()
+            : null;
         _isLoading = false;
       });
     }
   }
 
+  OrderTrackingData? _fallbackTracking() {
+    final args = _args;
+    if (args == null) return null;
+    final address = (args.pickupAddress ?? '').trim();
+    final point = OrderTrackingPoint(
+      address: address.isEmpty ? null : address,
+      latitude: args.pickupLat,
+      longitude: args.pickupLng,
+    );
+    return OrderTrackingData(
+      orderId: args.orderId,
+      orderStatus: (args.backendStatus ?? 'placed').trim(),
+      orderType: (args.orderType ?? 'both').trim(),
+      shopName: 'Laundry Shop',
+      shop: point,
+      pickup: point,
+      delivery: point,
+      pickupLeg: null,
+      dropLeg: null,
+    );
+  }
+
   Future<void> _loadTracking() async {
     final id = _orderId;
-    if (id == null || id.isEmpty) return;
+    if (id == null || id.isEmpty || _isLocalOrder(id)) {
+      if (!mounted) return;
+      setState(() {
+        _tracking ??= _fallbackTracking();
+        _isLoading = false;
+      });
+      return;
+    }
 
+    final fallback = _fallbackTracking();
+    if (!mounted) return;
     setState(() {
-      _isLoading = true;
+      _tracking ??= fallback;
+      _isLoading = _tracking == null;
       _error = null;
     });
 
-    await _pollTracking(silent: false);
+    await _pollTracking(silent: _tracking != null);
   }
 
   OrderTrackingDeliveryLeg? _activeLeg(OrderTrackingData data) {

@@ -10,10 +10,8 @@ import '../../providers/order_provider.dart';
 import '../../models/order_record.dart';
 import '../../utils/pricing.dart';
 import 'order_details_screen.dart';
-import '../../routes/app_routes.dart';
 import '../../utils/polling_config.dart';
-import '../cart/delivery_options_screen.dart';
-import '../cart/schedule_date_time_screen.dart';
+import '../cart/schedule_bottom_sheet.dart';
 
 enum _OrdersFilter { all, active, completed }
 
@@ -199,14 +197,12 @@ class _OrdersListScreenState extends State<OrdersListScreen>
                                 OrderRecord order,
                                 String title,
                                 String subtitle,
-                                DeliveryOptionType option
                               })> pickupCards = [];
                           final List<
                               ({
                                 OrderRecord order,
                                 String title,
                                 String subtitle,
-                                DeliveryOptionType option
                               })> deliveryCards = [];
 
                           for (final o in active) {
@@ -228,7 +224,6 @@ class _OrdersListScreenState extends State<OrdersListScreen>
                                     subtitle: (o.pickupAddress ?? '').trim().isNotEmpty
                                     ? o.pickupAddress!.trim()
                                     : 'Pickup scheduled',
-                                    option: DeliveryOptionType.pickupOnly,
                                   ));
                                 }
                               }
@@ -243,7 +238,6 @@ class _OrdersListScreenState extends State<OrdersListScreen>
                                     subtitle: (o.pickupAddress ?? '').trim().isNotEmpty
                                     ? o.pickupAddress!.trim()
                                     : 'Delivery scheduled',
-                                    option: DeliveryOptionType.deliveryOnly,
                                   ));
                                 }
                               }
@@ -258,7 +252,6 @@ class _OrdersListScreenState extends State<OrdersListScreen>
                                     subtitle: (o.pickupAddress ?? '').trim().isNotEmpty
                                     ? o.pickupAddress!.trim()
                                     : 'Pickup scheduled',
-                                    option: DeliveryOptionType.pickupAndDelivery,
                                   ));
                                 }
                               } else if (backend == 'services_completed') {
@@ -271,7 +264,6 @@ class _OrdersListScreenState extends State<OrdersListScreen>
                                     subtitle: (o.pickupAddress ?? '').trim().isNotEmpty
                                     ? o.pickupAddress!.trim()
                                     : 'Delivery scheduled',
-                                    option: DeliveryOptionType.pickupAndDelivery,
                                   ));
                                 }
                               }
@@ -306,7 +298,7 @@ class _OrdersListScreenState extends State<OrdersListScreen>
                                     '${entry.order.dateLabel} at ${entry.order.timeLabel}',
                                 title: entry.title,
                                 subtitle: entry.subtitle,
-                                option: entry.option,
+                                forDelivery: false,
                               ),
                             );
                             children.add(const SizedBox(height: 12));
@@ -322,7 +314,7 @@ class _OrdersListScreenState extends State<OrdersListScreen>
                                     : '${entry.order.dateLabel} at ${entry.order.timeLabel}',
                                 title: entry.title,
                                 subtitle: entry.subtitle,
-                                option: entry.option,
+                                forDelivery: true,
                               ),
                             );
                             children.add(const SizedBox(height: 12));
@@ -538,19 +530,30 @@ class _FilterPill extends StatelessWidget {
   }
 }
 
+DateTime _slotStart(DateTime date, String slot) {
+  final start = slot.split('-').first.trim();
+  final parts = start.split(':');
+  var hour = int.tryParse(parts.first) ?? 17;
+  final minute = int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0;
+  final period = slot.toUpperCase().contains('PM');
+  if (period && hour != 12) hour += 12;
+  if (!period && hour == 12) hour = 0;
+  return DateTime(date.year, date.month, date.day, hour, minute);
+}
+
 class _UpcomingPickupCard extends StatelessWidget {
   final OrderRecord order;
   final String timeLabel;
   final String title;
   final String subtitle;
-  final DeliveryOptionType option;
+  final bool forDelivery;
 
   const _UpcomingPickupCard({
     required this.order,
     required this.timeLabel,
     required this.title,
     required this.subtitle,
-    required this.option,
+    required this.forDelivery,
   });
 
   @override
@@ -606,14 +609,20 @@ class _UpcomingPickupCard extends StatelessWidget {
               Expanded(
                 child: _PrimaryActionButton(
                   label: 'Change Schedule',
-                  onTap: () {
-                    Navigator.of(context).pushNamed(
-                      AppRoutes.scheduleDateTime,
-                      arguments: ScheduleDateTimeArgs(
-                        option: option,
-                        orderId: order.id,
-                      ),
-                    );
+                  onTap: () async {
+                    final picked = await showScheduleBottomSheet(context);
+                    if (picked == null || !context.mounted) return;
+                    const months = [
+                      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+                    ];
+                    context.read<OrderProvider>().updateOrderSchedule(
+                          order.id,
+                          '${months[picked.date.month - 1]} ${picked.date.day}',
+                          picked.slot,
+                          forDelivery: forDelivery,
+                          at: _slotStart(picked.date, picked.slot),
+                        );
                   },
                 ),
               ),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -15,23 +17,8 @@ import 'repositories/service_catalog_repository.dart';
 import 'providers/service_catalog_provider.dart';
 import 'services/notification_service.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-
-  try {
-    await Firebase.initializeApp();
-    debugPrint('Firebase initialized successfully');
-  } catch (e) {
-    debugPrint('Firebase initialization failed: $e');
-  }
-
-  try {
-    await NotificationService().initialize();
-    debugPrint('Notification service initialized successfully');
-  } catch (e) {
-    debugPrint('Notification service initialization failed: $e');
-  }
-
   runApp(
     MultiProvider(
       providers: [
@@ -70,4 +57,20 @@ void main() async {
       child: const LaundryCustomerApp(),
     ),
   );
+  unawaited(_startServices());
+}
+
+Future<void> _startServices() async {
+  try {
+    await Firebase.initializeApp().timeout(const Duration(seconds: 4));
+  } catch (e) {
+    debugPrint('Firebase initialization skipped: $e');
+    return;
+  }
+
+  try {
+    await NotificationService().initialize().timeout(const Duration(seconds: 4));
+  } catch (e) {
+    debugPrint('Notification service skipped: $e');
+  }
 }

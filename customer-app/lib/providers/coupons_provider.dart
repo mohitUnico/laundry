@@ -9,10 +9,9 @@ import '../repositories/coupons_repository.dart';
 import '../utils/prefs_keys.dart';
 
 class CouponsProvider with ChangeNotifier {
-  final CouponsRepository _repo;
-
-  CouponsProvider({CouponsRepository? repo}) : _repo = repo ?? CouponsRepository() {
-    _hydrateFromCache();
+  CouponsProvider({CouponsRepository? repo}) {
+    _coupons = _hardcodedCoupons();
+    _persistToCache();
   }
 
   List<Coupon> _coupons = const [];
@@ -32,42 +31,6 @@ class CouponsProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   Map<String, int> get usageByCode => _usageByCode;
-
-  Future<void> _hydrateFromCache() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      _lastRefreshMs = prefs.getInt(PrefsKeys.couponsLastRefreshMs) ?? 0;
-      final raw = prefs.getString(PrefsKeys.couponsJson);
-      final usageRaw = prefs.getString(PrefsKeys.couponUsageJson);
-      if (usageRaw != null && usageRaw.isNotEmpty) {
-        try {
-          final decoded = jsonDecode(usageRaw);
-          if (decoded is Map) {
-            _usageByCode = decoded.map<String, int>((key, value) {
-              final k = key.toString().toUpperCase();
-              final v = (value is num) ? value.toInt() : int.tryParse(value.toString()) ?? 0;
-              return MapEntry(k, v);
-            });
-          }
-        } catch (_) {
-          _usageByCode = const {};
-        }
-      }
-      if (raw != null && raw.isNotEmpty) {
-        final decoded = jsonDecode(raw);
-        if (decoded is List) {
-          final parsed = decoded
-              .whereType<Map>()
-              .map((e) => Coupon.fromJson(e.cast<String, dynamic>()))
-              .toList();
-          _coupons = parsed.where(_isApplicableNow).toList();
-        }
-      }
-      notifyListeners();
-    } catch (_) {
-      // ignore
-    }
-  }
 
   Future<void> _persistToCache() async {
     try {
@@ -97,8 +60,84 @@ class CouponsProvider with ChangeNotifier {
 
     // Extra constraints (client-side) for marketing-style coupons where backend doesn't encode
     // day-of-week rules explicitly (e.g., "WEEKEND" coupons).
-    if (!_matchesInferredDayConstraint(c, now)) return false;
     return true;
+  }
+
+  List<Coupon> _hardcodedCoupons() {
+    final now = DateTime.now();
+    Coupon coupon({
+      required int id,
+      required String code,
+      required String description,
+      required String discountType,
+      required num discountValue,
+      num? maxDiscount,
+      num? minOrderValue,
+    }) {
+      return Coupon(
+        id: id,
+        code: code,
+        description: description,
+        discountType: discountType,
+        discountValue: discountValue,
+        maxDiscount: maxDiscount,
+        minOrderValue: minOrderValue,
+        usageLimit: null,
+        usagePerUser: null,
+        validFrom: DateTime(2020, 1, 1),
+        validTill: DateTime(2030, 12, 31),
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      );
+    }
+
+    return [
+      coupon(
+        id: 1,
+        code: 'WELCOME20',
+        description: 'Welcome Offer',
+        discountType: 'percentage',
+        discountValue: 20,
+      ),
+      coupon(
+        id: 2,
+        code: 'WEEKEND15',
+        description: 'Weekend Deal',
+        discountType: 'percentage',
+        discountValue: 15,
+      ),
+      coupon(
+        id: 3,
+        code: 'FIRST50',
+        description: 'First Order',
+        discountType: 'fixed',
+        discountValue: 50,
+      ),
+      coupon(
+        id: 4,
+        code: 'WASH10',
+        description: '10% off',
+        discountType: 'percentage',
+        discountValue: 10,
+      ),
+      coupon(
+        id: 5,
+        code: 'FLAT50',
+        description: 'Flat 50 off',
+        discountType: 'fixed',
+        discountValue: 50,
+        minOrderValue: 100,
+      ),
+      coupon(
+        id: 6,
+        code: 'CAPPED',
+        description: '50% off capped at 20',
+        discountType: 'percentage',
+        discountValue: 50,
+        maxDiscount: 20,
+      ),
+    ];
   }
 
   /// Record that the given coupon code has been successfully used by the
@@ -118,25 +157,6 @@ class CouponsProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  bool _matchesInferredDayConstraint(Coupon c, DateTime now) {
-    final text = [
-      c.code,
-      if (c.description != null) c.description!,
-    ].join(' ').toLowerCase();
-
-    final isWeekend = now.weekday == DateTime.saturday || now.weekday == DateTime.sunday;
-
-    // Heuristic constraints based on coupon naming/description conventions.
-    // If both keywords exist (misconfigured data), prefer "weekend" and require weekend.
-    final mentionsWeekend = text.contains('weekend');
-    final mentionsWeekday = text.contains('weekday');
-
-    if (mentionsWeekend) return isWeekend;
-    if (mentionsWeekday) return !isWeekend;
-
-    return true;
-  }
-
   Future<void> fetchApplicableCoupons({bool force = false}) async {
     if (kDebugMode) {
       debugPrint('[CouponsProvider] fetchApplicableCoupons: start force=$force cached=${_coupons.length}');
@@ -152,32 +172,12 @@ class CouponsProvider with ChangeNotifier {
     if (!effectiveForce && _coupons.isNotEmpty) return;
 
     final future = () async {
-      _isLoading = _coupons.isEmpty; // only show "loading" on first load
+      _coupons = _hardcodedCoupons().where(_isApplicableNow).toList();
+      _isLoading = false;
       _error = null;
-      if (_isLoading) notifyListeners();
-
-      try {
-        final fresh = await _repo
-            .listApplicableCoupons()
-            .timeout(const Duration(seconds: 4));
-        if (kDebugMode) {
-          debugPrint('[CouponsProvider] fetchApplicableCoupons: backend returned=${fresh.length}');
-        }
-        _coupons = fresh.where(_isApplicableNow).toList();
-        if (kDebugMode) {
-          debugPrint('[CouponsProvider] fetchApplicableCoupons: applicableNow=${_coupons.length}');
-        }
-        _lastRefreshMs = DateTime.now().millisecondsSinceEpoch;
-        await _persistToCache();
-      } catch (e) {
-        _error = e.toString();
-        if (kDebugMode) {
-          debugPrint('[CouponsProvider] fetchApplicableCoupons: error=$_error');
-        }
-      } finally {
-        _isLoading = false;
-        notifyListeners();
-      }
+      _lastRefreshMs = DateTime.now().millisecondsSinceEpoch;
+      notifyListeners();
+      await _persistToCache();
     }();
 
     _fetchInFlight = future;

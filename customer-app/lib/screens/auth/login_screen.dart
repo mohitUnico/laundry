@@ -26,6 +26,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final GlobalKey<OtpInputRowState> _otpInputKey = GlobalKey<OtpInputRowState>();
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   bool _otpRequested = false;
+  String? _shownOtp;
   String _otp = '';
   bool _otpAutoSubmitting = false;
   String? _emailError;
@@ -111,6 +112,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       setState(() {
         _otpRequested = true;
+        _shownOtp = result.otp;
       });
       _startTimers(otpExpiresInSeconds: result.expiresIn);
 
@@ -153,8 +155,13 @@ class _LoginScreenState extends State<LoginScreen> {
       final result = await context.read<AuthProvider>().resendCustomerOtp(email);
       if (!mounted) return;
       _startTimers(otpExpiresInSeconds: result.expiresIn);
+      setState(() => _shownOtp = result.otp);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('OTP resent successfully')),
+        SnackBar(
+          content: Text(
+            result.otp == null ? 'OTP resent successfully' : 'OTP resent: ${result.otp}',
+          ),
+        ),
       );
       _otpInputKey.currentState?.focusFirst();
     } catch (e) {
@@ -324,6 +331,17 @@ class _LoginScreenState extends State<LoginScreen> {
                             _maybeAutoSubmitOtp(otp: value);
                           },
                         ),
+                        if (_shownOtp != null) ...[
+                          const SizedBox(height: 10),
+                          Text(
+                            'Your OTP is $_shownOtp',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: AuthColors.primary,
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 10),
                         Row(
                           children: [

@@ -1,10 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'api_service.dart';
+import 'local_auth_store.dart';
 
 class CustomerAddress {
   final String addressId;
@@ -71,12 +70,13 @@ class CustomerAddress {
 }
 
 class CustomerInfoService {
-  final ApiService _api;
+  final LocalAuthStore _localAuth;
 
   /// Addresses are stored on the device until the customer API is used again.
   static const _addressesKey = 'local_customer_addresses';
 
-  CustomerInfoService({ApiService? api}) : _api = api ?? ApiService();
+  CustomerInfoService({LocalAuthStore? localAuth})
+      : _localAuth = localAuth ?? LocalAuthStore();
 
   Future<List<CustomerAddress>> getAddresses() async {
     return _readLocalAddresses();
@@ -113,39 +113,15 @@ class CustomerInfoService {
     return saved;
   }
 
-  Future<Map<String, dynamic>> getProfile() async {
-    try {
-      final res = await _api.get('/customer-info/profile');
-      final data = (res.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
-      return data;
-    } on DioException catch (e) {
-      final msg = _extractErrorMessage(e, 'Failed to fetch profile');
-      throw Exception(msg);
-    } catch (e) {
-      throw Exception('Failed to fetch profile: $e');
-    }
+  Future<Map<String, dynamic>> getProfile() {
+    return _localAuth.currentProfile();
   }
 
   Future<Map<String, dynamic>> updateProfile({
     String? fullName,
     String? phone,
-  }) async {
-    try {
-      final payload = <String, dynamic>{};
-      if (fullName != null) payload['full_name'] = fullName;
-      if (phone != null) {
-        payload['phone'] = phone.isEmpty ? null : phone;
-      }
-
-      final res = await _api.patch('/customer-info/profile', data: payload);
-      final data = (res.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
-      return data;
-    } on DioException catch (e) {
-      final msg = _extractErrorMessage(e, 'Failed to update profile');
-      throw Exception(msg);
-    } catch (e) {
-      throw Exception('Failed to update profile: $e');
-    }
+  }) {
+    return _localAuth.updateProfile(fullName: fullName, phone: phone);
   }
 
   Future<CustomerAddress> updateAddress({
@@ -240,33 +216,7 @@ class CustomerInfoService {
     );
   }
 
-  Future<Map<String, dynamic>> uploadProfileImage({required File file}) async {
-    try {
-      final formData = FormData.fromMap({
-        'file': await MultipartFile.fromFile(file.path),
-      });
-
-      final res = await _api.postFormData('/customer-info/profile-image/upload', data: formData);
-      final data = (res.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
-      return data;
-    } on DioException catch (e) {
-      final msg = _extractErrorMessage(e, 'Failed to upload profile image');
-      throw Exception(msg);
-    } catch (e) {
-      throw Exception('Failed to upload profile image: $e');
-    }
-  }
-
-  String _extractErrorMessage(DioException e, String fallback) {
-    try {
-      final data = e.response?.data;
-      if (data is Map<String, dynamic>) {
-        final message = data['message'];
-        if (message is String && message.isNotEmpty) return message;
-      }
-    } catch (_) {
-      // ignore
-    }
-    return fallback;
+  Future<Map<String, dynamic>> uploadProfileImage({required File file}) {
+    return _localAuth.saveProfileImage(file.path);
   }
 }

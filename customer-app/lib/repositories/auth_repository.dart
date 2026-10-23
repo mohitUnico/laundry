@@ -1,4 +1,5 @@
 import '../services/auth_service.dart';
+import '../services/local_auth_store.dart';
 import '../utils/auth_storage.dart';
 import '../utils/jwt_utils.dart';
 
@@ -6,17 +7,17 @@ export '../services/auth_service.dart'
     show CustomerVerifyOtpResult, CustomerSendOtpResult, RefreshTokenResult;
 
 class AuthRepository {
-  final AuthService _authService;
+  final LocalAuthStore _localAuth;
 
-  AuthRepository({AuthService? authService})
-      : _authService = authService ?? AuthService();
+  AuthRepository({LocalAuthStore? localAuth})
+      : _localAuth = localAuth ?? LocalAuthStore();
 
-  Future<CustomerSendOtpResult> sendCustomerOtp({required String email}) async {
-    return _authService.sendCustomerOtp(email: email);
+  Future<CustomerSendOtpResult> sendCustomerOtp({required String email}) {
+    return _localAuth.sendOtp(email);
   }
 
-  Future<CustomerSendOtpResult> resendCustomerOtp({required String email}) async {
-    return _authService.resendCustomerOtp(email: email);
+  Future<CustomerSendOtpResult> resendCustomerOtp({required String email}) {
+    return _localAuth.sendOtp(email);
   }
 
   /// Verifies OTP. If user exists, this also persists the returned JWT.
@@ -24,7 +25,7 @@ class AuthRepository {
     required String email,
     required String otp,
   }) async {
-    final result = await _authService.verifyCustomerOtp(email: email, otp: otp);
+    final result = await _localAuth.verifyOtp(email: email, otp: otp);
 
     if (!result.isNewUser) {
       final token = result.token;
@@ -48,7 +49,7 @@ class AuthRepository {
     String? phone,
     Map<String, dynamic>? address,
   }) async {
-    final result = await _authService.completeCustomerRegistration(
+    final result = await _localAuth.completeRegistration(
       sessionToken: sessionToken,
       fullName: fullName,
       phone: phone,
@@ -75,11 +76,7 @@ class AuthRepository {
   }
 
   Future<RefreshTokenResult> refreshSession() async {
-    final refresh = await AuthStorage.getRefreshToken();
-    if (refresh == null || refresh.isEmpty) {
-      throw Exception('Missing refresh token');
-    }
-    final result = await _authService.refreshSession(refreshToken: refresh);
+    final result = await _localAuth.refresh();
     if (result.token.isEmpty || result.refreshToken.isEmpty) {
       throw Exception('Invalid refresh response');
     }

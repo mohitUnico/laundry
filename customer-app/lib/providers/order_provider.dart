@@ -112,15 +112,30 @@ class OrderProvider with ChangeNotifier {
     super.dispose();
   }
 
-  void updateOrderSchedule(String orderId, String dateLabel, String timeLabel) {
+  void updateOrderSchedule(
+    String orderId,
+    String dateLabel,
+    String timeLabel, {
+    bool forDelivery = false,
+    DateTime? at,
+  }) {
     final index = _orders.indexWhere((o) => o.id == orderId);
-    if (index >= 0) {
-      _orders[index] = _orders[index].copyWith(
-        dateLabel: dateLabel,
-        timeLabel: timeLabel,
-      );
-      notifyListeners();
-    }
+    if (index < 0) return;
+    final current = _orders[index];
+    final updated = forDelivery
+        ? current.copyWith(
+            deliveryDateLabel: dateLabel,
+            deliveryTimeLabel: timeLabel,
+            scheduledDeliveryAt: at,
+          )
+        : current.copyWith(
+            dateLabel: dateLabel,
+            timeLabel: timeLabel,
+            scheduledPickupAt: at,
+          );
+    _orders[index] = updated;
+    notifyListeners();
+    _localOrders.saveChangedSchedule(updated);
   }
 
   void clear() {

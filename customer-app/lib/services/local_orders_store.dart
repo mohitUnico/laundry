@@ -8,6 +8,7 @@ import '../models/order_record.dart';
 /// Orders kept on the device until the customer order API is used again.
 class LocalOrdersStore {
   static const _key = 'local_customer_orders';
+  static const _scheduleLockKey = 'local_order_schedule_locks';
 
   static const _seedIds = {
     'LD90021',
@@ -21,11 +22,33 @@ class LocalOrdersStore {
   Future<List<OrderRecord>> load() async {
     final prefs = await SharedPreferences.getInstance();
     final stored = _decode(prefs.getString(_key));
+    final locked = prefs.getStringList(_scheduleLockKey)?.toSet() ?? {};
+    final storedById = {for (final order in stored) order.id: order};
     final placed = stored.where((order) => !_seedIds.contains(order.id)).toList();
-    final orders = [...placed, ..._sampleOrders(DateTime.now())];
+    final samples = _sampleOrders(DateTime.now()).map((sample) {
+      final saved = storedById[sample.id];
+      if (saved == null || !locked.contains(sample.id)) return sample;
+      return sample.copyWith(
+        dateLabel: saved.dateLabel,
+        timeLabel: saved.timeLabel,
+        deliveryDateLabel: saved.deliveryDateLabel,
+        deliveryTimeLabel: saved.deliveryTimeLabel,
+        scheduledPickupAt: saved.scheduledPickupAt,
+        scheduledDeliveryAt: saved.scheduledDeliveryAt,
+      );
+    }).toList();
+    final orders = [...placed, ...samples];
     orders.sort(_sortForList);
     await prefs.setString(_key, jsonEncode(orders.map(_orderToJson).toList()));
     return orders;
+  }
+
+  Future<void> saveChangedSchedule(OrderRecord order) async {
+    final prefs = await SharedPreferences.getInstance();
+    final locks = prefs.getStringList(_scheduleLockKey)?.toSet() ?? {};
+    locks.add(order.id);
+    await prefs.setStringList(_scheduleLockKey, locks.toList());
+    await upsert(order);
   }
 
   Future<void> upsert(OrderRecord order) async {

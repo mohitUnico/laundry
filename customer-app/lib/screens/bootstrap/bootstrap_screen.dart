@@ -34,9 +34,11 @@ class _BootstrapScreenState extends State<BootstrapScreen> {
       return;
     }
 
-    // 2) Auth session restore
+    // 2) Auth session restore. Give up quickly if storage is slow.
     final auth = context.read<AuthProvider>();
-    await auth.hydrateFromStorage();
+    try {
+      await auth.hydrateFromStorage().timeout(const Duration(seconds: 3));
+    } catch (_) {}
 
     if (!mounted) return;
     if (auth.hasValidSession) {

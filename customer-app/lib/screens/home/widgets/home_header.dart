@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'home_colors.dart';
 import '../../../routes/app_routes.dart';
 import '../../../theme/app_text_styles.dart';
+import '../../../widgets/profile_photo.dart';
 
 class HomeHeader extends StatelessWidget {
   final String userName;
@@ -29,27 +30,11 @@ class HomeHeader extends StatelessWidget {
           onTap: () => Navigator.of(context).pushNamed(AppRoutes.profile),
           customBorder: const CircleBorder(),
           child: ClipOval(
-            child: (imageUrl != null && imageUrl.isNotEmpty)
-                ? Image.network(
-                    imageUrl,
-                    width: 44,
-                    height: 44,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Image.asset(
-                        'assets/icons/profile_pic_demo.png',
-                        width: 44,
-                        height: 44,
-                        fit: BoxFit.cover,
-                      );
-                    },
-                  )
-                : Image.asset(
-                    'assets/icons/profile_pic_demo.png',
-                    width: 44,
-                    height: 44,
-                    fit: BoxFit.cover,
-                  ),
+            child: ProfilePhoto(
+              path: imageUrl,
+              width: 44,
+              height: 44,
+            ),
           ),
         ),
         const SizedBox(width: 12),

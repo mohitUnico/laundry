@@ -158,6 +158,9 @@ class AuthProvider with ChangeNotifier {
     if (!JwtUtils.isExpired(stored)) {
       _token = stored;
       _isAuthenticated = true;
+      try {
+        _userOrCustomer = await _customerInfoRepository.getProfile();
+      } catch (_) {}
       notifyListeners();
       return;
     }

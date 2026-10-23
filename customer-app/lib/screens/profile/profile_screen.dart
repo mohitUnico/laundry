@@ -6,6 +6,7 @@ import '../../providers/auth_provider.dart';
 import 'edit_profile_dialog.dart';
 import '../home/widgets/home_colors.dart';
 import '../../theme/app_text_styles.dart';
+import '../../widgets/profile_photo.dart';
 
 class ProfileScreen extends StatefulWidget {
   final bool showBack;
@@ -211,28 +212,7 @@ class _ProfileCard extends StatelessWidget {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(14),
-              child: (imageUrl != null && imageUrl.isNotEmpty)
-                  ? Image.network(
-                      imageUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Image.asset(
-                          'assets/icons/profile_pic_demo.png',
-                          fit: BoxFit.cover,
-                        );
-                      },
-                    )
-                  : Image.asset(
-                      'assets/icons/profile_pic_demo.png',
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return const Icon(
-                          Icons.person_rounded,
-                          color: HomeColors.muted,
-                          size: 26,
-                        );
-                      },
-                    ),
+              child: ProfilePhoto(path: imageUrl),
             ),
           ),
           const SizedBox(width: 12),

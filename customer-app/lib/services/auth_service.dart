@@ -5,16 +5,19 @@ import 'api_service.dart';
 class CustomerSendOtpResult {
   final String email;
   final int expiresIn;
+  final String? otp;
 
   const CustomerSendOtpResult({
     required this.email,
     required this.expiresIn,
+    this.otp,
   });
 
   factory CustomerSendOtpResult.fromJson(Map<String, dynamic> json) {
     return CustomerSendOtpResult(
       email: (json['email'] ?? '') as String,
       expiresIn: (json['expiresIn'] ?? 0) as int,
+      otp: json['otp'] as String?,
     );
   }
 }

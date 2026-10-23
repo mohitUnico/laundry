@@ -9,12 +9,11 @@ import '../../providers/auth_provider.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/coupons_provider.dart';
 import '../../providers/order_provider.dart';
-import '../../models/order_record.dart';
 import 'widgets/home_colors.dart';
 import 'widgets/home_header.dart';
 import 'widgets/how_laundry_card.dart';
 import 'widgets/offer_carousel.dart';
-import 'widgets/active_orders_carousel.dart';
+import 'widgets/pickup_cards.dart';
 import 'widgets/home_linen_bottom_sheet.dart';
 import 'widgets/luxury_care_bottom_sheet.dart';
 import 'widgets/pro_clean_bottom_sheet.dart';
@@ -252,27 +251,9 @@ class _HomeContent extends StatelessWidget {
               return OfferCarousel(banners: banners);
             },
           ),
-          Consumer<OrderProvider>(
-            builder: (context, orderProvider, _) {
-              final activeOrders = orderProvider.orders
-                  .where((order) => order.status == OrderStatus.inProgress)
-                  .toList();
-
-              if (activeOrders.isEmpty) {
-                // No active orders – still keep some space after coupons
-                return const SizedBox(height: 20);
-              }
-
-              return Column(
-                children: [
-                  const SizedBox(height: 16),
-                  ActiveOrdersCarousel(orders: activeOrders),
-                  // Tighter gap below active order card
-                  const SizedBox(height: 8),
-                ],
-              );
-            },
-          ),
+          const SizedBox(height: 16),
+          const PickupCards(),
+          const SizedBox(height: 16),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

@@ -43,6 +43,20 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
   final _instructionsController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (ModalRoute.of(context)?.settings.arguments == 'instant') {
+        setState(() {
+          _instantCollect = true;
+          _collectScheduleLabel = null;
+        });
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _instructionsController.dispose();
     super.dispose();

@@ -38,6 +38,10 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
   bool _expressWash = false;
   bool _instantCollect = false;
   bool _expressReturn = false;
+  bool _fromHomePickup = false;
+  bool _lockInstantCollect = false;
+  SchedulePick? _collectPick;
+  SchedulePick? _returnPick;
   String? _collectScheduleLabel;
   String? _returnScheduleLabel;
   final _instructionsController = TextEditingController();
@@ -47,9 +51,21 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (ModalRoute.of(context)?.settings.arguments == 'instant') {
+      final args = ModalRoute.of(context)?.settings.arguments;
+      if (args is SchedulePick) {
         setState(() {
+          _fromHomePickup = true;
+          _lockInstantCollect = false;
+          _instantCollect = false;
+          _collectPick = args;
+          _collectScheduleLabel = schedulePickupHeadline(args.date, args.slot);
+        });
+      } else if (args == 'instant') {
+        setState(() {
+          _fromHomePickup = true;
+          _lockInstantCollect = true;
           _instantCollect = true;
+          _collectPick = null;
           _collectScheduleLabel = null;
         });
       }
@@ -79,6 +95,10 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
   }
 
   Future<void> _placeOrder() async {
+    if (_fromHomePickup) {
+      await _placeHomePickup();
+      return;
+    }
     final cart = context.read<CartProvider>();
     final items = List<CartItem>.from(cart.items);
     final now = DateTime.now();
@@ -125,6 +145,78 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
       MaterialPageRoute(builder: (_) => const OrderPlacedScreen()),
       (route) => false,
     );
+  }
+
+  Future<void> _placeHomePickup() async {
+    final now = DateTime.now();
+    final saved = await _savedAddress();
+    if (!mounted) return;
+    final instant = _instantCollect || _lockInstantCollect;
+    final pick = _collectPick;
+    if (!instant && pick == null) return;
+    final returnPick = _returnPick;
+    final orderNumber = (now.millisecondsSinceEpoch % 90000) + 10000;
+    final id = 'LD$orderNumber';
+    final line = (saved?.fullAddress ?? '').trim();
+    context.read<OrderProvider>().addOrder(
+          OrderRecord(
+            id: id,
+            title: instant ? 'Instant pickup' : 'Scheduled pickup',
+            items: const [],
+            totalItems: 0,
+            totalInr: 0,
+            orderType: instant ? 'instant_pickup' : 'schedule_pickup',
+            dateLabel: instant
+                ? '${now.day} ${_monthShort(now.month)}'
+                : '${pick!.date.day} ${_monthShort(pick.date.month)}',
+            timeLabel: instant ? 'Within 20 mins' : pick!.slot,
+            scheduledPickupAt: instant ? null : scheduleSlotStart(pick!.date, pick.slot),
+            deliveryDateLabel: returnPick == null
+                ? null
+                : '${returnPick.date.day} ${_monthShort(returnPick.date.month)}',
+            deliveryTimeLabel: returnPick != null
+                ? returnPick.slot
+                : (_expressReturn ? 'Express' : null),
+            scheduledDeliveryAt:
+                returnPick == null ? null : scheduleSlotStart(returnPick.date, returnPick.slot),
+            placedAt: now,
+            placedDateLabel: '${now.day} ${_monthShort(now.month)}',
+            placedTimeLabel: _clockLabel(now),
+            status: OrderStatus.inProgress,
+            backendStatus: 'placed',
+            pickupAddress: line.isEmpty ? null : line,
+            pickupLat: saved?.latitude,
+            pickupLng: saved?.longitude,
+            isExpress: instant || _expressWash,
+          ),
+        );
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => OrderPlacedScreen(
+          orderId: id,
+          slotText: instant
+              ? 'Within 20 mins'
+              : schedulePickupHeadline(pick!.date, pick.slot),
+          scheduleOnly: !instant,
+          instant: instant,
+        ),
+      ),
+      (route) => false,
+    );
+  }
+
+  Future<CustomerAddress?> _savedAddress() async {
+    try {
+      final addresses = await CustomerInfoService().getAddresses();
+      if (addresses.isEmpty) return null;
+      return addresses.firstWhere(
+        (item) => item.isDefault,
+        orElse: () => addresses.first,
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<String?> _defaultAddressLine() async {
@@ -177,14 +269,17 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
   }
 
   Future<void> _openSchedule({required bool forReturn}) async {
+    if (!forReturn && _lockInstantCollect) return;
     final picked = await showScheduleBottomSheet(context);
     if (picked == null || !mounted) return;
-    final label = '${picked.date.day} ${_monthShort(picked.date.month)}, ${picked.slot}';
+    final label = schedulePickupHeadline(picked.date, picked.slot);
     setState(() {
       if (forReturn) {
+        _returnPick = picked;
         _returnScheduleLabel = label;
         _expressReturn = false;
       } else {
+        _collectPick = picked;
         _collectScheduleLabel = label;
         _instantCollect = false;
       }
@@ -194,7 +289,7 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FC),
+      backgroundColor: HomeColors.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -241,22 +336,26 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
                         icon: Icons.bolt_rounded,
                         iconColor: const Color(0xFFF5B400),
                         title: 'Instant',
-                        subtitle: _earliestLabel,
+                        subtitle: _lockInstantCollect ? 'Within 20 mins' : _earliestLabel,
                         selected: _instantCollect,
                         onTap: () => setState(() {
                           _instantCollect = true;
                           _collectScheduleLabel = null;
+                          _collectPick = null;
                         }),
                       ),
-                      const _CardDivider(),
-                      _TimingRow(
-                        icon: Icons.calendar_today_outlined,
-                        iconColor: const Color(0xFF667085),
-                        title: 'Schedule',
-                        subtitle: _collectScheduleLabel ?? 'Choose your pickup date and time',
-                        showChevron: true,
-                        onTap: () => _openSchedule(forReturn: false),
-                      ),
+                      if (!_lockInstantCollect) ...[
+                        const _CardDivider(),
+                        _TimingRow(
+                          icon: Icons.calendar_today_outlined,
+                          iconColor: const Color(0xFF667085),
+                          title: 'Schedule',
+                          subtitle: _collectScheduleLabel ?? 'Choose your pickup date and time',
+                          selected: !_instantCollect && _collectPick != null,
+                          showChevron: true,
+                          onTap: () => _openSchedule(forReturn: false),
+                        ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 22),
@@ -523,10 +622,19 @@ class _TimingRow extends StatelessWidget {
               ),
             ),
             if (showChevron)
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: Color(0xFF98A2B3),
-                size: 22,
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (selected) ...[
+                    const _RadioDot(selected: true, size: 20),
+                    const SizedBox(width: 8),
+                  ],
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: Color(0xFF98A2B3),
+                    size: 22,
+                  ),
+                ],
               )
             else
               _RadioDot(selected: selected, size: 20),
@@ -902,7 +1010,7 @@ class _SlideToOrderButtonState extends State<_SlideToOrderButton>
                   child: Opacity(
                     opacity: 1 - progress,
                     child: Text(
-                      'Slide to place order',
+                      'Slide to place your order',
                       style: GoogleFonts.poppins(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,

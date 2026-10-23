@@ -30,7 +30,7 @@ class PickupCards extends StatelessWidget {
               final picked = await showScheduleBottomSheet(context);
               if (picked == null || !context.mounted) return;
               Navigator.of(context).pushNamed(
-                AppRoutes.scheduleConfirm,
+                AppRoutes.deliveryOptions,
                 arguments: picked,
               );
             },
@@ -42,7 +42,7 @@ class PickupCards extends StatelessWidget {
           child: _InstantPickupCard(
             height: height,
             onTap: () => Navigator.of(context).pushNamed(
-              AppRoutes.scheduleConfirm,
+              AppRoutes.deliveryOptions,
               arguments: 'instant',
             ),
           ),

@@ -59,7 +59,8 @@ class _OrderPlacedScreenState extends State<OrderPlacedScreen> {
           pickupLat: order?.pickupLat,
           pickupLng: order?.pickupLng,
           backendStatus: 'placed',
-          orderType: 'both',
+          orderType: widget.instant ? 'instant_pickup' : 'schedule_pickup',
+          slotLabel: widget.slotText,
         ),
       );
       return;

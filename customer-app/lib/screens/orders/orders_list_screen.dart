@@ -103,6 +103,9 @@ class _OrdersListScreenState extends State<OrdersListScreen>
   }
 
   void _openScheduleTrack(BuildContext context, OrderRecord order) {
+    final instant = order.orderType == 'instant_pickup';
+    final scheduled = order.orderType == 'schedule_pickup';
+    final at = order.scheduledPickupAt;
     Navigator.of(context).pushNamed(
       AppRoutes.orderTracking,
       arguments: OrderTrackingArgs(
@@ -111,7 +114,12 @@ class _OrdersListScreenState extends State<OrdersListScreen>
         pickupLat: order.pickupLat,
         pickupLng: order.pickupLng,
         backendStatus: order.backendStatus,
-        orderType: 'both',
+        orderType: instant || scheduled ? order.orderType : 'both',
+        slotLabel: instant
+            ? 'Within 20 mins'
+            : (scheduled && at != null && order.timeLabel.isNotEmpty
+                ? schedulePickupHeadline(at, order.timeLabel)
+                : null),
       ),
     );
   }

@@ -2,8 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:provider/provider.dart';
 
+import '../../providers/order_provider.dart';
 import '../../theme/app_text_styles.dart';
+import '../cart/schedule_bottom_sheet.dart';
 import '../home/widgets/home_colors.dart';
 import '../../routes/app_routes.dart';
 import '../../routes/route_args.dart';
@@ -25,6 +28,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   String _orderType = 'both';
 
   String? _orderId;
+  String? _slotLabel;
   OrderTrackingArgs? _args;
   Timer? _trackingPollTimer;
 
@@ -54,12 +58,13 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       if (args is OrderTrackingArgs) {
         _args = args;
         _orderId = args.orderId;
+        _slotLabel = args.slotLabel;
+        if (args.orderType != null && args.orderType!.trim().isNotEmpty) {
+          _orderType = args.orderType!.trim();
+        }
         if (args.backendStatus != null && args.backendStatus!.trim().isNotEmpty) {
           _backendStatus = args.backendStatus!.trim();
           _activeIndex = _mapStatusToStepIndex(_backendStatus!, _orderType);
-        }
-        if (args.orderType != null && args.orderType!.trim().isNotEmpty) {
-          _orderType = args.orderType!.trim();
         }
 
         // Phone-only orders are not on the server. Draw the screen now
@@ -315,6 +320,13 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
         backgroundColor: HomeColors.background,
         leading: InkWell(
           onTap: () {
+            if (_orderType == 'schedule_pickup' || _orderType == 'instant_pickup') {
+              Navigator.of(context).pushNamedAndRemoveUntil(
+                AppRoutes.orders,
+                (r) => false,
+              );
+              return;
+            }
             if (Navigator.of(context).canPop()) {
               Navigator.of(context).pop();
               return;
@@ -420,8 +432,15 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                                   ),
                                   child: _Timeline(
                                     activeIndex: _activeIndex,
-                                    pickupAddress: t.pickup?.address,
+                                    pickupAddress: _orderType == 'instant_pickup'
+                                        ? 'Within 20 mins'
+                                        : (_orderType == 'schedule_pickup' &&
+                                                (_slotLabel ?? '').trim().isNotEmpty
+                                            ? _slotLabel
+                                            : t.pickup?.address),
                                     orderType: t.orderType,
+                                    onReschedule:
+                                        _orderType == 'schedule_pickup' ? _reschedule : null,
                                   ),
                                 ),
                                 const SizedBox(height: 12),
@@ -448,6 +467,24 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                 ),
     );
   }
+
+  Future<void> _reschedule() async {
+    final id = _orderId;
+    if (id == null || id.isEmpty) return;
+    final picked = await showScheduleBottomSheet(context);
+    if (picked == null || !mounted) return;
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    context.read<OrderProvider>().updateOrderSchedule(
+          id,
+          '${months[picked.date.month - 1]} ${picked.date.day}',
+          picked.slot,
+          at: scheduleSlotStart(picked.date, picked.slot),
+        );
+    setState(() => _slotLabel = schedulePickupHeadline(picked.date, picked.slot));
+  }
 }
 
 enum _OrderFlowType { pickupOnly, deliveryOnly, both }
@@ -457,11 +494,13 @@ class _Timeline extends StatelessWidget {
   final int activeIndex;
   final String? pickupAddress;
   final String orderType;
+  final VoidCallback? onReschedule;
 
   const _Timeline({
     required this.activeIndex,
     this.pickupAddress,
     required this.orderType,
+    this.onReschedule,
   });
 
   _OrderFlowType _resolveOrderFlowType() {
@@ -561,6 +600,7 @@ class _Timeline extends StatelessWidget {
             data: items[i],
             isActive: i <= clampedActive,
             isLast: i == items.length - 1,
+            onReschedule: i == 0 ? onReschedule : null,
           ),
           if (i != items.length - 1) const SizedBox(height: 12),
         ],
@@ -585,11 +625,13 @@ class _TimelineRow extends StatelessWidget {
   final _TimelineItemData data;
   final bool isActive;
   final bool isLast;
+  final VoidCallback? onReschedule;
 
   const _TimelineRow({
     required this.data,
     required this.isActive,
     required this.isLast,
+    this.onReschedule,
   });
 
   @override
@@ -642,6 +684,19 @@ class _TimelineRow extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(data.subtitle!, style: subtitleStyle),
                 ],
+                if (onReschedule != null)
+                  TextButton(
+                    onPressed: onReschedule,
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: const Size(0, 28),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: Text(
+                      'Reschedule',
+                      style: AppTextStyles.button(color: HomeColors.primary).copyWith(fontSize: 13),
+                    ),
+                  ),
               ],
             ),
           ),

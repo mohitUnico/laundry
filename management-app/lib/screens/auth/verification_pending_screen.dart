@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../routes/app_routes.dart';
+import '../../services/mock/mock_store.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../utils/auth_storage.dart';
+import '../../utils/mock_config.dart';
 import '../../utils/role_manager.dart';
 
 class VerificationPendingScreen extends StatelessWidget {
@@ -18,6 +20,20 @@ class VerificationPendingScreen extends StatelessWidget {
     if (!context.mounted) return;
     Navigator.of(context).pushNamedAndRemoveUntil(
       AppRoutes.roleSelection,
+      (route) => false,
+    );
+  }
+
+  Future<void> _continueToHome(BuildContext context) async {
+    final stored = await AuthStorage.getCurrentUser() ?? await AuthStorage.getDeliveryStaff();
+    final email = (stored?['email'] ?? MockStore.instance.lastDeliveryEmail ?? 'demo@local.test').toString();
+    final verified = MockStore.instance.markDeliveryVerified(email);
+    await AuthStorage.saveToken('mock-token');
+    await AuthStorage.saveCurrentUser(verified);
+    await AuthStorage.saveDeliveryStaff(verified);
+    if (!context.mounted) return;
+    Navigator.of(context).pushNamedAndRemoveUntil(
+      AppRoutes.home,
       (route) => false,
     );
   }
@@ -83,6 +99,30 @@ class VerificationPendingScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 36),
+                        if (MockConfig.bypassBackend) ...[
+                          SizedBox(
+                            width: double.infinity,
+                            height: 52,
+                            child: OutlinedButton(
+                              onPressed: () => _continueToHome(context),
+                              style: OutlinedButton.styleFrom(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(30),
+                                ),
+                                side: const BorderSide(color: Colors.white, width: 1.4),
+                                foregroundColor: Colors.white,
+                              ),
+                              child: Text(
+                                'Continue to home',
+                                style: AppTextStyles.button(color: Colors.white).copyWith(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
                         SizedBox(
                           width: double.infinity,
                           height: 52,

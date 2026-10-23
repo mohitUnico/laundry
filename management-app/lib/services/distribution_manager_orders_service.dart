@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 
 import '../services/api_service.dart';
+import '../services/mock/mock_store.dart';
+import '../utils/mock_config.dart';
 
 class DistributionManagerOrdersService {
   final ApiService _api = ApiService();
@@ -39,6 +41,7 @@ class DistributionManagerOrdersService {
   }
 
   Future<Map<String, dynamic>> listReadyToVerify({int page = 1, int limit = 20}) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.dmReady();
     try {
       final res = await _api.get(
         '/staff-app/distribution-manager/orders/ready-to-verify',
@@ -53,6 +56,7 @@ class DistributionManagerOrdersService {
   }
 
   Future<Map<String, dynamic>> listVerified({int page = 1, int limit = 20}) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.dmVerified();
     try {
       final res = await _api.get(
         '/staff-app/distribution-manager/orders/verified',
@@ -67,6 +71,7 @@ class DistributionManagerOrdersService {
   }
 
   Future<Map<String, dynamic>> getOrderItems({required String orderId}) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.orderItems(orderId);
     try {
       final res = await _api.get('/staff-app/distribution-manager/orders/$orderId/items');
       final body = res.data;
@@ -78,6 +83,7 @@ class DistributionManagerOrdersService {
   }
 
   Future<Map<String, dynamic>> verifyOrder({required String orderId}) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.verifyOrder(orderId);
     try {
       final res = await _api.post('/staff-app/distribution-manager/orders/$orderId/verify');
       final body = res.data;
@@ -92,6 +98,7 @@ class DistributionManagerOrdersService {
     required String orderId,
     required String deliveryStaffId,
   }) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.assignDrop(orderId, deliveryStaffId);
     try {
       final res = await _api.post(
         '/staff-app/distribution-manager/orders/$orderId/assign-drop-direct',
@@ -106,6 +113,7 @@ class DistributionManagerOrdersService {
   }
 
   Future<Map<String, dynamic>> submitToCustomer({required String orderId}) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.submitToCustomer(orderId);
     try {
       final res = await _api.post('/staff-app/distribution-manager/orders/$orderId/submit-to-customer');
       final body = res.data;
@@ -117,6 +125,7 @@ class DistributionManagerOrdersService {
   }
 
   Future<Map<String, dynamic>> listDispatchHistory({int page = 1, int limit = 20}) async {
+    if (MockConfig.bypassBackend) return MockStore.instance.dmHistory();
     try {
       final res = await _api.get(
         '/staff-app/distribution-manager/orders/history',

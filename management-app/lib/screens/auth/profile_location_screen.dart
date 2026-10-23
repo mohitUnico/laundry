@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
@@ -10,6 +12,7 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../routes/app_routes.dart';
 import '../../providers/auth_provider.dart';
+import '../../utils/mock_config.dart';
 
 class ProfileLocationScreen extends StatefulWidget {
   const ProfileLocationScreen({super.key});
@@ -19,13 +22,65 @@ class ProfileLocationScreen extends StatefulWidget {
 }
 
 class _ProfileLocationScreenState extends State<ProfileLocationScreen> {
+  static const Duration _positionTimeout = Duration(seconds: 25);
+  static const String _locationTimeoutMessage =
+      'Could not get a GPS fix. On the Android emulator, open Extended controls (…), '
+      'then Location, enter a latitude and longitude, and tap Set Location. Then try again.';
+
   final ImagePicker _picker = ImagePicker();
   File? _profileImage;
+  Position? _signupPosition;
   bool _isLoadingImage = false;
   bool _isLoadingLocation = false;
   bool _locationAllowed = false;
   bool _isSubmitting = false;
   String? _submitError;
+
+  /// Last known fix first. A cold emulator often has permission and still no GPS sample.
+  Future<Position> _resolveSignupPosition() async {
+    final cached = _signupPosition;
+    if (cached != null) return cached;
+
+    try {
+      final lastKnown = await Geolocator.getLastKnownPosition();
+      if (lastKnown != null) {
+        _signupPosition = lastKnown;
+        return lastKnown;
+      }
+    } catch (e) {
+      debugPrint('Last known position unavailable: $e');
+    }
+
+    try {
+      final current = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.low,
+        timeLimit: _positionTimeout,
+      );
+      _signupPosition = current;
+      return current;
+    } on TimeoutException {
+      if (kDebugMode) {
+        debugPrint(
+          'Debug signup using fallback coordinates because no GPS fix arrived. '
+          'Set an emulator location for a real reading.',
+        );
+        return Position(
+          latitude: 22.5726,
+          longitude: 88.3639,
+          timestamp: DateTime.now(),
+          accuracy: 100,
+          altitude: 0,
+          altitudeAccuracy: 0,
+          heading: 0,
+          headingAccuracy: 0,
+          speed: 0,
+          speedAccuracy: 0,
+          isMocked: true,
+        );
+      }
+      throw Exception(_locationTimeoutMessage);
+    }
+  }
 
   Future<void> _pickImage(ImageSource source) async {
     try {
@@ -154,6 +209,24 @@ class _ProfileLocationScreenState extends State<ProfileLocationScreen> {
         });
       }
 
+      if (MockConfig.bypassBackend) {
+        _signupPosition = Position(
+          latitude: MockConfig.debugLatitude,
+          longitude: MockConfig.debugLongitude,
+          timestamp: DateTime.now(),
+          accuracy: 10,
+          altitude: 0,
+          altitudeAccuracy: 0,
+          heading: 0,
+          headingAccuracy: 0,
+          speed: 0,
+          speedAccuracy: 0,
+          isMocked: true,
+        );
+        if (mounted) setState(() => _isLoadingLocation = false);
+        return;
+      }
+
       // Verify location services are enabled
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
@@ -161,17 +234,23 @@ class _ProfileLocationScreenState extends State<ProfileLocationScreen> {
         return;
       }
 
-      // Try to get current position to verify everything works
+      // Permission is already granted. A missing GPS sample must not revoke that.
       try {
-        await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.low,
-          timeLimit: const Duration(seconds: 5),
-        );
+        final position = await _resolveSignupPosition();
+        if (position.isMocked && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text(_locationTimeoutMessage)),
+          );
+        }
       } catch (e) {
-        // Even if getting position fails (timeout, GPS issues), 
-        // permission is still granted, so we keep _locationAllowed = true
-        // Just log the error but don't change the permission status
         debugPrint('Error getting location: $e');
+        if (!mounted) return;
+        final message = e is TimeoutException
+            ? _locationTimeoutMessage
+            : e.toString().replaceFirst('Exception: ', '').trim();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message)),
+        );
       }
 
       // Update loading state
@@ -189,14 +268,14 @@ class _ProfileLocationScreenState extends State<ProfileLocationScreen> {
   Future<void> _handleNext() async {
     final auth = context.read<AuthProvider>();
     final profileImage = _profileImage;
-    if (profileImage == null) {
+    if (profileImage == null && !MockConfig.bypassBackend) {
       setState(() {
         _submitError = 'Profile image is required';
       });
       return;
     }
 
-    if (!_locationAllowed) {
+    if (!_locationAllowed && !MockConfig.bypassBackend) {
       setState(() {
         _submitError = 'Location permission is required';
       });
@@ -209,15 +288,27 @@ class _ProfileLocationScreenState extends State<ProfileLocationScreen> {
     });
 
     try {
-      // Get current coordinates (required by backend)
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.low,
-        timeLimit: const Duration(seconds: 8),
-      );
+      final position = MockConfig.bypassBackend
+          ? (_signupPosition ??
+              Position(
+                latitude: MockConfig.debugLatitude,
+                longitude: MockConfig.debugLongitude,
+                timestamp: DateTime.now(),
+                accuracy: 10,
+                altitude: 0,
+                altitudeAccuracy: 0,
+                heading: 0,
+                headingAccuracy: 0,
+                speed: 0,
+                speedAccuracy: 0,
+                isMocked: true,
+              ))
+          : await _resolveSignupPosition();
       if (!mounted) return;
 
+      final imageFile = profileImage ?? File('mock-profile.jpg');
       auth.updateDeliveryProfileAndLocation(
-            profileImageFile: profileImage,
+            profileImageFile: imageFile,
             latitude: position.latitude,
             longitude: position.longitude,
           );

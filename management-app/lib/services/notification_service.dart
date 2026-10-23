@@ -1,6 +1,7 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 
+import '../utils/mock_config.dart';
 import 'api_service.dart';
 
 /// Top-level handler for FCM when app is in background or terminated.
@@ -86,6 +87,7 @@ class NotificationService {
   /// Save current FCM token to backend. Call when delivery staff is logged in (e.g. from delivery home screen).
   Future<void> saveTokenToBackend(String? token) async {
     if (token == null || token.isEmpty) return;
+    if (MockConfig.bypassBackend) return;
     try {
       await _apiService.post(
         '/delivery-staff/fcm-token',
@@ -111,6 +113,7 @@ class NotificationService {
   /// Clear FCM token on backend on logout. Call before clearing auth session.
   /// Only clears if the stored token matches (safe for multi-device).
   Future<void> clearFcmTokenOnLogout() async {
+    if (MockConfig.bypassBackend) return;
     if (!_isInitialized || _firebaseMessaging == null) return;
     try {
       final token = await _firebaseMessaging!.getToken();

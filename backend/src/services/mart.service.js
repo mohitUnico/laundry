@@ -1,4 +1,4 @@
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 // IMPORTANT: Use the shared Prisma client from config/database to avoid exhausting the DB pool.
 const prisma = require('../config/database');
 const { AppError, ValidationError, NotFoundError } = require('../utils/errors');

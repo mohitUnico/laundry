@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 
 import '../services/api_service.dart';
+import '../services/mock/mock_store.dart';
+import '../utils/mock_config.dart';
 
 class DeliveryShiftService {
   final ApiService _api = ApiService();
@@ -23,6 +25,7 @@ class DeliveryShiftService {
   /// GET /api/v1/delivery-staff/shift/status
   /// Returns { success, data: null | { shiftId, staffId, startedAt, isActive, ... }, message }
   Future<Map<String, dynamic>> getShiftStatus() async {
+    if (MockConfig.bypassBackend) return MockStore.instance.shiftStatus();
     try {
       final res = await _api.get('/delivery-staff/shift/status');
       final body = res.data;
@@ -34,6 +37,7 @@ class DeliveryShiftService {
   }
 
   Future<Map<String, dynamic>> startShift() async {
+    if (MockConfig.bypassBackend) return MockStore.instance.startShift();
     try {
       final res = await _api.post('/delivery-staff/shift/start');
       final body = res.data;
@@ -45,6 +49,7 @@ class DeliveryShiftService {
   }
 
   Future<Map<String, dynamic>> stopShift() async {
+    if (MockConfig.bypassBackend) return MockStore.instance.stopShift();
     try {
       final res = await _api.post('/delivery-staff/shift/stop');
       final body = res.data;

@@ -9,6 +9,7 @@ import '../../../theme/app_colors.dart';
 import '../../../theme/app_text_styles.dart';
 import '../../../routes/app_routes.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../utils/mock_config.dart';
 
 class DrivingLicenseScreen extends StatefulWidget {
   const DrivingLicenseScreen({super.key});
@@ -89,13 +90,16 @@ class _DrivingLicenseScreenState extends State<DrivingLicenseScreen> {
 
   void _handleNext() {
     final file = _licenseImage;
+    final allowMissingImage = MockConfig.bypassBackend;
     setState(() {
-      _error = file == null ? 'Driving license image is required' : null;
+      _error = file == null && !allowMissingImage
+          ? 'Driving license image is required'
+          : null;
     });
-    if (file == null) return;
+    if (file == null && !allowMissingImage) return;
 
     context.read<AuthProvider>().updateDeliveryDrivingLicenseFile(
-          drivingLicenseFile: file,
+          drivingLicenseFile: file ?? File('mock-license.jpg'),
         );
     Navigator.of(context).pushNamed(AppRoutes.profileLocation);
   }

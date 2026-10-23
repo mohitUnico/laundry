@@ -10,6 +10,7 @@ import '../../theme/app_text_styles.dart';
 import '../../routes/app_routes.dart';
 import '../../utils/role_manager.dart';
 import '../../providers/auth_provider.dart';
+import '../../utils/mock_config.dart';
 
 class AddressAndIdScreen extends StatefulWidget {
   const AddressAndIdScreen({super.key});
@@ -293,17 +294,21 @@ class _AddressAndIdScreenState extends State<AddressAndIdScreen> {
                             final address = _addressController.text.trim();
                             final idProof = _idProofImage;
 
+                            final allowMissingImage = MockConfig.bypassBackend;
                             setState(() {
                               _addressError =
                                   address.isEmpty ? 'Address is required' : null;
-                              _idError =
-                                  idProof == null ? 'ID proof image is required' : null;
+                              _idError = idProof == null && !allowMissingImage
+                                  ? 'ID proof image is required'
+                                  : null;
                             });
-                            if (address.isEmpty || idProof == null) return;
+                            if (address.isEmpty || (idProof == null && !allowMissingImage)) {
+                              return;
+                            }
 
                             auth.updateDeliveryAddressAndId(
                                   address: address,
-                                  idProofDocumentFile: idProof,
+                                  idProofDocumentFile: idProof ?? File('mock-id.jpg'),
                                 );
 
                             // Check role and navigate accordingly

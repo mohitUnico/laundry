@@ -12,6 +12,7 @@ import '../../../../services/delivery_shift_service.dart';
 import '../../../../services/delivery_staff_app_service.dart';
 import '../../../../services/delivery_events_service.dart';
 import '../../../../services/notification_service.dart';
+import '../../../../utils/mock_config.dart';
 import '../../../../utils/auth_storage.dart';
 import '../../../../utils/date_time_ist.dart';
 import '../../../../utils/polling_config.dart';
@@ -430,6 +431,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // Send first location immediately, then every 2 seconds via PATCH /api/v1/delivery-staff/location
     Future<void> sendLocationUpdate() async {
       if (!_isShiftActive) return;
+      if (MockConfig.bypassBackend) return;
       try {
         await _ensureLocationPermission();
         final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);

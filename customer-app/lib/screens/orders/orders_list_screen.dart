@@ -103,8 +103,6 @@ class _OrdersListScreenState extends State<OrdersListScreen>
   }
 
   void _openScheduleTrack(BuildContext context, OrderRecord order) {
-    final at = order.scheduledPickupAt;
-    final slot = order.timeLabel;
     Navigator.of(context).pushNamed(
       AppRoutes.orderTracking,
       arguments: OrderTrackingArgs(
@@ -113,11 +111,7 @@ class _OrdersListScreenState extends State<OrdersListScreen>
         pickupLat: order.pickupLat,
         pickupLng: order.pickupLng,
         backendStatus: order.backendStatus,
-        orderType: 'schedule_pickup',
-        scheduleOnly: true,
-        slotLabel: at != null && slot.isNotEmpty
-            ? schedulePickupHeadline(at, slot)
-            : slot,
+        orderType: 'both',
       ),
     );
   }
@@ -229,6 +223,7 @@ class _OrdersListScreenState extends State<OrdersListScreen>
                               })> deliveryCards = [];
 
                           for (final o in active) {
+                            if (o.orderType == 'instant_pickup') continue;
                             final backend = o.backendStatus.toLowerCase();
                             final type = o.orderTypeOrBoth;
 
@@ -378,7 +373,8 @@ class _OrdersListScreenState extends State<OrdersListScreen>
                         }
 
                         for (final order in list) {
-                          final schedule = order.orderType == 'schedule_pickup';
+                          final schedule = order.orderType == 'schedule_pickup' ||
+                              order.orderType == 'instant_pickup';
                           children.add(
                             _OrderCard(
                               data: order,

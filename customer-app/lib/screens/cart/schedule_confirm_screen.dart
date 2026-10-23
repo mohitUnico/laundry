@@ -22,11 +22,17 @@ class _ScheduleConfirmScreenState extends State<ScheduleConfirmScreen> {
   CustomerAddress? _address;
   bool _loadingAddress = true;
   bool _placing = false;
+  bool _instant = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _pick ??= ModalRoute.of(context)?.settings.arguments as SchedulePick?;
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is SchedulePick) {
+      _pick ??= args;
+    } else if (args == 'instant') {
+      _instant = true;
+    }
   }
 
   @override
@@ -70,8 +76,8 @@ class _ScheduleConfirmScreenState extends State<ScheduleConfirmScreen> {
   }
 
   Future<void> _place() async {
-    final pick = _pick;
-    if (pick == null || _placing) return;
+    if (_placing) return;
+    if (!_instant && _pick == null) return;
     final line = (_address?.fullAddress ?? '').trim();
     if (line.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -84,35 +90,60 @@ class _ScheduleConfirmScreenState extends State<ScheduleConfirmScreen> {
     final now = DateTime.now();
     final orderNumber = (now.millisecondsSinceEpoch % 90000) + 10000;
     final id = 'LD$orderNumber';
-    final headline = schedulePickupHeadline(pick.date, pick.slot);
-    context.read<OrderProvider>().addOrder(
-          OrderRecord(
-            id: id,
-            title: 'Scheduled pickup',
-            items: const [],
-            totalItems: 0,
-            totalInr: 0,
-            orderType: 'schedule_pickup',
-            dateLabel: '${_month(pick.date.month)} ${pick.date.day}',
-            timeLabel: pick.slot,
-            scheduledPickupAt: scheduleSlotStart(pick.date, pick.slot),
-            placedAt: now,
-            placedDateLabel: '${_month(now.month)} ${now.day}',
-            placedTimeLabel: _clock(now),
-            status: OrderStatus.inProgress,
-            backendStatus: 'placed',
-            pickupAddress: line,
-            pickupLat: _address?.latitude,
-            pickupLng: _address?.longitude,
-          ),
-        );
+    final pick = _pick;
+    if (_instant) {
+      context.read<OrderProvider>().addOrder(
+            OrderRecord(
+              id: id,
+              title: 'Instant pickup',
+              items: const [],
+              totalItems: 0,
+              totalInr: 0,
+              orderType: 'instant_pickup',
+              dateLabel: '${_month(now.month)} ${now.day}',
+              timeLabel: 'Within 20 mins',
+              placedAt: now,
+              placedDateLabel: '${_month(now.month)} ${now.day}',
+              placedTimeLabel: _clock(now),
+              status: OrderStatus.inProgress,
+              backendStatus: 'placed',
+              pickupAddress: line,
+              pickupLat: _address?.latitude,
+              pickupLng: _address?.longitude,
+              isExpress: true,
+            ),
+          );
+    } else {
+      context.read<OrderProvider>().addOrder(
+            OrderRecord(
+              id: id,
+              title: 'Scheduled pickup',
+              items: const [],
+              totalItems: 0,
+              totalInr: 0,
+              orderType: 'schedule_pickup',
+              dateLabel: '${_month(pick!.date.month)} ${pick.date.day}',
+              timeLabel: pick.slot,
+              scheduledPickupAt: scheduleSlotStart(pick.date, pick.slot),
+              placedAt: now,
+              placedDateLabel: '${_month(now.month)} ${now.day}',
+              placedTimeLabel: _clock(now),
+              status: OrderStatus.inProgress,
+              backendStatus: 'placed',
+              pickupAddress: line,
+              pickupLat: _address?.latitude,
+              pickupLng: _address?.longitude,
+            ),
+          );
+    }
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(
         builder: (_) => OrderPlacedScreen(
-          slotText: headline,
+          slotText: _instant ? 'Within 20 mins' : schedulePickupHeadline(pick!.date, pick.slot),
           orderId: id,
-          scheduleOnly: true,
+          scheduleOnly: !_instant,
+          instant: _instant,
         ),
       ),
       (route) => false,
@@ -139,7 +170,7 @@ class _ScheduleConfirmScreenState extends State<ScheduleConfirmScreen> {
           ),
         ),
       ),
-      body: pick == null
+      body: pick == null && !_instant
           ? Center(
               child: Text(
                 'Choose a pickup slot first',
@@ -153,12 +184,14 @@ class _ScheduleConfirmScreenState extends State<ScheduleConfirmScreen> {
                     padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
                     children: [
                       _InfoCard(
-                        icon: Icons.calendar_today_outlined,
+                        icon: _instant ? Icons.bolt_rounded : Icons.calendar_today_outlined,
                         label: 'PICKUP',
-                        title: schedulePickupHeadline(pick.date, pick.slot),
-                        subtitle: 'Scheduled',
-                        action: 'Change',
-                        onAction: _changeSlot,
+                        title: _instant
+                            ? 'Instant pickup'
+                            : schedulePickupHeadline(pick!.date, pick.slot),
+                        subtitle: _instant ? 'Within 20 mins' : 'Scheduled',
+                        action: _instant ? null : 'Change',
+                        onAction: _instant ? null : _changeSlot,
                       ),
                       const SizedBox(height: 14),
                       _InfoCard(
@@ -207,8 +240,8 @@ class _InfoCard extends StatelessWidget {
   final String label;
   final String title;
   final String? subtitle;
-  final String action;
-  final VoidCallback onAction;
+  final String? action;
+  final VoidCallback? onAction;
 
   const _InfoCard({
     required this.icon,
@@ -279,16 +312,17 @@ class _InfoCard extends StatelessWidget {
               ],
             ),
           ),
-          TextButton(
-            onPressed: onAction,
-            child: Text(
-              action,
-              style: AppTextStyles.button(color: HomeColors.primary).copyWith(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
+          if (action != null)
+            TextButton(
+              onPressed: onAction,
+              child: Text(
+                action!,
+                style: AppTextStyles.button(color: HomeColors.primary).copyWith(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
-          ),
         ],
       ),
     );

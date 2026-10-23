@@ -42,7 +42,7 @@ class PickupCards extends StatelessWidget {
           child: _InstantPickupCard(
             height: height,
             onTap: () => Navigator.of(context).pushNamed(
-              AppRoutes.deliveryOptions,
+              AppRoutes.scheduleConfirm,
               arguments: 'instant',
             ),
           ),

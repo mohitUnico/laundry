@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 
+import '../../providers/order_provider.dart';
 import '../../routes/app_routes.dart';
 import '../../routes/route_args.dart';
 import '../home/widgets/home_colors.dart';
@@ -11,12 +13,14 @@ class OrderPlacedScreen extends StatefulWidget {
   final String? slotText;
   final String? orderId;
   final bool scheduleOnly;
+  final bool instant;
 
   const OrderPlacedScreen({
     super.key,
     this.slotText,
     this.orderId,
     this.scheduleOnly = false,
+    this.instant = false,
   });
 
   @override
@@ -26,7 +30,8 @@ class OrderPlacedScreen extends StatefulWidget {
 class _OrderPlacedScreenState extends State<OrderPlacedScreen> {
   Timer? _timer;
 
-  bool get _schedule => widget.scheduleOnly && (widget.orderId ?? '').isNotEmpty;
+  bool get _timelineOrder =>
+      (widget.scheduleOnly || widget.instant) && (widget.orderId ?? '').isNotEmpty;
 
   @override
   void initState() {
@@ -42,16 +47,19 @@ class _OrderPlacedScreenState extends State<OrderPlacedScreen> {
 
   void _openNext() {
     if (!mounted) return;
-    if (_schedule) {
+    if (_timelineOrder) {
+      final match = context.read<OrderProvider>().orders.where((order) => order.id == widget.orderId);
+      final order = match.isEmpty ? null : match.first;
       Navigator.of(context).pushNamedAndRemoveUntil(
         AppRoutes.orderTracking,
         (route) => false,
         arguments: OrderTrackingArgs(
           orderId: widget.orderId!,
+          pickupAddress: order?.pickupAddress,
+          pickupLat: order?.pickupLat,
+          pickupLng: order?.pickupLng,
           backendStatus: 'placed',
-          orderType: 'schedule_pickup',
-          scheduleOnly: true,
-          slotLabel: widget.slotText,
+          orderType: 'both',
         ),
       );
       return;
@@ -72,7 +80,7 @@ class _OrderPlacedScreenState extends State<OrderPlacedScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_schedule) return _scheduleBody(context);
+    if (_timelineOrder) return _scheduleBody(context);
     return _catalogBody(context);
   }
 

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../../routes/app_routes.dart';
 import '../../../theme/app_text_styles.dart';
-import '../../cart/schedule_bottom_sheet.dart';
 import 'home_colors.dart';
 
 class PickupCards extends StatelessWidget {
@@ -26,14 +25,10 @@ class PickupCards extends StatelessWidget {
             height: height,
             dayLabel: 'Next - ${next.day}',
             timeLabel: next.time,
-            onTap: () async {
-              final picked = await showScheduleBottomSheet(context);
-              if (picked == null || !context.mounted) return;
-              Navigator.of(context).pushNamed(
-                AppRoutes.deliveryOptions,
-                arguments: picked,
-              );
-            },
+            onTap: () => Navigator.of(context).pushNamed(
+              AppRoutes.deliveryOptions,
+              arguments: 'schedule',
+            ),
           ),
         ),
         SizedBox(width: gap),

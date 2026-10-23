@@ -444,8 +444,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                                   ),
                                 ),
                                 const SizedBox(height: 12),
-                                _AddressesCard(tracking: t),
-                                const SizedBox(height: 12),
                                 _RiderCard(
                                   name: _activeLeg(t)?.staff?.fullName ?? 'Driver not assigned',
                                   role: (() {
@@ -761,103 +759,6 @@ class _RiderCard extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _AddressesCard extends StatelessWidget {
-  final OrderTrackingData tracking;
-
-  const _AddressesCard({required this.tracking});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: HomeColors.borderSoft),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _AddressRow(
-            icon: Icons.storefront_outlined,
-            title: tracking.shopName.isEmpty ? 'Laundry Shop' : tracking.shopName,
-            subtitle: tracking.shop.address ?? '',
-          ),
-          const SizedBox(height: 10),
-          if (tracking.pickup != null)
-            _AddressRow(
-              icon: Icons.location_on_outlined,
-              title: 'Pickup address',
-              subtitle: tracking.pickup?.address ?? '',
-            ),
-          if (tracking.delivery != null) ...[
-            const SizedBox(height: 10),
-            _AddressRow(
-              icon: Icons.location_on_outlined,
-              title: 'Delivery address',
-              subtitle: tracking.delivery?.address ?? '',
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _AddressRow extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-
-  const _AddressRow({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 34,
-          height: 34,
-          decoration: BoxDecoration(
-            color: const Color(0xFFF0F2FF),
-            shape: BoxShape.circle,
-            border: Border.all(color: HomeColors.borderSoft),
-          ),
-          child: Icon(icon, size: 18, color: HomeColors.text),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: AppTextStyles.body(color: HomeColors.text).copyWith(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.body(color: HomeColors.muted).copyWith(fontSize: 12),
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 }

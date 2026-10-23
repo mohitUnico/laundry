@@ -7,6 +7,7 @@ import '../../models/cart_item.dart';
 import '../../models/order_record.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/order_provider.dart';
+import '../../routes/app_routes.dart';
 import '../../services/customer_info_service.dart';
 import '../home/widgets/home_colors.dart';
 import '../orders/order_placed_screen.dart';
@@ -44,6 +45,9 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
   SchedulePick? _returnPick;
   String? _collectScheduleLabel;
   String? _returnScheduleLabel;
+  CustomerAddress? _pickupAddress;
+  CustomerAddress? _deliveryAddress;
+  bool _loadingAddresses = true;
   final _instructionsController = TextEditingController();
 
   @override
@@ -51,14 +55,17 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      _loadAddresses();
       final args = ModalRoute.of(context)?.settings.arguments;
-      if (args is SchedulePick) {
+      if (args == 'schedule' || args is SchedulePick) {
         setState(() {
           _fromHomePickup = true;
           _lockInstantCollect = false;
           _instantCollect = false;
-          _collectPick = args;
-          _collectScheduleLabel = schedulePickupHeadline(args.date, args.slot);
+          if (args is SchedulePick) {
+            _collectPick = args;
+            _collectScheduleLabel = schedulePickupHeadline(args.date, args.slot);
+          }
         });
       } else if (args == 'instant') {
         setState(() {
@@ -103,8 +110,10 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
     final items = List<CartItem>.from(cart.items);
     final now = DateTime.now();
     final schedule = _splitSchedule(_collectScheduleLabel);
-    final address = await _defaultAddressLine();
+    final savedLine = await _defaultAddressLine();
     if (!mounted) return;
+    final chosenLine = (_pickupAddress?.fullAddress ?? '').trim();
+    final address = chosenLine.isEmpty ? savedLine : chosenLine;
 
     final serviceNames = items
         .map((item) => item.serviceName.trim())
@@ -153,11 +162,17 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
     if (!mounted) return;
     final instant = _instantCollect || _lockInstantCollect;
     final pick = _collectPick;
-    if (!instant && pick == null) return;
+    if (!instant && pick == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Choose a pickup time first')),
+      );
+      return;
+    }
     final returnPick = _returnPick;
     final orderNumber = (now.millisecondsSinceEpoch % 90000) + 10000;
     final id = 'LD$orderNumber';
-    final line = (saved?.fullAddress ?? '').trim();
+    final chosen = _pickupAddress ?? saved;
+    final line = (chosen?.fullAddress ?? '').trim();
     context.read<OrderProvider>().addOrder(
           OrderRecord(
             id: id,
@@ -185,8 +200,8 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
             status: OrderStatus.inProgress,
             backendStatus: 'placed',
             pickupAddress: line.isEmpty ? null : line,
-            pickupLat: saved?.latitude,
-            pickupLng: saved?.longitude,
+            pickupLat: chosen?.latitude,
+            pickupLng: chosen?.longitude,
             isExpress: instant || _expressWash,
           ),
         );
@@ -204,6 +219,37 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
       ),
       (route) => false,
     );
+  }
+
+  Future<void> _loadAddresses() async {
+    final saved = await _savedAddress();
+    if (!mounted) return;
+    setState(() {
+      _pickupAddress ??= saved;
+      _deliveryAddress ??= saved;
+      _loadingAddresses = false;
+    });
+  }
+
+  Future<void> _changeAddress({required bool pickup}) async {
+    final result = await Navigator.of(context).pushNamed(AppRoutes.selectLocation);
+    if (!mounted || result is! CustomerAddress) return;
+    setState(() {
+      if (pickup) {
+        _pickupAddress = result;
+      } else {
+        _deliveryAddress = result;
+      }
+    });
+  }
+
+  String _addressLine(CustomerAddress? address) {
+    if (_loadingAddresses) return 'Loading address';
+    final line = (address?.fullAddress ?? '').trim();
+    if (line.isNotEmpty) return line;
+    final label = (address?.addressLabel ?? '').trim();
+    if (label.isNotEmpty) return label;
+    return 'Add an address';
   }
 
   Future<CustomerAddress?> _savedAddress() async {
@@ -386,6 +432,15 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
                     ],
                   ),
                   const SizedBox(height: 22),
+                  const _SectionTitle('Address'),
+                  const SizedBox(height: 10),
+                  _AddressCard(
+                    pickup: _addressLine(_pickupAddress),
+                    delivery: _addressLine(_deliveryAddress),
+                    onChangePickup: () => _changeAddress(pickup: true),
+                    onChangeDelivery: () => _changeAddress(pickup: false),
+                  ),
+                  const SizedBox(height: 22),
                   const _SectionTitle('Any special washing or care instructions?'),
                   const SizedBox(height: 10),
                   _InstructionsCard(controller: _instructionsController),
@@ -450,6 +505,144 @@ class _SectionTitle extends StatelessWidget {
         fontWeight: FontWeight.w700,
         color: const Color(0xFF1F2430),
       ),
+    );
+  }
+}
+
+class _AddressCard extends StatelessWidget {
+  final String pickup;
+  final String delivery;
+  final VoidCallback onChangePickup;
+  final VoidCallback onChangeDelivery;
+
+  const _AddressCard({
+    required this.pickup,
+    required this.delivery,
+    required this.onChangePickup,
+    required this.onChangeDelivery,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE8ECF4)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Column(
+            children: [
+              const _AddressPin(),
+              Container(
+                width: 2,
+                height: 52,
+                color: const Color(0xFF22C55E),
+              ),
+              const _AddressPin(),
+            ],
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _AddressLine(
+                  title: 'Pick-up Address',
+                  address: pickup,
+                  onChange: onChangePickup,
+                ),
+                const SizedBox(height: 18),
+                _AddressLine(
+                  title: 'Delivery Address',
+                  address: delivery,
+                  onChange: onChangeDelivery,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AddressPin extends StatelessWidget {
+  const _AddressPin();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 28,
+      height: 28,
+      decoration: BoxDecoration(
+        color: HomeColors.primary.withValues(alpha: 0.1),
+        shape: BoxShape.circle,
+      ),
+      child: const Icon(Icons.location_on_outlined, size: 16, color: HomeColors.primary),
+    );
+  }
+}
+
+class _AddressLine extends StatelessWidget {
+  final String title;
+  final String address;
+  final VoidCallback onChange;
+
+  const _AddressLine({
+    required this.title,
+    required this.address,
+    required this.onChange,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: HomeColors.text,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: onChange,
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(0, 28),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Text(
+                'Change',
+                style: GoogleFonts.poppins(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: HomeColors.primary,
+                ),
+              ),
+            ),
+          ],
+        ),
+        Text(
+          address,
+          style: GoogleFonts.poppins(
+            fontSize: 12,
+            height: 1.4,
+            color: HomeColors.muted,
+          ),
+        ),
+      ],
     );
   }
 }

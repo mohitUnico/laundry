@@ -235,12 +235,77 @@ class MockStore {
 
   Future<Map<String, dynamic>> perKgItems(String orderId) async {
     await _pauseAndGuard();
+    const cdn = 'https://res.cloudinary.com/dmpqe6ex3/image/upload';
+    List<Map<String, dynamic>> clothes(String top, String bottom, String saree, String kurta) => [
+          {'itemName': 'Top Wear', 'iconUrl': top, 'quantity': 0},
+          {'itemName': 'Bottom Wear', 'iconUrl': bottom, 'quantity': 0},
+          {'itemName': 'Saree', 'iconUrl': saree, 'quantity': 0},
+          {'itemName': 'Lingerie', 'quantity': 0},
+          {'itemName': 'Kurta', 'iconUrl': kurta, 'quantity': 0},
+        ];
+    final services = [
+      {
+        'orderItemId': 'item-regular-wash',
+        'serviceName': 'Regular Wash',
+        'pricingType': 'per_kg',
+        'iconUrl': '$cdn/v1792575575/laundry-app/catalog/categories/regular_wash.png',
+        'clothes': clothes(
+          '$cdn/v1792579101/laundry-app/catalog/clothes/wash-fold/top-wear.png',
+          '$cdn/v1792579102/laundry-app/catalog/clothes/wash-fold/bottom-wear.png',
+          '$cdn/v1792579104/laundry-app/catalog/clothes/wash-fold/saree.png',
+          '$cdn/v1792579103/laundry-app/catalog/clothes/wash-fold/kurti-kurta.png',
+        ),
+      },
+      {
+        'orderItemId': 'item-pro-clean',
+        'serviceName': 'Pro Clean',
+        'pricingType': 'per_piece',
+        'iconUrl': '$cdn/v1792575576/laundry-app/catalog/categories/pro_clean.png',
+        'clothes': clothes(
+          '$cdn/v1792579105/laundry-app/catalog/clothes/wash-iron/top-wear.png',
+          '$cdn/v1792579106/laundry-app/catalog/clothes/wash-iron/bottom-wear.png',
+          '$cdn/v1792579108/laundry-app/catalog/clothes/wash-iron/saree.png',
+          '$cdn/v1792579107/laundry-app/catalog/clothes/wash-iron/kurti-kurta.png',
+        ),
+      },
+      {
+        'orderItemId': 'item-home-linens',
+        'serviceName': 'Home Linens',
+        'pricingType': 'per_piece',
+        'iconUrl': '$cdn/v1792575577/laundry-app/catalog/categories/home_linen.png',
+        'clothes': [
+          {'itemName': 'Carpet', 'iconUrl': '$cdn/v1792575600/laundry-app/catalog/clothes/carpets.png', 'quantity': 0},
+          {'itemName': 'Curtains', 'iconUrl': '$cdn/v1792575601/laundry-app/catalog/clothes/curtains.png', 'quantity': 0},
+          {'itemName': 'Blanket', 'iconUrl': '$cdn/v1792575602/laundry-app/catalog/clothes/blankets.png', 'quantity': 0},
+          {'itemName': 'Bedsheets', 'iconUrl': '$cdn/v1792575604/laundry-app/catalog/clothes/bedsheets.png', 'quantity': 0},
+        ],
+      },
+      {
+        'orderItemId': 'item-luxury-care',
+        'serviceName': 'Luxury Care',
+        'pricingType': 'per_kg',
+        'iconUrl': '$cdn/v1792575578/laundry-app/catalog/categories/luxury_care.png',
+        'clothes': clothes(
+          '$cdn/v1792579079/laundry-app/catalog/clothes/designer-wear/top-wear.png',
+          '$cdn/v1792579080/laundry-app/catalog/clothes/designer-wear/bottom-wear.png',
+          '$cdn/v1792579082/laundry-app/catalog/clothes/designer-wear/saree.png',
+          '$cdn/v1792579081/laundry-app/catalog/clothes/designer-wear/kurti-kurta.png',
+        ),
+      },
+    ];
     return _ok({
       'orderId': orderId,
-      'perKgItems': [
-        {'orderItemId': 'item-kg-1', 'itemName': 'Mixed laundry', 'weightKg': null},
-        {'orderItemId': 'item-kg-2', 'itemName': 'Bedsheets', 'weightKg': 2.5},
-      ],
+      'services': services,
+      'perKgItems': services
+          .where((service) => service['pricingType'] == 'per_kg')
+          .map((service) => {
+                'orderItemId': service['orderItemId'],
+                'serviceName': service['serviceName'],
+                'categoryName': service['serviceName'],
+                'pricingType': 'per_kg',
+                'weightKg': null,
+              })
+          .toList(),
     });
   }
 

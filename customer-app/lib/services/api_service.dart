@@ -30,15 +30,13 @@ class ApiService {
   factory ApiService() => _instance;
 
   ApiService._internal() {
-    // Use generous timeouts so OTP and other auth requests don't fail on slow networks.
-    // If the server is actually down, the user will still get a proper error from Dio.
+    // Give up quickly when no server is running so screens do not sit on a spinner.
     _dio = Dio(
       BaseOptions(
         baseUrl: resolveBaseUrl(),
-        // Increased from 5s → 30s for all timeouts
-        connectTimeout: const Duration(seconds: 30),
-        receiveTimeout: const Duration(seconds: 30),
-        sendTimeout: const Duration(seconds: 30),
+        connectTimeout: const Duration(seconds: 3),
+        receiveTimeout: const Duration(seconds: 3),
+        sendTimeout: const Duration(seconds: 3),
         headers: {'Content-Type': 'application/json'},
       ),
     );
@@ -118,7 +116,14 @@ class ApiService {
 
       // Use a fresh Dio instance with the same base URL but without interceptors,
       // so refresh doesn't recurse into 401 handler.
-      final dio = Dio(BaseOptions(baseUrl: resolveBaseUrl()));
+      final dio = Dio(
+        BaseOptions(
+          baseUrl: resolveBaseUrl(),
+          connectTimeout: const Duration(seconds: 3),
+          receiveTimeout: const Duration(seconds: 3),
+          sendTimeout: const Duration(seconds: 3),
+        ),
+      );
       final response = await dio.post(
         '/auth/refresh',
         data: {'refreshToken': refresh},

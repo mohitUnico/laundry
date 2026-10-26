@@ -31,9 +31,9 @@ class GooglePlacesService {
             Dio(
               BaseOptions(
                 baseUrl: 'https://maps.googleapis.com/maps/api/place',
-                connectTimeout: const Duration(seconds: 15),
-                receiveTimeout: const Duration(seconds: 15),
-                sendTimeout: const Duration(seconds: 15),
+                connectTimeout: const Duration(seconds: 3),
+                receiveTimeout: const Duration(seconds: 3),
+                sendTimeout: const Duration(seconds: 3),
               ),
             );
 

@@ -163,7 +163,7 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
   }
 
   Future<void> _openSchedule({required bool forReturn}) async {
-    final picked = await showScheduleBottomSheet(context);
+    final picked = await showScheduleBottomSheet(context, forDelivery: forReturn);
     if (picked == null || !mounted) return;
     final label = '${picked.date.day} ${_monthShort(picked.date.month)}, ${picked.slot}';
     setState(() {

@@ -532,12 +532,13 @@ class _FilterPill extends StatelessWidget {
 
 DateTime _slotStart(DateTime date, String slot) {
   final start = slot.split('-').first.trim();
-  final parts = start.split(':');
-  var hour = int.tryParse(parts.first) ?? 17;
-  final minute = int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0;
-  final period = slot.toUpperCase().contains('PM');
-  if (period && hour != 12) hour += 12;
-  if (!period && hour == 12) hour = 0;
+  final match = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)?', caseSensitive: false).firstMatch(start);
+  var hour = int.tryParse(match?.group(1) ?? '') ?? 9;
+  final minute = int.tryParse(match?.group(2) ?? '') ?? 0;
+  final marker = match?.group(3)?.toUpperCase();
+  final isPm = marker != null ? marker == 'PM' : slot.toUpperCase().contains('PM');
+  if (isPm && hour != 12) hour += 12;
+  if (!isPm && hour == 12) hour = 0;
   return DateTime(date.year, date.month, date.day, hour, minute);
 }
 
@@ -610,7 +611,10 @@ class _UpcomingPickupCard extends StatelessWidget {
                 child: _PrimaryActionButton(
                   label: 'Change Schedule',
                   onTap: () async {
-                    final picked = await showScheduleBottomSheet(context);
+                    final picked = await showScheduleBottomSheet(
+                      context,
+                      forDelivery: forDelivery,
+                    );
                     if (picked == null || !context.mounted) return;
                     const months = [
                       'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',

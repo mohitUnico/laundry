@@ -101,17 +101,16 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
     return 'Earliest - $day $hour12:00 $period';
   }
 
-  Future<void> _placeOrder() async {
+  Future<bool> _placeOrder() async {
     if (_fromHomePickup) {
-      await _placeHomePickup();
-      return;
+      return _placeHomePickup();
     }
     final cart = context.read<CartProvider>();
     final items = List<CartItem>.from(cart.items);
     final now = DateTime.now();
     final schedule = _splitSchedule(_collectScheduleLabel);
     final savedLine = await _defaultAddressLine();
-    if (!mounted) return;
+    if (!mounted) return false;
     final chosenLine = (_pickupAddress?.fullAddress ?? '').trim();
     final address = chosenLine.isEmpty ? savedLine : chosenLine;
 
@@ -129,7 +128,7 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
     final totalInr = items.fold<int>(0, (sum, item) => sum + item.subtotalInr);
     final orderNumber = (now.millisecondsSinceEpoch % 90000) + 10000;
 
-    context.read<OrderProvider>().addOrder(
+    await context.read<OrderProvider>().addOrder(
           OrderRecord(
             id: 'LD$orderNumber',
             title: title,
@@ -149,31 +148,39 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
             isExpress: _expressWash,
           ),
         );
+    if (!mounted) return false;
     cart.clear();
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const OrderPlacedScreen()),
       (route) => false,
     );
+    return true;
   }
 
-  Future<void> _placeHomePickup() async {
-    final now = DateTime.now();
-    final saved = await _savedAddress();
-    if (!mounted) return;
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<bool> _placeHomePickup() async {
     final instant = _instantCollect || _lockInstantCollect;
     final pick = _collectPick;
     if (!instant && pick == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Choose a pickup time first')),
-      );
-      return;
+      _showMessage('Choose a pickup time first');
+      return false;
     }
     final returnPick = _returnPick;
+    if (!_expressReturn && returnPick == null) {
+      _showMessage('Choose a delivery time first');
+      return false;
+    }
+    final now = DateTime.now();
+    final saved = await _savedAddress();
+    if (!mounted) return false;
     final orderNumber = (now.millisecondsSinceEpoch % 90000) + 10000;
     final id = 'LD$orderNumber';
     final chosen = _pickupAddress ?? saved;
     final line = (chosen?.fullAddress ?? '').trim();
-    context.read<OrderProvider>().addOrder(
+    await context.read<OrderProvider>().addOrder(
           OrderRecord(
             id: id,
             title: instant ? 'Instant pickup' : 'Scheduled pickup',
@@ -205,7 +212,7 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
             isExpress: instant || _expressWash,
           ),
         );
-    if (!mounted) return;
+    if (!mounted) return false;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(
         builder: (_) => OrderPlacedScreen(
@@ -219,6 +226,7 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
       ),
       (route) => false,
     );
+    return true;
   }
 
   Future<void> _loadAddresses() async {
@@ -1122,7 +1130,7 @@ class _ChargeRow extends StatelessWidget {
 }
 
 class _SlideToOrderButton extends StatefulWidget {
-  final VoidCallback onCompleted;
+  final Future<bool> Function() onCompleted;
 
   const _SlideToOrderButton({required this.onCompleted});
 
@@ -1162,7 +1170,15 @@ class _SlideToOrderButtonState extends State<_SlideToOrderButton>
       if (!mounted) return;
       await Future<void>.delayed(const Duration(milliseconds: 120));
       if (!mounted) return;
-      widget.onCompleted();
+      var placed = false;
+      try {
+        placed = await widget.onCompleted();
+      } catch (_) {
+        placed = false;
+      }
+      if (!mounted || placed) return;
+      _completed = false;
+      await _progress.animateTo(0, curve: Curves.easeOut);
       return;
     }
     await _progress.animateTo(0, curve: Curves.easeOut);

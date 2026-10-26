@@ -91,6 +91,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
 
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 3),
       );
       
       if (mounted) {
@@ -239,7 +240,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
       final placemarks = await placemarkFromCoordinates(
         position.latitude,
         position.longitude,
-      );
+      ).timeout(const Duration(seconds: 3));
 
       if (placemarks.isNotEmpty) {
         final place = placemarks.first;

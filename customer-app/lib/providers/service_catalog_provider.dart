@@ -156,7 +156,9 @@ class ServiceCatalogProvider with ChangeNotifier {
     }
 
     try {
-      final categories = await _repo.listServiceCategories(isActive: isActive);
+      final categories = await _repo
+          .listServiceCategories(isActive: isActive)
+          .timeout(const Duration(seconds: 3));
       categories.sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
 
       final serviceLists = await Future.wait(

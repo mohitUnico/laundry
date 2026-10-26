@@ -18,6 +18,7 @@ import '../screens/services/pro_clean/winter_wear_screen.dart';
 import '../screens/services/regular_wash/regular_wash_service_screen.dart';
 import '../screens/orders/order_tracking_screen.dart';
 import '../screens/cart/delivery_options_screen.dart';
+import '../screens/cart/schedule_confirm_screen.dart';
 import '../screens/cart/schedule_date_time_screen.dart';
 import '../screens/cart/order_confirmation_screen.dart';
 import '../screens/payment/payment_screen.dart';
@@ -62,6 +63,7 @@ class AppRoutes {
   static const String luxuryCare = '/services/luxury-care';
   static const String orderTracking = '/orders/tracking';
   static const String deliveryOptions = '/cart/delivery-options';
+  static const String scheduleConfirm = '/cart/schedule-confirm';
   static const String scheduleDateTime = '/cart/schedule-date-time';
   static const String orderConfirmation = '/cart/order-confirmation';
   static const String payment = '/payment';
@@ -119,6 +121,7 @@ class AppRoutes {
       luxuryCare: (context) => const LuxuryCareScreen(),
       orderTracking: (context) => const OrderTrackingScreen(),
       deliveryOptions: (context) => const DeliveryOptionsScreen(),
+      scheduleConfirm: (context) => const ScheduleConfirmScreen(),
       scheduleDateTime: (context) => const ScheduleDateTimeScreen(),
       orderConfirmation: (context) => const OrderConfirmationScreen(),
       payment: (context) => const PaymentScreen(),

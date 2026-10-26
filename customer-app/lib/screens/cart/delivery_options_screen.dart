@@ -7,6 +7,7 @@ import '../../models/cart_item.dart';
 import '../../models/order_record.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/order_provider.dart';
+import '../../routes/app_routes.dart';
 import '../../services/customer_info_service.dart';
 import '../home/widgets/home_colors.dart';
 import '../orders/order_placed_screen.dart';
@@ -38,9 +39,45 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
   bool _expressWash = false;
   bool _instantCollect = false;
   bool _expressReturn = false;
+  bool _fromHomePickup = false;
+  bool _lockInstantCollect = false;
+  SchedulePick? _collectPick;
+  SchedulePick? _returnPick;
   String? _collectScheduleLabel;
   String? _returnScheduleLabel;
+  CustomerAddress? _pickupAddress;
+  CustomerAddress? _deliveryAddress;
+  bool _loadingAddresses = true;
   final _instructionsController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _loadAddresses();
+      final args = ModalRoute.of(context)?.settings.arguments;
+      if (args == 'schedule' || args is SchedulePick) {
+        setState(() {
+          _fromHomePickup = true;
+          _lockInstantCollect = false;
+          _instantCollect = false;
+          if (args is SchedulePick) {
+            _collectPick = args;
+            _collectScheduleLabel = schedulePickupHeadline(args.date, args.slot);
+          }
+        });
+      } else if (args == 'instant') {
+        setState(() {
+          _fromHomePickup = true;
+          _lockInstantCollect = true;
+          _instantCollect = true;
+          _collectPick = null;
+          _collectScheduleLabel = null;
+        });
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -65,12 +102,18 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
   }
 
   Future<void> _placeOrder() async {
+    if (_fromHomePickup) {
+      await _placeHomePickup();
+      return;
+    }
     final cart = context.read<CartProvider>();
     final items = List<CartItem>.from(cart.items);
     final now = DateTime.now();
     final schedule = _splitSchedule(_collectScheduleLabel);
-    final address = await _defaultAddressLine();
+    final savedLine = await _defaultAddressLine();
     if (!mounted) return;
+    final chosenLine = (_pickupAddress?.fullAddress ?? '').trim();
+    final address = chosenLine.isEmpty ? savedLine : chosenLine;
 
     final serviceNames = items
         .map((item) => item.serviceName.trim())
@@ -111,6 +154,115 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
       MaterialPageRoute(builder: (_) => const OrderPlacedScreen()),
       (route) => false,
     );
+  }
+
+  Future<void> _placeHomePickup() async {
+    final now = DateTime.now();
+    final saved = await _savedAddress();
+    if (!mounted) return;
+    final instant = _instantCollect || _lockInstantCollect;
+    final pick = _collectPick;
+    if (!instant && pick == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Choose a pickup time first')),
+      );
+      return;
+    }
+    final returnPick = _returnPick;
+    final orderNumber = (now.millisecondsSinceEpoch % 90000) + 10000;
+    final id = 'LD$orderNumber';
+    final chosen = _pickupAddress ?? saved;
+    final line = (chosen?.fullAddress ?? '').trim();
+    context.read<OrderProvider>().addOrder(
+          OrderRecord(
+            id: id,
+            title: instant ? 'Instant pickup' : 'Scheduled pickup',
+            items: const [],
+            totalItems: 0,
+            totalInr: 0,
+            orderType: instant ? 'instant_pickup' : 'schedule_pickup',
+            dateLabel: instant
+                ? '${now.day} ${_monthShort(now.month)}'
+                : '${pick!.date.day} ${_monthShort(pick.date.month)}',
+            timeLabel: instant ? 'Within 20 mins' : pick!.slot,
+            scheduledPickupAt: instant ? null : scheduleSlotStart(pick!.date, pick.slot),
+            deliveryDateLabel: returnPick == null
+                ? null
+                : '${returnPick.date.day} ${_monthShort(returnPick.date.month)}',
+            deliveryTimeLabel: returnPick != null
+                ? returnPick.slot
+                : (_expressReturn ? 'Express' : null),
+            scheduledDeliveryAt:
+                returnPick == null ? null : scheduleSlotStart(returnPick.date, returnPick.slot),
+            placedAt: now,
+            placedDateLabel: '${now.day} ${_monthShort(now.month)}',
+            placedTimeLabel: _clockLabel(now),
+            status: OrderStatus.inProgress,
+            backendStatus: 'placed',
+            pickupAddress: line.isEmpty ? null : line,
+            pickupLat: chosen?.latitude,
+            pickupLng: chosen?.longitude,
+            isExpress: instant || _expressWash,
+          ),
+        );
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => OrderPlacedScreen(
+          orderId: id,
+          slotText: instant
+              ? 'Within 20 mins'
+              : schedulePickupHeadline(pick!.date, pick.slot),
+          scheduleOnly: !instant,
+          instant: instant,
+        ),
+      ),
+      (route) => false,
+    );
+  }
+
+  Future<void> _loadAddresses() async {
+    final saved = await _savedAddress();
+    if (!mounted) return;
+    setState(() {
+      _pickupAddress ??= saved;
+      _deliveryAddress ??= saved;
+      _loadingAddresses = false;
+    });
+  }
+
+  Future<void> _changeAddress({required bool pickup}) async {
+    final result = await Navigator.of(context).pushNamed(AppRoutes.selectLocation);
+    if (!mounted || result is! CustomerAddress) return;
+    setState(() {
+      if (pickup) {
+        _pickupAddress = result;
+      } else {
+        _deliveryAddress = result;
+      }
+    });
+  }
+
+  String _addressLine(CustomerAddress? address) {
+    if (_loadingAddresses) return 'Loading address';
+    final line = (address?.fullAddress ?? '').trim();
+    if (line.isNotEmpty) return line;
+    final label = (address?.addressLabel ?? '').trim();
+    if (label.isNotEmpty) return label;
+    return 'Add an address';
+  }
+
+  Future<CustomerAddress?> _savedAddress() async {
+    try {
+      final addresses = await CustomerInfoService().getAddresses();
+      if (addresses.isEmpty) return null;
+      return addresses.firstWhere(
+        (item) => item.isDefault,
+        orElse: () => addresses.first,
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<String?> _defaultAddressLine() async {
@@ -163,14 +315,17 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
   }
 
   Future<void> _openSchedule({required bool forReturn}) async {
+    if (!forReturn && _lockInstantCollect) return;
     final picked = await showScheduleBottomSheet(context, forDelivery: forReturn);
     if (picked == null || !mounted) return;
-    final label = '${picked.date.day} ${_monthShort(picked.date.month)}, ${picked.slot}';
+    final label = schedulePickupHeadline(picked.date, picked.slot);
     setState(() {
       if (forReturn) {
+        _returnPick = picked;
         _returnScheduleLabel = label;
         _expressReturn = false;
       } else {
+        _collectPick = picked;
         _collectScheduleLabel = label;
         _instantCollect = false;
       }
@@ -180,7 +335,7 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FC),
+      backgroundColor: HomeColors.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -227,22 +382,26 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
                         icon: Icons.bolt_rounded,
                         iconColor: const Color(0xFFF5B400),
                         title: 'Instant',
-                        subtitle: _earliestLabel,
+                        subtitle: _lockInstantCollect ? 'Within 20 mins' : _earliestLabel,
                         selected: _instantCollect,
                         onTap: () => setState(() {
                           _instantCollect = true;
                           _collectScheduleLabel = null;
+                          _collectPick = null;
                         }),
                       ),
-                      const _CardDivider(),
-                      _TimingRow(
-                        icon: Icons.calendar_today_outlined,
-                        iconColor: const Color(0xFF667085),
-                        title: 'Schedule',
-                        subtitle: _collectScheduleLabel ?? 'Choose your pickup date and time',
-                        showChevron: true,
-                        onTap: () => _openSchedule(forReturn: false),
-                      ),
+                      if (!_lockInstantCollect) ...[
+                        const _CardDivider(),
+                        _TimingRow(
+                          icon: Icons.calendar_today_outlined,
+                          iconColor: const Color(0xFF667085),
+                          title: 'Schedule',
+                          subtitle: _collectScheduleLabel ?? 'Choose your pickup date and time',
+                          selected: !_instantCollect && _collectPick != null,
+                          showChevron: true,
+                          onTap: () => _openSchedule(forReturn: false),
+                        ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 22),
@@ -271,6 +430,15 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
                         onTap: () => _openSchedule(forReturn: true),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 22),
+                  const _SectionTitle('Address'),
+                  const SizedBox(height: 10),
+                  _AddressCard(
+                    pickup: _addressLine(_pickupAddress),
+                    delivery: _addressLine(_deliveryAddress),
+                    onChangePickup: () => _changeAddress(pickup: true),
+                    onChangeDelivery: () => _changeAddress(pickup: false),
                   ),
                   const SizedBox(height: 22),
                   const _SectionTitle('Any special washing or care instructions?'),
@@ -337,6 +505,144 @@ class _SectionTitle extends StatelessWidget {
         fontWeight: FontWeight.w700,
         color: const Color(0xFF1F2430),
       ),
+    );
+  }
+}
+
+class _AddressCard extends StatelessWidget {
+  final String pickup;
+  final String delivery;
+  final VoidCallback onChangePickup;
+  final VoidCallback onChangeDelivery;
+
+  const _AddressCard({
+    required this.pickup,
+    required this.delivery,
+    required this.onChangePickup,
+    required this.onChangeDelivery,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE8ECF4)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Column(
+            children: [
+              const _AddressPin(),
+              Container(
+                width: 2,
+                height: 52,
+                color: const Color(0xFF22C55E),
+              ),
+              const _AddressPin(),
+            ],
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _AddressLine(
+                  title: 'Pick-up Address',
+                  address: pickup,
+                  onChange: onChangePickup,
+                ),
+                const SizedBox(height: 18),
+                _AddressLine(
+                  title: 'Delivery Address',
+                  address: delivery,
+                  onChange: onChangeDelivery,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AddressPin extends StatelessWidget {
+  const _AddressPin();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 28,
+      height: 28,
+      decoration: BoxDecoration(
+        color: HomeColors.primary.withValues(alpha: 0.1),
+        shape: BoxShape.circle,
+      ),
+      child: const Icon(Icons.location_on_outlined, size: 16, color: HomeColors.primary),
+    );
+  }
+}
+
+class _AddressLine extends StatelessWidget {
+  final String title;
+  final String address;
+  final VoidCallback onChange;
+
+  const _AddressLine({
+    required this.title,
+    required this.address,
+    required this.onChange,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: HomeColors.text,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: onChange,
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(0, 28),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Text(
+                'Change',
+                style: GoogleFonts.poppins(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: HomeColors.primary,
+                ),
+              ),
+            ),
+          ],
+        ),
+        Text(
+          address,
+          style: GoogleFonts.poppins(
+            fontSize: 12,
+            height: 1.4,
+            color: HomeColors.muted,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -509,10 +815,19 @@ class _TimingRow extends StatelessWidget {
               ),
             ),
             if (showChevron)
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: Color(0xFF98A2B3),
-                size: 22,
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (selected) ...[
+                    const _RadioDot(selected: true, size: 20),
+                    const SizedBox(width: 8),
+                  ],
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: Color(0xFF98A2B3),
+                    size: 22,
+                  ),
+                ],
               )
             else
               _RadioDot(selected: selected, size: 20),
@@ -888,7 +1203,7 @@ class _SlideToOrderButtonState extends State<_SlideToOrderButton>
                   child: Opacity(
                     opacity: 1 - progress,
                     child: Text(
-                      'Slide to place order',
+                      'Slide to place your order',
                       style: GoogleFonts.poppins(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,

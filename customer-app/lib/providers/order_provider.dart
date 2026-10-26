@@ -138,6 +138,21 @@ class OrderProvider with ChangeNotifier {
     _localOrders.saveChangedSchedule(updated);
   }
 
+  /// Local schedule pickups can be cancelled only while they are still placed.
+  void cancelPlacedOrder(String orderId) {
+    final index = _orders.indexWhere((o) => o.id == orderId);
+    if (index < 0) return;
+    final current = _orders[index];
+    if (current.backendStatus.toLowerCase() != 'placed') return;
+    final updated = current.copyWith(
+      status: OrderStatus.delivered,
+      backendStatus: 'cancelled',
+    );
+    _orders[index] = updated;
+    notifyListeners();
+    _localOrders.upsert(updated);
+  }
+
   void clear() {
     _orders.clear();
     notifyListeners();

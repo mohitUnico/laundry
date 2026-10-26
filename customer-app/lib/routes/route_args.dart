@@ -15,6 +15,8 @@ class OrderTrackingArgs {
   final double? pickupLng;
   final String? backendStatus;
   final String? orderType;
+  final bool scheduleOnly;
+  final String? slotLabel;
 
   const OrderTrackingArgs({
     required this.orderId,
@@ -23,6 +25,8 @@ class OrderTrackingArgs {
     this.pickupLng,
     this.backendStatus,
     this.orderType,
+    this.scheduleOnly = false,
+    this.slotLabel,
   });
 }
 

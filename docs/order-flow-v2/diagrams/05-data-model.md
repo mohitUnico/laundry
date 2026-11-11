@@ -7,6 +7,7 @@
 ```mermaid
 erDiagram
 CUSTOMER ||--o{ ORDER : places
+DELIVERY_SLOT ||--o{ ORDER : scheduled_in
 ORDER ||--o{ ORDER_ITEM : contains
 ORDER_ITEM ||--o{ ORDER_ITEM_SELECTION : counts
 ORDER_ITEM ||--o| SERVICE_QUEUE_ITEM : queued_as
@@ -33,6 +34,8 @@ ORDER {
   enum delivery_mode "NEW instant or scheduled"
   datetime pickup_time_from
   datetime delivery_time_from
+  uuid pickup_slot_id "NEW nullable"
+  uuid delivery_slot_id "NEW nullable"
   text cancel_reason "NEW"
   datetime cancelled_at "NEW"
   datetime items_confirmed_at "NEW"
@@ -84,6 +87,16 @@ COUPON {
   int id PK
   string code
   string discount_type
+  bool is_active
+}
+DELIVERY_SLOT {
+  uuid slot_id PK
+  string label
+  enum period "morning afternoon evening"
+  time start_time "IST"
+  time end_time "IST"
+  enum status "open too_busy closed"
+  int sort_order
   bool is_active
 }
 STAFF {

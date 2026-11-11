@@ -94,7 +94,7 @@
 </header>
 <main>
   <h1>WashBee end-to-end: customer places order → captain delivers to the doorstep</h1>
-  <p class="meta">Source: <code>order-flow-spec.md</code> (Parts 1–9, locked). Scope: pickup → count → CM → plant → drop → pay → delivered. Includes Express, cancel/reschedule, polling, UPI/cash.<br/>
+  <p class="meta">Source: <code>order-flow-spec.md</code> (current design, updated 4 Nov 2026). Scope: pickup → count → CM → plant → drop → pay → delivered. Includes Express, cancel/reschedule, polling, UPI/cash.<br/>
   <span class="legend">
     <span><span class="tag t-new">NEW</span> not in code today</span>
     <span><span class="tag t-old">TODAY</span> exists in prototype/backend</span>
@@ -127,7 +127,7 @@ flowchart LR
     pg[("PostgreSQL")]
     rq["Redis plus BullMQ assignment queue"]
     sse["SSE hub in memory staff offers"]
-    gm["Google Maps distance and Directions"]
+    gm["Google Directions in the app. Backend ring distance is haversine"]
     fcm["FCM and WhatsApp status push"]
     psp["PSP UPI intent merchant account"]
   end
@@ -159,9 +159,9 @@ flowchart LR
   subgraph UCc["Customer"]
     c1(["Browse Pricing tab: kg price, cloth prices, Includes"])
     c2(["Read How we work: 6 steps"])
-    c3(["Book services: per kg or per unit, no SKUs"])
-    c4(["Choose Express: no schedule"])
-    c5(["Schedule pickup and delivery independently"])
+    c3(["Book via pickup cards or cart: services per kg or per unit, no SKUs"])
+    c4(["Choose Express: queue priority and fee"])
+    c5(["Pick pickup and delivery independently: instant or an admin slot"])
     c6(["Cancel with reason: before assigned"])
     c7(["Reschedule: before assigned"])
     c8(["Track: map, name, phone, photo"])
@@ -172,7 +172,7 @@ flowchart LR
   end
   subgraph UCp["Pickup boy"]
     p1(["Accept offer or be force-assigned"])
-    p2(["Count per service: units or one weight"])
+    p2(["Count per service: units or one weight. Add services not booked"])
     p3(["One photo per service: camera or gallery"])
     p4(["Draft autosave"])
     p5(["Mark as picked up"])
@@ -207,8 +207,9 @@ flowchart LR
   end
   subgraph UCa["Admin"]
     a1(["Edit DELIVERY_FEE and EXPRESS_FEE"])
-    a2(["Edit assignment timeout, slices, max range, buffer days"])
+    a2(["Edit assignment timeout, slices, max range, buffer days, service area"])
     a3(["Manage coupons existing table"])
+    a4(["Manage delivery slots and slot status"])
   end
   c4 -.->|"extends"| c3
   c10 -.->|"includes"| c9
@@ -228,18 +229,19 @@ flowchart LR
 flowchart TB
   subgraph LC["Customer"]
     c1(["Open app"])
-    c2["Pick services and per kg or per unit"]
+    c2["Tap a pickup card, or pick services in the cart"]
     c3{"Express?"}
-    c4["No schedule: both legs instant"]
-    c5["Pick pickup mode and delivery mode"]
+    c4["Express: queue priority and fee only"]
+    c5["Pick pickup and delivery mode, slots, addresses"]
     c6["Confirm order, no itemised bill"]
     c7["Cancel or Change schedule visible"]
-    c8["Tracking opens: Out for pickup"]
+    c10["Tracking opens: finding a partner"]
+    c8["Tracker: Out for pickup"]
     c9["Tracker: Pickup done. View bill"]
   end
   subgraph LS["System"]
     s1[("Order placed: is_express, pickup_mode, delivery_mode")]
-    s2{"Instant or Express?"}
+    s2{"Pickup instant?"}
     s3["Start pickup search now"]
     s4["Schedule job at pickup_time_from"]
     s5["Rings grow each slice over ASSIGNMENT_TIMEOUT"]
@@ -255,7 +257,7 @@ flowchart TB
   subgraph LP["Pickup boy"]
     p1[/"Offer by SSE: on-shift in ring"/]
     p2["Accept"]
-    p3["Open order: booked services with per kg or per unit"]
+    p3["Open order: whole catalogue, cart services pre-selected and locked"]
     p4["Expand service: counts or one weight plus one photo"]
     p5["Draft autosave to server"]
     p6["Mark as picked up"]
@@ -268,10 +270,12 @@ flowchart TB
     m3["Verified and Received"]
   end
   c1 --> c2 --> c3
-  c3 -->|"yes"| c4 --> c6
-  c3 -->|"no"| c5 --> c6
+  c3 -->|"yes"| c4 --> c5
+  c3 -->|"no"| c5
+  c5 --> c6
   c6 --> s1 --> s2
   s1 --> c7
+  s1 --> c10
   s2 -->|"yes"| s3
   s2 -->|"no"| s4 --> s3
   s3 --> s5 --> p1 --> p2 --> s6
@@ -376,7 +380,7 @@ flowchart TB
     i7["Retry UPI"]
     i8["Tracker: Delivered"]
   end
-  f1 -->|"instant or Express"| f4
+  f1 -->|"instant"| f4
   f1 -->|"scheduled"| f2
   f2 -->|"no"| f3
   f2 -->|"yes or already late"| f4
@@ -406,15 +410,16 @@ flowchart TB
   subgraph CU["Customer"]
     u1["Orders list: placed"]
     u2{"Action"}
-    u3[/"Free-text reason required"/]
-    u4["Confirm cancel"]
-    u5["Edit pickup and or delivery times"]
-    u6{"Delivery at least pickup plus BUFFER_DAYS?"}
-    u7["Cancel and Change schedule hidden"]
-    u8["History shows Cancelled"]
+    u3[/"Are you sure pop-up with reason options"/]
+    u4["Yes"]
+    u5["Pick another pickup date and slot on the card"]
+    u6{"Delivery at least pickup plus buffer: Express 1, ordinary 2 days?"}
+    u7["Cancel / Change schedule open a popup"]
+    u8["Order drops off the orders list"]
   end
   subgraph SY["System"]
     v1[("cancelled plus cancel_reason")]
+    v8["Move delivery later and tell the app"]
     v2["Stop pickup job and pending offers"]
     v3["Stop current search"]
     v4{"New pickup instant or time reached?"}
@@ -427,7 +432,7 @@ flowchart TB
   v7 -->|"yes pickup_assigned"| u7
   u2 -->|"Cancel"| u3 --> u4 --> v2 --> v1 --> u8
   u2 -->|"Reschedule"| u5 --> u6
-  u6 -->|"no"| u5
+  u6 -->|"no"| v8 --> v3
   u6 -->|"yes"| v3 --> v4
   v4 -->|"yes"| v5
   v4 -->|"no"| v6
@@ -448,23 +453,23 @@ sequenceDiagram
   participant GM as Google Maps
   participant PA as Pickup boy app
   actor CM as Collection manager
-  C->>CA: confirm cart plus modes or Express
-  CA->>API: POST order services pricing_type modes is_express
-  API->>DB: insert Order placed no Bill
-  API-->>CA: order placed
-  alt instant or Express
+  C->>CA: slide to place (pickup card or cart, modes, slots, Express flag)
+  CA->>API: POST order optional cart_id, modes, date plus slot_id, addresses, is_express
+  API->>DB: check slots open and buffer, insert Order placed no Bill, service lines only if cart
+  API-->>CA: order placed, tracking opens as finding a partner
+  alt pickup instant
     API->>W: start pickup search now
   else scheduled
     API->>W: schedule at pickup_time_from
   end
   loop slice 1 to 5 over ASSIGNMENT_TIMEOUT
     W->>DB: load on-shift staff and last location
-    W->>GM: road distance to pickup
+    W->>W: haversine distance to pickup
     W->>PA: SSE offer to staff in ring not yet pinged
     opt a staff accepts
       PA->>API: accept offer
       API->>DB: first writer wins pickup_assigned
-      API-->>CA: status push and tracking unlocked
+      API-->>CA: status push: Out for pickup
     end
   end
   opt timeout and nobody accepted
@@ -472,7 +477,7 @@ sequenceDiagram
     CM->>API: direct assign staff
     API->>DB: pickup_assigned
     API->>PA: SSE assigned to you cannot reject
-    API-->>CA: tracking unlocked
+    API-->>CA: status push: Out for pickup
   end
   </pre></div>
 
@@ -487,8 +492,8 @@ sequenceDiagram
   participant ST as Object storage
   actor C as Customer
   P->>PA: open assigned order
-  PA->>API: GET booked services with per kg or per unit
-  loop each booked service
+  PA->>API: GET order, full catalogue and any cart services
+  loop each service (cart services first, plus any he adds)
     P->>PA: expand service
     alt per unit
       P->>PA: set counts from that service catalogue
@@ -503,7 +508,7 @@ sequenceDiagram
   Note over PA,API: app killed: reopen GET draft from DB
   P->>PA: Mark as picked up
   PA->>API: POST confirm pickup
-  API->>DB: validate all services filled
+  API->>DB: validate at least one service and all services filled
   API->>DB: compute Bill lines plus DELIVERY_FEE plus EXPRESS_FEE
   API->>DB: items_confirmed true and Order picked_up
   API-->>C: push Pickup done and View bill
@@ -583,7 +588,7 @@ sequenceDiagram
   participant DB as PostgreSQL
   actor C as Customer
   API->>API: services_completed
-  alt Express or delivery instant
+  alt delivery instant
     API->>W: start drop search now
   else scheduled and time reached or already past
     API->>W: start drop search now
@@ -592,7 +597,7 @@ sequenceDiagram
     Note over W: no search until delivery_time_from
   end
   loop slice 1 to 5
-    W->>GM: distance to drop address
+    W->>W: haversine distance to drop address
     W->>KA: SSE drop offer for staff in ring
     opt captain accepts
       KA->>API: accept drop offer
@@ -675,8 +680,8 @@ sequenceDiagram
     API-->>CA: history Cancelled
   else Reschedule
     C->>CA: change pickup and or delivery
-    CA->>API: PATCH schedule
-    API->>API: delivery at least pickup plus PICKUP_DELIVERY_BUFFER_DAYS
+    CA->>API: PATCH schedule with date plus slot_id
+    API->>API: slots open and delivery at least pickup plus buffer (EXPRESS_BUFFER_DAYS or PICKUP_DELIVERY_BUFFER_DAYS)
     API->>W: stop current search
     alt new pickup now or reached
       API->>W: start search again
@@ -685,7 +690,7 @@ sequenceDiagram
     end
     API-->>CA: updated order
   end
-  Note over CA,API: after pickup_assigned both actions are hidden and rejected
+  Note over CA,API: after pickup_assigned tapping either button opens a popup and the API rejects both
   </pre></div>
 
   <!-- ===================== STATES ===================== -->
@@ -732,7 +737,7 @@ stateDiagram-v2
   [*] --> Idle
   Idle --> Waiting: scheduled and time not reached
   Waiting --> Searching: time reached
-  Idle --> Searching: instant or Express or services_completed late
+  Idle --> Searching: instant or services_completed late
   state Searching {
     [*] --> Slice1
     Slice1 --> Slice2: no accept
@@ -822,6 +827,7 @@ stateDiagram-v2
   <div class="diagram"><pre class="mermaid">
 erDiagram
   CUSTOMER ||--o{ ORDER : places
+  DELIVERY_SLOT ||--o{ ORDER : scheduled_in
   ORDER ||--o{ ORDER_ITEM : contains
   ORDER_ITEM ||--o{ ORDER_ITEM_SELECTION : counts
   ORDER_ITEM ||--o| SERVICE_QUEUE_ITEM : queued_as
@@ -848,6 +854,8 @@ erDiagram
     enum delivery_mode "NEW instant or scheduled"
     datetime pickup_time_from
     datetime delivery_time_from
+    uuid pickup_slot_id "NEW nullable"
+    uuid delivery_slot_id "NEW nullable"
     text cancel_reason "NEW"
     datetime cancelled_at "NEW"
     datetime items_confirmed_at "NEW"
@@ -901,6 +909,16 @@ erDiagram
     string discount_type
     bool is_active
   }
+  DELIVERY_SLOT {
+    uuid slot_id PK
+    string label
+    enum period "morning afternoon evening"
+    time start_time "IST"
+    time end_time "IST"
+    enum status "open too_busy closed"
+    int sort_order
+    bool is_active
+  }
   STAFF {
     uuid staff_id PK
     enum role "CM SM DM"
@@ -914,8 +932,8 @@ erDiagram
   <h3>7.1 Order status</h3>
   <table>
     <tr><th>DB status</th><th>Set by / when</th><th>Customer tracker</th><th>Visible to</th><th>Allowed actions</th><th>Next</th></tr>
-    <tr><td><code>placed</code></td><td>Customer confirms. No Bill.</td><td>No tracking. Orders: Partner not assigned</td><td>Customer; CM Incoming (yet to pick up)</td><td>Customer: cancel, reschedule. CM: force-assign after timeout</td><td>pickup_assigned / cancelled</td></tr>
-    <tr><td><code>pickup_assigned</code></td><td>First accept or CM force-assign</td><td>Out for pickup (map, name, photo)</td><td>Customer; pickup boy; CM Incoming</td><td>Boy: draft, Mark as picked up. Cancel and reschedule hidden</td><td>picked_up</td></tr>
+    <tr><td><code>placed</code></td><td>Customer confirms. No Bill.</td><td>Finding a partner. Tracking is open with no partner card, call or live pin</td><td>Customer; CM Incoming (yet to pick up)</td><td>Customer: cancel, reschedule. CM: force-assign after timeout</td><td>pickup_assigned / cancelled</td></tr>
+    <tr><td><code>pickup_assigned</code></td><td>First accept or CM force-assign</td><td>Out for pickup (map, name, photo)</td><td>Customer; pickup boy; CM Incoming</td><td>Boy: draft, Mark as picked up. Customer Cancel / Change Schedule still show; tapping either opens a "pickup partner already started" popup</td><td>picked_up</td></tr>
     <tr><td><code>picked_up</code></td><td>Mark as picked up. Bill written.</td><td>Pickup done. View bill (no pay)</td><td>Customer; pickup boy; CM Incoming</td><td>Boy: Submit request to CM. No edit</td><td>submitted_to_cm</td></tr>
     <tr><td><code>submitted_to_cm</code></td><td>Boy taps Submit request</td><td>In Process (customer unchanged from Pickup done is OK; spec: not a visible step)</td><td>Pickup boy (Waiting, inactive); CM Incoming</td><td>CM: Verified and Received. No cancel of request</td><td>received_by_collection</td></tr>
     <tr><td><code>received_by_collection</code></td><td>CM verified</td><td>In Process</td><td>CM Received; row gone from boy on pull-to-refresh</td><td>CM: Send to service queue</td><td>submitted_to_services</td></tr>
@@ -937,8 +955,9 @@ erDiagram
     <tr><td><code>Bill.payment_method</code></td><td>upi · cod</td><td>cod only as boy-recorded fallback after UPI fail. card and wallet not used.</td></tr>
     <tr><td><code>DeliveryAssignmentRequest.status</code></td><td>pending · accepted · rejected · expired · cancelled</td><td>Offer lifecycle. Manager assign cancels pending offers.</td></tr>
     <tr><td><code>Delivery.delivery_status</code></td><td>assigned · in_progress · completed · cancelled</td><td>Pickup completes on CM receive. Drop completes on delivered.</td></tr>
-    <tr><td><code>pickup_mode / delivery_mode</code> <span class="tag t-new">NEW</span></td><td>instant · scheduled</td><td>Express forces both to instant.</td></tr>
-    <tr><td><code>is_express</code> <span class="tag t-new">NEW</span></td><td>true · false</td><td>Chip on every card; queue band; EXPRESS_FEE.</td></tr>
+    <tr><td><code>pickup_mode / delivery_mode</code> <span class="tag t-new">NEW</span></td><td>instant · scheduled</td><td>Independent per leg. A scheduled leg also carries a date and an admin slot.</td></tr>
+    <tr><td><code>is_express</code> <span class="tag t-new">NEW</span></td><td>true · false</td><td>Chip on every card; queue band; EXPRESS_FEE; Express buffer. No effect on modes.</td></tr>
+    <tr><td><code>DeliverySlot.status</code> <span class="tag t-new">NEW</span></td><td>open · too_busy · closed</td><td>Only open can be booked. too_busy and closed show disabled with their own label.</td></tr>
     <tr><td><code>items_confirmed_at</code> <span class="tag t-new">NEW</span></td><td>null · timestamp</td><td>null = draft at door; set on Mark as picked up.</td></tr>
   </table>
 
@@ -957,13 +976,13 @@ erDiagram
   </table>
 
   <!-- ===================== EVENTS ===================== -->
-  <h2 id="events">8. Event catalogue</h2>
+  <h2 id="events">8. Event catalogue (27 events)</h2>
   <table>
     <tr><th>#</th><th>Event</th><th>Actor</th><th>Guard</th><th>Writes</th><th>Visible effect</th><th>API</th></tr>
-    <tr><td>1</td><td>Place order</td><td>Customer</td><td>Services in cart; delivery ≥ pickup + buffer (ordinary)</td><td>Order placed, no Bill</td><td>Orders list; search begins</td><td>POST order <span class="tag t-old">TODAY</span> changes needed</td></tr>
-    <tr><td>2</td><td>Place Express order</td><td>Customer</td><td>No schedule</td><td>is_express, both instant</td><td>Chip on every card</td><td>same POST <span class="tag t-new">NEW</span> flag</td></tr>
+    <tr><td>1</td><td>Place order</td><td>Customer</td><td>Cart optional; slots open; delivery ≥ pickup + buffer; addresses belong to customer</td><td>Order placed, no Bill; service lines only if cart</td><td>Orders list; tracking opens; search begins</td><td>POST order <span class="tag t-old">TODAY</span> changes needed</td></tr>
+    <tr><td>2</td><td>Place Express order</td><td>Customer</td><td>Express buffer (1 day) applies</td><td>is_express</td><td>Chip on every card; queue band</td><td>same POST <span class="tag t-new">NEW</span> flag</td></tr>
     <tr><td>3</td><td>Cancel</td><td>Customer</td><td>status = placed; reason required</td><td>cancelled, cancel_reason</td><td>History Cancelled; stop job</td><td>POST cancel <span class="tag t-new">NEW</span></td></tr>
-    <tr><td>4</td><td>Reschedule</td><td>Customer</td><td>status = placed; not Express</td><td>times; stop and restart search</td><td>Order card updated</td><td>PATCH schedule <span class="tag t-new">NEW</span></td></tr>
+    <tr><td>4</td><td>Reschedule</td><td>Customer</td><td>status = placed; slots open; buffer</td><td>slots and times; stop and restart search</td><td>Order card updated</td><td>PATCH schedule <span class="tag t-new">NEW</span></td></tr>
     <tr><td>5</td><td>Offer pickup</td><td>Worker</td><td>on-shift in ring</td><td>Request + recipients</td><td>Overlay on staff</td><td>BullMQ + SSE <span class="tag t-old">TODAY</span> rings new</td></tr>
     <tr><td>6</td><td>Accept pickup</td><td>Pickup boy</td><td>first writer</td><td>pickup_assigned</td><td>Tracking opens</td><td>accept offer <span class="tag t-old">TODAY</span></td></tr>
     <tr><td>7</td><td>Force-assign pickup</td><td>CM</td><td>after timeout</td><td>pickup_assigned</td><td>SSE; cannot reject</td><td>assignPickupDirect <span class="tag t-old">TODAY</span></td></tr>
@@ -975,7 +994,7 @@ erDiagram
     <tr><td>13</td><td>Poll queue</td><td>Service man</td><td>screen visible</td><td>—</td><td>New rows at bottom of band</td><td>GET queue <span class="tag t-old">TODAY</span></td></tr>
     <tr><td>14</td><td>Start item</td><td>Service man</td><td>not completed</td><td>in_progress; services_in_progress</td><td>—</td><td>PATCH queue <span class="tag t-old">TODAY</span></td></tr>
     <tr><td>15</td><td>Complete item</td><td>Service man</td><td>—</td><td>completed; maybe services_completed</td><td>DM in-plant; Ready when last</td><td>PATCH queue <span class="tag t-old">TODAY</span></td></tr>
-    <tr><td>16</td><td>Start drop search</td><td>System</td><td>all done + (instant | Express | time reached)</td><td>Drop request</td><td>DM Assign disabled</td><td>worker twin <span class="tag t-new">NEW</span></td></tr>
+    <tr><td>16</td><td>Start drop search</td><td>System</td><td>all done + (instant | time reached)</td><td>Drop request</td><td>DM Assign disabled</td><td>worker twin <span class="tag t-new">NEW</span></td></tr>
     <tr><td>17</td><td>Accept drop</td><td>Captain</td><td>first writer</td><td>out_for_delivery</td><td>Map + cards</td><td>accept offer <span class="tag t-old">TODAY</span></td></tr>
     <tr><td>18</td><td>Force-assign drop</td><td>DM</td><td>after timeout</td><td>out_for_delivery</td><td>SSE; cannot reject</td><td>assign-drop-direct <span class="tag t-old">TODAY</span> drop verify gate</td></tr>
     <tr><td>19</td><td>Apply coupon</td><td>Customer</td><td>out_for_delivery; one code</td><td>Bill.discount</td><td>Total updates</td><td>coupon apply <span class="tag t-new">NEW</span></td></tr>
@@ -985,6 +1004,8 @@ erDiagram
     <tr><td>23</td><td>Mark as delivered</td><td>Captain</td><td>payment completed; one photo</td><td>drop_proof; delivered</td><td>Delivered</td><td>dropped <span class="tag t-old">TODAY</span> add payment gate</td></tr>
     <tr><td>24</td><td>Location tick</td><td>Captain</td><td>on shift</td><td>current lat/lng</td><td>Pin moves</td><td>updateLiveLocation <span class="tag t-old">TODAY</span></td></tr>
     <tr><td>25</td><td>Directions refresh</td><td>System</td><td>off path; ≥2 min since last</td><td>—</td><td>Path redrawn</td><td>Directions <span class="tag t-new">NEW</span></td></tr>
+    <tr><td>26</td><td>Set slot status</td><td>Admin</td><td>slot exists</td><td>status open / too_busy / closed</td><td>Slot disabled in the schedule sheet</td><td>slots admin API <span class="tag t-new">NEW</span></td></tr>
+    <tr><td>27</td><td>Add or edit address</td><td>Customer</td><td>pin within SERVICE_AREA_KM</td><td>address saved</td><td>Form error when outside</td><td>address API <span class="tag t-old">TODAY</span> radius check <span class="tag t-new">NEW</span></td></tr>
   </table>
 
   <!-- ===================== NOTIFICATIONS ===================== -->
@@ -993,7 +1014,7 @@ erDiagram
     <tr><th>Moment</th><th>Who is told</th><th>Channel</th><th>Notes</th></tr>
     <tr><td>Offer pickup or drop</td><td>On-shift staff in ring</td><td>SSE + FCM (today)</td><td>Overlay; first accept wins</td></tr>
     <tr><td>Manager force-assign</td><td>Assigned staff</td><td>SSE</td><td>Cannot reject</td></tr>
-    <tr><td>pickup_assigned</td><td>Customer</td><td>Status push (today)</td><td>Tracking appears</td></tr>
+    <tr><td>pickup_assigned</td><td>Customer</td><td>Status push (today)</td><td>Tracker: Out for pickup, partner card and live pin</td></tr>
     <tr><td>picked_up</td><td>Customer</td><td>Status push</td><td>Pickup done; View bill. Bill-generated ping to CM/admin: <span class="tag t-no">OUT</span></td></tr>
     <tr><td>submitted_to_cm</td><td>CM</td><td>List refresh</td><td>No live SSE needed</td></tr>
     <tr><td>received_by_collection</td><td>Pickup boy</td><td>Pull-to-refresh</td><td>No SSE drop</td></tr>
@@ -1012,7 +1033,9 @@ erDiagram
     <tr><td><code>ASSIGNMENT_TIMEOUT_MINUTES</code></td><td>5 (10 / 20 allowed)</td><td>Pickup and drop search window</td></tr>
     <tr><td><code>ASSIGNMENT_RANGE_SLICES</code></td><td>5</td><td>Ring steps</td></tr>
     <tr><td><code>ASSIGNMENT_MAX_RANGE_KM</code></td><td>admin/env</td><td>Outer radius</td></tr>
-    <tr><td><code>PICKUP_DELIVERY_BUFFER_DAYS</code></td><td>2</td><td>Booking + reschedule validation (one constant)</td></tr>
+    <tr><td><code>PICKUP_DELIVERY_BUFFER_DAYS</code></td><td>2</td><td>Booking + reschedule validation, ordinary orders</td></tr>
+    <tr><td><code>EXPRESS_BUFFER_DAYS</code> <span class="tag t-new">NEW</span></td><td>1</td><td>Booking + reschedule validation, Express orders</td></tr>
+    <tr><td><code>SERVICE_AREA_KM</code> <span class="tag t-new">NEW</span></td><td>admin-editable</td><td>Add and edit address check</td></tr>
     <tr><td><code>DELIVERY_FEE</code></td><td>admin-editable</td><td>Bill at Mark as picked up</td></tr>
     <tr><td><code>EXPRESS_FEE</code></td><td>admin-editable</td><td>Bill when is_express</td></tr>
     <tr><td><code>SERVICE_QUEUE_POLL_SECONDS</code></td><td>120 (60 allowed)</td><td>Service man queue poll</td></tr>
@@ -1030,7 +1053,7 @@ flowchart LR
     c2["Pricing tab [c-pricing]"]
     c3["Services [c-services]"]
     c4["Cart [c-cart]"]
-    c5["Checkout [c-checkout] or Express [c-checkout-ex]"]
+    c5["Delivery Options: Express toggle, pickup and delivery slots, addresses, instructions"]
     c6["Orders [c-orders-placed] [c-orders-bill] [c-cancelled]"]
     c7["Tracking [c-track-*]"]
     c8["Pay UPI [c-pay]"]
@@ -1064,6 +1087,7 @@ flowchart LR
   end
   c0 --> c1 --> c3 --> c4 --> c5 --> c6 --> c7 --> c8 --> c9
   c1 --> c2
+  c1 -->|"pickup cards, no cart"| c5
   c1 --> c10
   c1 --> c11
   p1 --> p2 --> p3 --> p4 --> p5
@@ -1077,7 +1101,10 @@ flowchart LR
   <h2 id="gaps">12. Spec vs code today (what changes in dev)</h2>
   <table>
     <tr><th>Area</th><th>Today</th><th>Needs</th></tr>
-    <tr><td>Booking</td><td>Cloth SKUs required for per unit; order_type pickup/drop/both</td><td>Services only; always both; modes; is_express; no bill at place</td></tr>
+    <tr><td>Booking</td><td>Cart required; cloth SKUs not needed; modes and Express exist; Express forces instant and forbids times</td><td>Cart optional (pickup cards create orders with no lines); Express = priority only with its own buffer; admin slots with date + slot_id; no bill at place</td></tr>
+    <tr><td>Slots</td><td>None; free-form timestamps</td><td>Daily slot template, status open / too_busy / closed, slot admin API, slot API for the app</td></tr>
+    <tr><td>Address</td><td>Any location accepted</td><td>SERVICE_AREA_KM radius check on add and edit</td></tr>
+    <tr><td>Door catalogue</td><td>Only the booked services</td><td>Whole catalogue; cart services pre-selected and locked; at least one line to confirm</td></tr>
     <tr><td>Assignment</td><td>Fixed expiry, send-to-all, 2 retries</td><td>Rings, one timeout, on-shift, manager only after timeout, drop twin</td></tr>
     <tr><td>Door</td><td>Weight on existing lines; one proof</td><td>Expander per service; one photo each; draft; bill on Mark</td></tr>
     <tr><td>Submit to CM</td><td>One tap completes pickup delivery</td><td>Request vs CM receive; delivery completes on receive</td></tr>
@@ -1087,7 +1114,7 @@ flowchart LR
     <tr><td>Delivery status</td><td>dispatch_assigned → start → out_for_delivery</td><td>out_for_delivery on assign</td></tr>
     <tr><td>Payment</td><td>Status PATCH; cod/card/wallet; dropped without pay check</td><td>PSP UPI + coupon; cash fallback; gate delivered on paid</td></tr>
     <tr><td>Cancel</td><td>Stub dialog</td><td>Real cancel + reason; history</td></tr>
-    <tr><td>Customer UI</td><td>5-step tracker, 4 tabs incl Account</td><td>6 steps, Pricing tab, avatar → Account, How we work, footer</td></tr>
+    <tr><td>Customer UI</td><td>5-step tracker, 4 tabs incl Account</td><td>6 steps, tracking open from placed, Pricing tab, avatar → Account, How we work, footer</td></tr>
   </table>
   <p class="meta">Related files: <code>order-flow-spec.md</code> · <code>../ui-prototype/index.html</code></p>
 </main>

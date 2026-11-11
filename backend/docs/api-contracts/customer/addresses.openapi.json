@@ -49,7 +49,7 @@
         "tags": ["addresses"],
         "operationId": "createMyAddress",
         "summary": "Save the signup location",
-        "description": "Allow your location, then Done. Required for a new customer before the homepage. Uses the customer access_token from POST /auth/customers. latitude and longitude come from the device. full_address is the address the phone resolves for that point. address_label defaults to home. is_default is true for this first address.",
+        "description": "Allow your location, then Done; also the add-address form later. Required for a new customer before the homepage. Uses the customer access_token from POST /auth/customers. latitude and longitude come from the device. full_address is the address the phone resolves for that point. address_label defaults to home. is_default is true for this first address. The pin must be within SERVICE_AREA_KM of the active laundry, otherwise 400 OUTSIDE_SERVICE_AREA and nothing is saved.",
         "x-current": {
           "path": "POST /api/v1/customer-info/addresses",
           "storage": "customer_addresses.address_label, full_address, latitude, longitude, is_default"
@@ -86,14 +86,81 @@
             }
           },
           "400": {
-            "description": "Missing coordinates or address text",
+            "description": "Missing coordinates or address text, or the pin is outside the service area (errorCode OUTSIDE_SERVICE_AREA)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorEnvelope" },
+                "example": {
+                  "success": false,
+                  "message": "We do not serve this location yet. We deliver within 10 km of our laundry.",
+                  "errorCode": "OUTSIDE_SERVICE_AREA"
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/customer-info/addresses/{addressId}": {
+      "patch": {
+        "tags": ["addresses"],
+        "operationId": "updateMyAddress",
+        "summary": "Edit an address",
+        "description": "Edit from the address form. Any field may be sent; at least one is required. When latitude or longitude changes, the new pin is checked against SERVICE_AREA_KM, the largest allowed distance from the active laundry. A pin farther than that returns 400 OUTSIDE_SERVICE_AREA and the address is not changed. The app shows the message on the address form. Order creation does not run this check again, so addresses saved earlier stay usable on orders.",
+        "x-current": {
+          "path": "PATCH /api/v1/customer-info/addresses/:addressId",
+          "note": "The route exists. The service-area check does not exist yet, on this route or on POST."
+        },
+        "parameters": [
+          {
+            "name": "addressId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateAddress" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Address updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "data": { "$ref": "#/components/schemas/Address" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error, or the new pin is outside the service area (errorCode OUTSIDE_SERVICE_AREA)",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": {
+            "description": "Not found, or not this customer's address",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+              }
+            }
+          }
         }
       }
     }
@@ -127,6 +194,19 @@
           "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
           "longitude": { "type": "number", "minimum": -180, "maximum": 180 },
           "is_default": { "type": "boolean" }
+        }
+      },
+      "UpdateAddress": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "address_label": { "type": "string", "maxLength": 50 },
+          "full_address": { "type": "string", "minLength": 3 },
+          "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
+          "longitude": { "type": "number", "minimum": -180, "maximum": 180 },
+          "is_default": { "type": "boolean" },
+          "delivery_note": { "type": "string", "nullable": true }
         }
       },
       "Address": {

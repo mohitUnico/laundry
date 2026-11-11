@@ -1,1208 +1,474 @@
-# WashBee order flow v2 - locked spec
+# WashBee order flow v2 - spec
 
-**Status:** LOCKED (Parts 1-9). Complete enough to implement. Change a rule here first, then in code.  
-**Captured:** 7-15 Oct 2026  
-**How to extend:** add a new `## Part N` at the bottom; mark superseded rules instead of silently rewriting.  
-**Diagrams:** [diagrams/](diagrams/) (start with [../README.md](README.md))  
-**Interactive viewer:** [diagrams/viewer.html](diagrams/viewer.html)  
-**UI prototype (designer click-through):** [ui-prototype/index.html](ui-prototype/index.html)
-
----
-
-## 0. What this batch is
-
-Move from **customer-counted laundry** to **service-booked laundry, counted at the door** (Layyr-style):
-
-1. Customer books **services** (and per-kg vs per-unit), not cloth SKUs.
-2. After cart: **instant vs scheduled** only. Logistics is **always pickup and delivery** (`both`). Pickup-only / delivery-only are gone.
-3. Pickup partner **lists items / weights, takes photos, generates the bill**.
-4. Until that happens, customer **Pay Bill** and **View Details** are placeholders. **Part 3:** after generation, **View Bill** is real; Pay Bill stays **not payable** — pay at delivery.
-5. Tracking gains a first step **Out for pickup** + pickup-boy call/message.
-6. Customer app adds a **Pricing** catalogue and a **home footer** (how-we-work + brand strip).
+**Status:** current design. Complete enough to implement; code lags behind it where noted in section 13.  
+**Updated:** 6 Nov 2026 (orders list cards, cancel pop-up, reschedule auto-shifts delivery; earlier: booking redesign, pickup cards, Delivery Options, admin slots).  
+**How to change it:** edit the rule here, in place, so this file always describes one current flow. Git history is the record of earlier versions. Then update the diagrams and `README.md`.  
+**Diagrams:** [diagrams/](diagrams/) (start with [../README.md](README.md)).  
+**Interactive viewer:** [diagrams/viewer.html](diagrams/viewer.html)
 
 ---
 
-## 1. Current flow (as built in this prototype)
+## 0. The model in one paragraph
 
-### 1.1 Customer place-order path
+WashBee is **service-booked laundry, counted at the door**. The customer places an order with a pickup leg and a delivery leg (always both). The pickup partner counts and weighs the laundry at the door, photographs it, and the bill is generated from that count. A collection manager (CM) verifies and receives it, service men process it in per-service queues, a distribution manager (DM) oversees dispatch, and a captain delivers and collects payment.
 
 ```
-Category (Regular Wash / Pro Clean / Home Linens / Luxury Care)
-  → Service sheet (e.g. Wash & Fold)
-  → Pricing type (per kg / per piece)   [Regular Wash sheet already has this]
-  → Item screen (shirt, pants, … steppers)
-  → Add to Cart
-  → Cart
-  → Delivery Options: Pickup only | Delivery only | Pickup & Delivery
-      (backend OrderType: pickup_only | drop_only | both | express_delivery)
-  → Schedule Date & Time (From–To window)
-  → Confirm / Payment screen (amounts shown now)
-  → Orders list
-  → Tracking / Pay Bill / View Details / Change schedule / Cancel
+customer places order → pickup partner counts at the door → CM verifies
+  → service men process → DM dispatches → captain delivers and collects payment
 ```
 
-Bottom nav today: **Home, Orders, Cart, Account**. Home header has a **non-tappable** avatar (top left), greeting, address, bell.
-
-### 1.2 What the customer already sees after place
-
-- **Active order** card on Home.
-- **Orders list:** Pay Bill, View Details, Change Schedule, Cancel.
-- **Tracking** (`order_tracking_screen.dart`): map + 5-step tracker
-  - Both: Pickup → In Process → Ready → Out for Delivery → Delivered
-  - Mapped from `OrderStatus` (placed / pickup_assigned / picked_up / services_* / dispatch_assigned / out_for_delivery / delivered).
-- Addresses under the tracker: laundry, pickup, delivery.
-- Assigned partner card with call / chat when a delivery row exists.
-
-### 1.3 Data model (relevant bits)
-
-| Piece | Today |
-|---|---|
-| `CartItem` | `service_id` + `pricing_type` (`per_unit` / `per_kg`) + optional `weight_kg` + `CartItemSelection` (cloth + qty) |
-| Place order | `POST` from `cart_id`. **Per-unit cart items must already have cloth selections** or the API rejects |
-| `Order.pricing_model` | Whole-order enum. If **any** cart line is `per_kg`, the order is tagged `per_kg` |
-| Bill | Created **immediately** for `per_unit` orders. For `per_kg`, bill waits until pickup staff uploads weights (`billing_status` pending / generated) |
-| Pickup | `Delivery` + `PickupForDelivery.pickup_proof` (one photo). `needs_weight_machine` if order has per-kg lines |
-| Pickup staff weight API | Updates **existing** `OrderItem.weight_kg` on per-kg lines. Does **not** create a cloth list from scratch |
-| Pickup details UI (staff) | Sheet: customer name, weight kg, take photo, Confirm Pickup |
-| Tracking steps in UI | 5. No “Out for pickup” |
-
-### 1.4 What is already half-aligned
-
-- Per-kg amount can be **₹0 until pickup**.
-- Pickup photo already exists.
-- Staff app already has a pickup-confirm sheet (weight + photo).
-- Mixed cart of several **services** is already allowed at cart level.
-
-### 1.5 What is **not** aligned
-
-- Customer **must** pick cloth SKUs for per-unit.
-- Bill is **not** deferred for per-unit.
-- Delivery choice is **who carries what** (pickup / drop / both). **Locked change:** always `both`; customer only picks instant vs scheduled.
-- Pickup staff cannot **enumerate items** (only fill weight on lines the customer already created).
-- Customer Pay Bill / View Details assume items + amount exist.
-- No Pricing catalogue screen; no Layyr-style home footer.
-- Tracker first step is “Pickup”, not “Out for pickup”.
+The customer picks **no cloth items**. Whether any services are chosen up front depends on how the order was started (section 1.1).
 
 ---
 
-## 2. Proposed flow (this batch only)
+## 1. Customer booking
 
-### 2.1 Customer booking (new)
+### 1.1 Two ways to place an order
 
 ```
-Select one or more categories
-  → Select one or more services
-  → For each service: per kg OR per unit   (NO cloth SKUs)
-  → Cart shows services + pricing type only
-  → Choose Instant and/or Scheduled **independently** for pickup and for delivery
-      (always both legs; mix allowed, e.g. instant pickup + scheduled delivery)
-  → If pickup scheduled: pickup date/time window
-  → If delivery scheduled: delivery date/time — **not earlier than pickup date + 2 days**
-      (leave room later for Express: same-day pickup+delivery with extra cost)
-  → Confirm order   (no itemised bill yet)
-  → Orders list / Active order
+A. No cart
+   Home: [Schedule pick up] or [Instant pick up]
+     → Delivery Options → Slide to place → "Order confirmed" → Tracking
+   The order is created with NO service lines.
+
+B. With cart
+   Home category tiles → services → Cart (one line per service + per kg or per unit)
+     → Delivery Options → Slide to place → "Order confirmed" → Tracking
+   The order is created with one service line per cart line (pricing type pre-selected).
 ```
 
-Cart line = `{ service, category, pricing_type }`. Quantity of clothes and kg are unknown.
+- Both paths use the same Delivery Options screen and the same create-order validation. Path A sends no `cart_id`.
+- The Schedule card opens Delivery Options with pickup = scheduled preselected. The Instant card opens it with pickup = instant preselected. The customer can change it.
+- A cart has one line per service, priced `per_kg` or `per_unit`. The cart holds no cloth items, no counts and no weights.
+- There is no itemised bill at booking. The bill appears when the pickup partner marks the order picked up (section 3).
 
-### 2.2 Instant vs scheduled (LOCKED 7 Oct 2026, updated evening)
+### 1.2 Delivery Options: fields and validation
 
-**Always both legs.** Pickup-only / delivery-only are gone.
+| # | Field | Rule |
+|---|---|---|
+| a | `is_express` | Express is **queue priority only**: a faster band in the service queue, a badge, and `EXPRESS_FEE` on the bill (section 1.5). It does not change pickup or delivery logistics. |
+| b | `pickup_mode` | `instant` or `scheduled` (section 1.3). |
+| b | Pickup slot | Required when scheduled: `pickup_date` + `pickup_slot_id` (section 1.4). |
+| c | `delivery_mode`, delivery slot | Same shape as pickup. |
+| - | Buffer | Delivery calendar date (IST) must be on or after pickup date + buffer. Ordinary orders use `PICKUP_DELIVERY_BUFFER_DAYS` (2). Express orders use `EXPRESS_BUFFER_DAYS` (1). Both are admin config. |
+| d | Addresses | `pickup_address_id` and `delivery_address_id`. They can be the same or different. Both must belong to the customer. Serviceability is checked when an address is added or edited (section 1.6), not at order creation. |
+| e | `special_instructions` | Optional, at most 500 characters. |
+| - | `cart_id` | Optional. If sent: it must be an active cart owned by the customer, non-empty, with every line bookable. If absent: the order has no service lines. |
 
-Pickup and delivery each have their own mode. **Mix is allowed** (instant pickup + scheduled delivery, or the reverse, or both instant, or both scheduled).
+`order_type` is always `both`. Pickup-only and delivery-only do not exist.
+
+### 1.3 Instant and scheduled
+
+Pickup and delivery each have their own mode, and any mix is allowed (instant pickup with scheduled delivery, the reverse, both instant, or both scheduled).
 
 | Leg | Instant | Scheduled |
 |---|---|---|
-| **Pickup** | Assignment job starts **immediately** on place | Job starts at **`pickup_time_from`** |
-| **Delivery (drop)** | Job starts when **distribution manager marks the order ready / completed for dispatch** | Job starts at **`delivery_time_from`** |
+| Pickup | The assignment job starts **immediately** on place. | The job starts at the slot start (`pickup_time_from`). |
+| Delivery (drop) | The drop search starts when **all service items are completed**. | The drop search starts at `delivery_time_from`, and only if processing is already done. |
 
-Both jobs use the **same** expanding-radius search, timeout variable, and manager fallback (CM for pickup, **DM for drop**). See Part 2.6.
+- "Instant" means "as soon as allowed". An instant delivery's calendar date is the earliest allowed date (pickup date + buffer), not necessarily today.
+- A scheduled delivery whose time is still in the future when processing finishes: no search starts and the DM cannot assign. If processing finishes after the slot, the drop search starts immediately (section 6).
+- Pickup and drop use the same expanding-radius engine (section 2).
 
-**Delivery schedule constraint:** customer may only pick a delivery date/time **≥ pickup date + 2 days**. If pickup is instant, pickup date = today. This must be a **config** (`min_days_pickup_to_delivery = 2`) so **Express** (same-day pickup + delivery, extra fee) can be added later without a redesign.
+### 1.4 Slots (admin-maintained)
 
-**Checkout UI:** not a single Instant/Scheduled toggle for the whole order — two legs, two modes. `order_type` always `both`. Store `pickup_mode` and `delivery_mode` (`instant | scheduled`).
+Slots are a **daily template**, identical every day. The owner maintains it, and a slot's status applies to all days.
 
-Tracking (full 6 steps) is shown **only after pickup staff is assigned**. Before accept: no tracking screen.
-
-Call / Message on tracking: **placeholder icons only** (not implemented).
-
-### 2.3 Pickup partner (new job of counting)
-
-At the door the pickup partner:
-
-1. Lists **all cloth items** with **count** (per-unit) and/or **one weight per kg-service**.
-2. Uploads **one photo per service**.
-3. System **generates the bill** (service maths + admin delivery fee). Item list is **not editable** after this.
-
-Until that submit: order has services but **no itemised bill**.
-
-### 2.4 Customer order surfaces until pickup count is done
-
-| Control | Until pickup list submitted | After |
-|---|---|---|
-| Pay Bill | Disabled / “Bill yet to be generated” | **SUPERSEDED Part 3:** bill is **view-only**. Customer pays **only at delivery**, not in this screen. |
-| View Details | “Item list yet to be generated” | Item list + weights/qty + prices |
-| Tracking | **Only after pickup is assigned.** Out for pickup current; live map; name/photo; call/message placeholders | Same after door submit |
-
-### 2.5 After pickup list exists
-
-Customer can see items and the generated bill. **SUPERSEDED Part 3:** they **cannot pay** here. Payment is **only at delivery**. Later tracker steps (In process → Ready → Out for delivery → Delivered) stay as now unless a later batch changes them.
-
-### 2.6 New customer UI (from screenshots)
-
-**a. Pricing section** (Layyr Pricing)
-
-- Top service chips: Steam Press, Shoe Laundry, Wash & Fold, Wash & Press, …
-- Selected service: itemised **₹ per pair / per piece** list, or **₹/kg** for kg services.
-- “Your order includes” / “Not included” bullets.
-- CTA: Select {service} (adds that service to cart with the active pricing type).
-
-**b. Home bottom (scroll end)**
-
-- Service tiles with **₹/kg + SELECT** (and Coming Soon tiles).
-- “How we do your laundry” entry → 3-step story:
-  1. Doorstep pickup (count & weigh in front of you; nothing charged yet)
-  2. Cleaned at the hub
-  3. Delivered fresh (pay after weighing)  
-  **SUPERSEDED Part 9:** full pickup→delivery steps + images; pay is **at delivery**, not after weighing.
-- Brand strip / tagline block.
-- Coupon / offer bottom sheet (NEW50-style) is in the screenshots; **coupon product rules not specified this batch** — note only.
-
-### 2.7 Bottom nav, Pricing screen, Account entry (LOCKED 7 Oct 2026)
-
-**Bottom nav becomes:** Home · Orders · Cart · **Pricing**  
-Remove **Account** from the bar (`home_bottom_nav.dart` index 3, `main_shell_screen.dart`).
-
-**Pricing** (new tab, Layyr Pricing screenshot):
-
-1. Category toggle along the top (Regular Wash, Pro Clean, Home Linens, Luxury Care — same families as Home tiles).
-2. Then service chips/tabs for that category (e.g. Steam Press, Shoe Laundry, Wash & Fold).
-3. Then the item list with **₹ prices** (per piece / per pair) or **₹/kg** for kg services, plus includes / excludes if we keep that copy.
-4. CTA Select {service} still adds the **service** to cart (not a cloth SKU), matching the new booking model.
-
-**Account** moves to the **top-left profile photo** on Home (`HomeHeader` avatar). Tap avatar → existing Account screen. Avatar is not tappable today; make it the Account entry.
-
-**UX implication:** Orders, Cart, Pricing, and Tracking do not have that avatar. Account is reached by going **Home → avatar**, unless a later batch adds the same avatar on other tabs. Do not add a fifth nav item.
-
----
-
-## 3. Target tracker (customer map screen)
-
-Current (both): `Pickup → In Process → Ready → Out for Delivery → Delivered`
-
-Proposed (this batch):
-
-```
-Out for pickup  →  Pickup  →  In Process  →  Ready  →  Out for delivery  →  Delivered
-```
-
-Under the tracker (keep):
-
-- Laundry address, pickup address, delivery address
-- Pickup boy identity + **message** + **call** once assigned (especially while Out for pickup / Pickup)
-- Live map of partner when they are en route to pickup **or** to deliver
-
-Suggested mapping to existing `OrderStatus` (to confirm later):
-
-| UI step | Likely statuses |
+| Field | Meaning |
 |---|---|
-| Out for pickup | `pickup_assigned` (staff accepted, moving) |
-| Pickup | `picked_up` (list + photos submitted) |
-| In Process | `received_by_collection` … `services_in_progress` |
-| Ready | `services_completed` / `dispatch_assigned` |
-| Out for delivery | `out_for_delivery` |
-| Delivered | `delivered` / `closed` |
-| (before assignment) | `placed` — tracker shows step 0 empty / “Partner not assigned yet” |
+| `slot_id`, `label` | For example "8 - 9:30 am". |
+| `period` | `morning`, `afternoon` or `evening`. Groups the chips in the schedule sheet. |
+| `start_time`, `end_time` | IST wall-clock times. |
+| `status` | `open`, `too_busy` or `closed`. |
+| `sort_order`, `is_active` | Display order; soft remove. |
 
-`placed` with no staff: show tracker but no live pin / no call buttons.
+- `open` is selectable. `too_busy` and `closed` are shown **disabled** with their own label, and the backend **rejects** them. They differ only in the message.
+- The backend admin API (list, create, edit, set status) comes with this design. The mart-admin screen comes later.
+- The customer app reads the slot list and statuses from an API and never hard-codes them.
+- A scheduled create-order or reschedule sends `date + slot_id`. The server derives `pickup_time_from/to` and `delivery_time_from/to` from the slot (IST) and stores them. It rejects: an unknown or inactive slot, a status other than `open`, a slot that has already started, a date beyond the booking horizon, and a buffer violation.
 
----
+### 1.5 Express
 
-## 4. Impact by layer (for later planning, not a build ticket)
+Express is a per-order flag (`is_express`) on a normal `both` order. It does not use the `express_delivery` order type.
 
-### 4.1 Database / backend
-
-- Relax `CartItem`: per-unit **without** `CartItemSelection` at add-to-cart.
-- Relax `order.service.js`: stop requiring selections on per-unit at place; **do not** create a per-unit bill at place.
-- Treat **all** new orders like today’s per-kg bill delay: `billing_status = pending`, `Bill` created only after pickup submit.
-- New (or extend) pickup API: **upsert item lines** `{ cloth_id, quantity }` and/or `{ service_id, weight_kg }`, plus photos, then compute bill.
-- Flag on order: `items_confirmed_at` / `inventory_source = pickup_staff` so customer UI can branch.
-- Instant vs scheduled: `pickup_mode` + `delivery_mode` (`instant | scheduled`). Always `order_type = both`.
-- Assignment timeout, max search range, time-slice count, delivery fee, min days pickup→delivery: **admin/backend config variables** (see Part 2.6).
-- Drop assignment mirrors pickup: Redis/BullMQ + expanding radius + DM force-assign after timeout.
-- Photos: `pickup_proof` is a single URL today — likely needs a list.
-- Service queue / collection manager: today they consume `OrderItem`s. If items appear only after pickup, **queue assignment must wait** until pickup submit. Call out when designing CM / service-man parts.
-
-### 4.2 Customer app
-
-- Remove item stepper screens from the **booking** path (keep catalogue data for Pricing + for staff picker).
-- Cart UI: service name, category, per kg / per unit chip, no qty/kg totals.
-- Replace Delivery Options screen: **Instant / Scheduled only**. Always collect pickup + delivery addresses. Drop pickup-only and delivery-only cards and the `toBackendOrderType()` mapping to `pickup_only` / `drop_only`.
-- Payment: after pickup, not at confirm (confirm = place job).
-- Orders / details / pay: empty states.
-- Tracking: 6 steps; pickup-boy block earlier.
-- Bottom nav: Home, Orders, Cart, **Pricing**. Remove Account tab.
-- New Pricing screen: category toggle → services → priced item list (Layyr).
-- Account: tap Home header avatar (top left). Other tabs have no Account icon unless specified later.
-- Home footer + optional “how we do laundry” sheet.
-- Demo store (`customer_demo_store.dart`) must simulate “items pending” vs “items confirmed”.
-
-### 4.3 Delivery / management app
-
-- Pickup job: item picker per service; **one weight per kg-service**; **one photo per service**; then submit → bill.
-- Confirm Pickup stays, but weight-only sheet is not enough.
-- Expanding-radius SSE search; after timeout CM (pickup) / DM (drop) force-assign. Assigned staff **cannot reject**.
-- CM/DM staff list shows **Google Maps / coordinate distance** to pickup or drop address.
-
-### 4.4 Admin / mart-admin
-
-- Pricing page is a **read** of existing `Service` + `ClothesItem` prices.
-- Include / exclude copy per service (Layyr bullets) — **still unspecified** (content model).
-- Coming Soon services: likely `is_active` or a new flag.
-- **Delivery fee** is an admin-editable variable, auto-added when the bill is generated.
-- Assignment timeout (5/10/20 min), max range, slice count, min days to delivery: admin or env config.
-
-### 4.5 Demo prototype vs live
-
-Implement against **both** `C:\prototype` (demo) and `C:\my_workspace\laundry` (live). Demo must show: pending items → after fake pickup submit, **viewable bill (not payable)**; assignment timeout → CM force-assign. Pay happens on the **delivery** demo path.
-
----
-
-## 5. Questions — locked 7 Oct evening (unless marked open)
-
-1. ~~Pickup-only / delivery-only / both~~ **Always both.**
-2. ~~Instant vs scheduled timing~~ **Pickup job:** instant → on place; scheduled → at pickup time. **Drop job:** instant → when DM marks ready/completed for dispatch; scheduled → at delivery time. Mix of modes allowed. Delivery date ≥ pickup + 2 days (config; Express later).
-3. ~~Pay at confirm~~ No item bill until door submit. **SUPERSEDED Part 6:** **no booking fee** will be added later.
-4. ~~Mixed cart~~ Allowed. Bill = per-service kg or unit maths, then + delivery fee.
-5. ~~Min kg~~ **Not enforced.**
-6. ~~Edit item list after submit~~ **Not editable** for now.
-7. ~~Pricing in nav~~ Fourth tab Pricing. Account = Home avatar.
-8. ~~Call / message~~ **Placeholder icons only.** **Part 8:** Pricing shows **Includes** bullets; browse-only; no Coming Soon.
-9. ~~Coupons~~ Applied **when paying the bill** (after generation). **SUPERSEDED Part 3:** one existing `Coupon` at UPI pay (unlocks on `out_for_delivery`). Cash is **fallback after UPI fail** only. UPI success marks **payment completed everywhere** without waiting on the boy. Boy + **one photo** still required for **Delivered**.
-10. ~~Drop-only / walk-in~~ Out of scope.
-11. ~~Original repo~~ `C:\my_workspace\laundry`.
-
----
-
-## 6. Screenshot → WashBee mapping
-
-| Screenshot | Use in WashBee |
+| Aspect | Rule |
 |---|---|
-| Pricing / Shoe Laundry list + includes/excludes | New **Pricing** section; data from `ClothesItem.per_unit_price` / `Service.per_kg_price` |
-| Home tiles ₹49/kg SELECT + Coming Soon | Home **bottom** service grid; SELECT adds that service to cart with default pricing type |
-| How we do your laundry (3 photos) | Home footer entry + full screen/sheet; copy matches new “count at door, pay after” model |
-| Coupon sheet NEW50 | Later; do not design payment rules until coupons batch |
+| Pickup and delivery | Exactly as for an ordinary order: any mode mix, slots, rings, timeouts. |
+| Buffer | `EXPRESS_BUFFER_DAYS` (1) instead of `PICKUP_DELIVERY_BUFFER_DAYS` (2). |
+| Fee | `EXPRESS_FEE` (admin variable, in rupees) is added on the bill at Mark as picked up, together with the delivery fee, snapshotted. Ordinary orders: 0. |
+| Service queue | One list per service, sorted `is_express DESC, assigned_at ASC`. A new Express row goes after older Express rows and before all ordinary rows. |
+| Badge | One Express chip on the order card on **every** role list: customer, pickup boy, captain, CM, service man, DM. |
+| After placing | Sticky: it cannot become ordinary. Cancel and reschedule follow section 1.7. |
+| Service mix | Allowed on any service mix. |
 
----
+### 1.6 Address serviceability
 
-## 7. Suggested sequence when implementation starts (after remaining flows)
+- New admin config `SERVICE_AREA_KM`: the largest allowed distance from the active laundry.
+- The add-address and edit-address API rejects a pin farther than that. The app address form shows the error.
+- Order creation checks only that the address belongs to the customer. Addresses saved earlier are not re-checked.
 
-Not a go-ahead. When parts 2+ are in:
+### 1.7 Cancel and reschedule
 
-1. Backend: cart without SKUs + deferred bill + pickup item-list API + `items_confirmed` flag.
-2. Staff pickup UI: catalogue + photos + generate bill.
-3. Customer: booking path + empty Pay/Details + 6-step tracker + pickup-boy actions.
-4. Customer: Pricing + home footer.
-5. Expanding-radius assignment (pickup + drop) + CM/DM force-assign.
-6. Demo store: pending items, timeout, force-assign, viewable bill, pay at delivery.
+Both are allowed only **before a pickup partner is assigned** (`order_status = placed`). From `pickup_assigned` onward the Upcoming Pickup card still shows Change Schedule and Cancel; tapping either opens a popup ("Order cannot be cancelled" / "Schedule cannot be changed", with "Pickup partner has already started.") and the API rejects the call.
 
----
-
-## 8. Next input expected from you
-
-**Part 3 captured** (pickup door-count → bill → request-for-submission → CM verify/receive).
-
-**Parts 3–9 locked.** Pricing = **nav tab only**, browse-only, **Includes** bullets, no Coming Soon. Living spec is complete enough to implement.
-
----
-
-## Part 2 — Pickup assignment, CM fallback, door count, bill (7 Oct 2026)
-
-### P2.1 Proposed flow (this batch)
-
-```
-Customer places order (always both legs; pickup_mode × delivery_mode independently)
-
-PICKUP SEARCH starts:
-  instant  → immediately
-  scheduled → at pickup_time_from
-  Expanding radius over ASSIGNMENT_TIMEOUT (default 5 min, 5 slices) — Part 2.6
-  On-shift staff only. First accept wins.
-       ↓
-  If none accept by timeout → CM only now may force-assign
-       staff cannot reject
-       SSE: “CM assigned this job to you”
-       ↓
-  THEN customer may open tracking (not before)
-       Out for pickup current, live map, name/photo, call/message placeholders
-       ↓
-  At door: services + pricing type from cart
-       per-unit → item counts (old customer item UI)
-       per-kg → ONE weight for that whole service
-       ONE photo per service
-       POST → Bill = service maths + admin delivery-fee variable
-       customer **views** bill; pay is at delivery (Part 3 lock)
-       item list not editable after submit
-
-DROP SEARCH (same engine as pickup) — **SUPERSEDED Part 5:**
-  instant  → auto-starts when **all service items are completed** (not “DM marks ready”)
-  scheduled → auto-starts at `delivery_time_from`, and **only if** processing is already done
-  If processing done but delivery still in the **future** → no auto search, **DM cannot assign**
-  After ASSIGNMENT_TIMEOUT → DM may force-assign (cannot reject)
-```
-
-**Bill maths (locked):**
-
-| Line | Formula |
+| Action | Rule |
 |---|---|
-| Per-kg service | **one** `weight_kg` for that service × `service.per_kg_price` |
-| Per-unit service | sum of `qty × clothes_item.per_unit_price` |
-| Delivery fee | admin **variable**, added automatically |
-| Coupons | **SUPERSEDED Part 3:** not on an in-app Pay Bill. Apply when paying **at delivery** (details in payment batch). |
-| Order total | sum of service lines + delivery fee − coupon |
+| Cancel | Customer only, whole order only. The Cancel button opens one pop-up, "Are you sure you want to cancel?", that holds the reason options and Yes / No. A reason is required: a preset label, or free text for "Something else". The presets live in the app (not a server catalogue). Yes sets `cancelled`, stores `cancel_reason`, stops the pickup search and pending offers. A cancelled order drops off the orders list (there is no cancelled card or history tab yet). No fee and no refund (nothing is prepaid). |
+| Reschedule | Customer only. No reason. Pickup and delivery can each be changed through the API; the orders list card changes the **pickup** only, and an instant pickup can be changed to scheduled. The new windows use the same slot and buffer validation as booking (section 1.2, 1.4). A running search and its offers are cancelled. If the new pickup is instant or its time has already arrived, the search starts again immediately. Otherwise it waits for the new `pickup_time_from`. |
+| Delivery follows pickup | When a reschedule changes only the pickup and the delivery would break the buffer (delivery date < new pickup date + buffer), the server moves the delivery in the same write: date = new pickup date + buffer, same slot if it is open, else the first open slot. It only ever moves later. The response says `delivery_shifted` and the app tells the customer "Delivery moved to {date}". If that date is past the booking horizon (`OUTSIDE_BOOKING_HORIZON`) or has no open slot (`DELIVERY_SHIFT_UNAVAILABLE`), the whole change is rejected and nothing is saved. An instant delivery has no date, so nothing moves. If the request itself sends a delivery date, nothing is shifted and a buffer break is `BUFFER_VIOLATION`. |
 
-### P2.2 Current flow (what the prototype/backend already does)
+---
 
-| Topic | Today | This batch wants |
-|---|---|---|
-| When pickup broadcast starts | BullMQ at `pickup_time_from`. No instant mode | Instant = now; scheduled = at pickup time |
-| When drop broadcast starts | Separate DM/dispatch flow, not the same job | Instant = DM marks ready; scheduled = at delivery time. **Same engine as pickup** |
-| Who is notified | Default send-to-all active, cap 100 | **On-shift only**, expanding radius rings (not all-at-once) |
-| Accept window | 120s, then auto-retry (max 2) | **One** timeout (`ASSIGNMENT_TIMEOUT_MINUTES`, default 5, toggle 10/20). No auto-retry |
-| Manager fallback | Log and stop | After timeout only: **CM** pickup, **DM** drop. Force-assign, **cannot reject** |
-| Distance | Not shown on CM assign | **Google Maps + coordinates**; show km on CM/DM staff list |
-| Customer tracking | Available from placed | **Hidden until pickup is assigned** |
-| Door | Weight on existing per-kg lines; one proof URL | Item picker; **one weight per kg-service**; **one photo per service** |
-| Bill | Immediate if whole order per_unit | After door submit + **delivery fee variable**. Customer **views** only; pay at delivery. |
+## 2. Assignment engine (pickup and drop)
 
-### P2.3 What we can reuse vs what must change
-
-**Reuse**
-
-- `DeliveryAssignmentRequest` + recipients + accept/reject SSE
-- BullMQ pickup-assignment queue + catch-up job (today every 5 min as Redis safety net — different from the 5-min accept window)
-- `assignPickupDirect` for CM override
-- Delivery staff shift + last lat/lng for “active nearby”
-- Pickup proof upload
-- Customer tracking map + partner card (extend, don’t replace)
-
-**Change**
-
-- `pickup_mode` / `delivery_mode`; drop job twin of pickup job
-- Expanding-radius notifier (5 slices); on-shift only; first accept wins
-- Timeout config; **no** second auto-retry; CM/DM force-assign after timeout only
-- Google Maps distance on manager assign lists
-- Door: one weight + one photo **per service**; bill + delivery-fee variable
-- Hide customer tracking until pickup assigned
-- Item list frozen after submit. Coupons: **at delivery** (Part 3).
-
-### P2.4 Layer notes
-
-**Backend:** sliced search (Part 2.6). On full timeout with no accept → overdue for CM (pickup) or DM (drop). Direct assign SSE is forced.
-
-**CM / DM:** overdue only **after** timeout. Staff list = on-shift; show distance. Assign = existing direct-assign.
-
-**Delivery app:** accept overlay during search. After manager assign, job is mandatory. Door UI: per service, counts or one weight, one photo.
-
-**Customer app:** no tracking until assigned. Then Out for pickup + live map + placeholders.
-
-### P2.6 Config variables and expanding-radius search (LOCKED)
-
-All of these must be **named config** (env now, laundry-admin later) so ops can change them without a code rewrite.
-
-| Variable | Default (now) | Purpose |
-|---|---|---|
-| `ASSIGNMENT_TIMEOUT_MINUTES` | `5` | Total auto-search window. Must be switchable to `10` or `20` |
-| `ASSIGNMENT_RANGE_SLICES` | `5` | How many equal time parts the timeout is split into |
-| `ASSIGNMENT_MAX_RANGE_KM` | *set in admin/env* | Outer search radius |
-| `MIN_DAYS_PICKUP_TO_DELIVERY` | `2` | Earliest scheduled delivery. **Same value as `PICKUP_DELIVERY_BUFFER_DAYS` (Part 6) — one env, two names not allowed.** Express later can set this to `0` + surcharge |
-| `DELIVERY_FEE` | admin-editable | Added automatically when the bill is generated |
-
-**Expanding radius (pickup and drop, same logic):**
+One engine serves both legs. All values are named config (section 9).
 
 ```
 sliceDuration = ASSIGNMENT_TIMEOUT_MINUTES / ASSIGNMENT_RANGE_SLICES
-ringKm(i)     = (i / ASSIGNMENT_RANGE_SLICES) * ASSIGNMENT_MAX_RANGE_KM
-                i = 1..SLICES
+ringKm(i)     = (i / ASSIGNMENT_RANGE_SLICES) * ASSIGNMENT_MAX_RANGE_KM      i = 1..SLICES
 
 For slice i in 1..SLICES:
-  window = ((i-1) * sliceDuration)  ..  (i * sliceDuration)
-  radius = ringKm(i)                // includes all inner rings
-  notify on-shift staff whose distance from
-      pickup coords (pickup job) or delivery coords (drop job)
-      is ≤ radius AND who were not already notified
-  distance = Google Maps (road) using staff current lat/lng
-             and the job address coordinates
-If anyone accepts in any slice → stop search, first write wins.
-If timeout ends with no accept → manager force-assign only from then.
+  window = ((i-1) * sliceDuration) .. (i * sliceDuration)
+  notify on-shift staff whose distance to the job address is <= ringKm(i)
+         and who were not already notified
+If anyone accepts in any slice: stop the search. First write wins.
+If the timeout ends with no accept: a manager may force-assign.
 ```
 
-Example: timeout 5 min, max range 10 km, 5 slices → minute 1: 2 km; minute 2: 4 km; … minute 5: 10 km.
-
-**Staff set:** `DeliveryStaffShift.is_active` (shift on). Others ignored.
-
-**CM/DM manual list:** same distance (Google Maps + coordinates) shown next to each on-shift staff.
-
-**Race:** two accepts at once → **one** assignment (DB first-writer wins); the other is rejected.
-
-**Express:** **SUPERSEDED Part 7** — not a global buffer=0. Per-order flag + badge + service-queue priority + extra fee. Buffer stays 2 for ordinary orders.
-
-### P2.7 Part-2 questions — locked
-
-12. Nearby = **dynamic rings**, not a single radius.  
-13. **On-shift only.**  
-14. **First accept wins.**  
-15. Manager assign **only after timeout.**  
-16. Force-assigned staff **cannot reject.**  
-17. Drop search **mirrors pickup** (instant after DM ready, or at scheduled delivery time).  
-18. **Mix of instant and scheduled** allowed per leg.  
-19. **One weight per service**, not per cloth.  
-20. **One photo per service.**  
-21. **Delivery fee = admin variable**, auto on bill.  
-22. **No customer tracking until pickup is accepted/assigned.**
+- **On-shift staff only** (`DeliveryStaffShift.is_active`) are notified by rings.
+- Distance is **haversine on the backend**, using each staff member's current lat/lng. Staff with no known location are skipped by rings. The Flutter app owns Google Directions and the route polyline.
+- **First accept wins.** Two simultaneous accepts produce one assignment (the database's first writer); the other is rejected.
+- **Manager assign only after the timeout:** the CM for pickup, the DM for drop. A manager may force-assign any verified active delivery staff, on shift or not. The assigned staff member **cannot reject**, and receives an SSE "assigned to you".
+- During the search, the manager's Assign button is visible but disabled. After the timeout it is enabled.
+- The CM and DM staff lists show the distance to the job address.
+- Example: timeout 5 min, max range 10 km, 5 slices gives 2 km in minute 1, 4 km in minute 2, and so on up to 10 km in minute 5.
+- There is one timeout and **no automatic retry**.
+- Pickup assignment is created for `placed` orders. A reschedule or cancel stops the search (section 1.7).
 
 ---
 
-## Part 3 — Pickup door-count, bill, submit-to-CM handshake (13 Oct 2026)
+## 3. Pickup door count and bill
 
-### P3.1 Proposed flow (this batch)
-
-Customer tracker at this point is already on **Out for pickup** (Part 2: tracking only after assignment).
-
-Pickup-boy **one button**, three labels (same control, not three actions):
+The pickup partner uses **one button** with three labels:
 
 | When | Button |
 |---|---|
 | Assigned, door work not confirmed | **Mark as picked up** |
-| After mark picked up, request not sent | **Submit request to CM** |
-| After request, waiting on CM | **Waiting for CM verification** (inactive colour, not tappable) |
+| Marked picked up, request not sent | **Submit request to CM** |
+| Request sent, waiting on the CM | **Waiting for CM verification** (inactive, not tappable) |
 
-```
-Pickup boy opens the assigned order
-  Sees booked services (same list the customer booked)
-  Each row shows pricing type: per kg | per unit
-       ↓
-  Tap a service → same semi-flow the customer used to have
-    (service list → expand that service → count / weigh)
-    per unit → count items from that service’s catalogue
-    per kg   → ONE weight for that whole service (locked P2.7 #19)
-    ONE photo per service (camera or gallery) (locked P2.7 #20)
-  All booked services finished in **this one visit** (no come-back to finish later)
-       ↓
-  Taps **Mark as picked up**
-    bill generated, written to DB
-    customer **View Details / View Bill** unlock (Pay Bill does **not** become payable)
-    customer tracker: **Out for pickup** → **Pickup done**
-    button label becomes **Submit request to CM**
-    order stays on pickup-boy list
-       ↓
-  Anytime after that (door, transit, or laundry): taps **Submit request to CM**
-    status → submitted_to_cm
-    button becomes **Waiting for CM verification** (inactive)
-    cannot cancel request; cannot edit items
-       ↓
-  CM taps **Verified & Received**
-    status → received_by_collection
-    pickup list: row gone on next **pull-to-refresh**
-    pickup delivery leg complete
-```
+### 3.1 What the partner sees
 
-### P3.2 What exists today (prototype + live)
+The partner sees **all active categories and services**.
 
-| Step | Today | Gap |
-|---|---|---|
-| Pickup item UI | Per-kg **weight fields per order item**, not per-service expander. Per-unit items were already on the order from **customer** cart. No “old customer item list” for staff. | New: SKU-less cart → staff fills the expander per booked service. |
-| Photo | Pickup proof on the **delivery** (`pickup_proof`), not one photo per service. | Per-service photo (locked). |
-| Bill | **Not** generated at the door. CM invoice API requires `received_by_collection`. Per-unit bills can exist at place-order; per-kg stays 0 until CM. | Door POST generates the **one** bill (Part 2). CM invoice-after-receive **conflicts** — drop that rule. |
-| Customer tracker | Steps start at Pickup; `picked_up` fills that step. | Assigned = **Out for pickup**. **Mark as picked up** → **Pickup done**. |
-| Submit to CM | Pickup boy one-shot action `submitted_to_cm`: marks drop-at-laundry, **completes** the pickup delivery, sets `submitted_to_cm`. Order moves to pickup **Completed** tab immediately. | Split into **request** (order stays) then **CM verify** (then remove). |
-| CM receive | Incoming list today: `placed` / `pickup_assigned` / `picked_up` / `submitted_to_cm`. `markOrderReceived` from those → `received_by_collection`. Button **Verified & Received**. | **List stays as today:** yet-to-pick-up **and** incoming picked-up. **Action** Verified & Received only from `submitted_to_cm` (not from `placed` / `pickup_assigned`). |
-| Queue | Pickup **assignment** already uses BullMQ/Redis. Handoff is a **synchronous HTTP** status change. No queue between pickup and CM. | See over-engineering below. |
-
-Relevant current statuses (keep; remap meaning, do not invent a Redis job type):
-
-```
-picked_up                Mark as picked up. Items + bill. Customer: Pickup done. Button: Submit request to CM.
-submitted_to_cm          Request sent. Button: Waiting for CM verification (inactive). Still on pickup list.
-received_by_collection   CM verified. Row gone after pull-to-refresh. Pickup Delivery completed.
-```
-
-### P3.3 Pickup-boy UI (door)
-
-1. Service list = cart services only (not the full open catalogue).
-2. Badge on the row: **Per unit** / **Per kg**.
-3. **Semi-flow = the old customer path**, reused for staff: tap a booked service → expanded item sheet for **that** service’s catalogue (not a shortened common-items list).
-   - per unit: quantities on cloth items that belong to that service
-   - per kg: one numeric weight for the service (not per cloth)
-4. Photo on the same expanded panel: **camera or gallery**. One image per service.
-5. A service is “done” when required fields for its pricing type + photo are present.
-6. **Mark as picked up** enabled only when **all** booked services are done in **this visit**. No planned “come back tomorrow.” Mid-visit crash: **server draft** (P3.9 #15) so he can reopen the same job and finish.
-7. Mixed order (some services per-unit, some per-kg) is **allowed**.
-8. After **Mark as picked up**: item list **not editable**, request **not cancellable**. CM refuse / recount is a later scale-up, not this batch.
-
-### P3.4 Bill
-
-- Written on **Mark as picked up** (same POST as Part 2).
-- Line items = service maths + admin delivery-fee variable.
-- Customer: bill is **visible** immediately (View Details / View Bill). **Cannot pay.** Only the **customer** sees this bill for now (no CM/admin bill ping).
-- **Pay unlocks on `out_for_delivery`** (P3.12): UPI first; cash only if UPI fails. UPI success = paid everywhere, no boy needed for payment.
-- Coupons are **not** applied at the door. Applied on the **doorstep UPI pay** sheet (P3.12).
-- Do **not** keep today’s “invoice only after `received_by_collection`” gate.
-
-### P3.5 Customer tracker (this slice)
-
-| Event | Tracker |
+| Order type | What is pre-selected |
 |---|---|
-| Pickup assigned (Part 2) | **Out for pickup** current |
-| **Mark as picked up** | **Out for pickup** → **Pickup done** |
-| Submit request / CM verify | **Not** a customer-visible step |
+| With cart | The services the customer chose appear already selected, with their pricing type **locked**. Each must be filled in. He may **add other services** on top. |
+| No cart | Nothing. He adds every service himself and picks per kg or per unit for each. |
 
-Call/message placeholders stay as in Part 2.
+- A row shows a **Per unit** or **Per kg** badge. One line per service.
+- Tap a service to expand it:
+  - **per unit:** counts on that service's cloth items.
+  - **per kg:** **one** weight for the whole service.
+  - **one photo per service**, from camera or gallery.
+- A service is "done" when its counts or weight and its photo are present. Mixed per-unit and per-kg orders are allowed.
+- All services are finished in **this one visit**. There is no "come back tomorrow".
 
-### P3.6 Submit handshake
+### 3.2 Draft (crash recovery)
 
-One control on the order row / detail, label changes with status. Request may be sent **anytime after** Mark as picked up (door, transit, or counter).
+On each service expander complete, the app `PATCH`es the order's service lines with `items_confirmed_at = null`, including lines the partner added. Reopening the job after an app kill restores the numbers. This is not a second product: no Drafts screen, no version history, no "save draft" button.
 
-| Status | Pickup list | Button |
+### 3.3 Mark as picked up
+
+Enabled only when the order has **at least one service line** and **every** line is complete (every pre-selected line included). It:
+
+1. writes the **bill** (section 3.4),
+2. sets `items_confirmed_at`,
+3. sets `order_status = picked_up`,
+4. changes the button to **Submit request to CM**.
+
+After this the item list is **not editable** and the request **cannot be cancelled**. The order stays on the pickup partner's list.
+
+### 3.4 Bill
+
+| Line | Formula |
+|---|---|
+| Per-kg service | `weight_kg` (one per service) x `service.per_kg_price` |
+| Per-unit service | sum of `quantity` x `clothes_item.per_unit_price` |
+| Delivery fee | `DELIVERY_FEE`, an admin-editable flat value added automatically |
+| Express fee | `EXPRESS_FEE` when `is_express`, else 0 |
+| Coupon | One coupon at payment (section 7) |
+| Order total | service lines + delivery fee + express fee - coupon |
+
+- Prices and fees are **snapshotted** at Mark as picked up. Later price edits never change an existing bill.
+- Only the **customer** sees the bill. No CM or admin notification.
+- The customer can **view** the bill from `picked_up`. They **cannot pay** until `out_for_delivery` (section 7).
+- There is no minimum weight.
+
+### 3.5 Photos
+
+Photos go through the existing upload pipeline (Cloudinary), with the URL stored on the service line. Image bytes are never stored in PostgreSQL.
+
+---
+
+## 4. Collection manager handshake
+
+```
+picked_up                Mark as picked up. Bill written. Button: Submit request to CM.
+submitted_to_cm          Request sent (any time after Mark as picked up). Button: Waiting for CM verification.
+received_by_collection   CM taps Verified and Received. The pickup leg completes.
+```
+
+- The partner can send the request any time after Mark as picked up (at the door, in transit, or at the laundry). He cannot skip it.
+- **CM incoming list:** orders yet to be picked up (`placed`, `pickup_assigned`) **and** picked-up orders (`picked_up`, `submitted_to_cm`).
+- **Verified and Received** works **only** from `submitted_to_cm`. Seeing an order does not allow marking it received.
+- The pickup `Delivery` row is completed on CM receive, not on the request.
+- The pickup partner's list shows `pickup_assigned`, `picked_up`, `submitted_to_cm`. The row disappears after the next **pull-to-refresh** once the order is `received_by_collection`.
+- This handshake is plain HTTP status writes. **No** Redis or queue.
+- The CM does not generate an invoice (the bill exists from the door). CM refuse, recount and cancel-request are out of scope.
+
+---
+
+## 5. Plant: service queues
+
+```
+CM list of received orders (received_by_collection)
+  → Send to service queue
+  → order leaves the CM list (it stays in CM history)
+  → order_status = submitted_to_services
+  → one queue row per booked service line, auto-assigned to that service's service man
+```
+
+- **One service man per service**, and one service per service man (`Staff.service_id` is unique). The CM does not choose the man.
+- If a service has no service man, **send to service queue fails** (`409 NO_SERVICE_MAN`). Lines are never silently skipped.
+- **Queue grain:** one row per service line (an `OrderItem`, which has nested cloth selections), not one row per cloth.
+- **Sort:** `ORDER BY is_express DESC, assigned_at ASC`. New ordinary rows sit at the bottom of the ordinary band.
+- **Any pending row can be started.** Several rows can be in progress at once. Starting a row does not change its `assigned_at`.
+- **Actions: In progress and Completed only.** No "mark for later".
+- The service man's screen shows each row's assigned time.
+- **No SSE, no Redis, no extra queue.** While the queue screen is visible, the app polls the same list GET every `SERVICE_QUEUE_POLL_SECONDS` (120; 60 is also allowed). Pull-to-refresh works in between. A cold start is just that GET.
+- First item in progress sets `services_in_progress`. When the **last** item completes, the order becomes `services_completed`.
+
+---
+
+## 6. Drop assignment and the DM lists
+
+```
+Any service item completed
+  → the order appears on the DM in-plant list (expand: all items, completed or pending)
+
+All service items completed
+  → order_status = services_completed
+  → customer tracker: Ready
+  → the drop search starts according to delivery_mode (section 1.3)
+```
+
+| Situation | Auto search | DM Assign button |
 |---|---|---|
-| `pickup_assigned` (door work unfinished) | Yes | **Mark as picked up** (blocked until all services filled) |
-| `picked_up` | Yes | **Submit request to CM** |
-| `submitted_to_cm` | Yes | **Waiting for CM verification** (inactive) |
-| `received_by_collection` | **No** (after pull-to-refresh) | — |
+| Items still pending (in-plant) | Off | Off (expand only) |
+| All done + instant | On immediately | Visible, **disabled** until the timeout |
+| All done + scheduled in the future | Off | Visible, disabled, "Available from {time}" |
+| All done + scheduled time reached or already past (including a late plant) | On immediately | Visible, disabled until the timeout |
+| Timeout with no accept | Stopped | **Enabled** (manual, cannot reject) |
 
-**CM incoming list (locked, keep as today):** orders **yet to be picked up** (`placed` / `pickup_assigned`) **and** incoming after pickup (`picked_up` / `submitted_to_cm`). Do not hide pre-request orders from CM.
+- When a captain accepts, or the DM force-assigns, the order becomes **`out_for_delivery` immediately**. There is no start-delivery gate.
+- The customer sees the captain's **name, phone and photo**. The phone is display only (no `tel:`). Call and message icons are placeholders.
+- The live map shows the captain's pin and **one** Directions path drawn at assignment. If the pin leaves the path, Directions refreshes at most once every 2 minutes. There is no snap-to-road or turn-by-turn.
+- DM lists:
 
-**CM Verified & Received** still only for `submitted_to_cm`. Pickup boy cannot skip the request. Seeing an order ≠ allowed to mark received.
+| List | What is on it |
+|---|---|
+| **In-plant** | At least one item completed, not all (`services_in_progress`). Pending items are shown in an inactive colour. No Assign. |
+| **Ready to dispatch** | All items done, no captain yet (`services_completed`). Assign visible: disabled during the search, "Available from {time}", or enabled after the timeout. |
+| **History** | Captain assigned onward. Shows delivered or not (`out_for_delivery` vs `delivered`). |
 
-**Backend:** HTTP status transitions + existing notify. Pickup list: `pickup_assigned` | `picked_up` | `submitted_to_cm`. Hide at `received_by_collection`. **Refresh = pull-to-refresh**, not a live SSE drop. Complete the pickup **Delivery** row on CM receive, not on the request.
+- The DM does not verify an order before dispatch. After assignment the order leaves ready-to-dispatch.
 
-### P3.7 “Queue” — do not over-build
+---
 
-**Do not add a new BullMQ/Redis queue for this.** Assignment already has a timed worker. This handoff is two HTTP writes; the pickup app **pull-to-refresh** hides the row. If “queue” means CM’s incoming list, that is a query, not Redis.
+## 7. Payment and delivered
 
-### P3.8 Over-engineering / extra complication (this batch)
-
-1. **Redis/BullMQ for CM handshake** — skip.
-2. **New status names** — skip; reuse `picked_up` / `submitted_to_cm` / `received_by_collection`.
-3. **Completing the pickup Delivery at request time** (today). Complete it on **CM receive** only.
-4. **CM Verified & Received from `placed` / `pickup_assigned`** — close. List may still **show** those orders (locked: keep incoming as today).
-5. **Bill twice** (door + CM invoice) — one bill at Mark as picked up. CM does not get a bill-generated notification.
-6. **CM editing weights** after pickup — freeze. CM refuse/recount is a later scale-up (locked: not this batch).
-7. **Photos “uploaded to the database”** — do **not** store image bytes in PostgreSQL (`BYTEA`). Use the existing upload pipeline (S3 / `uploads/` + URL on the service/order-item row), same as today’s `pickup_proof`.
-8. **Live SSE to drop the pickup row** — skip; pull-to-refresh is locked.
-9. **In-app Pay Bill after door-count** — skip. View only. Pay is **UPI intent at doorstep**.
-10. **Timeouts / auto-receive / cancel-request** on this handshake — skip.
-11. **Draft as a separate product** (Draft table, version history, multi-device merge, a Save Draft button, “resume tomorrow” UI) — skip. Autosave counts/photos onto the **same order** (`items_confirmed = false`) when leaving each service expander. Mark as picked up flips confirmed and generates the bill. That is crash recovery, not a second visit.
-12. **Home-grown UPI** (`upi://pay` to the boy’s VPA, then guess success from Android resume). Food/grocery apps do **not** do that — they use a PSP (Razorpay / PhonePe / Cashfree) UPI intent so the app gets a real success/fail when it returns. Rolling your own collect + polling is both extra work and unreliable. Reuse a PSP; payee = **merchant**, not the delivery boy’s personal UPI.
-13. **Card / wallet / netbanking** — skip. **COD as a first-class checkout** — skip. Cash is only a **Paid in cash** fallback after UPI fails. Reuse existing `payment_method = cod` on `Bill`; do not add a cash-drawer / change-making product.
-14. **New Promotion table.** There is already `Coupon` (`coupons` in Prisma). There is **no** separate promotions table — do not create one. One code per pay from that table.
-15. **`order_status = payment_pending` after UPI success.** That old status meant “delivered, waiting for boy to confirm pay.” New rule: UPI success writes `bill.payment_status = completed` immediately and **shows paid everywhere**. Order stays `out_for_delivery` until boy + photo → `delivered`. Payment and delivery are different fields.
-
-### P3.9 Questions — locked 13 Oct 2026
-
-1. Request for submission: **anytime after** Mark as picked up (door, transit, or laundry).
-2. **One button**, three labels: **Mark as picked up** → **Submit request to CM** → **Waiting for CM verification** (inactive). Not a second unlock-tap after CM.
-3. CM refuse / recount / cancel: **not this batch**. Scale up later. Until then CM only **Verified & Received**.
-4. Pickup boy **cannot** cancel the request once sent. **Cannot** edit items after Mark as picked up.
-5. Item UI: **same semi-flow the customer used** (service list → expand that service → count/weigh from that service’s catalogue).
-6. **One visit:** every booked service finished before Mark as picked up. No resume-later for leftover services.
-7. Photos: **camera and gallery**. Persist via existing upload + URL on the record (not raw bytes in DB).
-8. **Mixed** per-unit + per-kg services on one order: allowed.
-9. Customer **cannot pay** after the bill exists. **View only.** Pay **only at delivery**.
-10. Pickup list after CM verify: **pull-to-refresh** (not live SSE).
-11. Tracker: **Out for pickup** → **Pickup done** when the boy taps **Mark as picked up**.
-12. **CM incoming list stays as today:** yet-to-pick-up **and** incoming picked-up. Not request-only.
-13. After bill generation, **only the customer** sees it for now. No CM/admin ping.
-14. Mid-visit **server draft:** yes (crash recovery on the same job).
-15. Pay unlocks when order is **`out_for_delivery`** (boy may still be en route). Not after pickup, not at confirm. **SUPERSEDES** “only once the boy is at the doorstep.”
-16. Pay method: **UPI intent** first (any UPI app → back to WashBee). **SUPERSEDES “cash not allowed”:** if UPI **fails**, **delivery boy** taps **Paid in cash**. Then `bill.payment_status = completed`, `payment_method = cod`, shown **everywhere including the customer**. Customer cannot self-declare cash. Cash is not the first option. Do not record cash if UPI already completed.
-17. **UPI success** → write payment completed in DB **immediately**; **every** surface shows paid (customer, staff, admin). **Does not wait** for the delivery boy. Boy action is only for **Delivered**, not for UPI payment.
-18. **Delivered** still requires the delivery boy: **Mark as delivered** + **one photo** (existing `drop_proof`). UPI success does **not** auto-deliver. **Payment must be completed first** (UPI or Paid in cash); Delivered stays inactive until then.
-19. **One coupon per pay**, from existing **`Coupon` / `coupons`** table (yes, that table is already in Prisma). No second promotions table. Not a free-typed string.
-20. **Paid in cash** is a **delivery-boy** action only. After it, payment completed reflects in DB and on **all** UIs (customer included), same as UPI success.
-21. **Payment before Delivered.** Boy cannot mark delivered (or upload the photo as the completing action) while the bill is still pending.
-
-Q10 from the previous pass (paid-then-count-error) is **moot**: there is no pay until `out_for_delivery`.
-
-### P3.10 Closed
-
-**Mark as delivered + photo** is disabled until `bill.payment_status = completed` (UPI success **or** boy **Paid in cash**). Payment first, then delivered.
-
-### P3.11 Draft (how, without extra machinery)
-
-On each service expander complete (counts/weight + photo URL): `PATCH` the order’s item rows. `items_confirmed` stays false; **no bill**. App kill → reopen assignment → expander shows saved numbers. **Mark as picked up** requires all services filled, sets confirmed, writes the bill. Do not add a Drafts screen.
-
-### P3.12 Pay (locked)
-
-Payment lives on **`Bill`**. Delivery lives on **`Order.order_status`**. Do not conflate them.
+Payment lives on **`Bill`**. Delivery lives on **`Order.order_status`**. They are separate fields.
 
 ```
 order_status becomes out_for_delivery
-  Customer Pay unlocks (View Bill already existed)
-    optional: pick ONE code from coupons table → Bill.discount + final_amount
-    primary: PSP UPI intent → any UPI app → return to WashBee
+  Customer Pay unlocks (the bill was already viewable)
+    optional: ONE code from the existing coupons table → Bill.discount + final_amount
+    primary: PSP UPI intent → any UPI app → back to WashBee
       success → bill.payment_status = completed, payment_method = upi
-               paid shown everywhere immediately (no boy involved)
-      fail    → still unpaid; customer can retry UPI
-               OR delivery boy taps **Paid in cash**
+               paid shown everywhere at once, no captain involved
+      fail    → still unpaid; the customer can retry UPI
+               OR the captain taps Paid in cash
                  → bill.payment_status = completed, payment_method = cod
                  shown everywhere, including the customer app
-       ↓
-  Delivery boy: Mark as delivered + ONE photo (drop_proof)
+  Captain: Mark as delivered + ONE photo (drop_proof)
     enabled only if bill.payment_status = completed
     → order_status = delivered
-    Does not change payment
 ```
 
 | Event | Payment (`Bill`) | Order status |
 |---|---|---|
-| `out_for_delivery` | pending; Pay unlocked | `out_for_delivery` |
-| UPI success | **completed** everywhere | still `out_for_delivery` |
-| Cash fallback recorded | **completed** everywhere | still `out_for_delivery` |
-| Boy + photo | unchanged | **`delivered`** |
+| `out_for_delivery` | pending, Pay unlocked | `out_for_delivery` |
+| UPI success | completed everywhere | still `out_for_delivery` |
+| Cash recorded | completed everywhere | still `out_for_delivery` |
+| Captain: photo + delivered | unchanged | `delivered` |
 
-**Today:** `Coupon` model exists (`coupons`); there is **no** `Promotion` table — use Coupon. `processPayment` PATCHes the bill (no PSP yet). Drop `dropped` sets `delivered` and already accepts `drop_proof`, **without** checking payment. **Gap:** UPI PSP intent; cash fallback on boy UI after UPI fail; gate `dropped` on `bill.payment_status === completed` + one photo; do **not** set `payment_pending` on the order after UPI success.
-
-**Do not** pay the delivery boy’s VPA. Merchant PSP.
-
----
-
-## Part 4 — CM send to services, service-man FIFO, DM sees completed items (13 Oct 2026)
-
-### P4.1 Proposed flow
-
-```
-CM list of Verified & Received orders (received_by_collection)
-  Taps **Send to service queue**
-       ↓
-  Order leaves the CM list
-  order_status → submitted_to_services
-  Each booked service line is auto-assigned to **that service’s** one service man
-  New queue rows sit at the **bottom** (sort by assigned_at ASC)
-  No SSE — next list load / refresh shows them there
-       ↓
-  Service man queue (FIFO)
-    mark item **In progress**
-    mark item **Completed**
-  When any item completes, DM can already see that order + its completed items
-  When **all** items complete → order_status → services_completed
-```
-
-### P4.2 What exists today (mostly this already)
-
-| Piece | Today | Gap vs this batch |
-|---|---|---|
-| CM received list | `listReceivedOrders` = `received_by_collection`. UI: **Submit to Services**. | Rename/label **Send to service queue** if you want that copy. Behaviour is the same. |
-| Submit | `submitOrderToServices`: requires received; creates `ServiceQueueItem` per `OrderItem`; assigns `Staff` where `role=service_man` and `service_id` matches; `priority = max(service)+1`; order → `submitted_to_services`. Order drops off received list. | **Keep.** Fails if no service man for a service. |
-| One SM per service | `Staff.service_id` is **unique**. | **Locked:** one service man ↔ one service. No load-balance. |
-| FIFO | `orderBy: [{ priority: 'asc' }, { assigned_at: 'asc' }]`. | **UI order = `assigned_at` ASC** (time assigned). New rows naturally at the bottom. `priority` integer not required for this UX. |
-| SM actions | `in_progress`, `completed`, plus **`mark_for_later`**. First in_progress → `services_in_progress`. Last completed → `services_completed`. `assigned_at` already stored. | **In progress + Completed only.** No Mark for later. **Any** row may be started. Multiple in_progress allowed. Show assigned time. |
-| Live list | SSE hub exists only for **delivery-staff assignment**. SM queue is already pull/GET. | **No SM SSE.** Poll **1–2 min** (default 2) while the queue screen is visible. Sort `assigned_at` ASC. |
-| DM | `listReadyToVerify` includes `services_in_progress` **and** `services_completed`. `getOrderItems` returns each line’s `item_status`. | Order appears when **any** service item is completed. Expand = **whole** order: completed vs pending (pending = inactive colour). Verify/dispatch still wait for all done (Part 5). |
-| CM invoice button | Still on the received card. | **Conflicts Part 3** (bill at door). Hide generate-invoice here. |
-| CM history | `listSubmissionHistory` (`submitted_to_services_at` not null). | **Keep.** After send-to-queue the order is gone from received list but remains in history. |
-
-Queue row today = **one `OrderItem`** (one booked **service** line, with nested cloth selections). Not one row per shirt.
-
-### P4.3 Assignment (locked)
-
-- **One service man per service**, and **one service per service man**, as of now (`Staff.service_id` unique).
-- Mixed order → split by service onto those men. CM does **not** pick the man.
-- No service man for a booked service → submit **fails** (already). Don’t silently skip lines.
-
-### P4.4 FIFO in the UI — **no SSE**
-
-New service items at the **bottom** is a **sort**, not a live push.
-
-**List order:** `assigned_at` **ASC** (oldest assignment at top). A later `assigned_at` renders below. Starting a row does **not** change `assigned_at`, so other rows stay put.
-
-**How the SM sees a new row**
-
-- Open the screen / app killed → **GET DB**, already ordered.
-- While the screen is **already open:** **poll** the same list GET every **`SERVICE_QUEUE_POLL_SECONDS`** (default **120** / 2 minutes; 60 is also allowed). Replace the list from the response (`assigned_at` ASC). New rows land at the bottom; in-progress rows keep their assigned time so they don’t jump. Pull-to-refresh still works in between.
-- Poll **only while this screen is visible**. Stop in background.
-
-**Do not** extend `RealtimeService` for service men. Do not add SSE, Redis, or a queue product. `priority` can stay on the row unused.
-
-### P4.5 Service man
-
-- **One queue per service** (current version): each booked **service item** (`OrderItem` / `ServiceQueueItem`) lands on that service’s queue. Because there is one service man per service, his list **is** that service’s queue.
-- **Any row can be started** (not only the top). Several may be In progress at once.
-- List **order** is still **time assigned** (`assigned_at`), not “whatever he started first.”
-- **In progress** and **Completed** only. **No Mark for later.**
-- Show **assigned time**. After app kill, GET DB: same statuses + same times + same order.
-
-### P4.6 Distribution manager (this slice only)
-
-- Order enters the DM list when **any** service item is completed (`services_in_progress` or `services_completed`).
-- Expand = **the whole order**. Completed items vs **pending** (inactive colour / indication). Not a completed-only subset.
-- **Cannot** verify / dispatch until all items are done (`services_completed`) — today’s gate; next part.
-
-### P4.7 Over-engineering — locked 14 Oct (your answers)
-
-1. **SSE / Redis / new queue product / extend `RealtimeService` for SM** — **skip.** New items at the bottom = `ORDER BY assigned_at ASC` on GET. Open screen: **poll 1–2 min** (default 2). Do not poll every few seconds.
-2. **One queue row per cloth SKU** — skip. Per **service item**, current `ServiceQueueItem` / `OrderItem`. Each service has its own queue.
-3. **Many service men per service + load-balance** — skip. **One service man ↔ one service**, as of now.
-4. **“Only the top row can be started”** — skip. **Any** row can be started. On-screen **order** is **time assigned**.
-5. **`mark_for_later`** — no, as of now.
-6. **CM generate invoice after receive** — skip. Bill is generated when the **pickup boy updates all items** (Part 3).
-7. **Offline / local SQLite sync** — skip. Reopen = GET DB. Fine as specified.
-
-### P4.8 Questions — locked 14 Oct 2026
-
-1. Queue grain: **per service item**, each service has **its own queue**, current version.
-2. **Multiple** items may be In progress at the same time. **Any** row can be started. List order = **`assigned_at`**.
-3. **No Mark for later** for now.
-4. DM sees the **whole order**. If **any** service item is completed, expand: completed vs pending (inactive colour).
-5. Customer tracker: **In Process** while any service is pending. **Ready / Processed** when all service items are completed (`services_completed`). Confirmed in spirit by Part 5; exact customer label still in P5 questions.
-6. App killed: reopen **from DB** with statuses **and assigned time**; as before the kill.
-7. After send-to-queue: order **remains in CM history**.
-8. **No SM SSE.** Bottom-of-queue is sort-on-read.
-9. Open queue screen: **poll every 1–2 minutes** (config, default **2 min**). Same GET as cold start. Pull-to-refresh still allowed.
-
-### P4.8b Closed
-
-Poll while the SM queue is visible; default **2 minutes** (`SERVICE_QUEUE_POLL_SECONDS=120`). 1 minute is the other allowed value. No SSE.
-
-### P4.9 Suggested next flow
-
-Part 5 now captures DM → drop assignment. Next: **drop-boy trip** (maps to Part 3 pay + delivered + photo).
+- **One coupon per payment**, from the existing `Coupon` table. No second promotions table. Never a free-typed string. Validity, minimum order value, usage limits and caps are enforced at apply time, and the final amount stays at least 1.00.
+- UPI goes through a **PSP merchant account** (Razorpay, PhonePe or Cashfree style) so the app gets a real success or failure. The payee is the merchant, never the captain's personal UPI.
+- **Cash is a fallback only.** It is allowed only after a UPI attempt has failed, expired or been cancelled. The captain records it, the customer cannot declare cash, and it is not recorded if UPI already completed.
+- **Delivered is blocked until payment is completed.** UPI success does not deliver the order.
+- Card, wallet, netbanking and COD as a first-class checkout are not offered.
+- The old `payment_pending` order status is not used.
 
 ---
 
-## Part 5 — DM list, auto drop assignment, customer out-for-delivery (14 Oct 2026)
+## 8. Customer app surfaces
 
-### P5.1 Proposed flow
+### 8.1 Navigation
+
+- **Bottom nav:** Home, Orders, Cart, Pricing. There is no Account tab.
+- **Account** is the top-left profile photo on Home. Orders, Cart, Pricing and Tracking do not show that avatar.
+
+### 8.2 Tracker (six steps)
 
 ```
-Any service item completed
-  → order appears on DM **completed** list (already Part 4)
-  → expand: ALL service items, each Completed or Pending (pending = inactive colour)
-
-All service items completed
-  → order_status = services_completed
-  → customer tracker: **Ready** (existing UI label; don’t invent Processed)
-  → Delivery search does **not** always start now:
-
-  IF delivery_mode = instant
-       auto drop-search starts immediately
-       same engine as pickup (Part 2.6): on-shift, expanding radius, first accept wins
-       Assign button **visible, disabled** until timeout
-  IF delivery_mode = scheduled AND now < delivery_time_from
-       **no** auto search
-       Assign **visible, disabled**, copy **“Available from {time}”**
-  IF delivery_mode = scheduled AND now >= delivery_time_from
-       (and processing already done — including **late** plant: start **immediately**)
-       auto drop-search starts
-       Assign **visible, disabled** until timeout
-
-  After timeout, no accept:
-       Assign **enabled**. DM force-assign, staff cannot reject.
-       SSE: “DM assigned this job to you”
-
-Partner accepts or DM force-assigns (**captain**)
-  → order_status = **out_for_delivery** immediately (do not wait for Start)
-  → customer tracker: **Out for delivery**
-  → map **only now**: live pin + **one** Directions path at assign
-  → card: **name + phone + photo** (phone **display only**, no tel:)
+Out for pickup → Pickup done → In process → Ready → Out for delivery → Delivered
 ```
 
-### P5.2 Conflicts with earlier parts / today
-
-| Topic | Was | Now |
-|---|---|---|
-| Instant drop start | Part 2: when **DM marks ready / dispatch** | Auto when **all service items completed**. No extra “mark ready.” |
-| Scheduled drop start | At `delivery_time_from` | Same, **and** processing must already be done. If done early, wait; **DM cannot jump the queue.** |
-| DM Verify | Today: `verifyOrder` then dispatch | **Not mentioned.** Extra step — likely drop (over-engineering). |
-| Status after all services | `services_completed`; customer step **Ready** | Keep enum + **Ready** (you: whatever is already in the UI). |
-| After partner assigned | `dispatch_assigned`, then `out_for_delivery` on **Start** | **`out_for_delivery` as soon as captain is assigned.** |
-| Call/message | Part 2: **placeholder icons** | Card shows **name + phone + photo**. Phone **display only**. Call/message stay placeholders. |
-| Map | Live **pin** | Pin + **one** path at assign. Off-route: see P5.6. Map **only after** assignment. |
-
-### P5.3 What exists today
-
-- DM list already includes `services_in_progress` + `services_completed`; `getOrderItems` has per-item status.
-- `verifyOrder` + `assignDropDirect` + `dispatchOrder` require **verified_at**. New flow should **not** require verify if we drop that step.
-- Drop assignment is **not** the pickup expanding-radius worker; DM starts it by dispatch. Need a **drop twin** of the pickup BullMQ job, triggered by (a) last queue item completed + instant, or (b) `delivery_time_from` if already processed.
-- `dispatch_assigned` / `out_for_delivery` already in the enum. Customer tracking already has an Out for delivery step and a staff card (name; map pin if lat/lng present).
-- Live location: `DeliveryStaff.current_latitude/longitude` + `updateLiveLocation`. **No** stored route polyline today.
-
-### P5.4 Status mapping (reuse enums; don’t invent `processed`)
-
-| Event | DB `order_status` | Customer tracker |
-|---|---|---|
-| Some items done, some not | `services_in_progress` | In Process |
-| All items done | `services_completed` | **Ready** (existing step) |
-| Searching / waiting for scheduled time | still `services_completed` | **Ready** |
-| Captain assigned (accept or DM) | **`out_for_delivery`** | **Out for delivery** |
-| Delivered | `delivered` after pay + photo (Part 3) | Delivered |
-
-### P5.5 Auto vs DM assign (locked enough)
-
-Same engine as pickup: on-shift only, expanding rings, first accept, `ASSIGNMENT_TIMEOUT_MINUTES` (5 / 10 / 20). “Send to all active partners” here means **all who match the current ring**, not every partner in the city (that would fight Part 2.6).
-
-| Situation | Auto search | DM Assign button |
-|---|---|---|
-| Items still pending (**in-plant** list) | Off | Off (expand only) |
-| All done + **instant** | On immediately | **Visible, disabled** until timeout |
-| All done + scheduled **in the future** | Off | **Visible, disabled** — **“Available from {time}”** |
-| All done + scheduled time **reached or already past** (incl. late plant) | On **immediately** | **Visible, disabled** until timeout |
-| Timeout, nobody accepted | Stopped | **Enabled** (manual, cannot reject) |
-
-### P5.6 Customer after assignment
-
-- Tracker **Out for delivery** the moment the captain is assigned.
-- Card: **name + phone + photo**. Phone is **display only** (not tap-to-call). Call/message icons stay placeholders (Part 2).
-- Map **only after** assignment (agreed). Live pin from existing GPS. **One** Directions polyline at assignment (boy → customer address).
-
-**If he changes path:** pin always follows GPS. Do **not** redraw on every tick. Off-polyline → refresh Directions **at most once every 2 minutes**. Same map for **customer and captain**. No snap-to-road engine.
-
-### P5.7 Over-engineering
-
-1. **New status `processed` / `processing_done` in Prisma** — skip. Keep `services_completed`; change the **label**.
-2. **DM Verify** as a required click before assign — skip unless you still want a QC gate. You did not list it.
-3. **Broadcast to every active partner at once** — skip. Same expanding rings as pickup.
-4. **Turn-by-turn / re-route every GPS tick / snap-to-road** — skip. Path once + live pin. Off-route refresh at most every 2 min (P5.6).
-5. **Map or Out for delivery before assignment** — skip. Customer stays on **Ready** until a captain exists.
-6. **Second assignment worker** copied line-for-line — reuse pickup job with `deliveryType: 'drop'`.
-7. **`tel:` on the phone number** — skip. Display only.
-8. **DM live-tracking screen** after assign — skip. History (delivered or not) is enough.
-9. **Start delivery** as a status gate — skip. Assigned = Out for delivery on both apps.
-
-### P5.8 Questions — locked 14 Oct 2026
-
-1. Auto-search running: Assign **visible but disabled** until timeout.
-2. Scheduled still in the future: Assign visible, disabled, **“Available from {time}”**.
-3. Late plant (processing after slot): auto-start **immediately**.
-4. Customer label after all services: keep existing UI — **Ready**.
-5. **Out for delivery as soon as the captain is assigned** (no wait for Start / leaving the plant).
-6. Card: **name + phone + photo**.
-7. Phone **display only**.
-8. Path **once** at assign + **live pin**. Off-route: refresh Directions at most every **2 minutes**.
-9. Map **only after** assignment (customer **and** captain).
-10. **Two DM lists:** **in-plant** vs **ready to dispatch**.
-11. After captain assigned: order **leaves** ready-to-dispatch; DM **history** shows it and whether it is **delivered or not**.
-12. Captain app: **immediately Out for delivery** with tracking, path, and live location. No “sit until Start.”
-13. At door: **UPI or Paid in cash**, then **one photo** by the delivery staff, then order **completed** (`delivered`). Payment before complete (Part 3).
-
-### P5.10 DM lists (locked)
-
-| List | What’s on it |
+| DB status | Tracker |
 |---|---|
-| **In-plant** | ≥1 service item completed, **not** all done (`services_in_progress`). Expand: completed vs pending (inactive). No Assign. |
-| **Ready to dispatch** | All items done, **no captain yet** (`services_completed`). Assign visible: disabled during search / “Available from {time}” / enabled after timeout. |
-| **History** | Captain assigned onward. Shows **delivered or not** (`out_for_delivery` vs `delivered`). |
+| `placed` | Before the first step: "finding a partner". No partner card, call, message or live pin. The map pin shows the pickup address. |
+| `pickup_assigned` | Out for pickup (live map, partner name and photo) |
+| `picked_up` | Pickup done (bill viewable, not payable) |
+| `submitted_to_cm`, `received_by_collection`, `submitted_to_services`, `services_in_progress` | In process |
+| `services_completed` (searching, or waiting for the delivery time) | Ready |
+| `out_for_delivery` | Out for delivery (map, path, name, phone, photo; Pay unlocked) |
+| `delivered` | Delivered |
+| `cancelled` | History: Cancelled |
 
-Do not keep a live third “tracking” queue on DM unless you ask later. History is enough after assign.
+- Tracking opens **right after "Order confirmed"**, including the `placed` state.
+- Submit-to-CM and CM verification are **not** customer-visible steps.
+- Call and message are placeholders. The phone number is display only.
+- Under the tracker: laundry address, pickup address and delivery address.
 
-### P5.9 Suggested next flow
+### 8.3 Order surfaces until the door count is done
 
-Part 5 is **locked**. Part 6 is cancellations. Next: **Express**, or Pricing include/exclude copy.
-
----
-
-## Part 6 — Cancel (14 Oct 2026)
-
-### P6.1 Locked rules (tightened 14 Oct)
-
-Two **different** gates:
-
-| Action | Allowed until | Blocked from |
+| Control | Until the pickup list is submitted (`placed`, `pickup_assigned`) | After Mark as picked up |
 |---|---|---|
-| **Cancel** | **Before a pickup boy is assigned** (`placed` only — waiting or still searching) | `pickup_assigned` onward |
-| **Reschedule** | **Same: before a pickup boy is assigned** (`placed` only) | `pickup_assigned` onward |
+| Pay Bill | Disabled: "Bill yet to be generated" | View only until `out_for_delivery`, then pay |
+| View Details → Items Summary | Placeholder: "Order items will be updated after pickup" | Hierarchy: **category → service → cloth items** (counts / weights and prices) |
+| View Details → Bill Summary | Placeholder: "Bill will be generated after pickup is done" | Brief fee rows (as today). Tap opens an expanded sheet with the same category → service → cloth breakdown plus fees |
 
-**Cancel — who:** **customer** in-app. Reason **required**, then **Confirm**.
+The active-order card for a no-cart order has no category until the door count. Until then its title is "Laundry pickup".
 
-**After cancel:** order in customer **history as Cancelled**. `order_status = cancelled`. Stop pickup search / pending offers. No assigned boy to notify (cancel isn’t allowed once assigned).
+### 8.4 Pricing tab
 
-**Fees:** **no booking fee later.** Nothing prepaid → no refund product.
+- Browse only. No Select and no add-to-cart. There is no Pricing card in the Home footer.
+- Category toggle (Regular Wash, Pro Clean, Home Linens, Luxury Care), then that category's services, then for the selected service **both** its per-kg price (`Service.per_kg_price`) **and** each cloth item's per-piece or per-pair price (`ClothesItem.per_unit_price`).
+- **Includes** bullets per service (`Service.includes`, `Service.excludes`). Show "Not included" only if the copy exists. Do not show "Coming soon".
+- The data is a read of the existing catalogue. There is no second pricing table and no CMS.
 
-This **supersedes** the earlier “cancel until Mark as picked up.” At-the-door draft cancel is **moot** (already assigned). T&C “after pickup may incur charges” stays wrong: cancel isn’t offered then.
+### 8.5 Orders list
 
-**Reschedule** uses the **same gate as cancel** (SUPERSEDES “until pickup is done”): once a boy is assigned, **no** reschedule. Hide Change schedule from `pickup_assigned` onward.
+Tabs: **All** (active + delivered), **Active**, **Completed** (delivered only). Cancelled orders are on none of them. The API gives each row a `card_type`, and the app draws exactly that card.
 
-### P6.2 What exists today
+| Card | Orders | Content | Buttons |
+|---|---|---|---|
+| **Upcoming Pickup** (`upcoming_pickup`) | `placed`, `pickup_assigned` | Pickup date and slot (for example "Dec 2 - 8 - 9:30 am"), or "Instant pickup - finding a partner" for an instant pickup; pickup address | **Change Schedule**, **Cancel**. While `pickup_assigned`, tapping either opens a popup and does not change the order. |
+| **In progress** (`in_progress`) | `picked_up` through `out_for_delivery` (the door count is done) | Header "In progress", short order id, title, count line, pickup date and slot, price | **View details**, **Track on map** |
+| **Delivered** (`delivered`) | `delivered` | Same card, header "Delivered" | **View details** only |
 
-- Customer Orders **Cancel** is a stub dialog: *“Contact supervisor for further help.”* No customer cancel API.
-- `OrderStatus.cancelled` exists. Admin order-management can set it as a status among many.
-- Pickup assignment job can be cancelled (`cancelPickupAssignment`). Assignment *requests* can be cancelled (so other boys stop seeing the offer).
-- Help copy already says cancel before pickup — closer to this lock than the T&C charges line.
+- **Tap the card** (any status) opens Order Details.
+- **Express:** an Express order shows the Express chip at the top of every card type.
+- **Title:** "Mixed" when the order has more than one service line, otherwise the service name. It is "Laundry pickup" before the door count, which only happens on the Upcoming Pickup card.
+- **Line under the title:** pieces for per-unit lines and weight for per-kg lines: "6 Items", "3.5 kg", or "6 Items - 3.5 kg". A per-kg service has a weight, not a count (section 3.1), so it never counts as an item.
+- **Price:** the bill total (`bill.final_amount`) once the bill exists, which is every in-progress and delivered card.
+- **Order of cards:** Upcoming Pickup cards first (soonest first; an instant pickup counts as now), then in progress (newest first), then delivered (newest first). An order is on exactly one card.
+- **Cancel** while `placed` opens the "Are you sure you want to cancel?" pop-up with the reason options (section 1.7). While `pickup_assigned` it opens "Order cannot be cancelled. Pickup partner has already started."
+- **Change Schedule** while `placed` opens the schedule sheet with the current date and slot preselected in **green**. When the customer picks another date or slot, the old one turns **red** and the new one is green. **Confirm** is enabled only when the choice differs from the current one. A current slot that is now `too_busy` or `closed` still shows as the current one (green or red) but cannot be picked again. An instant pickup has no current schedule, so nothing is preselected. If the delivery has to move, the customer is told (section 1.7). While `pickup_assigned` it opens "Schedule cannot be changed. Pickup partner has already started."
+- **Track on map** opens the tracker (section 8.2).
 
-**Gap:** real cancel API (today’s button is “contact supervisor”). Hide **Cancel** and **Change schedule** once `pickup_assigned`. Stop search on cancel. History list includes `cancelled`.
+### 8.6 How we work
 
-### P6.3 What cancel must do (when allowed)
-
-1. Require **reason**, then **Confirm**
-2. `order_status = cancelled`
-3. Stop pickup auto-search + pending assignment offers
-4. Leave active lists; appear in **history as Cancelled**
-
-Replace the supervisor stub. Do **not** void a bill (none yet). Do **not** refund.
-
-### P6.4 Over-engineering
-
-1. **Cancel after assignment / after pickup / with fees** — skip.
-2. **Cancel individual services** — skip. Whole order only.
-3. **Refund / booking-fee engine** — skip. **No fee will be added later.**
-4. Keep the **supervisor dialog** next to a working Cancel — skip. One real flow.
-5. Staff/CM/boy cancel screens — skip unless you ask. Customer only.
-
-### P6.5 Questions — locked 14 Oct 2026
-
-1. **Customer** can cancel, and **only before the pickup boy is assigned**.
-2. **Reason required**, then Confirm. (Door-draft cancel N/A — already assigned.)
-3. Visible in **history as cancelled**.
-4. **No booking fee later.**
-5. **Reschedule** only **before the pickup boy is assigned** — same window as cancel.
-6. Reschedule may change **pickup and delivery**. Constraint: delivery ≥ pickup + **`PICKUP_DELIVERY_BUFFER_DAYS`** (env, default **2**). This **is** Part 2’s `MIN_DAYS_PICKUP_TO_DELIVERY` — **one constant**, not two. Name in env: `PICKUP_DELIVERY_BUFFER_DAYS` (clearer than `buffer_day`).
-7. If search is already running and they pick **new timings**: **stop search** and wait for the new `pickup_time_from` (if that time is still “now” / instant, search starts immediately).
-8. Reschedule: **no reason** — date/time sheet + confirm only.
-9. Cancel reason: **free text** (store on the order, e.g. `cancel_reason` — not a reasons table).
-
-### P6.6 Reschedule behaviour (locked)
-
-```
-Customer still placed (no pickup boy)
-  → can edit pickup window, delivery window, or both
-  → validate delivery_date >= pickup_date + PICKUP_DELIVERY_BUFFER_DAYS
-  → if a pickup search / pending offers exist:
-       cancel that job + offers
-       if new pickup is instant or time already reached → start search again
-       else wait until new pickup_time_from
-```
-
-No reason on reschedule. After `pickup_assigned`: no reschedule, no cancel.
-
-### P6.7 Over-engineering (add)
-
-- A **second** env for the same +2 days (`buffer_day` *and* `MIN_DAYS_…`) — skip. One: `PICKUP_DELIVERY_BUFFER_DAYS`.
-- Preset cancel-reason catalog — skip. Free text on the order row.
-- Reschedule audit/reason — skip.
-
-### P6.8 Suggested next flow
-
-Part 6 is **locked**. Express is Part 7. Next after Express gaps: Pricing include/exclude copy.
+- Home footer: the **How we work** entry, then the brand strip. Static, not tied to an order, English only.
+- Six steps, each with a short line and one image (placeholders until the designer's art arrives): Out for pickup, Counted at door, In process, Ready, Out for delivery, Delivered.
+- Pay is at delivery. Images and copy are in the client, not a CMS.
 
 ---
 
-## Part 7 — Express (14 Oct 2026)
+## 9. Config variables
 
-### P7.1 Proposed
+All are named config, read from the database, then the environment, then the code default (section 10).
 
-Express is a **per-order flag**, not a different logistics type. Legs stay **both**. Ordinary orders keep `PICKUP_DELIVERY_BUFFER_DAYS` (2). Express may allow same-day (buffer **0** for that order only).
-
-```
-Checkout: customer picks **Express**
-  → no schedule step (pickup **and** delivery are **instant**)
-  → is_express = true; pickup_mode = instant; delivery_mode = instant
-  → buffer does not apply
-  → chip on **every** order card including **customer**
-  → EXPRESS_FEE (admin variable) added automatically on the pickup bill
-  → cannot later change Express → ordinary
-
-CM Send to service queue
-  → new Express rows: **after older Express, before all ordinary**
-```
-
-### P7.2 Queue: one list, two bands — do **not** build two queues
-
-You offered: jump to very front, **or** two queues per service.
-
-**Recommended: one queue per service (as today), sort Express first.**
-
-`ServiceQueueItem` already has `priority`. Simpler still: store `is_express` on the order (or copy onto the queue row) and:
-
-```
-ORDER BY is_express DESC, assigned_at ASC
-```
-
-| Band | Where | New item goes |
+| Name | Default | Used by |
 |---|---|---|
-| Express | Top of the list | **Bottom of the Express band** (after older Express, before all ordinary) |
-| Ordinary | Below | Bottom of the list (Part 4) |
+| `ASSIGNMENT_TIMEOUT_MINUTES` | 5 (10 or 20 allowed) | Pickup and drop search window |
+| `ASSIGNMENT_RANGE_SLICES` | 5 | Number of rings |
+| `ASSIGNMENT_MAX_RANGE_KM` | admin/env | Outer ring radius |
+| `PICKUP_DELIVERY_BUFFER_DAYS` | 2 | Booking and reschedule validation, ordinary orders |
+| `EXPRESS_BUFFER_DAYS` | 1 | Booking and reschedule validation, Express orders |
+| `DELIVERY_FEE` | admin-editable | Bill at Mark as picked up |
+| `EXPRESS_FEE` | admin-editable | Bill when `is_express` |
+| `SERVICE_AREA_KM` | admin-editable | Add or edit address check |
+| `SERVICE_QUEUE_POLL_SECONDS` | 120 (60 allowed) | Service man queue poll |
+| Directions refresh | 2 minutes at most | Map re-route when off the path |
 
-**Why not “absolute very front” (index 0 every time):** a second Express would jump an older Express that is already waiting. That disturbs in-flight Express work. Two-band FIFO keeps “Express is urgent” without leapfrogging other Express.
-
-**Why not two queues per service:** same data, twice the UI (tabs, empty states, poll × 2). A service man already has one list; a badge + sort is enough. Two queues is the over-build unless you later want physically separate lines in the plant.
-
-Poll every 1–2 min still applies: an Express row appears in the Express band on the next GET. No SSE.
-
-Any row can still be started (Part 4). Express does not lock FIFO discipline.
-
-### P7.3 Badge
-
-Small **Express** icon or heading on the **order card**, on **every** role list:
-
-- Customer (orders / tracking / active card) — **yes, chip here too**
-- Pickup boy, drop/delivery boy
-- Collection manager (incoming, received, history)
-- Service man (queue + completed)
-- Distribution manager (in-plant, ready to dispatch, history)
-
-Same treatment everywhere so nobody misses it. Don’t invent a second card layout — one chip.
-
-### P7.4 What exists today
-
-- `OrderType.express_delivery` in Prisma — this is a **logistics** enum alongside `both`. Part 1 locked `order_type = both` always. **Do not** reuse `express_delivery` as the type (that fights pickup+delivery). Add **`is_express` boolean** on `Order` (default false).
-- Help text already mentions express + extra charges. No checkout flag, no fee line, no queue sort, no badge.
-- Queue sort today: `priority ASC, assigned_at ASC` — all ordinary.
-
-### P7.5 Everything else stays the same
-
-Pickup/drop expanding-radius, timeouts, CM/DM force-assign, door-count, bill, cancel **before pickup assigned**, UPI/cash, photo, DM lists — unchanged.
-
-**Express has no schedule**, so **Change schedule is hidden** on Express (nothing to reschedule). Cancel before pickup assigned still applies. Express **cannot** be converted to ordinary.
-
-### P7.6 Over-engineering
-
-1. **Two physical queues per service** (ordinary + express) — **skip** unless you insist on split UI. One list, two-band sort.
-2. **Newest Express always index 0** — skip. FIFO **inside** the Express band.
-3. **`order_type = express_delivery`** instead of `both` — skip. `is_express` on a `both` order.
-4. Setting **`PICKUP_DELIVERY_BUFFER_DAYS=0` globally** — skip. Ordinary stays 2. Express orders only use 0.
-5. Faster assignment rings / shorter timeout for Express **unless you ask** — you said rest remains the same.
-6. Per-service “Express available” matrix — skip. Allowed on **any service mix**.
-7. Schedule UI / converting Express → ordinary — skip. Sticky until cancel.
-8. Second invoice for the fee — skip. Same bill as delivery fee.
-
-### P7.7 Fee (locked)
-
-**`EXPRESS_FEE`**: admin-editable variable (₹). Added **automatically** on the bill at **Mark as picked up**, with the delivery fee. Ordinary orders: 0.
-
-### P7.8 Questions — locked 14 Oct 2026
-
-1. **No schedule on Express.** Pickup and delivery are both **instant**.
-2. **`EXPRESS_FEE`** admin variable, auto on the bill.
-3. **Customer cards** get the Express chip too.
-4. New Express queue row: **after older Express**, before ordinary.
-5. **Cannot** change Express to ordinary (sticky). Cancel before pickup assigned still OK. No Change schedule.
-6. Express allowed on **any service mix**.
-
-### P7.9 Suggested next
-
-Part 7 is **locked**. Pricing catalogue is Part 8.
+Slot template, slot status and the booking horizon are data and config managed through the slot admin API (section 1.4).
 
 ---
 
-## Part 8 — See pricing (14 Oct 2026)
-
-### P8.1 Locked (this batch)
-
-**SUPERSEDED:** no Home **See pricing** footer card. Catalogue is the **Pricing bottom-nav tab only**.
-
-That screen lists:
-
-1. **All categories** (Regular Wash, Pro Clean, Home Linens, Luxury Care — same as booking)
-2. Then **services** in the selected category
-3. Then, for the selected service, **both**:
-   - **₹/kg** for that service (`Service.per_kg_price`)
-   - **each cloth item** with its per-piece / per-pair price (`ClothesItem.per_unit_price`)
-
-Not either-or. One service shows kg price **and** the cloth list.
-
-Data is a **read** of the existing catalogue. Do **not** create a second pricing table.
-
-### P8.2 Entry (locked)
-
-**Pricing bottom-nav tab only.** Do **not** put See pricing in the Home footer. One catalogue UI.
-
-### P8.3 What exists today
-
-- No dedicated Pricing screen. Home has category tiles that open **booking** sheets, not a price list.
-- `Service.per_kg_price` + `ClothesItem.per_unit_price` already power booking. Pricing should reuse those APIs.
-
-### P8.4 Over-engineering
-
-1. **CMS / new Pricing table** — skip. Catalogue prices are the prices.
-2. **Includes** copy is static (or fields on `Service` if they already exist). Don’t build a CMS for it.
-3. **Select / add-to-cart from Pricing** — skip. Browse-only.
-4. **Per-service either kg or pieces only** — skip. You asked for **both** on each service.
-
-### P8.5 Questions
-
-1. **Pricing tab — yes.** No Home footer card.
-2. **Includes** bullets per service — **yes**. (“Not included” is the matching Layyr column — show if copy exists; don’t block the screen on a CMS.)
-3. **Browse-only.** No Select / add-to-cart from Pricing. Booking stays Home category tiles.
-4. **Coming Soon not required** — don’t show them on Pricing.
-5. Footer is How we work + brand strip only.
-
-### P8.6 Suggested next
-
-Part 8 is **locked**. How-we-work is Part 9.
-
----
-
-## Part 9 — How we work (14 Oct 2026)
-
-### P9.1 Locked
-
-A **How we work** screen that **briefly** describes each step **from pickup to delivery**, each with an **image**.
-
-Entry: Home **footer** (with brand strip). Pricing is **not** in this footer. This **supersedes** Part 1’s 3-step story and its “pay after weighing” line. Pay is **at delivery** (Part 3).
-
-Not a live tracker. Not tied to an order. Static explainer.
-
-### P9.2 Steps (locked) — same 6 as the customer tracker
-
-Keep copy short; one image each. **New designer images later;** until then **placeholders** (related stock / existing assets). English only.
-
-| # | Step | One-line intent |
-|---|---|---|
-| 1 | Out for pickup | Partner comes to the door |
-| 2 | Counted at door | Items / kg listed in front of you; bill generated; nothing to pay yet |
-| 3 | In process | Cleaned at the hub |
-| 4 | Ready | All services done |
-| 5 | Out for delivery | Partner on the way (Express chip if that order type — **not** on this static screen) |
-| 6 | Delivered | Pay on phone (UPI / cash fallback); done |
-
-Do not fold steps. Don’t invent extra plant steps the customer never sees.
-
-### P9.3 What exists today
-
-No How-we-work screen. Part 1 only specified it from Layyr-style screenshots.
-
-### P9.4 Over-engineering
-
-1. **CMS / admin-editable steps** — skip. App assets + copy in the client (or a simple static list). Designer PNGs in `assets/`.
-2. **Video / lottie per step** — skip unless you already have them. Still images.
-3. **Wiring this to a live order** — skip. Tracking already does that.
-4. **Pay after weighing** copy — skip. Wrong now.
-5. **Brand-strip CMS** — not this screen unless you still want a separate footer block (P9.5).
-
-### P9.5 Questions — locked 14 Oct 2026
-
-1. **6 steps** (table above), matching the tracker.
-2. **New designer images later.** For now: placeholders / related art. Swap files when you send them; don’t block the screen on final art.
-3. Home **footer:** **How we work** only (plus brand strip). **No See pricing** in the footer. **SUPERSEDED.**
-4. **Brand strip / tagline** under that as well (Part 1 §2.6b).
-5. **English only** for now. No i18n pass.
-
-### P9.6 Home footer (locked)
-
-```
-Home scroll end
-  → How we work  (6 steps + images)
-  → Brand strip
-Pricing = bottom nav tab only (Part 8)
-```
-
-### P9.7 Suggested next
-
-Part 9 is **locked**. Capture for this redesign is **complete enough to implement** (Pricing P8 closed).
-
-## Part 10: Backend decisions
-
-Locked while the backend was built:
+## 10. Backend decisions
 
 - Ring distance is haversine on the backend. The Flutter app owns Google Directions and the polyline.
-- After a search times out, a manager may force-assign any verified active delivery staff. Rings themselves notify on-shift staff only.
+- After a search times out, a manager may force-assign any verified active delivery staff. Rings notify on-shift staff only.
 - A cart has one line per service.
 - Config is read from the database, then the environment, then the code default.
-- Cash is allowed only after a UPI attempt has failed, expired, or been cancelled.
+- Cash is allowed only after a UPI attempt has failed, expired or been cancelled.
 - Delivery fee and express fee are snapshotted onto the bill at Mark as picked up.
-- `Service.includes` and `Service.excludes` are the Pricing-tab bullets.
+- `Service.includes` and `Service.excludes` are the Pricing tab bullets.
 - Door and drop photos go to Cloudinary, not Postgres.
-- A service is bookable without a service man. Submit-to-services still requires one.
+- A service is bookable without a service man. Send to service queue still requires one.
+
+---
+
+## 11. Not building
+
+- Pickup-only, delivery-only or walk-in orders.
+- Booking fee, refunds, prepaid flows, cancelling individual services or cancelling after assignment.
+- Redis, SSE or a second queue for the CM handshake or the service men. Two physical queues per service.
+- A new order status for processing (`processed`) or for payment (`payment_pending`).
+- DM verify step, a start-delivery gate, a DM live-tracking screen.
+- Turn-by-turn navigation, re-routing on every GPS tick, snap-to-road.
+- A promotions table, a CMS for steps, pricing or includes, a cancel-reason catalogue.
+- A drafts screen, multi-device draft merge, or "resume tomorrow" at the door.
+- Many service men per service, load balancing, or a per-service Express matrix.
+- Offline SQLite sync for service men.
+- Pay in the app before `out_for_delivery`, card or wallet payments, a cash-drawer product.
+
+---
+
+## 12. Open items (the default is used unless you say otherwise)
+
+1. **Booking horizon and same-day cutoff:** how many days ahead the date chips go, and how long before a slot starts it stops being bookable. Default: 7 days; a slot is unavailable once it has started.
+2. **Services with no service man:** the pickup partner sees every service, so `NO_SERVICE_MAN` can still happen at send-to-service-queue, after the bill is written. Default: keep as is.
+3. **`SERVICE_AREA_KM` starting value.** Default: seed 10 km.
+4. **UI copy for the designer:** the "Express" row under "bring it back" should read "Instant", because Express is now the top toggle. Its "Earliest - Today" subtitle must reflect the buffer, so ordinary orders will not show today. The pickup schedule sheet currently has the title "Schedule delivery", and it should follow the leg.
+
+---
+
+## 13. Where the code is today
+
+API shapes for this design are in `backend/docs/api-contracts/`: `customer/orders`, `customer/slots`, `customer/config`, `customer/addresses`, `admin/slots` and `staff/door`.
 
 
+The backend implements the flow up to the section 1 changes. Not built yet for the redesign:
 
+- `cart_id` optional on create-order, and orders with no service lines.
+- Express as priority only: modes and slots no longer forced instant, and `EXPRESS_BUFFER_DAYS`.
+- The slot table, slot admin API, and `date + slot_id` validation on create and reschedule.
+- `SERVICE_AREA_KM` check on add and edit address.
+- Door count over the full catalogue: creating lines for services not on the order, locking pre-selected lines, and requiring at least one line to confirm.
+- Customer app: slots API client, Delivery Options sending `date + slot_id`, and the `placed` tracker state.
+- Orders list (section 8.5): `status=all`, `card_type`, `title`, `item_count` / `total_weight_kg` semantics, the fixed row order, and cancelled orders dropped from the list.
+- Reschedule that moves the delivery (`delivery_shifted`, `DELIVERY_SHIFT_UNAVAILABLE`) and the cancel pop-up that sends `reason`.
+- Customer app: the orders list cards, cancel pop-up and green/red schedule sheet are in the UI; they still read and write the device-local order store until the order APIs above are wired.

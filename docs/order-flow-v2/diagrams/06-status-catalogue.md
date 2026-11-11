@@ -8,8 +8,8 @@
 
 | DB status | Set by / when | Customer tracker | Visible to | Allowed actions | Next |
 |---|---|---|---|---|---|
-| `placed` | Customer confirms. No Bill. | No tracking. Orders: Partner not assigned | Customer; CM Incoming (yet to pick up) | Customer: cancel, reschedule. CM: force-assign after timeout | pickup_assigned / cancelled |
-| `pickup_assigned` | First accept or CM force-assign | Out for pickup (map, name, photo) | Customer; pickup boy; CM Incoming | Boy: draft, Mark as picked up. Cancel and reschedule hidden | picked_up |
+| `placed` | Customer confirms. No Bill. | Finding a partner. Tracking is open with no partner card, call or live pin | Customer; CM Incoming (yet to pick up) | Customer: cancel, reschedule. CM: force-assign after timeout | pickup_assigned / cancelled |
+| `pickup_assigned` | First accept or CM force-assign | Out for pickup (map, name, photo) | Customer; pickup boy; CM Incoming | Boy: draft, Mark as picked up. Customer Cancel / Change Schedule still show; tapping either opens a "pickup partner already started" popup | picked_up |
 | `picked_up` | Mark as picked up. Bill written. | Pickup done. View bill (no pay) | Customer; pickup boy; CM Incoming | Boy: Submit request to CM. No edit | submitted_to_cm |
 | `submitted_to_cm` | Boy taps Submit request | In Process (customer unchanged from Pickup done is OK; spec: not a visible step) | Pickup boy (Waiting, inactive); CM Incoming | CM: Verified and Received. No cancel of request | received_by_collection |
 | `received_by_collection` | CM verified | In Process | CM Received; row gone from boy on pull-to-refresh | CM: Send to service queue | submitted_to_services |
@@ -31,8 +31,9 @@
 | `Bill.payment_method` | upi · cod | cod only as boy-recorded fallback after UPI fail. card and wallet not used. |
 | `DeliveryAssignmentRequest.status` | pending · accepted · rejected · expired · cancelled | Offer lifecycle. Manager assign cancels pending offers. |
 | `Delivery.delivery_status` | assigned · in_progress · completed · cancelled | Pickup completes on CM receive. Drop completes on delivered. |
-| `pickup_mode / delivery_mode` [NEW] | instant · scheduled | Express forces both to instant. |
-| `is_express` [NEW] | true · false | Chip on every card; queue band; EXPRESS_FEE. |
+| `pickup_mode / delivery_mode` [NEW] | instant · scheduled | Independent per leg. A scheduled leg also carries a date and an admin slot. |
+| `is_express` [NEW] | true · false | Chip on every card; queue band; EXPRESS_FEE; Express buffer. No effect on modes. |
+| `DeliverySlot.status` [NEW] | open · too_busy · closed | Only open can be booked. too_busy and closed show disabled with their own label. |
 | `items_confirmed_at` [NEW] | null · timestamp | null = draft at door; set on Mark as picked up. |
 
 ### 7.3 Which list shows which status

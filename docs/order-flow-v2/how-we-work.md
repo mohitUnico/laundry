@@ -4,7 +4,7 @@ Used for the "How we work" screen on Home. Images are produced separately; Engli
 
 | # | Title | Description |
 |---|---|---|
-| 1 | Book in a minute | Pick your services, choose per kg or per item, and set your pickup time. Choose Express if you need it now. |
+| 1 | Book in a minute | Tap a pickup card, choose instant or a time slot for pickup and delivery, and pick your address. Choose Express to get your clothes processed first. |
 | 2 | We come to your door | A nearby pickup partner is assigned. Track them live on the map. |
 | 3 | Counted in front of you | Your clothes are counted or weighed at your door. Your bill appears in the app, and you don't pay yet. |
 | 4 | Checked at our hub | Our team verifies your order and sends each item to the right specialist. |

@@ -8,7 +8,7 @@
 |---|---|---|---|
 | Offer pickup or drop | On-shift staff in ring | SSE + FCM (today) | Overlay; first accept wins |
 | Manager force-assign | Assigned staff | SSE | Cannot reject |
-| pickup_assigned | Customer | Status push (today) | Tracking appears |
+| pickup_assigned | Customer | Status push (today) | Tracker: Out for pickup, partner card and live pin |
 | picked_up | Customer | Status push | Pickup done; View bill. Bill-generated ping to CM/admin: [OUT] |
 | submitted_to_cm | CM | List refresh | No live SSE needed |
 | received_by_collection | Pickup boy | Pull-to-refresh | No SSE drop |
@@ -26,7 +26,9 @@
 | `ASSIGNMENT_TIMEOUT_MINUTES` | 5 (10 / 20 allowed) | Pickup and drop search window |
 | `ASSIGNMENT_RANGE_SLICES` | 5 | Ring steps |
 | `ASSIGNMENT_MAX_RANGE_KM` | admin/env | Outer radius |
-| `PICKUP_DELIVERY_BUFFER_DAYS` | 2 | Booking + reschedule validation (one constant) |
+| `PICKUP_DELIVERY_BUFFER_DAYS` | 2 | Booking + reschedule validation, ordinary orders |
+| `EXPRESS_BUFFER_DAYS` [NEW] | 1 | Booking + reschedule validation, Express orders |
+| `SERVICE_AREA_KM` [NEW] | admin-editable | Add and edit address check |
 | `DELIVERY_FEE` | admin-editable | Bill at Mark as picked up |
 | `EXPRESS_FEE` | admin-editable | Bill when is_express |
 | `SERVICE_QUEUE_POLL_SECONDS` | 120 (60 allowed) | Service man queue poll |

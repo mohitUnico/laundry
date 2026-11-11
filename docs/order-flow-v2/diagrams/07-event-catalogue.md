@@ -2,14 +2,14 @@
 
 > Part of the order-flow v2 pack. Source of truth: [`../order-flow-spec.md`](../order-flow-spec.md). Mermaid renders in GitHub / Cursor preview.
 
-## 8. Event catalogue
+## 8. Event catalogue (27 events)
 
 | # | Event | Actor | Guard | Writes | Visible effect | API |
 |---|---|---|---|---|---|---|
-| 1 | Place order | Customer | Services in cart; delivery ≥ pickup + buffer (ordinary) | Order placed, no Bill | Orders list; search begins | POST order [TODAY] changes needed |
-| 2 | Place Express order | Customer | No schedule | is_express, both instant | Chip on every card | same POST [NEW] flag |
+| 1 | Place order | Customer | Cart optional; slots open; delivery ≥ pickup + buffer; addresses belong to customer | Order placed, no Bill; service lines only if cart | Orders list; tracking opens; search begins | POST order [TODAY] changes needed |
+| 2 | Place Express order | Customer | Express buffer (1 day) applies | is_express | Chip on every card; queue band | same POST [NEW] flag |
 | 3 | Cancel | Customer | status = placed; reason required | cancelled, cancel_reason | History Cancelled; stop job | POST cancel [NEW] |
-| 4 | Reschedule | Customer | status = placed; not Express | times; stop and restart search | Order card updated | PATCH schedule [NEW] |
+| 4 | Reschedule | Customer | status = placed; slots open; buffer | slots and times; stop and restart search | Order card updated | PATCH schedule [NEW] |
 | 5 | Offer pickup | Worker | on-shift in ring | Request + recipients | Overlay on staff | BullMQ + SSE [TODAY] rings new |
 | 6 | Accept pickup | Pickup boy | first writer | pickup_assigned | Tracking opens | accept offer [TODAY] |
 | 7 | Force-assign pickup | CM | after timeout | pickup_assigned | SSE; cannot reject | assignPickupDirect [TODAY] |
@@ -21,7 +21,7 @@
 | 13 | Poll queue | Service man | screen visible | — | New rows at bottom of band | GET queue [TODAY] |
 | 14 | Start item | Service man | not completed | in_progress; services_in_progress | — | PATCH queue [TODAY] |
 | 15 | Complete item | Service man | — | completed; maybe services_completed | DM in-plant; Ready when last | PATCH queue [TODAY] |
-| 16 | Start drop search | System | all done + (instant \| Express \| time reached) | Drop request | DM Assign disabled | worker twin [NEW] |
+| 16 | Start drop search | System | all done + (instant \| time reached) | Drop request | DM Assign disabled | worker twin [NEW] |
 | 17 | Accept drop | Captain | first writer | out_for_delivery | Map + cards | accept offer [TODAY] |
 | 18 | Force-assign drop | DM | after timeout | out_for_delivery | SSE; cannot reject | assign-drop-direct [TODAY] drop verify gate |
 | 19 | Apply coupon | Customer | out_for_delivery; one code | Bill.discount | Total updates | coupon apply [NEW] |
@@ -31,3 +31,5 @@
 | 23 | Mark as delivered | Captain | payment completed; one photo | drop_proof; delivered | Delivered | dropped [TODAY] add payment gate |
 | 24 | Location tick | Captain | on shift | current lat/lng | Pin moves | updateLiveLocation [TODAY] |
 | 25 | Directions refresh | System | off path; ≥2 min since last | — | Path redrawn | Directions [NEW] |
+| 26 | Set slot status | Admin | slot exists | status open / too_busy / closed | Slot disabled in the schedule sheet | slots admin API [NEW] |
+| 27 | Add or edit address | Customer | pin within SERVICE_AREA_KM | address saved | Form error when outside | address API [TODAY] radius check [NEW] |

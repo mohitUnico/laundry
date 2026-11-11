@@ -24,6 +24,7 @@ class LocalOrdersStore {
     'LD90024',
     'LD90025',
     'LD90026',
+    'LD90027',
   };
 
   Future<List<OrderRecord>> load() => _enqueue(_load);
@@ -89,7 +90,7 @@ class LocalOrdersStore {
     return [
       _sample(
         id: 'LD90021',
-        title: 'Pro Clean',
+        title: 'Mixed',
         category: 'Pro Clean',
         serviceName: 'Dry Cleaning',
         quantities: const {'Shirt': 4, 'Trouser': 2},
@@ -98,11 +99,22 @@ class LocalOrdersStore {
         status: OrderStatus.inProgress,
         pickupAt: today.add(const Duration(days: 20, hours: 18)),
         address: '123 Main St, Apartment 4B',
-        totalInr: 500,
+        totalInr: 880,
+        backendStatus: 'services_in_progress',
+        extraItems: const [
+          CartItem(
+            id: 'LD90021-rw',
+            category: 'Regular Wash',
+            serviceName: 'Wash & Fold',
+            quantities: {'T-shirt': 4, 'Jeans': 2},
+            unitPricesInr: {'T-shirt': 40, 'Jeans': 70},
+            isPerPiece: true,
+          ),
+        ],
       ),
       _sample(
         id: 'LD90022',
-        title: 'Regular Wash',
+        title: 'Wash & Fold',
         category: 'Regular Wash',
         serviceName: 'Wash & Fold',
         quantities: const {'T-shirt': 6, 'Jeans': 2},
@@ -112,23 +124,39 @@ class LocalOrdersStore {
         pickupAt: today.add(const Duration(days: 22, hours: 16)),
         address: '45 Park Avenue, Sector 12',
         totalInr: 380,
+        backendStatus: 'picked_up',
+      ),
+      _sample(
+        id: 'LD90027',
+        title: 'Laundry pickup',
+        category: 'Regular Wash',
+        serviceName: 'Wash & Iron',
+        quantities: const {},
+        prices: const {},
+        isExpress: false,
+        status: OrderStatus.inProgress,
+        pickupAt: today.add(const Duration(days: 1, hours: 9)),
+        address: '9 Green Park Extension',
+        totalInr: 0,
+        backendStatus: 'pickup_assigned',
       ),
       _sample(
         id: 'LD90023',
-        title: 'Luxury Care',
+        title: 'Laundry pickup',
         category: 'Luxury Care',
         serviceName: 'Designer Wear',
-        quantities: const {'Dress': 1, 'Blazer': 1},
-        prices: const {'Dress': 350, 'Blazer': 280},
+        quantities: const {},
+        prices: const {},
         isExpress: true,
         status: OrderStatus.inProgress,
-        pickupAt: today.add(const Duration(days: 26, hours: 11)),
+        pickupAt: today.add(const Duration(days: 2, hours: 11)),
         address: '18 Lake View Road',
-        totalInr: 630,
+        totalInr: 0,
+        backendStatus: 'placed',
       ),
       _sample(
         id: 'LD90024',
-        title: 'Quick Wash',
+        title: 'Wash & Iron',
         category: 'Regular Wash',
         serviceName: 'Wash & Iron',
         quantities: const {'Shirt': 5, 'Trouser': 3},
@@ -142,7 +170,7 @@ class LocalOrdersStore {
       ),
       _sample(
         id: 'LD90025',
-        title: 'Luxury Care',
+        title: 'Steam Press',
         category: 'Luxury Care',
         serviceName: 'Steam Press',
         quantities: const {'Saree': 2, 'Kurta': 2},
@@ -184,24 +212,29 @@ class LocalOrdersStore {
     required String address,
     required int totalInr,
     String backendStatus = 'placed',
+    List<CartItem> extraItems = const [],
   }) {
-    final totalItems = quantities.values.fold<int>(0, (sum, qty) => sum + qty);
+    final primary = quantities.isEmpty
+        ? const <CartItem>[]
+        : [
+            CartItem(
+              id: '$id-item',
+              category: category,
+              serviceName: serviceName,
+              quantities: quantities,
+              unitPricesInr: prices,
+              isPerPiece: true,
+            ),
+          ];
+    final items = [...primary, ...extraItems];
+    final totalItems = items.fold<int>(0, (sum, item) => sum + item.totalQuantity);
     final placedAt = status == OrderStatus.delivered
         ? pickupAt.subtract(const Duration(hours: 2))
         : pickupAt.subtract(const Duration(days: 1));
     return OrderRecord(
       id: id,
       title: title,
-      items: [
-        CartItem(
-          id: '$id-item',
-          category: category,
-          serviceName: serviceName,
-          quantities: quantities,
-          unitPricesInr: prices,
-          isPerPiece: true,
-        ),
-      ],
+      items: items,
       totalItems: totalItems,
       totalInr: totalInr,
       orderType: 'both',

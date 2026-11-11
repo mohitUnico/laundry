@@ -10,13 +10,49 @@ import '../../providers/order_provider.dart';
 import '../../models/order_record.dart';
 import '../../utils/pricing.dart';
 import 'order_details_screen.dart';
-import 'cancel_pickup_screen.dart';
+import 'cancel_order_dialog.dart';
 import '../../utils/polling_config.dart';
 import '../../routes/app_routes.dart';
 import '../../routes/route_args.dart';
 import '../cart/schedule_bottom_sheet.dart';
 
 enum _OrdersFilter { all, active, completed }
+
+/// Which card an order gets (orders contract, `card_type`). Cancelled orders
+/// are not listed.
+enum _CardKind { upcomingPickup, inProgress, delivered, hidden }
+
+_CardKind _cardKindOf(OrderRecord order) {
+  switch (order.backendStatus.toLowerCase()) {
+    case 'cancelled':
+      return _CardKind.hidden;
+    case 'placed':
+    case 'pickup_assigned':
+      return _CardKind.upcomingPickup;
+    case 'delivered':
+    case 'closed':
+      return _CardKind.delivered;
+    default:
+      return _CardKind.inProgress;
+  }
+}
+
+bool _isInstantPickup(OrderRecord order) => order.orderType == 'instant_pickup';
+
+/// Soonest pickup first; an instant pickup counts as now.
+int _compareUpcoming(OrderRecord a, OrderRecord b) {
+  final atA = _isInstantPickup(a) ? DateTime(0) : a.scheduledPickupAt;
+  final atB = _isInstantPickup(b) ? DateTime(0) : b.scheduledPickupAt;
+  if (atA == null && atB == null) return 0;
+  if (atA == null) return 1;
+  if (atB == null) return -1;
+  return atA.compareTo(atB);
+}
+
+List<OrderRecord> _newestFirst(List<OrderRecord> orders, _CardKind kind) {
+  return orders.where((o) => _cardKindOf(o) == kind).toList()
+    ..sort((a, b) => b.placedAt.compareTo(a.placedAt));
+}
 
 class OrdersListScreen extends StatefulWidget {
   final bool showBack;
@@ -124,19 +160,12 @@ class _OrdersListScreenState extends State<OrdersListScreen>
     );
   }
 
-  List<OrderRecord> _filteredOrders(List<OrderRecord> orders) {
-    switch (_filter) {
-      case _OrdersFilter.all:
-        return orders;
-      case _OrdersFilter.active:
-        return orders
-            .where((o) => o.status == OrderStatus.inProgress)
-            .toList(growable: false);
-      case _OrdersFilter.completed:
-        return orders
-            .where((o) => o.status == OrderStatus.delivered)
-            .toList(growable: false);
-    }
+  void _openDetails(BuildContext context, OrderRecord order) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => OrderDetailsScreen(order: order),
+      ),
+    );
   }
 
   @override
@@ -206,154 +235,55 @@ class _OrdersListScreenState extends State<OrdersListScreen>
                         );
                       }
 
+                      final visible = orders.orders
+                          .where((o) => _cardKindOf(o) != _CardKind.hidden)
+                          .toList(growable: false);
                       final children = <Widget>[];
+                      void addCard(Widget card) {
+                        children
+                          ..add(card)
+                          ..add(const SizedBox(height: 12));
+                      }
 
-                      // Upcoming pickup/delivery cards are only shown on All/Active tabs
+                      // One card per order, in the order the orders contract fixes:
+                      // upcoming pickups, then in progress, then delivered.
                       if (_filter != _OrdersFilter.completed) {
-                        final active = orders.orders
-                            .where((o) => o.status == OrderStatus.inProgress)
-                            .toList(growable: false);
-
-                        if (active.isNotEmpty) {
-                          // Collect all upcoming pickups and deliveries; show all, sorted by schedule.
-                          final now = DateTime.now();
-                          final List<
-                              ({
-                                OrderRecord order,
-                                String title,
-                                String subtitle,
-                              })> pickupCards = [];
-                          final List<
-                              ({
-                                OrderRecord order,
-                                String title,
-                                String subtitle,
-                              })> deliveryCards = [];
-
-                          for (final o in active) {
-                            if (o.orderType == 'instant_pickup') continue;
-                            final backend = o.backendStatus.toLowerCase();
-                            final type = o.orderTypeOrBoth;
-
-                            if (backend != 'placed' &&
-                                backend != 'services_completed') {
-                              continue;
-                            }
-
-                            if (type == 'pickup_only') {
-                              if (backend == 'placed') {
-                                final at = o.scheduledPickupAt;
-                                if (at == null || at.isAfter(now)) {
-                                  pickupCards.add((
-                                    order: o,
-                                    title: 'Upcoming Pickup',
-                                    subtitle: (o.pickupAddress ?? '').trim().isNotEmpty
-                                    ? o.pickupAddress!.trim()
-                                    : 'Pickup scheduled',
-                                  ));
-                                }
-                              }
-                            } else if (type == 'drop_only') {
-                              if (backend == 'services_completed') {
-                                final at =
-                                    o.scheduledDeliveryAt ?? o.scheduledPickupAt;
-                                if (at == null || at.isAfter(now)) {
-                                  deliveryCards.add((
-                                    order: o,
-                                    title: 'Upcoming Delivery',
-                                    subtitle: (o.pickupAddress ?? '').trim().isNotEmpty
-                                    ? o.pickupAddress!.trim()
-                                    : 'Delivery scheduled',
-                                  ));
-                                }
-                              }
-                            } else {
-                              // both
-                              if (backend == 'placed') {
-                                final at = o.scheduledPickupAt;
-                                if (at == null || at.isAfter(now)) {
-                                  pickupCards.add((
-                                    order: o,
-                                    title: 'Upcoming Pickup',
-                                    subtitle: (o.pickupAddress ?? '').trim().isNotEmpty
-                                    ? o.pickupAddress!.trim()
-                                    : 'Pickup scheduled',
-                                  ));
-                                }
-                              } else if (backend == 'services_completed') {
-                                final at =
-                                    o.scheduledDeliveryAt ?? o.scheduledPickupAt;
-                                if (at == null || at.isAfter(now)) {
-                                  deliveryCards.add((
-                                    order: o,
-                                    title: 'Upcoming Delivery',
-                                    subtitle: (o.pickupAddress ?? '').trim().isNotEmpty
-                                    ? o.pickupAddress!.trim()
-                                    : 'Delivery scheduled',
-                                  ));
-                                }
-                              }
-                            }
-                          }
-
-                          // Sort by scheduled time (soonest first; nulls last)
-                          pickupCards.sort((a, b) {
-                            final atA = a.order.scheduledPickupAt;
-                            final atB = b.order.scheduledPickupAt;
-                            if (atA == null && atB == null) return 0;
-                            if (atA == null) return 1;
-                            if (atB == null) return -1;
-                            return atA.compareTo(atB);
-                          });
-                          deliveryCards.sort((a, b) {
-                            final atA = a.order.scheduledDeliveryAt ??
-                                a.order.scheduledPickupAt;
-                            final atB = b.order.scheduledDeliveryAt ??
-                                b.order.scheduledPickupAt;
-                            if (atA == null && atB == null) return 0;
-                            if (atA == null) return 1;
-                            if (atB == null) return -1;
-                            return atA.compareTo(atB);
-                          });
-
-                          for (final entry in pickupCards) {
-                            children.add(
-                              _UpcomingPickupCard(
-                                order: entry.order,
-                                timeLabel:
-                                    '${entry.order.dateLabel} at ${entry.order.timeLabel}',
-                                title: entry.title,
-                                subtitle: entry.subtitle,
-                                forDelivery: false,
-                                onOpen: entry.order.orderType == 'schedule_pickup'
-                                    ? () => _openScheduleTrack(context, entry.order)
-                                    : null,
-                              ),
-                            );
-                            children.add(const SizedBox(height: 12));
-                          }
-                          for (final entry in deliveryCards) {
-                            children.add(
-                              _UpcomingPickupCard(
-                                order: entry.order,
-                                timeLabel: entry.order.deliveryDateLabel !=
-                                            null &&
-                                        entry.order.deliveryTimeLabel != null
-                                    ? '${entry.order.deliveryDateLabel} at ${entry.order.deliveryTimeLabel}'
-                                    : '${entry.order.dateLabel} at ${entry.order.timeLabel}',
-                                title: entry.title,
-                                subtitle: entry.subtitle,
-                                forDelivery: true,
-                              ),
-                            );
-                            children.add(const SizedBox(height: 12));
-                          }
+                        final upcoming = [
+                          for (final o in visible)
+                            if (_cardKindOf(o) == _CardKind.upcomingPickup) o,
+                        ]..sort(_compareUpcoming);
+                        for (final order in upcoming) {
+                          addCard(
+                            _UpcomingPickupCard(
+                              order: order,
+                              onOpen: () => _openDetails(context, order),
+                            ),
+                          );
+                        }
+                        for (final order
+                            in _newestFirst(visible, _CardKind.inProgress)) {
+                          addCard(
+                            _OrderCard(
+                              data: order,
+                              onTrack: () => _openScheduleTrack(context, order),
+                              onViewDetails: () => _openDetails(context, order),
+                            ),
+                          );
+                        }
+                      }
+                      if (_filter != _OrdersFilter.active) {
+                        for (final order
+                            in _newestFirst(visible, _CardKind.delivered)) {
+                          addCard(
+                            _OrderCard(
+                              data: order,
+                              onViewDetails: () => _openDetails(context, order),
+                            ),
+                          );
                         }
                       }
 
-                      final list = _filteredOrders(orders.orders);
-
-                      if (list.isEmpty && children.isEmpty) {
+                      if (children.isEmpty) {
                         // Return scrollable widget for RefreshIndicator to work
                         return ListView(
                           physics: const AlwaysScrollableScrollPhysics(),
@@ -373,52 +303,6 @@ class _OrdersListScreenState extends State<OrdersListScreen>
                           ],
                         );
                       }
-
-                      // Append the main orders list below the upcoming cards (if any)
-                      if (list.isNotEmpty) {
-                        if (children.isNotEmpty) {
-                          children.add(const SizedBox(height: 8));
-                        }
-
-                        for (final order in list) {
-                          final inProgress = order.status == OrderStatus.inProgress &&
-                              order.backendStatus.toLowerCase() != 'cancelled';
-                          children.add(
-                            _OrderCard(
-                              data: order,
-                              onTrack: inProgress
-                                  ? () => _openScheduleTrack(context, order)
-                                  : null,
-                              onViewDetails: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => OrderDetailsScreen(order: order),
-                                  ),
-                                );
-                              },
-                            ),
-                          );
-                          children.add(const SizedBox(height: 12));
-                        }
-                      }
-
-                      // Fallback to avoid returning an empty list (should not normally happen)
-                      if (children.isEmpty) {
-                        children.add(
-                          SizedBox(
-                            height: MediaQuery.of(context).size.height * 0.3,
-                            child: Center(
-                              child: Text(
-                                'No orders yet',
-                                style: AppTextStyles.body(
-                                  color: const Color(0xFF98A0B5),
-                                ).copyWith(fontSize: 13),
-                              ),
-                            ),
-                          ),
-                        );
-                      }
-
                       return ListView(
                         physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.only(bottom: 16),
@@ -564,37 +448,117 @@ class _FilterPill extends StatelessWidget {
   }
 }
 
-DateTime _slotStart(DateTime date, String slot) {
-  final start = slot.split('-').first.trim();
-  final match = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)?', caseSensitive: false).firstMatch(start);
-  var hour = int.tryParse(match?.group(1) ?? '') ?? 9;
-  final minute = int.tryParse(match?.group(2) ?? '') ?? 0;
-  final marker = match?.group(3)?.toUpperCase();
-  final isPm = marker != null ? marker == 'PM' : slot.toUpperCase().contains('PM');
-  if (isPm && hour != 12) hour += 12;
-  if (!isPm && hour == 12) hour = 0;
-  return DateTime(date.year, date.month, date.day, hour, minute);
-}
-
 class _UpcomingPickupCard extends StatelessWidget {
   final OrderRecord order;
-  final String timeLabel;
-  final String title;
-  final String subtitle;
-  final bool forDelivery;
   final VoidCallback? onOpen;
 
   const _UpcomingPickupCard({
     required this.order,
-    required this.timeLabel,
-    required this.title,
-    required this.subtitle,
-    required this.forDelivery,
     this.onOpen,
   });
 
+  /// pickup_assigned: Change Schedule / Cancel still show, but tapping them
+  /// opens a popup instead of the schedule sheet or cancel dialog.
+  bool get _pickupStarted =>
+      order.backendStatus.toLowerCase() == 'pickup_assigned';
+
+  Future<void> _showPickupStartedPopup(
+    BuildContext context, {
+    required String title,
+    required String message,
+  }) {
+    return showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          title,
+          style: AppTextStyles.header(color: const Color(0xFF1B1F2A)),
+        ),
+        content: Text(
+          message,
+          style: AppTextStyles.body(color: const Color(0xFF1B1F2A)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(
+              'OK',
+              style: AppTextStyles.header(color: HomeColors.primary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _changeSchedule(BuildContext context) async {
+    if (_pickupStarted) {
+      await _showPickupStartedPopup(
+        context,
+        title: 'Schedule cannot be changed',
+        message: 'Pickup partner has already started.',
+      );
+      return;
+    }
+    final provider = context.read<OrderProvider>();
+    final messenger = ScaffoldMessenger.of(context);
+    final picked = await showScheduleBottomSheet(
+      context,
+      forDelivery: false,
+      changing: true,
+      // An instant pickup has no current schedule to preselect.
+      current: _isInstantPickup(order)
+          ? null
+          : schedulePickFromTime(order.scheduledPickupAt),
+    );
+    if (picked == null) return;
+    final deliveryMoved = provider.updateOrderSchedule(
+      order.id,
+      OrderProvider.shortDateLabel(picked.date),
+      picked.slot,
+      at: scheduleSlotStart(picked.date, picked.slot),
+    );
+    if (!deliveryMoved) return;
+    final updated = provider.orders.where((o) => o.id == order.id).firstOrNull;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          'Delivery moved to ${updated?.deliveryDateLabel ?? 'a later date'}',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _cancel(BuildContext context) async {
+    if (_pickupStarted) {
+      await _showPickupStartedPopup(
+        context,
+        title: 'Order cannot be cancelled',
+        message: 'Pickup partner has already started.',
+      );
+      return;
+    }
+    final provider = context.read<OrderProvider>();
+    final id = order.id.trim();
+    final code = id.toUpperCase().startsWith('LD') ? '#$id' : '#${order.shortId}';
+    final reason = await showCancelOrderDialog(context, orderCode: code);
+    if (reason == null) return;
+    // `reason` is what POST /orders/{orderId}/cancel takes once the order API is wired.
+    provider.cancelPlacedOrder(order.id);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final instant = _isInstantPickup(order);
+    final timeLabel = instant
+        ? 'Instant pickup'
+        : '${order.dateLabel} at ${order.timeLabel}';
+    final subtitle = (order.pickupAddress ?? '').trim().isNotEmpty
+        ? order.pickupAddress!.trim()
+        : 'Pickup scheduled';
+    final displayId =
+        order.id.startsWith('LD') ? '#${order.id}' : order.shortId;
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -612,40 +576,65 @@ class _UpcomingPickupCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (order.isExpress)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 10),
+              child: Image(
+                image: AssetImage('assets/images/express_order_type.png'),
+                height: 22,
+                fit: BoxFit.contain,
+                alignment: Alignment.centerLeft,
+              ),
+            ),
           InkWell(
             onTap: onOpen,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.location_on_outlined,
-                size: 22,
-                color: Color(0xFF1B1F2A),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                title,
-                style: AppTextStyles.header(color: const Color(0xFF1B1F2A))
-                    .copyWith(fontSize: 18),
-              ),
-              const Spacer(),
-            ],
-          ),
-          const SizedBox(height: 32),
-          Text(
-            timeLabel,
-            style: AppTextStyles.header(color: const Color(0xFF1B1F2A))
-                .copyWith(fontSize: 16),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            subtitle,
-            style: AppTextStyles.body(color: const Color(0xFF9AA3B2))
-                .copyWith(fontSize: 12),
-          ),
-          const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        displayId,
+                        style: AppTextStyles.body(color: HomeColors.primary)
+                            .copyWith(
+                                fontSize: 13, fontWeight: FontWeight.w600),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Upcoming Pickup',
+                          style: AppTextStyles.header(
+                                  color: const Color(0xFF1B1F2A))
+                              .copyWith(fontSize: 14),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(
+                          Icons.location_on_outlined,
+                          size: 18,
+                          color: Color(0xFF1B1F2A),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  timeLabel,
+                  style: AppTextStyles.header(color: const Color(0xFF1B1F2A))
+                      .copyWith(fontSize: 16),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  subtitle,
+                  style: AppTextStyles.body(color: const Color(0xFF9AA3B2))
+                      .copyWith(fontSize: 12),
+                ),
+                const SizedBox(height: 16),
               ],
             ),
           ),
@@ -654,74 +643,14 @@ class _UpcomingPickupCard extends StatelessWidget {
               Expanded(
                 child: _PrimaryActionButton(
                   label: 'Change Schedule',
-                  onTap: () async {
-                    final picked = await showScheduleBottomSheet(
-                      context,
-                      forDelivery: forDelivery,
-                    );
-                    if (picked == null || !context.mounted) return;
-                    const months = [
-                      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-                    ];
-                    context.read<OrderProvider>().updateOrderSchedule(
-                          order.id,
-                          '${months[picked.date.month - 1]} ${picked.date.day}',
-                          picked.slot,
-                          forDelivery: forDelivery,
-                          at: _slotStart(picked.date, picked.slot),
-                        );
-                  },
+                  onTap: () => _changeSchedule(context),
                 ),
               ),
               const SizedBox(width: 16),
               Expanded(
                 child: _SecondaryActionButton(
                   label: 'Cancel',
-                  onTap: () {
-                    if (order.orderType == 'schedule_pickup' &&
-                        order.backendStatus.toLowerCase() == 'placed') {
-                      final id = order.id.trim();
-                      final code = id.toUpperCase().startsWith('LD') ? '#$id' : '#${order.shortId}';
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => CancelPickupScreen(
-                            orderId: order.id,
-                            orderCode: code,
-                          ),
-                        ),
-                      );
-                      return;
-                    }
-                    showDialog(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        title: Text(
-                          'Cancel Order',
-                          style: AppTextStyles.header(
-                              color: const Color(0xFF1B1F2A)),
-                        ),
-                        content: Text(
-                          'Contact supervisor for further help',
-                          style: AppTextStyles.body(
-                              color: const Color(0xFF1B1F2A)),
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: Text(
-                              'OK',
-                              style: AppTextStyles.header(
-                                  color: HomeColors.primary),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
+                  onTap: () => _cancel(context),
                 ),
               ),
             ],
@@ -833,169 +762,188 @@ class _OrderCard extends StatelessWidget {
         data.items.isNotEmpty && !hasKgWiseItems;
 
     final displayId = data.id.startsWith('LD') ? '#${data.id}' : data.shortId;
-    final itemLabel = data.totalItems == 1 ? '1 Item' : '${data.totalItems} Items';
+    final itemLabel = data.itemSummary;
 
-    return Container(
-      width: double.infinity,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: Colors.white,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onViewDetails,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE9ECF3)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0A000000),
-            blurRadius: 18,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (data.isExpress)
-            const Padding(
-              padding: EdgeInsets.only(left: 14, top: 10),
-              child: Image(
-                image: AssetImage('assets/images/express_order_type.png'),
-                height: 22,
-                fit: BoxFit.contain,
-                alignment: Alignment.centerLeft,
-              ),
-            ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
-            child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  displayId,
-                  style: AppTextStyles.body(color: HomeColors.primary)
-                      .copyWith(fontSize: 13, fontWeight: FontWeight.w600),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    statusText,
-                    style: AppTextStyles.header(color: statusColor)
-                        .copyWith(fontSize: 14),
-                  ),
-                  const SizedBox(width: 6),
-                  Icon(statusIcon, size: 18, color: statusColor),
-                ],
+        child: Container(
+          width: double.infinity,
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFE9ECF3)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x0A000000),
+                blurRadius: 18,
+                offset: Offset(0, 10),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          Row(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
+              if (data.isExpress)
+                const Padding(
+                  padding: EdgeInsets.only(left: 14, top: 10),
+                  child: Image(
+                    image: AssetImage('assets/images/express_order_type.png'),
+                    height: 22,
+                    fit: BoxFit.contain,
+                    alignment: Alignment.centerLeft,
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      data.title,
-                      style:
-                          AppTextStyles.header(color: const Color(0xFF1B1F2A)),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            displayId,
+                            style: AppTextStyles.body(color: HomeColors.primary)
+                                .copyWith(
+                                    fontSize: 13, fontWeight: FontWeight.w600),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              statusText,
+                              style: AppTextStyles.header(color: statusColor)
+                                  .copyWith(fontSize: 14),
+                            ),
+                            const SizedBox(width: 6),
+                            Icon(statusIcon, size: 18, color: statusColor),
+                          ],
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      itemLabel,
-                      style: AppTextStyles.body(color: const Color(0xFF98A0B5)),
+                    const SizedBox(height: 10),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                data.title,
+                                style: AppTextStyles.header(
+                                    color: const Color(0xFF1B1F2A)),
+                              ),
+                              if (itemLabel.isNotEmpty) ...[
+                                const SizedBox(height: 3),
+                                Text(
+                                  itemLabel,
+                                  style: AppTextStyles.body(
+                                      color: const Color(0xFF98A0B5)),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            if (data.dateLabel.isNotEmpty &&
+                                data.timeLabel.isNotEmpty) ...[
+                              Text(
+                                data.dateLabel,
+                                style: AppTextStyles.body(
+                                        color: const Color(0xFF98A0B5))
+                                    .copyWith(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                data.timeLabel,
+                                style: AppTextStyles.body(
+                                        color: const Color(0xFF98A0B5))
+                                    .copyWith(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    const Divider(
+                      height: 1,
+                      thickness: 1,
+                      color: Color(0xFFE9ECF3),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        if (hasOnlyPerPiece) ...[
+                          Text(
+                            Pricing.inr(data.totalInr),
+                            style:
+                                AppTextStyles.header(color: HomeColors.primary)
+                                    .copyWith(fontSize: 22),
+                          ),
+                        ],
+                        const Spacer(),
+                        InkWell(
+                          onTap: onViewDetails,
+                          borderRadius: BorderRadius.circular(18),
+                          child: Container(
+                            height: 44,
+                            padding: const EdgeInsets.symmetric(horizontal: 22),
+                            decoration: BoxDecoration(
+                              color: HomeColors.primary,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              'View Details',
+                              style: AppTextStyles.button(color: Colors.white)
+                                  .copyWith(fontSize: 13),
+                            ),
+                          ),
+                        ),
+                        if (onTrack != null) ...[
+                          const SizedBox(width: 10),
+                          InkWell(
+                            onTap: onTrack,
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                    color: HomeColors.primary, width: 1.4),
+                              ),
+                              child: const Icon(
+                                Icons.location_on_outlined,
+                                color: HomeColors.primary,
+                                size: 22,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ],
                 ),
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  if (data.dateLabel.isNotEmpty &&
-                      data.timeLabel.isNotEmpty) ...[
-                    Text(
-                      data.dateLabel,
-                      style: AppTextStyles.body(color: const Color(0xFF98A0B5))
-                          .copyWith(fontSize: 12, fontWeight: FontWeight.w500),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      data.timeLabel,
-                      style: AppTextStyles.body(color: const Color(0xFF98A0B5))
-                          .copyWith(fontSize: 12, fontWeight: FontWeight.w500),
-                    ),
-                  ],
-                ],
-              ),
             ],
           ),
-          const SizedBox(height: 12),
-          const Divider(
-            height: 1,
-            thickness: 1,
-            color: Color(0xFFE9ECF3),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              if (hasOnlyPerPiece) ...[
-                Text(
-                  Pricing.inr(data.totalInr),
-                  style: AppTextStyles.header(color: HomeColors.primary)
-                      .copyWith(fontSize: 22),
-                ),
-              ],
-              const Spacer(),
-              InkWell(
-                onTap: onViewDetails,
-                borderRadius: BorderRadius.circular(18),
-                child: Container(
-                  height: 44,
-                  padding: const EdgeInsets.symmetric(horizontal: 22),
-                  decoration: BoxDecoration(
-                    color: HomeColors.primary,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    'View Details',
-                    style: AppTextStyles.button(color: Colors.white)
-                        .copyWith(fontSize: 13),
-                  ),
-                ),
-              ),
-              if (onTrack != null) ...[
-                const SizedBox(width: 10),
-                InkWell(
-                  onTap: onTrack,
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: HomeColors.primary, width: 1.4),
-                    ),
-                    child: const Icon(
-                      Icons.location_on_outlined,
-                      color: HomeColors.primary,
-                      size: 22,
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ],
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

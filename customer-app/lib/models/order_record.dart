@@ -117,6 +117,30 @@ class OrderRecord {
     );
   }
 
+  /// Pieces on per-unit lines. A per-kg service has a weight, not a count.
+  int get pieceCount => items
+      .where((item) => item.isPerPiece)
+      .fold<int>(0, (sum, item) => sum + item.totalQuantity);
+
+  /// Weight on per-kg lines.
+  double get totalWeightKg => items
+      .where((item) => !item.isPerPiece)
+      .fold<double>(0, (sum, item) => sum + (item.weightKg ?? 0));
+
+  /// Line under the card title: "6 Items", "3.5 kg" or "6 Items - 3.5 kg".
+  /// Empty before the door count, when there is nothing to count or weigh.
+  String get itemSummary {
+    final parts = <String>[];
+    final pieces = pieceCount;
+    if (pieces > 0) parts.add(pieces == 1 ? '1 Item' : '$pieces Items');
+    final weight = totalWeightKg;
+    if (weight > 0) {
+      final rounded = double.parse(weight.toStringAsFixed(2));
+      parts.add('${rounded == rounded.roundToDouble() ? rounded.toInt() : rounded} kg');
+    }
+    return parts.join(' - ');
+  }
+
   String get orderTypeOrBoth {
     final t = (orderType ?? '').trim();
     return t.isEmpty ? 'both' : t;

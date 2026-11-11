@@ -1,0 +1,99 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Customer delivery slots",
+    "version": "0.1.0",
+    "description": "The slot list behind the schedule bottom sheet on Delivery Options. Slots are one daily template, identical every day and maintained by the owner (admin/slots.openapi.json). The phone builds the date chips from server_time and booking_horizon_days, and never hard-codes slots or their status."
+  },
+  "servers": [{ "url": "/api/v1" }],
+  "tags": [{ "name": "slots" }],
+  "security": [{ "customerBearer": [] }],
+  "paths": {
+    "/slots": {
+      "get": {
+        "tags": ["slots"],
+        "operationId": "listDeliverySlots",
+        "summary": "Slots for the schedule sheet",
+        "description": "Active slots only, ordered by sort_order and grouped by period for the Morning, Afternoon and Evening chips. status open is selectable. too_busy and closed are shown disabled with their own label; the server rejects them on place order and reschedule (SLOT_TOO_BUSY, SLOT_CLOSED). A slot's status applies to every day. The date chips run from today (IST, from server_time) through booking_horizon_days days ahead. On a given date, a slot whose start time has already passed is also unavailable (SLOT_STARTED); the phone compares start_time with server_time. For the delivery leg the earliest chip is the pickup date plus the buffer: express_buffer_days for an Express order, pickup_delivery_buffer_days otherwise (both from GET /config). The server re-validates everything.",
+        "x-current": { "note": "Not built. There is no slot table today; the phone builds 30-minute windows locally and sends raw timestamps." },
+        "responses": {
+          "200": {
+            "description": "Slot list",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Envelope" },
+                "example": {
+                  "success": true,
+                  "data": {
+                    "server_time": "2026-11-06T06:00:00.000Z",
+                    "timezone": "Asia/Kolkata",
+                    "booking_horizon_days": 7,
+                    "slots": [
+                      { "slot_id": "66666666-6666-4666-8666-666666666666", "label": "8 - 9:30 am", "period": "morning", "start_time": "08:00", "end_time": "09:30", "status": "open", "sort_order": 1 },
+                      { "slot_id": "88888888-8888-4888-8888-888888888888", "label": "12 - 1:30 pm", "period": "afternoon", "start_time": "12:00", "end_time": "13:30", "status": "too_busy", "sort_order": 2 },
+                      { "slot_id": "77777777-7777-4777-8777-777777777777", "label": "5 - 6:30 pm", "period": "evening", "start_time": "17:00", "end_time": "18:30", "status": "closed", "sort_order": 3 }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "customerBearer": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing or invalid customer token",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+      }
+    },
+    "schemas": {
+      "Slot": {
+        "type": "object",
+        "required": ["slot_id", "label", "period", "start_time", "end_time", "status", "sort_order"],
+        "properties": {
+          "slot_id": { "type": "string", "format": "uuid" },
+          "label": { "type": "string" },
+          "period": { "type": "string", "enum": ["morning", "afternoon", "evening"] },
+          "start_time": { "type": "string", "description": "HH:mm, IST wall clock.", "example": "08:00" },
+          "end_time": { "type": "string", "description": "HH:mm, IST wall clock.", "example": "09:30" },
+          "status": { "type": "string", "enum": ["open", "too_busy", "closed"] },
+          "sort_order": { "type": "integer" }
+        }
+      },
+      "SlotList": {
+        "type": "object",
+        "required": ["server_time", "timezone", "booking_horizon_days", "slots"],
+        "properties": {
+          "server_time": { "type": "string", "format": "date-time" },
+          "timezone": { "type": "string", "enum": ["Asia/Kolkata"] },
+          "booking_horizon_days": { "type": "integer", "minimum": 1, "description": "How many days ahead the date chips go. Default 7." },
+          "slots": { "type": "array", "items": { "$ref": "#/components/schemas/Slot" } }
+        }
+      },
+      "Envelope": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "data": { "$ref": "#/components/schemas/SlotList" }
+        }
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": ["success", "message"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [false] },
+          "message": { "type": "string" },
+          "errorCode": { "type": "string" }
+        }
+      }
+    }
+  }
+}

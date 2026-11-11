@@ -112,7 +112,14 @@ class OrderProvider with ChangeNotifier {
     super.dispose();
   }
 
-  void updateOrderSchedule(
+  // Mirrors PICKUP_DELIVERY_BUFFER_DAYS and EXPRESS_BUFFER_DAYS until GET /config is wired.
+  static const int _bufferDays = 2;
+  static const int _expressBufferDays = 1;
+
+  /// Changes the pickup (or delivery) schedule. Returns true when the delivery
+  /// had to move later to keep the buffer after a pickup change, the same rule
+  /// the server applies (orders contract, PATCH /orders/{orderId}).
+  bool updateOrderSchedule(
     String orderId,
     String dateLabel,
     String timeLabel, {
@@ -120,22 +127,59 @@ class OrderProvider with ChangeNotifier {
     DateTime? at,
   }) {
     final index = _orders.indexWhere((o) => o.id == orderId);
-    if (index < 0) return;
+    if (index < 0) return false;
     final current = _orders[index];
-    final updated = forDelivery
-        ? current.copyWith(
-            deliveryDateLabel: dateLabel,
-            deliveryTimeLabel: timeLabel,
-            scheduledDeliveryAt: at,
-          )
-        : current.copyWith(
-            dateLabel: dateLabel,
-            timeLabel: timeLabel,
-            scheduledPickupAt: at,
+    var deliveryShifted = false;
+    OrderRecord updated;
+    if (forDelivery) {
+      updated = current.copyWith(
+        deliveryDateLabel: dateLabel,
+        deliveryTimeLabel: timeLabel,
+        scheduledDeliveryAt: at,
+      );
+    } else {
+      updated = current.copyWith(
+        dateLabel: dateLabel,
+        timeLabel: timeLabel,
+        scheduledPickupAt: at,
+        // An instant pickup that gets a slot is now a scheduled pickup.
+        orderType: current.orderType == 'instant_pickup' ? 'schedule_pickup' : null,
+      );
+      final delivery = updated.scheduledDeliveryAt;
+      if (at != null && delivery != null) {
+        final earliest = DateTime(at.year, at.month, at.day).add(
+          Duration(days: current.isExpress ? _expressBufferDays : _bufferDays),
+        );
+        final deliveryDay = DateTime(delivery.year, delivery.month, delivery.day);
+        if (deliveryDay.isBefore(earliest)) {
+          final moved = DateTime(
+            earliest.year,
+            earliest.month,
+            earliest.day,
+            delivery.hour,
+            delivery.minute,
           );
+          updated = updated.copyWith(
+            scheduledDeliveryAt: moved,
+            deliveryDateLabel: shortDateLabel(moved),
+          );
+          deliveryShifted = true;
+        }
+      }
+    }
     _orders[index] = updated;
     notifyListeners();
     _localOrders.saveChangedSchedule(updated);
+    return deliveryShifted;
+  }
+
+  /// "Dec 4" style label for a local date.
+  static String shortDateLabel(DateTime date) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return '${months[date.month - 1]} ${date.day}';
   }
 
   /// Local schedule pickups can be cancelled only while they are still placed.
@@ -336,7 +380,6 @@ class OrderProvider with ChangeNotifier {
 
       // Map items to CartItems
       final cartItems = <CartItem>[];
-      String? title;
       int totalItems = 0;
 
       for (final itemData in items) {
@@ -347,10 +390,6 @@ class OrderProvider with ChangeNotifier {
             ? (selections.first as Map<String, dynamic>)['category_name']
                 as String?
             : null;
-
-        if (categoryName != null && title == null) {
-          title = categoryName;
-        }
 
         if (pricingType == 'per_unit') {
           // Per-unit items
@@ -489,33 +528,17 @@ class OrderProvider with ChangeNotifier {
         if (lng is num) pickupLng = lng.toDouble();
       }
 
-      // Derive a human-friendly title. If backend provided a title, use it;
-      // otherwise show category/service or "Mixed" when multiple services exist.
-      String computedTitle;
-      if (title != null && title.trim().isNotEmpty) {
-        computedTitle = title.trim();
-      } else {
-        final serviceNames = cartItems
-            .map((c) => c.serviceName.trim())
-            .where((s) => s.isNotEmpty)
-            .toSet();
-        final categories = cartItems
-            .map((c) => c.category.trim())
-            .where((s) => s.isNotEmpty)
-            .toSet();
-        final hasMultipleServices = serviceNames.length > 1;
-        final hasMultipleCategories = categories.length > 1;
-
-        if (hasMultipleServices || hasMultipleCategories) {
-          computedTitle = 'Mixed';
-        } else if (categories.isNotEmpty) {
-          computedTitle = categories.first;
-        } else if (serviceNames.isNotEmpty) {
-          computedTitle = serviceNames.first;
-        } else {
-          computedTitle = 'Order';
-        }
-      }
+      // Card title (orders contract): "Mixed" for more than one service line,
+      // otherwise that service's name, "Laundry pickup" before the door count.
+      final serviceNames = cartItems
+          .map((c) => c.serviceName.trim())
+          .where((s) => s.isNotEmpty)
+          .toSet();
+      final String computedTitle = serviceNames.length > 1
+          ? 'Mixed'
+          : serviceNames.isNotEmpty
+              ? serviceNames.first
+              : 'Laundry pickup';
 
       return OrderRecord(
         id: orderId,

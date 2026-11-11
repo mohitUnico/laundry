@@ -10,18 +10,19 @@
 flowchart TB
 subgraph LC["Customer"]
   c1(["Open app"])
-  c2["Pick services and per kg or per unit"]
+  c2["Tap a pickup card, or pick services in the cart"]
   c3{"Express?"}
-  c4["No schedule: both legs instant"]
-  c5["Pick pickup mode and delivery mode"]
+  c4["Express: queue priority and fee only"]
+  c5["Pick pickup and delivery mode, slots, addresses"]
   c6["Confirm order, no itemised bill"]
   c7["Cancel or Change schedule visible"]
-  c8["Tracking opens: Out for pickup"]
+  c10["Tracking opens: finding a partner"]
+  c8["Tracker: Out for pickup"]
   c9["Tracker: Pickup done. View bill"]
 end
 subgraph LS["System"]
   s1[("Order placed: is_express, pickup_mode, delivery_mode")]
-  s2{"Instant or Express?"}
+  s2{"Pickup instant?"}
   s3["Start pickup search now"]
   s4["Schedule job at pickup_time_from"]
   s5["Rings grow each slice over ASSIGNMENT_TIMEOUT"]
@@ -37,7 +38,7 @@ end
 subgraph LP["Pickup boy"]
   p1[/"Offer by SSE: on-shift in ring"/]
   p2["Accept"]
-  p3["Open order: booked services with per kg or per unit"]
+  p3["Open order: whole catalogue, cart services pre-selected and locked"]
   p4["Expand service: counts or one weight plus one photo"]
   p5["Draft autosave to server"]
   p6["Mark as picked up"]
@@ -50,10 +51,12 @@ subgraph LM["Collection manager"]
   m3["Verified and Received"]
 end
 c1 --> c2 --> c3
-c3 -->|"yes"| c4 --> c6
-c3 -->|"no"| c5 --> c6
+c3 -->|"yes"| c4 --> c5
+c3 -->|"no"| c5
+c5 --> c6
 c6 --> s1 --> s2
 s1 --> c7
+s1 --> c10
 s2 -->|"yes"| s3
 s2 -->|"no"| s4 --> s3
 s3 --> s5 --> p1 --> p2 --> s6
@@ -162,7 +165,7 @@ subgraph LC3["Customer"]
   i7["Retry UPI"]
   i8["Tracker: Delivered"]
 end
-f1 -->|"instant or Express"| f4
+f1 -->|"instant"| f4
 f1 -->|"scheduled"| f2
 f2 -->|"no"| f3
 f2 -->|"yes or already late"| f4
@@ -194,15 +197,16 @@ flowchart TB
 subgraph CU["Customer"]
   u1["Orders list: placed"]
   u2{"Action"}
-  u3[/"Free-text reason required"/]
-  u4["Confirm cancel"]
-  u5["Edit pickup and or delivery times"]
-  u6{"Delivery at least pickup plus BUFFER_DAYS?"}
-  u7["Cancel and Change schedule hidden"]
-  u8["History shows Cancelled"]
+  u3[/"Are you sure pop-up with reason options"/]
+  u4["Yes"]
+  u5["Pick another pickup date and slot on the card"]
+  u6{"Delivery at least pickup plus buffer: Express 1, ordinary 2 days?"}
+  u7["Cancel / Change schedule open a popup"]
+  u8["Order drops off the orders list"]
 end
 subgraph SY["System"]
   v1[("cancelled plus cancel_reason")]
+  v8["Move delivery later and tell the app"]
   v2["Stop pickup job and pending offers"]
   v3["Stop current search"]
   v4{"New pickup instant or time reached?"}
@@ -215,7 +219,7 @@ v7 -->|"no"| u2
 v7 -->|"yes pickup_assigned"| u7
 u2 -->|"Cancel"| u3 --> u4 --> v2 --> v1 --> u8
 u2 -->|"Reschedule"| u5 --> u6
-u6 -->|"no"| u5
+u6 -->|"no"| v8 --> v3
 u6 -->|"yes"| v3 --> v4
 v4 -->|"yes"| v5
 v4 -->|"no"| v6

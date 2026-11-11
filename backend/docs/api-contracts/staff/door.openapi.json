@@ -1,0 +1,286 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Pickup partner door count",
+    "version": "0.1.0",
+    "description": "The pickup partner's door screen. He sees the whole catalogue. Services the customer chose in the cart come back as locked lines that must be filled in. He can add any other service. Lines are keyed by service_id, because a line may not exist yet. At least one complete line is required to Mark as picked up. Partial contract: only the door routes that change with the booking redesign."
+  },
+  "servers": [{ "url": "/api/v1" }],
+  "tags": [{ "name": "door" }],
+  "security": [{ "staffBearer": [] }],
+  "paths": {
+    "/delivery-staff-app/orders/{orderId}/door": {
+      "get": {
+        "tags": ["door"],
+        "operationId": "getDoor",
+        "summary": "Open the door count",
+        "description": "Returns the order, the lines so far and the full active catalogue (categories, services, per-kg and per-unit prices, cloth items). For an order placed from a cart, each cart service is already a line with source cart and pricing_type_locked true. For an order placed from a pickup card there are no lines. Only the assigned pickup partner may read it, and only while the order is pickup_assigned (editable) or later (read only).",
+        "x-current": {
+          "path": "GET /api/v1/delivery-staff-app/orders/:orderId/door",
+          "note": "Today the response carries only the booked lines and no catalogue."
+        },
+        "parameters": [{ "$ref": "#/components/parameters/orderId" }],
+        "responses": {
+          "200": {
+            "description": "Door state",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DoorEnvelope" } } }
+          },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/delivery-staff-app/orders/{orderId}/door/services/{serviceId}": {
+      "patch": {
+        "tags": ["door"],
+        "operationId": "saveDoorService",
+        "summary": "Save a service line (autosave)",
+        "description": "Create or update the one line for this service on this order; the call is idempotent. The app sends it when a service expander is completed. It always leaves items_confirmed_at null. For a line that does not exist yet, pricing_type is required and the line is created with source door. For a cart line, pricing_type may be omitted; if sent it must equal the locked value, otherwise 409 PRICING_TYPE_LOCKED. A per_kg line takes weight_kg (one weight for the service, greater than 0). A per_unit line takes selections: cloth_id from this service's active cloth items and quantity, replacing the previous selections; quantity 0 drops the cloth. Mixing weight_kg with selections for the wrong pricing type is 400. photo_url is optional here; photos normally go through the photo route. Only while the order is pickup_assigned and the door is not confirmed; otherwise 409 DOOR_LOCKED.",
+        "x-current": {
+          "path": "PATCH /api/v1/delivery-staff-app/orders/:orderId/door/services/:orderItemId",
+          "note": "Today the route is keyed by orderItemId and can only update lines that already exist."
+        },
+        "parameters": [{ "$ref": "#/components/parameters/orderId" }, { "$ref": "#/components/parameters/serviceId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SaveService" },
+              "examples": {
+                "newPerKg": { "summary": "Add a service not booked", "value": { "pricing_type": "per_kg", "weight_kg": "3.50" } },
+                "perUnit": {
+                  "summary": "Fill a cart line",
+                  "value": { "selections": [{ "cloth_id": "99999999-9999-4999-8999-999999999999", "quantity": 4 }] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Door state after the save",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DoorEnvelope" } } }
+          },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "delete": {
+        "tags": ["door"],
+        "operationId": "removeDoorService",
+        "summary": "Remove a line he added",
+        "description": "Removes a line with source door, with its selections and photo. A cart line cannot be removed (409 CART_LINE_LOCKED); it can only be filled in. Same lock rule as the save.",
+        "x-current": { "note": "Not built." },
+        "parameters": [{ "$ref": "#/components/parameters/orderId" }, { "$ref": "#/components/parameters/serviceId" }],
+        "responses": {
+          "200": {
+            "description": "Door state after the removal",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DoorEnvelope" } } }
+          },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/delivery-staff-app/orders/{orderId}/door/services/{serviceId}/photo": {
+      "post": {
+        "tags": ["door"],
+        "operationId": "saveDoorServicePhoto",
+        "summary": "One photo per service",
+        "description": "multipart/form-data, field file (camera or gallery). Uploaded to Cloudinary; the URL is stored on the line. The line must already exist (create it with the PATCH first), otherwise 404 LINE_NOT_FOUND. Same lock rule as the save.",
+        "x-current": {
+          "path": "POST /api/v1/delivery-staff-app/orders/:orderId/door/services/:orderItemId/photo",
+          "note": "Today keyed by orderItemId."
+        },
+        "parameters": [{ "$ref": "#/components/parameters/orderId" }, { "$ref": "#/components/parameters/serviceId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["file"],
+                "properties": { "file": { "type": "string", "format": "binary" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Door state after the upload",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DoorEnvelope" } } }
+          },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/delivery-staff-app/orders/{orderId}/door/confirm": {
+      "post": {
+        "tags": ["door"],
+        "operationId": "confirmDoor",
+        "summary": "Mark as picked up",
+        "description": "Allowed only when the order has at least one line and every line is complete: per_kg with weight_kg and a photo, per_unit with at least one selection and a photo. Cart lines count too. In one transaction it writes the bill (service lines, DELIVERY_FEE, EXPRESS_FEE when is_express, all snapshotted), sets items_confirmed_at and sets order_status picked_up. After this the lines are read only and the action cannot be undone. Errors: 409 NO_SERVICE_LINES when the order has no line; 409 DOOR_INCOMPLETE with the service_ids still missing; 409 DOOR_LOCKED when already confirmed.",
+        "x-current": {
+          "path": "POST /api/v1/delivery-staff-app/orders/:orderId/door/confirm",
+          "note": "Today it only checks that the booked lines are filled."
+        },
+        "parameters": [{ "$ref": "#/components/parameters/orderId" }],
+        "responses": {
+          "200": {
+            "description": "Confirmed. order_status is picked_up and the bill exists.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DoorEnvelope" } } }
+          },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "staffBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Role delivery_staff. Only the pickup partner assigned to the order."
+      }
+    },
+    "parameters": {
+      "orderId": { "name": "orderId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+      "serviceId": { "name": "serviceId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+    },
+    "responses": {
+      "Error": {
+        "description": "Validation, auth, not found, or a state that no longer allows the action",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+      }
+    },
+    "schemas": {
+      "PricingType": { "type": "string", "enum": ["per_kg", "per_unit"] },
+      "Selection": {
+        "type": "object",
+        "required": ["cloth_id", "quantity"],
+        "properties": {
+          "cloth_id": { "type": "string", "format": "uuid" },
+          "item_name": { "type": "string", "description": "Returned on reads only." },
+          "quantity": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "DoorLine": {
+        "type": "object",
+        "required": ["service_id", "service_name", "pricing_type", "source", "pricing_type_locked", "complete"],
+        "properties": {
+          "item_id": { "type": "string", "format": "uuid" },
+          "service_id": { "type": "string", "format": "uuid" },
+          "service_name": { "type": "string" },
+          "pricing_type": { "$ref": "#/components/schemas/PricingType" },
+          "source": { "type": "string", "enum": ["cart", "door"], "description": "cart is a service the customer chose. door is one the partner added." },
+          "pricing_type_locked": { "type": "boolean", "description": "True for cart lines." },
+          "weight_kg": { "type": "string", "nullable": true },
+          "selections": { "type": "array", "items": { "$ref": "#/components/schemas/Selection" } },
+          "photo_url": { "type": "string", "nullable": true },
+          "complete": { "type": "boolean", "description": "Counts or weight, and a photo, are present." }
+        }
+      },
+      "CatalogueCloth": {
+        "type": "object",
+        "required": ["cloth_id", "item_name", "per_unit_price"],
+        "properties": {
+          "cloth_id": { "type": "string", "format": "uuid" },
+          "item_name": { "type": "string" },
+          "icon_url": { "type": "string", "nullable": true },
+          "per_unit_price": { "type": "string" }
+        }
+      },
+      "CatalogueService": {
+        "type": "object",
+        "required": ["service_id", "service_name", "per_kg_price", "clothes_items"],
+        "properties": {
+          "service_id": { "type": "string", "format": "uuid" },
+          "service_name": { "type": "string" },
+          "icon_url": { "type": "string", "nullable": true },
+          "per_kg_price": { "type": "string" },
+          "clothes_items": { "type": "array", "items": { "$ref": "#/components/schemas/CatalogueCloth" } }
+        }
+      },
+      "CatalogueCategory": {
+        "type": "object",
+        "required": ["category_id", "category_name", "services"],
+        "properties": {
+          "category_id": { "type": "string", "format": "uuid" },
+          "category_name": { "type": "string" },
+          "services": { "type": "array", "items": { "$ref": "#/components/schemas/CatalogueService" } }
+        }
+      },
+      "Door": {
+        "type": "object",
+        "required": ["order_id", "order_status", "is_express", "editable", "can_confirm", "lines", "catalogue"],
+        "properties": {
+          "order_id": { "type": "string", "format": "uuid" },
+          "order_status": { "type": "string" },
+          "is_express": { "type": "boolean" },
+          "from_cart": { "type": "boolean", "description": "True when the order was placed with a cart_id." },
+          "editable": { "type": "boolean", "description": "True only while pickup_assigned and not confirmed." },
+          "can_confirm": { "type": "boolean", "description": "At least one line and every line complete." },
+          "lines": { "type": "array", "items": { "$ref": "#/components/schemas/DoorLine" } },
+          "catalogue": { "type": "array", "description": "All active categories, services and cloth items.", "items": { "$ref": "#/components/schemas/CatalogueCategory" } },
+          "bill": {
+            "type": "object",
+            "nullable": true,
+            "description": "Present after Mark as picked up.",
+            "properties": {
+              "subtotal": { "type": "string" },
+              "delivery_fee": { "type": "string" },
+              "express_fee": { "type": "string" },
+              "final_amount": { "type": "string" }
+            }
+          }
+        }
+      },
+      "DoorEnvelope": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "data": { "$ref": "#/components/schemas/Door" }
+        }
+      },
+      "SaveService": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "pricing_type": { "$ref": "#/components/schemas/PricingType" },
+          "weight_kg": { "type": "string", "description": "Decimal, greater than 0. per_kg only." },
+          "selections": { "type": "array", "description": "per_unit only. Replaces the previous selections.", "items": { "$ref": "#/components/schemas/Selection" } },
+          "photo_url": { "type": "string", "nullable": true }
+        }
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": ["success", "message"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [false] },
+          "message": { "type": "string" },
+          "errorCode": {
+            "type": "string",
+            "description": "VALIDATION_ERROR, DOOR_LOCKED, PRICING_TYPE_LOCKED, CART_LINE_LOCKED, LINE_NOT_FOUND, NO_SERVICE_LINES, DOOR_INCOMPLETE, SERVICE_NOT_FOUND."
+          },
+          "missing_service_ids": { "type": "array", "items": { "type": "string", "format": "uuid" }, "description": "With DOOR_INCOMPLETE." }
+        }
+      }
+    }
+  }
+}

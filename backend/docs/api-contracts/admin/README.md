@@ -1,3 +1,9 @@
+# Admin contracts
+
+- Catalogue images: this page, `catalog.openapi.json`.
+- Delivery slots and the booking horizon: `slots.openapi.json`. The daily slot template, each slot's status (`open`, `too_busy`, `closed`) and `booking_horizon_days`. The customer app reads the result from `GET /api/v1/slots`.
+- Config variables use the existing `GET /api/v1/admin/config` and `PUT /api/v1/admin/config/{key}`. The redesign adds two keys: `EXPRESS_BUFFER_DAYS` (default 1, the delivery buffer for Express orders) and `SERVICE_AREA_KM` (the largest allowed distance from the active laundry, checked when a customer adds or edits an address; seed 10). `PICKUP_DELIVERY_BUFFER_DAYS` (2) now applies to ordinary orders only.
+
 # Admin catalogue images
 
 The create and update routes below are implemented. Each one reads multipart field `file` with Multer, uploads that file to Cloudinary, and stores the HTTPS URL in `icon_url`. The client does not send a URL.

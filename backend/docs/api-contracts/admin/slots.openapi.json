@@ -1,0 +1,258 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Admin delivery slots",
+    "version": "0.1.0",
+    "description": "Maintain the daily slot template and each slot's status. The template is identical every day, so a status change applies to all days at once. The customer app reads the result from GET /slots (customer/slots.openapi.json). The mart-admin screen for this comes later; this API comes first."
+  },
+  "servers": [{ "url": "/api/v1" }],
+  "tags": [{ "name": "slots" }],
+  "security": [{ "adminBearer": [] }],
+  "paths": {
+    "/admin/slots": {
+      "get": {
+        "tags": ["slots"],
+        "operationId": "adminListSlots",
+        "summary": "List all slots",
+        "description": "Every slot including inactive ones, ordered by sort_order, plus the booking horizon.",
+        "x-current": { "note": "Not built." },
+        "responses": {
+          "200": {
+            "description": "Slot list",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ListEnvelope" } } }
+          },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "post": {
+        "tags": ["slots"],
+        "operationId": "adminCreateSlot",
+        "summary": "Create a slot",
+        "description": "Adds a slot to the daily template. end_time must be after start_time. Slots may not overlap an active slot in the same period. status defaults to open.",
+        "x-current": { "note": "Not built." },
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateSlot" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "Slot created",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SlotEnvelope" } } }
+          },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/admin/slots/{slotId}": {
+      "patch": {
+        "tags": ["slots"],
+        "operationId": "adminUpdateSlot",
+        "summary": "Edit a slot",
+        "description": "Change label, period, times, sort_order, status or is_active. is_active false removes the slot from the customer list; there is no hard delete, because orders reference the slot. Editing the times does not move orders already booked on this slot: their pickup and delivery windows stay as stored.",
+        "x-current": { "note": "Not built." },
+        "parameters": [{ "$ref": "#/components/parameters/slotId" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateSlot" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Slot updated",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SlotEnvelope" } } }
+          },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/admin/slots/{slotId}/status": {
+      "put": {
+        "tags": ["slots"],
+        "operationId": "adminSetSlotStatus",
+        "summary": "Set slot status",
+        "description": "The quick control: open, too_busy or closed. too_busy and closed both stop new bookings and reschedules for that slot on every day, and differ only in the label the customer sees. Orders already booked are not touched.",
+        "x-current": { "note": "Not built." },
+        "parameters": [{ "$ref": "#/components/parameters/slotId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["status"],
+                "properties": { "status": { "$ref": "#/components/schemas/SlotStatus" } }
+              },
+              "example": { "status": "too_busy" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Status set",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SlotEnvelope" } } }
+          },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/admin/slot-settings": {
+      "put": {
+        "tags": ["slots"],
+        "operationId": "adminSetSlotSettings",
+        "summary": "Set the booking horizon",
+        "description": "How many days ahead the customer date chips go. Default 7. Read back in GET /admin/slots and GET /slots.",
+        "x-current": { "note": "Not built." },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["booking_horizon_days"],
+                "properties": { "booking_horizon_days": { "type": "integer", "minimum": 1, "maximum": 60 } }
+              },
+              "example": { "booking_horizon_days": 7 }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "data": {
+                      "type": "object",
+                      "required": ["booking_horizon_days"],
+                      "properties": { "booking_horizon_days": { "type": "integer" } }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "adminBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Role admin or owner."
+      }
+    },
+    "parameters": {
+      "slotId": {
+        "name": "slotId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "format": "uuid" }
+      }
+    },
+    "responses": {
+      "Error": {
+        "description": "Validation, auth, not found, or conflict",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+      }
+    },
+    "schemas": {
+      "SlotStatus": { "type": "string", "enum": ["open", "too_busy", "closed"] },
+      "SlotPeriod": { "type": "string", "enum": ["morning", "afternoon", "evening"] },
+      "Slot": {
+        "type": "object",
+        "required": ["slot_id", "label", "period", "start_time", "end_time", "status", "sort_order", "is_active"],
+        "properties": {
+          "slot_id": { "type": "string", "format": "uuid" },
+          "label": { "type": "string", "example": "8 - 9:30 am" },
+          "period": { "$ref": "#/components/schemas/SlotPeriod" },
+          "start_time": { "type": "string", "example": "08:00", "description": "HH:mm, IST." },
+          "end_time": { "type": "string", "example": "09:30", "description": "HH:mm, IST." },
+          "status": { "$ref": "#/components/schemas/SlotStatus" },
+          "sort_order": { "type": "integer" },
+          "is_active": { "type": "boolean" }
+        }
+      },
+      "CreateSlot": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label", "period", "start_time", "end_time"],
+        "properties": {
+          "label": { "type": "string", "maxLength": 50 },
+          "period": { "$ref": "#/components/schemas/SlotPeriod" },
+          "start_time": { "type": "string", "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$" },
+          "end_time": { "type": "string", "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$" },
+          "status": { "$ref": "#/components/schemas/SlotStatus" },
+          "sort_order": { "type": "integer" }
+        }
+      },
+      "UpdateSlot": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "label": { "type": "string", "maxLength": 50 },
+          "period": { "$ref": "#/components/schemas/SlotPeriod" },
+          "start_time": { "type": "string", "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$" },
+          "end_time": { "type": "string", "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$" },
+          "status": { "$ref": "#/components/schemas/SlotStatus" },
+          "sort_order": { "type": "integer" },
+          "is_active": { "type": "boolean" }
+        }
+      },
+      "SlotEnvelope": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "data": { "$ref": "#/components/schemas/Slot" }
+        }
+      },
+      "ListEnvelope": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "data": {
+            "type": "object",
+            "required": ["booking_horizon_days", "slots"],
+            "properties": {
+              "booking_horizon_days": { "type": "integer" },
+              "slots": { "type": "array", "items": { "$ref": "#/components/schemas/Slot" } }
+            }
+          }
+        }
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": ["success", "message"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [false] },
+          "message": { "type": "string" },
+          "errorCode": { "type": "string", "description": "VALIDATION_ERROR, SLOT_NOT_FOUND, SLOT_OVERLAP." }
+        }
+      }
+    }
+  }
+}

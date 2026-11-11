@@ -32,12 +32,13 @@ flowchart LR
 
 ## 1. Master spine (happy path)
 
-Ordinary order. Express skips schedule and jumps the service-queue band (diagram 9).
+Any order. Express only changes the service-queue band, the fee and the delivery buffer (diagram 9).
 
 ```mermaid
 flowchart TB
-  book([Customer books services]) --> confirm[Confirm: no item bill]
+  book([Customer: pickup card or cart]) --> confirm[Confirm: no item bill]
   confirm --> placed[Status: placed]
+  placed --> track0[Tracking opens: finding a partner]
   placed --> pSearch{Pickup instant?}
   pSearch -->|yes| pNow[Pickup search starts now]
   pSearch -->|no| pWait[Wait until pickup_time_from]
@@ -46,8 +47,8 @@ flowchart TB
   pWin -->|accept first write wins| pAsg[pickup_assigned]
   pWin -->|timeout| cmForce[CM force-assign: cannot reject]
   cmForce --> pAsg
-  pAsg --> track1[Customer tracking ON: Out for pickup]
-  track1 --> door[Boy: count / weigh / photo per service]
+  pAsg --> track1[Tracker: Out for pickup. Live pin]
+  track1 --> door[Boy: whole catalogue, cart services pre-selected. Count / weigh / photo per service]
   door --> draft[Server draft until Mark as picked up]
   draft --> markPU[Mark as picked up]
   markPU --> bill[(Bill written: services + DELIVERY_FEE + EXPRESS_FEE if any)]
@@ -92,15 +93,21 @@ flowchart TB
   home --> acct[Avatar: Account]
   pricingTab --> catList[Categories then services]
   catList --> svcPrice[Per service: Rs/kg AND cloth prices AND Includes]
+  home --> pcards[Pickup cards: Schedule or Instant. No cart]
   cat[Services: per kg OR per unit. No SKUs] --> cart[Cart: service + pricing type]
-  cart --> express{Express?}
-  express -->|yes| expGo[No schedule. Both legs instant. is_express]
-  express -->|no| modes[Pickup mode and delivery mode independently]
-  modes --> buf{Delivery date >= pickup + PICKUP_DELIVERY_BUFFER_DAYS?}
-  buf -->|no| modes
-  buf -->|yes| confirm
-  expGo --> confirm[Confirm: no itemised bill]
+  pcards --> opts[Delivery Options]
+  cart --> opts
+  opts --> exp[Express toggle: queue priority and fee only]
+  exp --> pm[Pickup: instant or scheduled slot]
+  pm --> dm[Delivery: instant or scheduled slot]
+  dm --> addr[Pickup and delivery address, instructions]
+  addr --> buf{Delivery date >= pickup + buffer? Ordinary 2 days, Express 1}
+  buf -->|no| pm
+  buf -->|yes| slotOk{Slots open?}
+  slotOk -->|no| pm
+  slotOk -->|yes| confirm[Slide to place. Confirm: no itemised bill]
   confirm --> placed[placed]
+  placed --> track[Tracking opens: finding a partner]
 ```
 
 ---
@@ -110,28 +117,29 @@ flowchart TB
 ```mermaid
 flowchart TB
   placed[placed: waiting or searching] --> act{Customer action?}
-  act -->|Cancel| reason[/Free-text reason/]
-  reason --> confC[Confirm]
+  act -->|Cancel| reason[/Are you sure? pop-up with reason options/]
+  reason --> confC[Yes]
   confC --> stopP[Stop pickup search and pending offers]
   stopP --> canx[(order_status cancelled)]
-  canx --> hist[History as Cancelled]
-  act -->|Reschedule| both[Change pickup and/or delivery]
-  both --> buf{delivery >= pickup + BUFFER_DAYS?}
-  buf -->|no| both
+  canx --> hist[Dropped from the orders list]
+  act -->|Reschedule| both[Change pickup slot on the card]
+  both --> buf{delivery >= pickup + buffer? Express 1 / ordinary 2}
+  buf -->|no| shift[Server moves delivery later and tells the app]
+  shift --> stop2
   buf -->|yes| stop2[Stop current search]
   stop2 --> when{New pickup instant or time reached?}
   when -->|yes| searchNow[Start search again]
   when -->|no| wait[Wait until pickup_time_from]
-  act -->|Boy already assigned| blocked[Cancel and Change schedule hidden]
+  act -->|Boy already assigned| blocked[Popup: pickup partner already started]
 ```
 
-After `pickup_assigned`: **no** cancel, **no** reschedule. Express: **no** Change schedule (nothing to schedule). Express cannot convert to ordinary. Cancel still allowed only before pickup assigned.
+After `pickup_assigned`: **no** cancel, **no** reschedule. Express orders can be rescheduled while `placed`, with the Express buffer. Express cannot convert to ordinary.
 
 ---
 
 ## 4. Pickup assignment engine (also drop)
 
-Config: `ASSIGNMENT_TIMEOUT_MINUTES` 5/10/20 · `ASSIGNMENT_RANGE_SLICES` 5 · `ASSIGNMENT_MAX_RANGE_KM` · on-shift only · Google Maps road distance.
+Config: `ASSIGNMENT_TIMEOUT_MINUTES` 5/10/20 · `ASSIGNMENT_RANGE_SLICES` 5 · `ASSIGNMENT_MAX_RANGE_KM` · on-shift only · haversine distance on the backend.
 
 ```mermaid
 flowchart TB
@@ -150,8 +158,8 @@ flowchart TB
 | Job | Starts when |
 |---|---|
 | Pickup instant | Place order |
-| Pickup scheduled | `pickup_time_from` |
-| Drop instant (incl. Express) | All service items completed |
+| Pickup scheduled | Slot start (`pickup_time_from`) |
+| Drop instant | All service items completed |
 | Drop scheduled | All completed **and** `now >= delivery_time_from` |
 | Drop scheduled, still in the future | No search. DM Assign disabled: Available from {time} |
 
@@ -165,8 +173,8 @@ Pickup-boy **one button**, three labels.
 
 ```mermaid
 flowchart TB
-  asg[pickup_assigned] --> ui[Service list: booked services + per kg / per unit]
-  ui --> exp[Expand: old customer item UI]
+  asg[pickup_assigned] --> ui[Whole catalogue. Cart services pre-selected and locked. Boy may add more]
+  ui --> exp[Expand a service: its cloth items]
   exp --> unit{Pricing?}
   unit -->|per unit| qty[Count catalogue items]
   unit -->|per kg| kg[ONE weight for the service]
@@ -174,7 +182,7 @@ flowchart TB
   kg --> pic
   pic --> more{All services filled?}
   more -->|no| ui
-  more -->|yes| mark[Button: Mark as picked up]
+  more -->|yes, at least one service| mark[Button: Mark as picked up]
   mark --> bill[(Bill: lines + DELIVERY_FEE + EXPRESS_FEE)]
   bill --> pu[picked_up]
   pu --> cust[Customer: Pickup done. View bill. Cannot pay]
@@ -249,7 +257,7 @@ Order leaves DM ready-to-dispatch at assignment; **history** shows delivered or 
 
 ## 8. Order status machine
 
-Customer tracker vs DB. Tracking screen **hidden until pickup_assigned**.
+Customer tracker vs DB. Tracking opens right after the order is confirmed (`placed`).
 
 ```mermaid
 stateDiagram-v2
@@ -271,7 +279,7 @@ stateDiagram-v2
 
 | DB status | Customer tracker |
 |---|---|
-| placed | No tracking |
+| placed | Finding a partner (no partner card, no live pin) |
 | pickup_assigned | Out for pickup |
 | picked_up | Pickup done |
 | submitted_to_cm / received_by_collection / submitted_to_services / services_in_progress | In Process |
@@ -286,15 +294,14 @@ stateDiagram-v2
 
 ```mermaid
 flowchart TB
-  pick([Checkout: Express]) --> noSked[No schedule UI]
-  noSked --> flags[is_express. Both legs instant]
+  pick([Delivery Options: Express toggle]) --> flags[is_express]
+  flags --> sched[Pickup and delivery modes, slots and rings exactly as ordinary]
+  flags --> buf[Delivery buffer: EXPRESS_BUFFER_DAYS 1 instead of 2]
   flags --> chip[Express chip on every role card including customer]
-  flags --> pNow[Pickup search immediately]
-  pNow --> same[Same door / CM / SM / DM / pay]
+  sched --> same[Same door / CM / SM / DM / pay]
   same --> fee[Bill adds EXPRESS_FEE admin variable]
   same --> q[Queue: after older Express, before ordinary]
   pick -.->|cannot| normal[Cannot convert to ordinary]
-  pick -.->|no| chg[No Change schedule]
 ```
 
 ---

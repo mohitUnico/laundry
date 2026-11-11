@@ -22,6 +22,13 @@ Spec: Part 6, diagram 3.4 and sequence 4.7.
 3. Accept path (Phase 3) already requires `placed`; verify the pair of conditional updates cannot both succeed.
 4. Lists: customer `GET /orders?bucket=active|history` (full DTO in Phase 10): cancelled orders appear only in history. CM incoming and pickup lists already exclude `cancelled`.
 
+## Updates from the 6 Nov orders-list design (contract: `backend/docs/api-contracts/customer/orders.openapi.json`)
+
+- Reschedule is allowed for Express too (contract version 0.3 onward) and is `PATCH /orders/:orderId` with `date + slot_id` per leg.
+- Delivery follows pickup: when only the pickup changes and the delivery date would be earlier than the new pickup date + buffer, the server moves the delivery in the same transaction (same slot if open, else first open slot; never earlier). Response has `delivery_shifted` and `delivery_shifted_from`. Beyond the horizon: 409 `OUTSIDE_BOOKING_HORIZON`; no open slot: 409 `DELIVERY_SHIFT_UNAVAILABLE`; nothing is saved. If the request sends a `delivery_*` field there is no shift and a buffer break is 409 `BUFFER_VIOLATION`.
+- Cancelled orders are on no customer list tab (task 4 above no longer applies until a cancelled card exists).
+- Cancel still requires `reason`; the app collects it in one "Are you sure you want to cancel?" pop-up.
+
 ## API contract
 
 | Method | Path | Body | Errors |

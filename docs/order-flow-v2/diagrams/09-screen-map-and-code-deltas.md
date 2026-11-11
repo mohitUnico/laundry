@@ -14,7 +14,7 @@ subgraph CS["Customer app"]
   c2["Pricing tab [c-pricing]"]
   c3["Services [c-services]"]
   c4["Cart [c-cart]"]
-  c5["Checkout [c-checkout] or Express [c-checkout-ex]"]
+  c5["Delivery Options: Express toggle, pickup and delivery slots, addresses, instructions"]
   c6["Orders [c-orders-placed] [c-orders-bill] [c-cancelled]"]
   c7["Tracking [c-track-*]"]
   c8["Pay UPI [c-pay]"]
@@ -48,6 +48,7 @@ subgraph AS["Admin"]
 end
 c0 --> c1 --> c3 --> c4 --> c5 --> c6 --> c7 --> c8 --> c9
 c1 --> c2
+c1 -->|"pickup cards, no cart"| c5
 c1 --> c10
 c1 --> c11
 p1 --> p2 --> p3 --> p4 --> p5
@@ -62,7 +63,10 @@ k1 --> k2 --> k3 --> k4
 
 | Area | Today | Needs |
 |---|---|---|
-| Booking | Cloth SKUs required for per unit; order_type pickup/drop/both | Services only; always both; modes; is_express; no bill at place |
+| Booking | Cart required; cloth SKUs not needed; modes and Express exist; Express forces instant and forbids times | Cart optional (pickup cards create orders with no lines); Express = priority only with its own buffer; admin slots with date + slot_id; no bill at place |
+| Slots | None; free-form timestamps | Daily slot template, status open / too_busy / closed, slot admin API, slot API for the app |
+| Address | Any location accepted | SERVICE_AREA_KM radius check on add and edit |
+| Door catalogue | Only the booked services | Whole catalogue; cart services pre-selected and locked; at least one line to confirm |
 | Assignment | Fixed expiry, send-to-all, 2 retries | Rings, one timeout, on-shift, manager only after timeout, drop twin |
 | Door | Weight on existing lines; one proof | Expander per service; one photo each; draft; bill on Mark |
 | Submit to CM | One tap completes pickup delivery | Request vs CM receive; delivery completes on receive |
@@ -72,6 +76,6 @@ k1 --> k2 --> k3 --> k4
 | Delivery status | dispatch_assigned → start → out_for_delivery | out_for_delivery on assign |
 | Payment | Status PATCH; cod/card/wallet; dropped without pay check | PSP UPI + coupon; cash fallback; gate delivered on paid |
 | Cancel | Stub dialog | Real cancel + reason; history |
-| Customer UI | 5-step tracker, 4 tabs incl Account | 6 steps, Pricing tab, avatar → Account, How we work, footer |
+| Customer UI | 5-step tracker, 4 tabs incl Account | 6 steps, tracking open from placed, Pricing tab, avatar → Account, How we work, footer |
 
 Related files: `order-flow-spec.md` · `../ui-prototype/index.html`

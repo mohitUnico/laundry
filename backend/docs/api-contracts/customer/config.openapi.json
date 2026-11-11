@@ -13,11 +13,11 @@
       "get": {
         "tags": ["config"],
         "operationId": "getCustomerConfig",
-        "summary": "Fees and schedule rules",
-        "description": "Delivery Charges is delivery_fee. A value of 0 is Free. Express Wash does not add a second delivery charge; express_fee is the express surcharge, also snapshotted later onto the bill. Laundry charges are not in this response. There is no handling fee.",
+        "summary": "Fees and buffer rules",
+        "description": "Delivery Charges is delivery_fee. A value of 0 is Free. Express adds no second delivery charge; express_fee is the express surcharge, also snapshotted later onto the bill. Express is queue priority only, so it has no effect on the pickup or delivery modes. pickup_delivery_buffer_days is the minimum gap in calendar days between the pickup date and the delivery date for an ordinary order; express_buffer_days is the same for an Express order. The app uses them to set the earliest delivery date chip and the Earliest subtitle. Laundry charges are not in this response. There is no handling fee.",
         "x-current": {
           "path": "GET /api/v1/config",
-          "note": "The live route is public and does not require a customer token. DELIVERY_FEE and EXPRESS_FEE are not in the public payload today. pickupDeliveryBufferDays is."
+          "note": "The live route is public and does not require a customer token. DELIVERY_FEE and EXPRESS_FEE are not in the public payload today. pickupDeliveryBufferDays is. express_buffer_days does not exist yet."
         },
         "responses": {
           "200": {
@@ -30,7 +30,8 @@
                   "data": {
                     "delivery_fee": "0.00",
                     "express_fee": "0.00",
-                    "pickup_delivery_buffer_days": 2
+                    "pickup_delivery_buffer_days": 2,
+                    "express_buffer_days": 1
                   }
                 }
               }
@@ -62,11 +63,12 @@
     "schemas": {
       "CustomerConfig": {
         "type": "object",
-        "required": ["delivery_fee", "express_fee", "pickup_delivery_buffer_days"],
+        "required": ["delivery_fee", "express_fee", "pickup_delivery_buffer_days", "express_buffer_days"],
         "properties": {
           "delivery_fee": { "type": "string" },
           "express_fee": { "type": "string" },
-          "pickup_delivery_buffer_days": { "type": "integer", "minimum": 0 }
+          "pickup_delivery_buffer_days": { "type": "integer", "minimum": 0, "description": "Ordinary orders. Default 2." },
+          "express_buffer_days": { "type": "integer", "minimum": 0, "description": "Express orders. Default 1." }
         }
       },
       "Envelope": {

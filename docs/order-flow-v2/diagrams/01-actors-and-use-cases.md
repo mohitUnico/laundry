@@ -26,7 +26,7 @@ subgraph sys["Backend and services"]
   pg[("PostgreSQL")]
   rq["Redis plus BullMQ assignment queue"]
   sse["SSE hub in memory staff offers"]
-  gm["Google Maps distance and Directions"]
+  gm["Google Directions in the app. Backend ring distance is haversine"]
   fcm["FCM and WhatsApp status push"]
   psp["PSP UPI intent merchant account"]
 end
@@ -60,9 +60,9 @@ flowchart LR
 subgraph UCc["Customer"]
   c1(["Browse Pricing tab: kg price, cloth prices, Includes"])
   c2(["Read How we work: 6 steps"])
-  c3(["Book services: per kg or per unit, no SKUs"])
-  c4(["Choose Express: no schedule"])
-  c5(["Schedule pickup and delivery independently"])
+  c3(["Book via pickup cards or cart: services per kg or per unit, no SKUs"])
+  c4(["Choose Express: queue priority and fee"])
+  c5(["Pick pickup and delivery independently: instant or an admin slot"])
   c6(["Cancel with reason: before assigned"])
   c7(["Reschedule: before assigned"])
   c8(["Track: map, name, phone, photo"])
@@ -73,7 +73,7 @@ subgraph UCc["Customer"]
 end
 subgraph UCp["Pickup boy"]
   p1(["Accept offer or be force-assigned"])
-  p2(["Count per service: units or one weight"])
+  p2(["Count per service: units or one weight. Add services not booked"])
   p3(["One photo per service: camera or gallery"])
   p4(["Draft autosave"])
   p5(["Mark as picked up"])
@@ -108,8 +108,9 @@ subgraph UCd["Delivery captain"]
 end
 subgraph UCa["Admin"]
   a1(["Edit DELIVERY_FEE and EXPRESS_FEE"])
-  a2(["Edit assignment timeout, slices, max range, buffer days"])
+  a2(["Edit assignment timeout, slices, max range, buffer days, service area"])
   a3(["Manage coupons existing table"])
+  a4(["Manage delivery slots and slot status"])
 end
 c4 -.->|"extends"| c3
 c10 -.->|"includes"| c9

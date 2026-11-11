@@ -17,23 +17,23 @@ participant W as BullMQ worker
 participant GM as Google Maps
 participant PA as Pickup boy app
 actor CM as Collection manager
-C->>CA: confirm cart plus modes or Express
-CA->>API: POST order services pricing_type modes is_express
-API->>DB: insert Order placed no Bill
-API-->>CA: order placed
-alt instant or Express
+C->>CA: slide to place (pickup card or cart, modes, slots, Express flag)
+CA->>API: POST order optional cart_id, modes, date plus slot_id, addresses, is_express
+API->>DB: check slots open and buffer, insert Order placed no Bill, service lines only if cart
+API-->>CA: order placed, tracking opens as finding a partner
+alt pickup instant
   API->>W: start pickup search now
 else scheduled
   API->>W: schedule at pickup_time_from
 end
 loop slice 1 to 5 over ASSIGNMENT_TIMEOUT
   W->>DB: load on-shift staff and last location
-  W->>GM: road distance to pickup
+  W->>W: haversine distance to pickup
   W->>PA: SSE offer to staff in ring not yet pinged
   opt a staff accepts
     PA->>API: accept offer
     API->>DB: first writer wins pickup_assigned
-    API-->>CA: status push and tracking unlocked
+    API-->>CA: status push: Out for pickup
   end
 end
 opt timeout and nobody accepted
@@ -41,7 +41,7 @@ opt timeout and nobody accepted
   CM->>API: direct assign staff
   API->>DB: pickup_assigned
   API->>PA: SSE assigned to you cannot reject
-  API-->>CA: tracking unlocked
+  API-->>CA: status push: Out for pickup
 end
 
 ```
@@ -58,8 +58,8 @@ participant DB as PostgreSQL
 participant ST as Object storage
 actor C as Customer
 P->>PA: open assigned order
-PA->>API: GET booked services with per kg or per unit
-loop each booked service
+PA->>API: GET order, full catalogue and any cart services
+loop each service (cart services first, plus any he adds)
   P->>PA: expand service
   alt per unit
     P->>PA: set counts from that service catalogue
@@ -74,7 +74,7 @@ end
 Note over PA,API: app killed: reopen GET draft from DB
 P->>PA: Mark as picked up
 PA->>API: POST confirm pickup
-API->>DB: validate all services filled
+API->>DB: validate at least one service and all services filled
 API->>DB: compute Bill lines plus DELIVERY_FEE plus EXPRESS_FEE
 API->>DB: items_confirmed true and Order picked_up
 API-->>C: push Pickup done and View bill
@@ -160,7 +160,7 @@ actor DM as Distribution manager
 participant DB as PostgreSQL
 actor C as Customer
 API->>API: services_completed
-alt Express or delivery instant
+alt delivery instant
   API->>W: start drop search now
 else scheduled and time reached or already past
   API->>W: start drop search now
@@ -169,7 +169,7 @@ else scheduled and still in future
   Note over W: no search until delivery_time_from
 end
 loop slice 1 to 5
-  W->>GM: distance to drop address
+  W->>W: haversine distance to drop address
   W->>KA: SSE drop offer for staff in ring
   opt captain accepts
     KA->>API: accept drop offer
@@ -256,8 +256,8 @@ alt Cancel
   API-->>CA: history Cancelled
 else Reschedule
   C->>CA: change pickup and or delivery
-  CA->>API: PATCH schedule
-  API->>API: delivery at least pickup plus PICKUP_DELIVERY_BUFFER_DAYS
+  CA->>API: PATCH schedule with date plus slot_id
+  API->>API: slots open and delivery at least pickup plus buffer (EXPRESS_BUFFER_DAYS or PICKUP_DELIVERY_BUFFER_DAYS)
   API->>W: stop current search
   alt new pickup now or reached
     API->>W: start search again
@@ -266,6 +266,6 @@ else Reschedule
   end
   API-->>CA: updated order
 end
-Note over CA,API: after pickup_assigned both actions are hidden and rejected
+Note over CA,API: after pickup_assigned tapping either button opens a popup and the API rejects both
 
 ```

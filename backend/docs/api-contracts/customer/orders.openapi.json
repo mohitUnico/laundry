@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Customer orders",
-    "version": "0.2.0",
-    "description": "Place an order, list it, read its detail and bill, change the schedule or cancel only after place and before pickup is assigned, and download the invoice. Partial customer-app contract."
+    "version": "0.5.0",
+    "description": "Place an order (from a pickup card with no cart, or from the cart), list it, read its detail, bill and tracking, change the schedule or cancel only after place and before pickup is assigned, and download the invoice. Scheduled legs are booked as a date plus an admin slot (see slots.openapi.json). The orders list drives three card types (upcoming_pickup, in_progress, delivered) from one card_type field. Order detail splits pre-pickup placeholders from post-pickup category → service → cloth hierarchy, with a brief bill that expands to a line-item sheet. Partial customer-app contract."
   },
   "servers": [{ "url": "/api/v1" }],
   "tags": [{ "name": "orders" }],
@@ -14,16 +14,17 @@
         "tags": ["orders"],
         "operationId": "listMyOrders",
         "summary": "List my orders",
-        "description": "Active tab and Completed tab. active is every order that is not delivered and not cancelled. completed is delivered only. The Upcoming Pickup card is the active row the app chooses; it is not a separate call. Each row carries the fields that card and the order tile need: express flag, services, pickup window, address, item count, and bill.",
+        "description": "The Orders screen: All, Active and Completed tabs. status=all is active plus delivered, status=active is every order that is not delivered and not cancelled, status=completed is delivered only. Cancelled orders are on none of the tabs (there is no cancelled card yet).\n\nEvery row has card_type, which decides the card, so the app does not re-derive it from order_status:\n- upcoming_pickup: order_status placed or pickup_assigned. The pickup has not been done. Card shows the pickup date and slot (or Instant pickup), the pickup address, and Change Schedule and Cancel. While placed those buttons work. While pickup_assigned (can_cancel and can_reschedule false) tapping either opens a popup ('Order cannot be cancelled' / 'Schedule cannot be changed', with 'Pickup partner has already started.'). Tapping the card opens View Details.\n- in_progress: order_status picked_up, submitted_to_cm, received_by_collection, submitted_to_services, services_in_progress, services_completed or out_for_delivery. The door count is done, so at least one service line exists. Card header 'In progress', buttons View details and Track on map.\n- delivered: order_status delivered. Same card with header 'Delivered' and View details only.\n\nOrder of rows (server side, so pagination is stable): upcoming_pickup first, soonest pickup first, an instant pickup (no date) counts as now; then in_progress, newest created_at first; then delivered, newest created_at first. is_express is shown as the Express chip at the top of every card type.\n\nCard text rules, all from fields on the row: title is the card heading (Mixed when the order has more than one service line, otherwise that service's name, Laundry pickup before the door count). The line under it is built from item_count and total_weight_kg: item_count only '6 Items'; total_weight_kg only '3.5 kg'; both '6 Items - 3.5 kg'; neither, no line (only possible on upcoming_pickup). Right column and upcoming date line come from pickup_date and pickup_slot.label, or created_at and 'Instant' when pickup_mode is instant. The price on in_progress and delivered cards is bill.final_amount when bill.generated is true.\n\nThe Change Schedule sheet preselects pickup_date and pickup_slot.slot_id from the row; no extra call is needed beyond GET /slots.",
         "x-current": {
           "path": "GET /api/v1/orders?bucket=active|history",
-          "note": "history is delivered plus cancelled. This contract uses status=completed for delivered only."
+          "note": "history is delivered plus cancelled. This contract uses status=completed for delivered only and adds status=all. card_type, title, item_count semantics and total_weight_kg are new; today the app derives them on the phone."
         },
         "parameters": [
           {
             "name": "status",
             "in": "query",
-            "schema": { "type": "string", "enum": ["active", "completed"], "default": "active" }
+            "description": "all = active + delivered. Cancelled orders are never returned.",
+            "schema": { "type": "string", "enum": ["all", "active", "completed"], "default": "active" }
           },
           {
             "name": "page",
@@ -41,7 +42,105 @@
             "description": "Order list",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ListEnvelope" }
+                "schema": { "$ref": "#/components/schemas/ListEnvelope" },
+                "examples": {
+                  "allTab": {
+                    "summary": "status=all: one row of each card type",
+                    "value": {
+                      "success": true,
+                      "data": {
+                        "orders": [
+                          {
+                            "order_id": "55555555-5555-4555-8555-555555555555",
+                            "order_status": "placed",
+                            "card_type": "upcoming_pickup",
+                            "title": "Laundry pickup",
+                            "is_express": true,
+                            "created_at": "2026-11-06T05:10:00.000Z",
+                            "pickup_mode": "scheduled",
+                            "pickup_date": "2026-12-02",
+                            "pickup_slot": { "slot_id": "66666666-6666-4666-8666-666666666666", "label": "8 - 9:30 am" },
+                            "pickup_time_from": "2026-12-02T02:30:00.000Z",
+                            "pickup_time_to": "2026-12-02T04:00:00.000Z",
+                            "pickup_address": { "address_id": "a1b2c3d4-e5f6-4789-a012-3456789abcde", "address_label": "home", "full_address": "18 Lake View Road" },
+                            "services": [],
+                            "item_count": null,
+                            "total_weight_kg": null,
+                            "can_cancel": true,
+                            "can_reschedule": true,
+                            "bill": { "generated": false }
+                          },
+                          {
+                            "order_id": "55555555-5555-4555-8555-555555555556",
+                            "order_status": "pickup_assigned",
+                            "card_type": "upcoming_pickup",
+                            "title": "Laundry pickup",
+                            "is_express": false,
+                            "created_at": "2026-11-06T07:40:00.000Z",
+                            "pickup_mode": "instant",
+                            "pickup_date": null,
+                            "pickup_slot": null,
+                            "pickup_time_from": null,
+                            "pickup_time_to": null,
+                            "pickup_address": { "address_id": "a1b2c3d4-e5f6-4789-a012-3456789abcde", "address_label": "home", "full_address": "123 Main St, Apartment 4B" },
+                            "services": [],
+                            "item_count": null,
+                            "total_weight_kg": null,
+                            "can_cancel": false,
+                            "can_reschedule": false,
+                            "bill": { "generated": false }
+                          },
+                          {
+                            "order_id": "55555555-5555-4555-8555-555555555557",
+                            "order_status": "services_in_progress",
+                            "card_type": "in_progress",
+                            "title": "Mixed",
+                            "is_express": true,
+                            "created_at": "2026-11-04T09:00:00.000Z",
+                            "pickup_mode": "scheduled",
+                            "pickup_date": "2026-11-04",
+                            "pickup_slot": { "slot_id": "77777777-7777-4777-8777-777777777777", "label": "5 - 6:30 pm" },
+                            "pickup_time_from": "2026-11-04T11:30:00.000Z",
+                            "pickup_time_to": "2026-11-04T13:00:00.000Z",
+                            "pickup_address": { "address_id": "a1b2c3d4-e5f6-4789-a012-3456789abcde", "address_label": "home", "full_address": "123 Main St, Apartment 4B" },
+                            "services": [
+                              { "service_id": "11111111-1111-4111-8111-111111111111", "service_name": "Dry Cleaning", "pricing_type": "per_unit" },
+                              { "service_id": "22222222-2222-4222-8222-222222222222", "service_name": "Wash & Fold", "pricing_type": "per_kg" }
+                            ],
+                            "item_count": 6,
+                            "total_weight_kg": "3.50",
+                            "can_cancel": false,
+                            "can_reschedule": false,
+                            "bill": { "generated": true, "bill_id": "99999999-9999-4999-8999-999999999999", "subtotal": "500.00", "delivery_fee": "30.00", "express_fee": "50.00", "tax_amount": "0.00", "discount": "0.00", "final_amount": "580.00", "payment_status": "pending", "payment_method": null, "coupon_code": null, "paid_at": null }
+                          },
+                          {
+                            "order_id": "55555555-5555-4555-8555-555555555558",
+                            "order_status": "delivered",
+                            "card_type": "delivered",
+                            "title": "Wash & Iron",
+                            "is_express": false,
+                            "created_at": "2026-10-20T09:00:00.000Z",
+                            "pickup_mode": "scheduled",
+                            "pickup_date": "2026-10-20",
+                            "pickup_slot": { "slot_id": "66666666-6666-4666-8666-666666666666", "label": "8 - 9:30 am" },
+                            "pickup_time_from": "2026-10-20T02:30:00.000Z",
+                            "pickup_time_to": "2026-10-20T04:00:00.000Z",
+                            "pickup_address": { "address_id": "a1b2c3d4-e5f6-4789-a012-3456789abcde", "address_label": "home", "full_address": "123 Main St, Apartment 4B" },
+                            "services": [
+                              { "service_id": "33333333-3333-4333-8333-333333333333", "service_name": "Wash & Iron", "pricing_type": "per_unit" }
+                            ],
+                            "item_count": 8,
+                            "total_weight_kg": null,
+                            "can_cancel": false,
+                            "can_reschedule": false,
+                            "bill": { "generated": true, "bill_id": "99999999-9999-4999-8999-999999999998", "subtotal": "380.00", "delivery_fee": "30.00", "express_fee": "0.00", "tax_amount": "0.00", "discount": "0.00", "final_amount": "410.00", "payment_status": "completed", "payment_method": "upi", "coupon_code": null, "paid_at": "2026-10-23T11:00:00.000Z" }
+                          }
+                        ],
+                        "pagination": { "page": 1, "limit": 20, "total": 4 }
+                      }
+                    }
+                  }
+                }
               }
             }
           },
@@ -50,12 +149,13 @@
       },
       "post": {
         "tags": ["orders"],
-        "operationId": "createOrderFromCart",
+        "operationId": "placeOrder",
         "summary": "Place the order",
-        "description": "Delivery Options slide action. Creates status placed and returns the Order Successful payload. Express Wash is is_express and forces both legs instant. Instant collect is pickup_mode instant. Schedule writes pickup_time_from and pickup_time_to. Bring-it-back Express on the screen is delivery_mode instant, not a second express flag. Schedule for the return writes delivery_time_from and delivery_time_to. The date chips and 30-minute slots are built on the phone; the server stores the window. special_instructions is the care note, at most 500 characters. No bill row is written.",
+        "description": "Delivery Options slide action. Creates status placed and returns the Order Successful payload; the app then opens tracking. Two ways in. Pickup card (Schedule pick up or Instant pick up): send no cart_id. The order has no service lines and items is []; the pickup partner records every service at the door. Cart: send cart_id. The order gets one service line per cart line with its pricing_type, and the cart is deleted. Everything else is identical.\n\nis_express is queue priority, a badge and express_fee only. It does not change pickup_mode, delivery_mode or the slots. Express uses the shorter buffer EXPRESS_BUFFER_DAYS; ordinary orders use PICKUP_DELIVERY_BUFFER_DAYS. Pickup and delivery each take instant or scheduled, in any mix. A scheduled leg needs <leg>_date (YYYY-MM-DD, IST) and <leg>_slot_id from GET /slots; an instant leg must not send them. The server derives <leg>_time_from and <leg>_time_to from the slot and stores them; clients never send times. The delivery date must be on or after the pickup date plus the buffer. An instant delivery has no date; its earliest date is the pickup date plus the buffer. Both address ids must belong to the customer. Serviceability is not re-checked here; it is checked when an address is added or edited. special_instructions is the care note, at most 500 characters. No bill row is written.\n\nErrors: 400 VALIDATION_ERROR (bad shape, slot or date missing on a scheduled leg, slot or date sent on an instant leg); 404 CART_NOT_FOUND, ADDRESS_NOT_FOUND, SLOT_NOT_FOUND; 409 CART_EMPTY, SERVICE_UNAVAILABLE, SLOT_TOO_BUSY, SLOT_CLOSED, SLOT_STARTED, OUTSIDE_BOOKING_HORIZON, BUFFER_VIOLATION.",
         "x-current": {
           "path": "POST /api/v1/orders/create_order",
-          "storage": "orders, order_items, deliveries, pickup_for_delivery, drop_for_delivery. The cart row is deleted. bills is not written."
+          "storage": "orders, order_items, deliveries, pickup_for_delivery, drop_for_delivery. The cart row is deleted. bills is not written.",
+          "note": "Today cart_id is required, Express forces both legs instant and forbids time fields, and the request carries pickup_time_from and the other time fields directly. There is no slot table and no EXPRESS_BUFFER_DAYS."
         },
         "requestBody": {
           "required": true,
@@ -63,29 +163,42 @@
             "application/json": {
               "schema": { "$ref": "#/components/schemas/CreateOrder" },
               "examples": {
-                "express": {
-                  "summary": "Express Wash",
+                "instantPickupCard": {
+                  "summary": "Instant pick up card, no cart",
                   "value": {
-                    "cart_id": "44444444-4444-4444-8444-444444444444",
                     "pickup_address_id": "a1b2c3d4-e5f6-4789-a012-3456789abcde",
                     "delivery_address_id": "b2c3d4e5-f6a7-4890-b123-456789abcdef",
-                    "is_express": true,
+                    "is_express": false,
+                    "pickup_mode": "instant",
+                    "delivery_mode": "instant",
                     "special_instructions": "Call on arrival"
                   }
                 },
-                "scheduled": {
-                  "summary": "Scheduled collect and return",
+                "scheduledPickupCard": {
+                  "summary": "Schedule pick up card, no cart, Express",
+                  "value": {
+                    "pickup_address_id": "a1b2c3d4-e5f6-4789-a012-3456789abcde",
+                    "delivery_address_id": "b2c3d4e5-f6a7-4890-b123-456789abcdef",
+                    "is_express": true,
+                    "pickup_mode": "scheduled",
+                    "pickup_date": "2026-11-09",
+                    "pickup_slot_id": "66666666-6666-4666-8666-666666666666",
+                    "delivery_mode": "scheduled",
+                    "delivery_date": "2026-11-10",
+                    "delivery_slot_id": "77777777-7777-4777-8777-777777777777"
+                  }
+                },
+                "fromCart": {
+                  "summary": "From the cart, instant pickup, scheduled return",
                   "value": {
                     "cart_id": "44444444-4444-4444-8444-444444444444",
                     "pickup_address_id": "a1b2c3d4-e5f6-4789-a012-3456789abcde",
                     "delivery_address_id": "b2c3d4e5-f6a7-4890-b123-456789abcdef",
                     "is_express": false,
-                    "pickup_mode": "scheduled",
-                    "pickup_time_from": "2026-12-17T11:30:00.000Z",
-                    "pickup_time_to": "2026-12-17T12:00:00.000Z",
+                    "pickup_mode": "instant",
                     "delivery_mode": "scheduled",
-                    "delivery_time_from": "2026-12-19T11:30:00.000Z",
-                    "delivery_time_to": "2026-12-19T12:00:00.000Z",
+                    "delivery_date": "2026-11-11",
+                    "delivery_slot_id": "77777777-7777-4777-8777-777777777777",
                     "special_instructions": "Do not starch the shirts"
                   }
                 }
@@ -114,7 +227,7 @@
         "tags": ["orders"],
         "operationId": "getMyOrder",
         "summary": "Order details",
-        "description": "View Details. Items are grouped by service. A per_kg line has weight_kg and per_kg_price. A per_unit line has selections (item_name and quantity). Prices on a line are catalogue prices before the bill exists, and the snapshotted unit_price after it exists. bill is always an object. Before the door count, bill is { generated: false }. After it, bill.generated is true and the summary lines are the bill columns.",
+        "description": "View Details. Before pickup is done (order_status placed or pickup_assigned): items is [] (or may still hold cart stubs without counts), item_count is null, bill is { generated: false }. The app does not list lines or fees yet; Items Summary shows 'Order items will be updated after pickup' and Bill Summary shows 'Bill will be generated after pickup is done'. After Mark as picked up: items are filled from the door count, bill.generated is true, and the app draws Items Summary as category → service → cloth items (each DetailItem must include category_name so the phone can group). The on-screen Bill Summary is brief (item total count, handling, pickup, delivery, to pay). Tapping it opens an expanded sheet with the same hierarchy plus line prices and the fee rows. A per_kg line has weight_kg and per_kg_price. A per_unit line has selections (item_name, quantity, unit_price after the bill). Prices on a line are catalogue prices before the bill exists, and the snapshotted unit_price after it exists.",
         "x-current": {
           "path": "GET /api/v1/orders/:orderId",
           "note": "The live detail uses camelCase and bill: null when no bill row exists."
@@ -134,13 +247,19 @@
                       "data": {
                         "order_id": "55555555-5555-4555-8555-555555555555",
                         "order_status": "placed",
+                        "card_type": "upcoming_pickup",
+                        "title": "Laundry pickup",
                         "is_express": false,
                         "pickup_mode": "scheduled",
                         "delivery_mode": "scheduled",
-                        "pickup_time_from": "2026-12-17T12:30:00.000Z",
-                        "pickup_time_to": "2026-12-17T13:00:00.000Z",
-                        "delivery_time_from": "2026-12-19T12:30:00.000Z",
-                        "delivery_time_to": "2026-12-19T13:00:00.000Z",
+                        "pickup_date": "2026-11-09",
+                        "pickup_slot": { "slot_id": "66666666-6666-4666-8666-666666666666", "label": "8 - 9:30 am" },
+                        "pickup_time_from": "2026-11-09T02:30:00.000Z",
+                        "pickup_time_to": "2026-11-09T04:00:00.000Z",
+                        "delivery_date": "2026-11-11",
+                        "delivery_slot": { "slot_id": "77777777-7777-4777-8777-777777777777", "label": "5 - 6:30 pm" },
+                        "delivery_time_from": "2026-11-11T11:30:00.000Z",
+                        "delivery_time_to": "2026-11-11T13:00:00.000Z",
                         "special_instructions": null,
                         "can_cancel": true,
                         "can_reschedule": true,
@@ -173,10 +292,10 @@
         "tags": ["orders"],
         "operationId": "updateMyOrder",
         "summary": "Change schedule or address",
-        "description": "Change Schedule. Schedule fields are accepted only while order_status is placed, which is after the order exists and before a pickup partner is assigned. pickup_assigned and every later status return 409. Express orders stay instant, so schedule fields are also rejected when is_express is true. Address ids, when sent, follow the same placed window and must belong to this customer. At least one field is required. A schedule change restarts pickup search.",
+        "description": "Change Schedule. Accepted only while order_status is placed, which is after the order exists and before a pickup partner is assigned. pickup_assigned and every later status return 409. Express orders can be rescheduled in the same window; is_express itself cannot be changed. A leg is changed by sending its mode and, when scheduled, its date and slot_id, exactly as in place order. Sending a leg as instant clears its date, slot and times. The same slot, horizon and buffer validation applies (EXPRESS_BUFFER_DAYS for Express, PICKUP_DELIVERY_BUFFER_DAYS otherwise), checked against the order after the change. Address ids, when sent, follow the same placed window and must belong to this customer. At least one field is required. A schedule change stops the running pickup search and its offers. If the pickup is now instant or its slot has started, the search starts again immediately; otherwise it waits for the new slot start.\n\nThe Upcoming Pickup card's Change Schedule sends the pickup leg only. An instant pickup can be changed to scheduled this way (pickup_mode scheduled, date, slot_id).\n\nDelivery follows the pickup automatically. When the request changes the pickup leg and sends no delivery_* field, and the order has a scheduled delivery whose date is earlier than the new pickup date plus the buffer (EXPRESS_BUFFER_DAYS for Express, PICKUP_DELIVERY_BUFFER_DAYS otherwise), the server moves the delivery in the same write: delivery_date becomes the new pickup date plus the buffer, delivery_slot_id stays if that slot is open, otherwise the first open slot by sort_order. Delivery is only ever moved later, never earlier. An instant delivery has no date, so nothing moves. The response then has delivery_shifted true and delivery_shifted_from with the previous date and slot, and the app tells the customer 'Delivery moved to <date>'. If the new date is beyond the booking horizon the whole change is rejected with OUTSIDE_BOOKING_HORIZON; if that date has no open slot it is rejected with DELIVERY_SHIFT_UNAVAILABLE. Nothing is saved on a rejection. When the request itself sends a delivery_* field the server does not shift anything and a buffer break is rejected with BUFFER_VIOLATION.\n\nErrors: 400 VALIDATION_ERROR; 404 ORDER_NOT_FOUND, ADDRESS_NOT_FOUND, SLOT_NOT_FOUND; 409 ORDER_NOT_RESCHEDULABLE (message: the pickup partner has already started), SLOT_TOO_BUSY, SLOT_CLOSED, SLOT_STARTED, OUTSIDE_BOOKING_HORIZON, BUFFER_VIOLATION, DELIVERY_SHIFT_UNAVAILABLE.",
         "x-current": {
           "path": "PATCH /api/v1/orders/:orderId/schedule",
-          "note": "The live route changes the time window only. It does not change pickup_address_id or delivery_address_id."
+          "note": "The live route changes the time window only, takes raw time fields, rejects Express, and does not change pickup_address_id or delivery_address_id."
         },
         "parameters": [{ "$ref": "#/components/parameters/orderId" }],
         "requestBody": {
@@ -189,10 +308,10 @@
         },
         "responses": {
           "200": {
-            "description": "Updated order",
+            "description": "Updated order. delivery_shifted is true when the server moved the delivery to keep the buffer.",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/DetailEnvelope" }
+                "schema": { "$ref": "#/components/schemas/UpdatedEnvelope" }
               }
             }
           },
@@ -208,7 +327,7 @@
         "tags": ["orders"],
         "operationId": "cancelMyOrder",
         "summary": "Cancel the order",
-        "description": "Cancel on the Upcoming Pickup card. Allowed only while order_status is placed: after place, before a pickup partner is assigned. pickup_assigned and every later status return 409. reason is required, 3 to 500 characters. The order stays in the database with order_status cancelled.",
+        "description": "Cancel on the Upcoming Pickup card. While placed, the card opens one 'Are you sure you want to cancel?' pop-up that holds the reason options and Yes / No; Yes sends this call. Allowed only while order_status is placed: after place, before a pickup partner is assigned. pickup_assigned and every later status return 409 ORDER_NOT_CANCELLABLE; the app shows a popup 'Order cannot be cancelled. Pickup partner has already started.' and does not call this endpoint. reason is required, 3 to 500 characters, plain text. The app sends the chosen preset label ('Change of plans', 'Booked by mistake', 'Pickup is taking too long') or, for 'Something else', the text the customer typed. The presets live in the app; there is no reason catalogue on the server. The order stays in the database with order_status cancelled and drops off the orders list.",
         "x-current": { "path": "POST /api/v1/orders/:orderId/cancel" },
         "parameters": [{ "$ref": "#/components/parameters/orderId" }],
         "requestBody": {
@@ -245,6 +364,65 @@
             }
           },
           "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/orders/{orderId}/tracking": {
+      "get": {
+        "tags": ["orders"],
+        "operationId": "getMyOrderTracking",
+        "summary": "Tracking",
+        "description": "The map tracking screen. It opens right after Order confirmed, so it answers from placed onward; there is no tracking_available switch. tracker_step is the six-step tracker plus finding_partner before the first step. While order_status is placed (finding_partner) partner and partner_location are null and the map pin is pickup_address. From pickup_assigned the pickup partner card and live pin are filled (delivery_leg pickup). From out_for_delivery the drop captain is filled (delivery_leg drop). Between those, partner is null. Call and message on the screen are placeholders; partner.phone is display only. The app draws Google Directions itself and re-routes at most once every directions_refresh_seconds. A cancelled order returns 409 ORDER_CANCELLED; it is shown in history, not tracked.\n\nMapping: placed finding_partner; pickup_assigned out_for_pickup; picked_up pickup_done; submitted_to_cm, received_by_collection, submitted_to_services, services_in_progress in_process; services_completed ready; out_for_delivery out_for_delivery; delivered delivered.",
+        "x-current": {
+          "path": "GET /api/v1/orders/:orderId/tracking",
+          "note": "Today the response is camelCase, returns trackingAvailable false for placed and cancelled, and has no tracker_step, addresses or partner_location."
+        },
+        "parameters": [{ "$ref": "#/components/parameters/orderId" }],
+        "responses": {
+          "200": {
+            "description": "Tracking state",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TrackingEnvelope" },
+                "examples": {
+                  "findingPartner": {
+                    "summary": "Just placed",
+                    "value": {
+                      "success": true,
+                      "data": {
+                        "order_id": "55555555-5555-4555-8555-555555555555",
+                        "order_status": "placed",
+                        "tracker_step": "finding_partner",
+                        "is_express": false,
+                        "delivery_leg": "pickup",
+                        "partner": null,
+                        "partner_location": null,
+                        "directions_refresh_seconds": 120,
+                        "pickup_address": {
+                          "address_id": "a1b2c3d4-e5f6-4789-a012-3456789abcde",
+                          "address_label": "home",
+                          "full_address": "123 Main St, Apartment 4B",
+                          "latitude": "12.97159870",
+                          "longitude": "77.59456270"
+                        },
+                        "delivery_address": {
+                          "address_id": "b2c3d4e5-f6a7-4890-b123-456789abcdef",
+                          "address_label": "work",
+                          "full_address": "7 Office Park, Whitefield",
+                          "latitude": "12.96980000",
+                          "longitude": "77.75000000"
+                        },
+                        "laundry_address": null
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "404": { "$ref": "#/components/responses/Error" },
           "409": { "$ref": "#/components/responses/Error" }
@@ -345,6 +523,14 @@
           { "$ref": "#/components/schemas/BillReady" }
         ]
       },
+      "SlotRef": {
+        "type": "object",
+        "required": ["slot_id", "label"],
+        "properties": {
+          "slot_id": { "type": "string", "format": "uuid" },
+          "label": { "type": "string", "example": "8 - 9:30 am" }
+        }
+      },
       "AddressSummary": {
         "type": "object",
         "required": ["address_id", "full_address"],
@@ -366,9 +552,18 @@
       },
       "DetailItem": {
         "type": "object",
-        "required": ["item_id", "service_id", "service_name", "pricing_type"],
+        "required": ["item_id", "service_id", "service_name", "pricing_type", "category_id", "category_name"],
         "properties": {
           "item_id": { "type": "string", "format": "uuid" },
+          "category_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Service category id. Required so View Details can group category → service → cloth. Backend TODO if the live detail omits it."
+          },
+          "category_name": {
+            "type": "string",
+            "description": "Service category display name (e.g. Regular Wash, Pro Clean, Luxury Care, Home Linens). Required for the Items Summary hierarchy and the expanded bill sheet."
+          },
           "service_id": { "type": "string", "format": "uuid" },
           "service_name": { "type": "string" },
           "pricing_type": { "type": "string", "enum": ["per_kg", "per_unit"] },
@@ -394,24 +589,69 @@
       },
       "OrderSummary": {
         "type": "object",
-        "required": ["order_id", "order_status", "is_express", "can_cancel", "can_reschedule", "bill"],
+        "required": ["order_id", "order_status", "title", "is_express", "can_cancel", "can_reschedule", "bill"],
         "properties": {
           "order_id": { "type": "string", "format": "uuid" },
-          "order_status": { "type": "string" },
-          "is_express": { "type": "boolean" },
+          "order_status": {
+            "type": "string",
+            "enum": ["placed", "pickup_assigned", "picked_up", "submitted_to_cm", "received_by_collection", "submitted_to_services", "services_in_progress", "services_completed", "out_for_delivery", "delivered", "cancelled"]
+          },
+          "card_type": {
+            "type": "string",
+            "enum": ["upcoming_pickup", "in_progress", "delivered"],
+            "description": "Which card the Orders screen draws. upcoming_pickup: placed, pickup_assigned. in_progress: picked_up through out_for_delivery. delivered: delivered. Always present on GET /orders rows. Cancelled orders are never listed, so there is no cancelled value; on the detail of a cancelled order the field is absent."
+          },
+          "title": {
+            "type": "string",
+            "description": "Card heading. 'Mixed' when services has more than one line, otherwise the single service_name, and 'Laundry pickup' when services is empty (before the door count)."
+          },
+          "is_express": { "type": "boolean", "description": "Shows the Express chip at the top of the card, on every card type." },
           "created_at": { "type": "string", "format": "date-time" },
           "pickup_mode": { "type": "string", "enum": ["instant", "scheduled"] },
-          "pickup_time_from": { "type": "string", "format": "date-time", "nullable": true },
-          "pickup_time_to": { "type": "string", "format": "date-time", "nullable": true },
+          "pickup_date": { "type": "string", "format": "date", "nullable": true, "description": "IST calendar date. Null when pickup is instant." },
+          "pickup_slot": { "allOf": [{ "$ref": "#/components/schemas/SlotRef" }], "nullable": true, "description": "Null when pickup is instant." },
+          "pickup_time_from": { "type": "string", "format": "date-time", "nullable": true, "description": "Derived by the server from the slot." },
+          "pickup_time_to": { "type": "string", "format": "date-time", "nullable": true, "description": "Derived by the server from the slot." },
           "pickup_address": { "$ref": "#/components/schemas/AddressSummary" },
           "services": {
             "type": "array",
+            "description": "Empty for an order placed from a pickup card until the door count.",
             "items": { "$ref": "#/components/schemas/ServiceSummary" }
           },
-          "item_count": { "type": "integer", "nullable": true, "description": "Sum of per-unit quantities. Null until those quantities exist." },
-          "can_cancel": { "type": "boolean", "description": "True only while order_status is placed, before pickup assignment." },
-          "can_reschedule": { "type": "boolean", "description": "True only while order_status is placed and is_express is false. False once pickup is assigned." },
+          "item_count": { "type": "integer", "nullable": true, "description": "Sum of per-unit quantities over the per_unit lines. Null when the order has no per_unit line (before the door count, or a kg-only order)." },
+          "total_weight_kg": { "type": "string", "nullable": true, "description": "Sum of weight_kg over the per_kg lines, decimal string. Null when the order has no per_kg line or before the door count. The card line is item_count and total_weight_kg joined: '6 Items', '3.5 kg' or '6 Items - 3.5 kg'." },
+          "can_cancel": { "type": "boolean", "description": "True only while order_status is placed, before pickup assignment. When false, tapping Cancel opens a popup ('Order cannot be cancelled. Pickup partner has already started.') and does not call the cancel endpoint." },
+          "can_reschedule": { "type": "boolean", "description": "True only while order_status is placed. Express orders included. When false, tapping Change Schedule opens a popup ('Schedule cannot be changed. Pickup partner has already started.') and does not open the schedule sheet." },
           "bill": { "$ref": "#/components/schemas/Bill" }
+        }
+      },
+      "UpdatedOrder": {
+        "allOf": [
+          { "$ref": "#/components/schemas/OrderDetail" },
+          {
+            "type": "object",
+            "required": ["delivery_shifted"],
+            "properties": {
+              "delivery_shifted": { "type": "boolean", "description": "True when the server moved the delivery to keep the buffer after a pickup change." },
+              "delivery_shifted_from": {
+                "type": "object",
+                "nullable": true,
+                "description": "The delivery date and slot before the move. Null when delivery_shifted is false.",
+                "properties": {
+                  "delivery_date": { "type": "string", "format": "date" },
+                  "delivery_slot": { "$ref": "#/components/schemas/SlotRef" }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "UpdatedEnvelope": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "data": { "$ref": "#/components/schemas/UpdatedOrder" }
         }
       },
       "OrderDetail": {
@@ -422,6 +662,8 @@
             "required": ["delivery_mode", "delivery_address", "items", "can_change_address"],
             "properties": {
               "delivery_mode": { "type": "string", "enum": ["instant", "scheduled"] },
+              "delivery_date": { "type": "string", "format": "date", "nullable": true, "description": "IST calendar date. Null when delivery is instant." },
+              "delivery_slot": { "allOf": [{ "$ref": "#/components/schemas/SlotRef" }], "nullable": true, "description": "Null when delivery is instant." },
               "delivery_time_from": { "type": "string", "format": "date-time", "nullable": true },
               "delivery_time_to": { "type": "string", "format": "date-time", "nullable": true },
               "special_instructions": { "type": "string", "nullable": true },
@@ -438,18 +680,18 @@
       "CreateOrder": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["cart_id", "pickup_address_id", "delivery_address_id"],
+        "required": ["pickup_address_id", "delivery_address_id"],
         "properties": {
-          "cart_id": { "type": "string", "format": "uuid" },
+          "cart_id": { "type": "string", "format": "uuid", "description": "Optional. Omit for an order placed from a pickup card. When sent it must be this customer's active, non-empty cart with every line bookable." },
           "pickup_address_id": { "type": "string", "format": "uuid" },
-          "delivery_address_id": { "type": "string", "format": "uuid" },
+          "delivery_address_id": { "type": "string", "format": "uuid", "description": "May equal pickup_address_id." },
           "is_express": { "type": "boolean", "default": false },
-          "pickup_mode": { "type": "string", "enum": ["instant", "scheduled"] },
-          "delivery_mode": { "type": "string", "enum": ["instant", "scheduled"] },
-          "pickup_time_from": { "type": "string", "format": "date-time" },
-          "pickup_time_to": { "type": "string", "format": "date-time", "nullable": true },
-          "delivery_time_from": { "type": "string", "format": "date-time" },
-          "delivery_time_to": { "type": "string", "format": "date-time", "nullable": true },
+          "pickup_mode": { "type": "string", "enum": ["instant", "scheduled"], "default": "instant" },
+          "pickup_date": { "type": "string", "format": "date", "description": "Required when pickup_mode is scheduled, forbidden when instant. IST calendar date." },
+          "pickup_slot_id": { "type": "string", "format": "uuid", "description": "Required when pickup_mode is scheduled, forbidden when instant. Must be an open slot from GET /slots." },
+          "delivery_mode": { "type": "string", "enum": ["instant", "scheduled"], "default": "instant" },
+          "delivery_date": { "type": "string", "format": "date", "description": "Required when delivery_mode is scheduled, forbidden when instant." },
+          "delivery_slot_id": { "type": "string", "format": "uuid", "description": "Required when delivery_mode is scheduled, forbidden when instant." },
           "special_instructions": { "type": "string", "maxLength": 500, "nullable": true }
         }
       },
@@ -461,11 +703,11 @@
           "pickup_address_id": { "type": "string", "format": "uuid" },
           "delivery_address_id": { "type": "string", "format": "uuid" },
           "pickup_mode": { "type": "string", "enum": ["instant", "scheduled"] },
+          "pickup_date": { "type": "string", "format": "date", "description": "Required with pickup_mode scheduled." },
+          "pickup_slot_id": { "type": "string", "format": "uuid", "description": "Required with pickup_mode scheduled." },
           "delivery_mode": { "type": "string", "enum": ["instant", "scheduled"] },
-          "pickup_time_from": { "type": "string", "format": "date-time", "nullable": true },
-          "pickup_time_to": { "type": "string", "format": "date-time", "nullable": true },
-          "delivery_time_from": { "type": "string", "format": "date-time", "nullable": true },
-          "delivery_time_to": { "type": "string", "format": "date-time", "nullable": true }
+          "delivery_date": { "type": "string", "format": "date", "description": "Required with delivery_mode scheduled." },
+          "delivery_slot_id": { "type": "string", "format": "uuid", "description": "Required with delivery_mode scheduled." }
         }
       },
       "CancelOrder": {
@@ -485,17 +727,22 @@
           "is_express": { "type": "boolean" },
           "pickup_mode": { "type": "string", "enum": ["instant", "scheduled"] },
           "delivery_mode": { "type": "string", "enum": ["instant", "scheduled"] },
+          "pickup_date": { "type": "string", "format": "date", "nullable": true },
+          "pickup_slot": { "allOf": [{ "$ref": "#/components/schemas/SlotRef" }], "nullable": true },
           "pickup_time_from": { "type": "string", "format": "date-time", "nullable": true },
           "pickup_time_to": { "type": "string", "format": "date-time", "nullable": true },
+          "delivery_date": { "type": "string", "format": "date", "nullable": true },
+          "delivery_slot": { "allOf": [{ "$ref": "#/components/schemas/SlotRef" }], "nullable": true },
           "delivery_time_from": { "type": "string", "format": "date-time", "nullable": true },
           "delivery_time_to": { "type": "string", "format": "date-time", "nullable": true },
           "special_instructions": { "type": "string", "nullable": true },
           "total_amount": { "type": "string", "example": "0.00" },
           "bill": { "$ref": "#/components/schemas/BillPending" },
           "can_cancel": { "type": "boolean", "description": "True only while order_status is placed, before pickup assignment." },
-          "can_reschedule": { "type": "boolean", "description": "True only while order_status is placed and is_express is false. False once pickup is assigned." },
+          "can_reschedule": { "type": "boolean", "description": "True only while order_status is placed. Express orders included." },
           "items": {
             "type": "array",
+            "description": "Empty when no cart_id was sent.",
             "items": { "$ref": "#/components/schemas/DetailItem" }
           }
         }
@@ -562,13 +809,74 @@
           "data": { "$ref": "#/components/schemas/Invoice" }
         }
       },
+      "TrackingAddress": {
+        "type": "object",
+        "required": ["address_id", "full_address", "latitude", "longitude"],
+        "properties": {
+          "address_id": { "type": "string", "format": "uuid" },
+          "address_label": { "type": "string" },
+          "full_address": { "type": "string" },
+          "latitude": { "type": "string", "description": "Decimal string." },
+          "longitude": { "type": "string", "description": "Decimal string." }
+        }
+      },
+      "TrackingPartner": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "phone": { "type": "string", "description": "Display only. The app does not dial it." },
+          "photo_url": { "type": "string", "nullable": true }
+        }
+      },
+      "Tracking": {
+        "type": "object",
+        "required": ["order_id", "order_status", "tracker_step", "is_express", "delivery_leg", "partner", "pickup_address", "delivery_address", "directions_refresh_seconds"],
+        "properties": {
+          "order_id": { "type": "string", "format": "uuid" },
+          "order_status": { "type": "string" },
+          "tracker_step": {
+            "type": "string",
+            "enum": ["finding_partner", "out_for_pickup", "pickup_done", "in_process", "ready", "out_for_delivery", "delivered"],
+            "description": "finding_partner is placed, before the first of the six steps."
+          },
+          "is_express": { "type": "boolean" },
+          "delivery_leg": { "type": "string", "enum": ["pickup", "drop"], "description": "Which leg the partner and pin belong to." },
+          "partner": { "allOf": [{ "$ref": "#/components/schemas/TrackingPartner" }], "nullable": true, "description": "Null while finding_partner and between the two legs." },
+          "partner_location": {
+            "type": "object",
+            "nullable": true,
+            "description": "Latest known pin. Null when there is no partner.",
+            "properties": {
+              "latitude": { "type": "string" },
+              "longitude": { "type": "string" },
+              "updated_at": { "type": "string", "format": "date-time" }
+            }
+          },
+          "directions_refresh_seconds": { "type": "integer", "description": "Re-route at most this often when the pin leaves the path." },
+          "pickup_address": { "$ref": "#/components/schemas/TrackingAddress" },
+          "delivery_address": { "$ref": "#/components/schemas/TrackingAddress" },
+          "laundry_address": { "allOf": [{ "$ref": "#/components/schemas/TrackingAddress" }], "nullable": true }
+        }
+      },
+      "TrackingEnvelope": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "data": { "$ref": "#/components/schemas/Tracking" }
+        }
+      },
       "ErrorEnvelope": {
         "type": "object",
         "required": ["success", "message"],
         "properties": {
           "success": { "type": "boolean", "enum": [false] },
           "message": { "type": "string" },
-          "errorCode": { "type": "string" }
+          "errorCode": {
+            "type": "string",
+            "description": "VALIDATION_ERROR, CART_NOT_FOUND, CART_EMPTY, SERVICE_UNAVAILABLE, ADDRESS_NOT_FOUND, SLOT_NOT_FOUND, SLOT_TOO_BUSY, SLOT_CLOSED, SLOT_STARTED, OUTSIDE_BOOKING_HORIZON, BUFFER_VIOLATION, DELIVERY_SHIFT_UNAVAILABLE, ORDER_NOT_FOUND, ORDER_NOT_RESCHEDULABLE, ORDER_NOT_CANCELLABLE, ORDER_CANCELLED."
+          }
         }
       }
     }

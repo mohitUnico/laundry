@@ -51,7 +51,7 @@ stateDiagram-v2
 [*] --> Idle
 Idle --> Waiting: scheduled and time not reached
 Waiting --> Searching: time reached
-Idle --> Searching: instant or Express or services_completed late
+Idle --> Searching: instant or services_completed late
 state Searching {
   [*] --> Slice1
   Slice1 --> Slice2: no accept

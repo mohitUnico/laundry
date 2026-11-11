@@ -10,16 +10,40 @@ class SchedulePick {
   const SchedulePick({required this.date, required this.slot});
 }
 
+/// [changing] is the "Change Schedule" mode used on an existing order: the
+/// [current] date and slot are preselected in green, and once another one is
+/// picked the old one turns red and the new one is green. [current] is null for
+/// an instant pickup (nothing to preselect).
 Future<SchedulePick?> showScheduleBottomSheet(
   BuildContext context, {
   required bool forDelivery,
+  bool changing = false,
+  SchedulePick? current,
 }) {
   return showModalBottomSheet<SchedulePick>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (context) => _ScheduleDialog(forDelivery: forDelivery),
+    builder: (context) => _ScheduleDialog(
+      forDelivery: forDelivery,
+      changing: changing,
+      current: current,
+    ),
   );
+}
+
+/// The date and slot of an order's current pickup time, or null when it does
+/// not line up with a slot in the list.
+SchedulePick? schedulePickFromTime(DateTime? at) {
+  if (at == null) return null;
+  for (final slots in _slotsByPart.values) {
+    for (final slot in slots) {
+      if (scheduleSlotStart(at, slot) == at) {
+        return SchedulePick(date: DateTime(at.year, at.month, at.day), slot: slot);
+      }
+    }
+  }
+  return null;
 }
 
 enum _DayPart { morning, afternoon, evening }
@@ -98,14 +122,21 @@ String _clock(String hour, String minute) {
 
 class _ScheduleDialog extends StatefulWidget {
   final bool forDelivery;
+  final bool changing;
+  final SchedulePick? current;
 
-  const _ScheduleDialog({required this.forDelivery});
+  const _ScheduleDialog({
+    required this.forDelivery,
+    required this.changing,
+    required this.current,
+  });
 
   @override
   State<_ScheduleDialog> createState() => _ScheduleDialogState();
 }
 
 class _ScheduleDialogState extends State<_ScheduleDialog> {
+  late final DateTime _today;
   late final List<DateTime> _dates;
   DateTime? _selectedDate;
   late _DayPart _part;
@@ -115,18 +146,56 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
   void initState() {
     super.initState();
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    _dates = [for (var i = 0; i < 10; i++) today.add(Duration(days: i))];
+    _today = DateTime(now.year, now.month, now.day);
+    _dates = [for (var i = 0; i < 10; i++) _today.add(Duration(days: i))];
     _part = now.hour < 12
         ? _DayPart.morning
         : now.hour < 17
             ? _DayPart.afternoon
             : _DayPart.evening;
+
+    final current = widget.current;
+    if (widget.changing && current != null) {
+      final day = DateTime(current.date.year, current.date.month, current.date.day);
+      // The current date may be outside the usual date chips; keep it visible.
+      if (!_dates.contains(day)) {
+        _dates
+          ..add(day)
+          ..sort();
+      }
+      _selectedDate = day;
+      _selectedSlot = current.slot;
+      for (final entry in _slotsByPart.entries) {
+        if (entry.value.contains(current.slot)) _part = entry.key;
+      }
+    }
   }
 
   List<String> get _slots => _slotsByPart[_part]!;
 
-  bool get _canConfirm => _selectedDate != null && (_selectedSlot ?? '').isNotEmpty;
+  bool get _hasPick => _selectedDate != null && (_selectedSlot ?? '').isNotEmpty;
+
+  bool get _matchesCurrent {
+    final current = widget.current;
+    if (current == null) return false;
+    final day = DateTime(current.date.year, current.date.month, current.date.day);
+    return _selectedDate == day && _selectedSlot == current.slot;
+  }
+
+  // Changing an order: Confirm only once the pick differs from the current one.
+  bool get _canConfirm => _hasPick && !(widget.changing && _matchesCurrent);
+
+  _ChipTone _toneFor({required bool selected, required bool isCurrent}) {
+    if (!widget.changing) return selected ? _ChipTone.primary : _ChipTone.idle;
+    if (selected) return _ChipTone.keep;
+    return isCurrent ? _ChipTone.drop : _ChipTone.idle;
+  }
+
+  bool _isCurrentDate(DateTime date) {
+    final current = widget.current;
+    return current != null &&
+        date == DateTime(current.date.year, current.date.month, current.date.day);
+  }
 
   void _selectPart(_DayPart part) {
     setState(() {
@@ -136,7 +205,7 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
   }
 
   String _caption(DateTime date) {
-    final diff = date.difference(_dates.first).inDays;
+    final diff = date.difference(_today).inDays;
     if (diff == 0) return 'Today';
     if (diff == 1) return 'Tomorrow';
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -174,7 +243,11 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      widget.forDelivery ? 'Schedule delivery' : 'Schedule pickup',
+                      widget.changing
+                          ? (widget.forDelivery
+                              ? 'Change delivery schedule'
+                              : 'Change pickup schedule')
+                          : (widget.forDelivery ? 'Schedule delivery' : 'Schedule pickup'),
                       style: AppTextStyles.header(color: HomeColors.text).copyWith(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
@@ -195,10 +268,14 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
                         itemBuilder: (context, index) {
                           final date = _dates[index];
                           final selected = date == _selectedDate;
-                          final titleColor = selected ? HomeColors.primary : HomeColors.text;
-                          final captionColor = selected ? HomeColors.primary : HomeColors.muted;
-                          return _ChoiceChip(
+                          final tone = _toneFor(
                             selected: selected,
+                            isCurrent: _isCurrentDate(date),
+                          );
+                          final titleColor = tone == _ChipTone.idle ? HomeColors.text : tone.color;
+                          final captionColor = tone == _ChipTone.idle ? HomeColors.muted : tone.color;
+                          return _ChoiceChip(
+                            tone: tone,
                             width: 78,
                             onTap: () => setState(() => _selectedDate = date),
                             child: Column(
@@ -273,9 +350,12 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
                       ),
                       itemBuilder: (context, index) {
                         final slot = _slots[index];
-                        final selected = slot == _selectedSlot;
+                        final tone = _toneFor(
+                          selected: slot == _selectedSlot,
+                          isCurrent: slot == widget.current?.slot,
+                        );
                         return _ChoiceChip(
-                          selected: selected,
+                          tone: tone,
                           onTap: () => setState(() => _selectedSlot = slot),
                           child: FittedBox(
                             fit: BoxFit.scaleDown,
@@ -283,7 +363,7 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
                               _prettySlot(slot),
                               textAlign: TextAlign.center,
                               style: AppTextStyles.body(
-                                color: selected ? HomeColors.primary : HomeColors.text,
+                                color: tone == _ChipTone.idle ? HomeColors.text : tone.color,
                               ).copyWith(
                                 fontSize: 13,
                                 height: 1.35,
@@ -314,7 +394,7 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
                         ),
                         child: Text(
-                          'Select date and time',
+                          widget.changing ? 'Confirm' : 'Select date and time',
                           style: AppTextStyles.button(
                             color: _canConfirm ? Colors.white : HomeColors.muted,
                           ).copyWith(fontSize: 15),
@@ -339,7 +419,7 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
       _DayPart.evening => 'Evening',
     };
     return _ChoiceChip(
-      selected: selected,
+      tone: selected ? _ChipTone.primary : _ChipTone.idle,
       onTap: () => _selectPart(part),
       child: Text(
         label,
@@ -351,14 +431,27 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
   }
 }
 
+/// How a chip looks. [primary] is the normal booking selection (blue). In the
+/// change-schedule sheet the picked chip is [keep] (green) and the schedule
+/// being replaced is [drop] (red).
+enum _ChipTone {
+  idle(HomeColors.borderSoft),
+  primary(HomeColors.primary),
+  keep(Color(0xFF1F8A5B)),
+  drop(Color(0xFFD92D20));
+
+  const _ChipTone(this.color);
+  final Color color;
+}
+
 class _ChoiceChip extends StatelessWidget {
-  final bool selected;
+  final _ChipTone tone;
   final VoidCallback onTap;
   final Widget child;
   final double? width;
 
   const _ChoiceChip({
-    required this.selected,
+    required this.tone,
     required this.onTap,
     required this.child,
     this.width,
@@ -366,6 +459,7 @@ class _ChoiceChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final active = tone != _ChipTone.idle;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
@@ -374,11 +468,9 @@ class _ChoiceChip extends StatelessWidget {
         alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? HomeColors.primary.withValues(alpha: 0.12) : Colors.white,
+          color: active ? tone.color.withValues(alpha: 0.12) : Colors.white,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: selected ? HomeColors.primary : HomeColors.borderSoft,
-          ),
+          border: Border.all(color: tone.color),
         ),
         child: child,
       ),

@@ -100,30 +100,33 @@ exports.createOrder = async (customerId, payload) => {
                 throw new ValidationError('Invalid pickup or delivery address');
             }
 
-            const cart = await tx.cart.findFirst({
-                where: {
-                    cart_id: payload.cart_id,
-                    customer_id: customerId,
-                    is_active: true,
-                },
-                include: {
-                    cart_items: {
-                        include: {
-                            service: { include: { category: true } },
+            let cart = null;
+            if (payload.cart_id) {
+                cart = await tx.cart.findFirst({
+                    where: {
+                        cart_id: payload.cart_id,
+                        customer_id: customerId,
+                        is_active: true,
+                    },
+                    include: {
+                        cart_items: {
+                            include: {
+                                service: { include: { category: true } },
+                            },
                         },
                     },
-                },
-            });
-            if (!cart) {
-                throw new NotFoundError('Active cart');
-            }
-            if (!cart.cart_items.length) {
-                throw new ValidationError('Cart is empty. Add items to cart before creating an order');
-            }
+                });
+                if (!cart) {
+                    throw new NotFoundError('Active cart');
+                }
+                if (!cart.cart_items.length) {
+                    throw new ValidationError('Cart is empty. Add items to cart before creating an order');
+                }
 
-            for (const line of cart.cart_items) {
-                const check = await isServiceBookable(line.service_id, line.pricing_type, { tx });
-                assertBookable(check, line.service_id);
+                for (const line of cart.cart_items) {
+                    const check = await isServiceBookable(line.service_id, line.pricing_type, { tx });
+                    assertBookable(check, line.service_id);
+                }
             }
 
             const laundry = await tx.laundryConfig.findFirst({
@@ -138,7 +141,7 @@ exports.createOrder = async (customerId, payload) => {
             const order = await tx.order.create({
                 data: {
                     customer_id: customerId,
-                    cart_id: cart.cart_id,
+                    cart_id: cart ? cart.cart_id : null,
                     order_status: ORDER_STATUS.PLACED,
                     is_express: schedule.is_express,
                     pickup_mode: schedule.pickup_mode,
@@ -155,20 +158,22 @@ exports.createOrder = async (customerId, payload) => {
                 },
             });
 
-            for (const line of cart.cart_items) {
-                await tx.orderItem.create({
-                    data: {
-                        order_id: order.order_id,
-                        service_id: line.service_id,
-                        pricing_type: line.pricing_type,
-                        clothes_id: null,
-                        quantity: null,
-                        weight_kg: null,
-                        unit_price: null,
-                        subtotal: 0,
-                        item_status: 'pending',
-                    },
-                });
+            if (cart) {
+                for (const line of cart.cart_items) {
+                    await tx.orderItem.create({
+                        data: {
+                            order_id: order.order_id,
+                            service_id: line.service_id,
+                            pricing_type: line.pricing_type,
+                            clothes_id: null,
+                            quantity: null,
+                            weight_kg: null,
+                            unit_price: null,
+                            subtotal: 0,
+                            item_status: 'pending',
+                        },
+                    });
+                }
             }
 
             await createDeliveryLegs(tx, {
@@ -179,7 +184,9 @@ exports.createOrder = async (customerId, payload) => {
                 schedule,
             });
 
-            await tx.cart.delete({ where: { cart_id: cart.cart_id } });
+            if (cart) {
+                await tx.cart.delete({ where: { cart_id: cart.cart_id } });
+            }
 
             const items = await tx.orderItem.findMany({
                 where: { order_id: order.order_id },
@@ -200,7 +207,7 @@ exports.createOrder = async (customerId, payload) => {
                 special_instructions: order.special_instructions,
                 bill: null,
                 can_cancel: true,
-                can_reschedule: !order.is_express,
+                can_reschedule: true,
                 items: items.map((it) => ({
                     item_id: it.item_id,
                     service_id: it.service_id,

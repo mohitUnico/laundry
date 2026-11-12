@@ -1,5 +1,6 @@
 const { PrismaClient } = require('@prisma/client')
 const { CATALOG } = require('./catalog.seed')
+const { seedDemoOrders } = require('../src/services/demo-orders')
 
 const prisma = new PrismaClient()
 
@@ -396,7 +397,8 @@ async function main() {
     await seedManagers()
     await seedServiceMen()
     await seedDeliveryStaff()
-    await seedCustomer()
+    const customer = await seedCustomer()
+    await seedDemoOrders(customer)
     await seedCoupons()
     await seedAppConfig()
 

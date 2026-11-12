@@ -5,6 +5,7 @@ import '../../models/order_record.dart';
 import '../../providers/order_provider.dart';
 import '../../routes/app_routes.dart';
 import '../../services/customer_info_service.dart';
+import '../../services/order_service.dart';
 import '../../theme/app_text_styles.dart';
 import '../home/widgets/home_colors.dart';
 import '../orders/order_placed_screen.dart';
@@ -86,68 +87,101 @@ class _ScheduleConfirmScreenState extends State<ScheduleConfirmScreen> {
       return;
     }
 
+    final addressId = _address?.addressId ?? '';
+    if (addressId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add a pickup address first')),
+      );
+      return;
+    }
+
     setState(() => _placing = true);
     final now = DateTime.now();
-    final orderNumber = (now.millisecondsSinceEpoch % 90000) + 10000;
-    final id = 'LD$orderNumber';
     final pick = _pick;
-    if (_instant) {
-      context.read<OrderProvider>().addOrder(
-            OrderRecord(
-              id: id,
-              title: 'Instant pickup',
-              items: const [],
-              totalItems: 0,
-              totalInr: 0,
-              orderType: 'instant_pickup',
-              dateLabel: '${_month(now.month)} ${now.day}',
-              timeLabel: 'Within 20 mins',
-              placedAt: now,
-              placedDateLabel: '${_month(now.month)} ${now.day}',
-              placedTimeLabel: _clock(now),
-              status: OrderStatus.inProgress,
-              backendStatus: 'placed',
-              pickupAddress: line,
-              pickupLat: _address?.latitude,
-              pickupLng: _address?.longitude,
-              isExpress: true,
-            ),
-          );
-    } else {
-      context.read<OrderProvider>().addOrder(
-            OrderRecord(
-              id: id,
-              title: 'Scheduled pickup',
-              items: const [],
-              totalItems: 0,
-              totalInr: 0,
-              orderType: 'schedule_pickup',
-              dateLabel: '${_month(pick!.date.month)} ${pick.date.day}',
-              timeLabel: pick.slot,
-              scheduledPickupAt: scheduleSlotStart(pick.date, pick.slot),
-              placedAt: now,
-              placedDateLabel: '${_month(now.month)} ${now.day}',
-              placedTimeLabel: _clock(now),
-              status: OrderStatus.inProgress,
-              backendStatus: 'placed',
-              pickupAddress: line,
-              pickupLat: _address?.latitude,
-              pickupLng: _address?.longitude,
-            ),
-          );
-    }
-    if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(
-        builder: (_) => OrderPlacedScreen(
-          slotText: _instant ? 'Within 20 mins' : schedulePickupHeadline(pick!.date, pick.slot),
-          orderId: id,
-          scheduleOnly: !_instant,
-          instant: _instant,
+    try {
+      String? pickupFrom;
+      String? pickupTo;
+      if (!_instant && pick != null) {
+        pickupFrom = scheduleSlotStart(pick.date, pick.slot).toUtc().toIso8601String();
+        pickupTo = scheduleSlotEnd(pick.date, pick.slot).toUtc().toIso8601String();
+      }
+      final result = await OrderService().createOrder(
+        pickupAddressId: addressId,
+        deliveryAddressId: addressId,
+        isExpress: false,
+        pickupMode: _instant ? 'instant' : 'scheduled',
+        deliveryMode: 'instant',
+        pickupTimeFrom: pickupFrom,
+        pickupTimeTo: pickupTo,
+      );
+      if (!mounted) return;
+      final id = result.orderId;
+      if (_instant) {
+        context.read<OrderProvider>().addOrder(
+              OrderRecord(
+                id: id,
+                title: 'Instant pickup',
+                items: const [],
+                totalItems: 0,
+                totalInr: 0,
+                orderType: 'instant_pickup',
+                dateLabel: '${_month(now.month)} ${now.day}',
+                timeLabel: 'Within 20 mins',
+                placedAt: now,
+                placedDateLabel: '${_month(now.month)} ${now.day}',
+                placedTimeLabel: _clock(now),
+                status: OrderStatus.inProgress,
+                backendStatus: 'placed',
+                pickupAddress: line,
+                pickupLat: _address?.latitude,
+                pickupLng: _address?.longitude,
+                isExpress: false,
+              ),
+            );
+      } else {
+        context.read<OrderProvider>().addOrder(
+              OrderRecord(
+                id: id,
+                title: 'Scheduled pickup',
+                items: const [],
+                totalItems: 0,
+                totalInr: 0,
+                orderType: 'schedule_pickup',
+                dateLabel: '${_month(pick!.date.month)} ${pick.date.day}',
+                timeLabel: pick.slot,
+                scheduledPickupAt: scheduleSlotStart(pick.date, pick.slot),
+                placedAt: now,
+                placedDateLabel: '${_month(now.month)} ${now.day}',
+                placedTimeLabel: _clock(now),
+                status: OrderStatus.inProgress,
+                backendStatus: 'placed',
+                pickupAddress: line,
+                pickupLat: _address?.latitude,
+                pickupLng: _address?.longitude,
+              ),
+            );
+      }
+      if (!mounted) return;
+      await context.read<OrderProvider>().fetchOrders(page: 1, limit: 50, status: 'all');
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (_) => OrderPlacedScreen(
+            slotText: _instant ? 'Within 20 mins' : schedulePickupHeadline(pick!.date, pick.slot),
+            orderId: id,
+            scheduleOnly: !_instant,
+            instant: _instant,
+          ),
         ),
-      ),
-      (route) => false,
-    );
+        (route) => false,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _placing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$error')),
+      );
+    }
   }
 
   @override

@@ -1,9 +1,8 @@
-import 'dart:convert';
 import 'dart:io';
 
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:dio/dio.dart';
 
-import 'local_auth_store.dart';
+import 'api_service.dart';
 
 class CustomerAddress {
   final String addressId;
@@ -29,8 +28,8 @@ class CustomerAddress {
       addressId: (json['address_id'] ?? '') as String,
       addressLabel: (json['address_label'] ?? '') as String,
       fullAddress: (json['full_address'] ?? '') as String,
-      latitude: json['latitude'] is num ? (json['latitude'] as num).toDouble() : null,
-      longitude: json['longitude'] is num ? (json['longitude'] as num).toDouble() : null,
+      latitude: _coordinate(json['latitude']),
+      longitude: _coordinate(json['longitude']),
       isDefault: (json['is_default'] ?? false) as bool,
       deliveryNote: json['delivery_note'] as String?,
     );
@@ -69,17 +68,24 @@ class CustomerAddress {
   }
 }
 
+double? _coordinate(dynamic value) {
+  if (value is num) return value.toDouble();
+  if (value is String) return double.tryParse(value);
+  return null;
+}
+
 class CustomerInfoService {
-  final LocalAuthStore _localAuth;
+  final ApiService _api;
 
-  /// Addresses are stored on the device until the customer API is used again.
-  static const _addressesKey = 'local_customer_addresses';
-
-  CustomerInfoService({LocalAuthStore? localAuth})
-      : _localAuth = localAuth ?? LocalAuthStore();
+  CustomerInfoService({ApiService? api}) : _api = api ?? ApiService();
 
   Future<List<CustomerAddress>> getAddresses() async {
-    return _readLocalAddresses();
+    final data = await _data(() => _api.get('/customer-info/addresses'));
+    if (data is! List) return [];
+    return data
+        .whereType<Map>()
+        .map((json) => CustomerAddress.fromJson(Map<String, dynamic>.from(json)))
+        .toList();
   }
 
   Future<CustomerAddress> createAddress({
@@ -91,37 +97,44 @@ class CustomerInfoService {
     String? deliveryNote,
   }) async {
     _validateCoordinates(latitude, longitude);
-
-    final existing = await _readLocalAddresses();
-    final makeDefault = isDefault || existing.isEmpty;
-    final saved = CustomerAddress(
-      addressId: 'local-${DateTime.now().microsecondsSinceEpoch}',
-      addressLabel: addressLabel,
-      fullAddress: fullAddress,
-      latitude: latitude,
-      longitude: longitude,
-      isDefault: makeDefault,
-      deliveryNote: (deliveryNote == null || deliveryNote.isEmpty) ? null : deliveryNote,
+    final data = await _data(
+      () => _api.post(
+        '/customer-info/addresses',
+        data: {
+          'address_label': addressLabel,
+          'full_address': fullAddress,
+          'latitude': latitude,
+          'longitude': longitude,
+          'is_default': isDefault,
+          if (deliveryNote != null && deliveryNote.isNotEmpty) 'delivery_note': deliveryNote,
+        },
+      ),
     );
-
-    final next = [
-      for (final address in existing)
-        makeDefault && address.isDefault ? address.copyWith(isDefault: false) : address,
-      saved,
-    ];
-    await _writeLocalAddresses(next);
-    return saved;
+    if (data is! Map) throw Exception('Invalid address response');
+    return CustomerAddress.fromJson(Map<String, dynamic>.from(data));
   }
 
-  Future<Map<String, dynamic>> getProfile() {
-    return _localAuth.currentProfile();
+  Future<Map<String, dynamic>> getProfile() async {
+    final data = await _data(() => _api.get('/customer-info/profile'));
+    if (data is! Map) throw Exception('Invalid profile response');
+    return Map<String, dynamic>.from(data);
   }
 
   Future<Map<String, dynamic>> updateProfile({
     String? fullName,
     String? phone,
-  }) {
-    return _localAuth.updateProfile(fullName: fullName, phone: phone);
+  }) async {
+    final data = await _data(
+      () => _api.patch(
+        '/customer-info/profile',
+        data: {
+          if (fullName != null) 'full_name': fullName,
+          'phone': phone,
+        },
+      ),
+    );
+    if (data is! Map) throw Exception('Invalid profile response');
+    return Map<String, dynamic>.from(data);
   }
 
   Future<CustomerAddress> updateAddress({
@@ -141,50 +154,43 @@ class CustomerInfoService {
         deliveryNote == null) {
       throw Exception('At least one field must be provided for update');
     }
-    if (latitude != null) _validateCoordinates(latitude, longitude ?? 0);
-    if (longitude != null) _validateCoordinates(latitude ?? 0, longitude);
-
-    final existing = await _readLocalAddresses();
-    final index = existing.indexWhere((address) => address.addressId == addressId);
-    if (index < 0) {
-      throw Exception('Address not found');
+    if (latitude != null && longitude != null) {
+      _validateCoordinates(latitude, longitude);
     }
 
-    final current = existing[index];
-    final makeDefault = isDefault == true;
-    final updated = current.copyWith(
-      addressLabel: addressLabel,
-      fullAddress: fullAddress,
-      latitude: latitude,
-      longitude: longitude,
-      isDefault: isDefault,
-      deliveryNote: deliveryNote,
-      clearDeliveryNote: deliveryNote != null && deliveryNote.isEmpty,
+    final data = await _data(
+      () => _api.patch(
+        '/customer-info/addresses/$addressId',
+        data: {
+          if (addressLabel != null) 'address_label': addressLabel,
+          if (fullAddress != null) 'full_address': fullAddress,
+          if (latitude != null) 'latitude': latitude,
+          if (longitude != null) 'longitude': longitude,
+          if (isDefault != null) 'is_default': isDefault,
+          if (deliveryNote != null) 'delivery_note': deliveryNote,
+        },
+      ),
     );
-
-    final next = [
-      for (var i = 0; i < existing.length; i++)
-        if (i == index)
-          updated
-        else if (makeDefault && existing[i].isDefault)
-          existing[i].copyWith(isDefault: false)
-        else
-          existing[i],
-    ];
-    await _writeLocalAddresses(next);
-    return updated;
+    if (data is! Map) throw Exception('Invalid address response');
+    return CustomerAddress.fromJson(Map<String, dynamic>.from(data));
   }
 
   Future<void> deleteAddress(String addressId) async {
-    final existing = await _readLocalAddresses();
-    final removed = existing.where((address) => address.addressId == addressId).toList();
-    if (removed.isEmpty) return;
+    await _data(() => _api.delete('/customer-info/addresses/$addressId'));
+  }
 
-    final next = existing.where((address) => address.addressId != addressId).toList();
-    if (removed.first.isDefault && next.isNotEmpty && !next.any((address) => address.isDefault)) {
-      next[0] = next[0].copyWith(isDefault: true);
-    }
-    await _writeLocalAddresses(next);
+  Future<Map<String, dynamic>> uploadProfileImage({required File file}) async {
+    final form = FormData.fromMap({
+      'file': await MultipartFile.fromFile(
+        file.path,
+        filename: file.uri.pathSegments.isEmpty ? 'profile.jpg' : file.uri.pathSegments.last,
+      ),
+    });
+    final data = await _data(
+      () => _api.postFormData('/customer-info/profile-image/upload', data: form),
+    );
+    if (data is! Map) throw Exception('Invalid profile response');
+    return Map<String, dynamic>.from(data);
   }
 
   void _validateCoordinates(double latitude, double longitude) {
@@ -196,27 +202,22 @@ class CustomerInfoService {
     }
   }
 
-  Future<List<CustomerAddress>> _readLocalAddresses() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_addressesKey);
-    if (raw == null || raw.isEmpty) return [];
-    final decoded = jsonDecode(raw);
-    if (decoded is! List) return [];
-    return decoded
-        .whereType<Map>()
-        .map((json) => CustomerAddress.fromJson(Map<String, dynamic>.from(json)))
-        .toList();
+  Future<dynamic> _data(Future<Response> Function() request) async {
+    try {
+      final response = await request();
+      final body = response.data;
+      if (body is Map && body.containsKey('data')) return body['data'];
+      return body;
+    } on DioException catch (error) {
+      throw Exception(_message(error));
+    }
   }
 
-  Future<void> _writeLocalAddresses(List<CustomerAddress> addresses) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _addressesKey,
-      jsonEncode(addresses.map((address) => address.toJson()).toList()),
-    );
-  }
-
-  Future<Map<String, dynamic>> uploadProfileImage({required File file}) {
-    return _localAuth.saveProfileImage(file.path);
+  String _message(DioException error) {
+    final data = error.response?.data;
+    if (data is Map && data['message'] is String && (data['message'] as String).isNotEmpty) {
+      return data['message'] as String;
+    }
+    return 'Request failed';
   }
 }

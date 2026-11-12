@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../home/widgets/home_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../providers/order_provider.dart';
+import '../../services/order_service.dart';
 import '../../models/order_record.dart';
 import '../../utils/pricing.dart';
 import 'order_details_screen.dart';
@@ -130,7 +131,7 @@ class _OrdersListScreenState extends State<OrdersListScreen>
     try {
       // Always fetch the full list once; filtering for Active/Completed is done
       // purely on the frontend using the mapped OrderStatus field.
-      await orderProvider.fetchOrders(page: 1, limit: 10);
+      await orderProvider.fetchOrders(page: 1, limit: 50, status: 'all');
     } catch (e) {
       // Error is already handled in OrderProvider
       // Orders will be preserved if fetch fails
@@ -512,22 +513,51 @@ class _UpcomingPickupCard extends StatelessWidget {
           ? null
           : schedulePickFromTime(order.scheduledPickupAt),
     );
-    if (picked == null) return;
-    final deliveryMoved = provider.updateOrderSchedule(
-      order.id,
-      OrderProvider.shortDateLabel(picked.date),
-      picked.slot,
-      at: scheduleSlotStart(picked.date, picked.slot),
-    );
-    if (!deliveryMoved) return;
-    final updated = provider.orders.where((o) => o.id == order.id).firstOrNull;
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(
-          'Delivery moved to ${updated?.deliveryDateLabel ?? 'a later date'}',
-        ),
-      ),
-    );
+    if (picked == null || !context.mounted) return;
+    final start = scheduleSlotStart(picked.date, picked.slot);
+    final end = scheduleSlotEnd(picked.date, picked.slot);
+    final bufferDays = order.isExpress ? 1 : 2;
+    final earliest = DateTime(start.year, start.month, start.day)
+        .add(Duration(days: bufferDays));
+    var deliveryStart = order.scheduledDeliveryAt;
+    var moved = false;
+    if (deliveryStart != null) {
+      final day = DateTime(deliveryStart.year, deliveryStart.month, deliveryStart.day);
+      if (day.isBefore(earliest)) {
+        deliveryStart = DateTime(
+          earliest.year,
+          earliest.month,
+          earliest.day,
+          deliveryStart.hour,
+          deliveryStart.minute,
+        );
+        moved = true;
+      }
+    }
+    final deliveryEnd = deliveryStart?.add(const Duration(minutes: 90));
+    try {
+      await OrderService().rescheduleOrder(
+        orderId: order.id,
+        pickupFrom: start.toUtc().toIso8601String(),
+        pickupTo: end.toUtc().toIso8601String(),
+        deliveryFrom: deliveryStart?.toUtc().toIso8601String(),
+        deliveryTo: deliveryEnd?.toUtc().toIso8601String(),
+      );
+      await provider.fetchOrders(page: 1, limit: 50, status: 'all');
+      if (!context.mounted) return;
+      if (moved) {
+        final updated = provider.orders.where((o) => o.id == order.id).firstOrNull;
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              'Delivery moved to ${updated?.deliveryDateLabel ?? 'a later date'}',
+            ),
+          ),
+        );
+      }
+    } catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text('$error')));
+    }
   }
 
   Future<void> _cancel(BuildContext context) async {
@@ -540,12 +570,17 @@ class _UpcomingPickupCard extends StatelessWidget {
       return;
     }
     final provider = context.read<OrderProvider>();
+    final messenger = ScaffoldMessenger.of(context);
     final id = order.id.trim();
     final code = id.toUpperCase().startsWith('LD') ? '#$id' : '#${order.shortId}';
     final reason = await showCancelOrderDialog(context, orderCode: code);
-    if (reason == null) return;
-    // `reason` is what POST /orders/{orderId}/cancel takes once the order API is wired.
-    provider.cancelPlacedOrder(order.id);
+    if (reason == null || !context.mounted) return;
+    try {
+      await OrderService().cancelOrder(orderId: order.id, reason: reason);
+      await provider.fetchOrders(page: 1, limit: 50, status: 'all');
+    } catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text('$error')));
+    }
   }
 
   @override

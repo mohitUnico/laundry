@@ -2,7 +2,7 @@ const Joi = require('joi');
 const { ValidationError } = require('../utils/errors');
 
 const createOrderSchema = Joi.object({
-    cart_id: Joi.string().uuid().required(),
+    cart_id: Joi.string().uuid().optional(),
     pickup_address_id: Joi.string().uuid().required(),
     delivery_address_id: Joi.string().uuid().required(),
     is_express: Joi.boolean().optional(),

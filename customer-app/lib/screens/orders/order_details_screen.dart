@@ -46,7 +46,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   }
 
   bool get _canPay =>
-      _pickupDone && widget.order.status == OrderStatus.inProgress && !_cancelled;
+      widget.order.backendStatus.toLowerCase() == 'out_for_delivery' && !_cancelled;
 
   bool get _showInvoice =>
       widget.order.status == OrderStatus.delivered && !_cancelled;
@@ -75,6 +75,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => OrderPaymentScreen(
+          orderId: widget.order.id,
           itemTotal: bill.items,
           handling: bill.handling,
           pickup: bill.pickup,

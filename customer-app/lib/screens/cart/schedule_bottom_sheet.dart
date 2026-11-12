@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../services/slots_service.dart';
 import '../../theme/app_text_styles.dart';
 import '../home/widgets/home_colors.dart';
 
@@ -83,6 +84,22 @@ const _slotsByPart = <_DayPart, List<String>>{
   ],
 };
 
+DateTime scheduleSlotEnd(DateTime date, String slot) {
+  final match = RegExp(
+    r'(\d{1,2}):(\d{2})\s*(AM|PM)?\s*-\s*(\d{1,2}):(\d{2})\s*(AM|PM)?',
+    caseSensitive: false,
+  ).firstMatch(slot);
+  if (match == null) {
+    return scheduleSlotStart(date, slot).add(const Duration(minutes: 30));
+  }
+  var hour = int.tryParse(match.group(4) ?? '') ?? 14;
+  final minute = int.tryParse(match.group(5) ?? '') ?? 0;
+  final marker = (match.group(6) ?? match.group(3))?.toUpperCase();
+  if (marker == 'PM' && hour != 12) hour += 12;
+  if (marker == 'AM' && hour == 12) hour = 0;
+  return DateTime(date.year, date.month, date.day, hour, minute);
+}
+
 DateTime scheduleSlotStart(DateTime date, String slot) {
   final start = slot.split('-').first.trim();
   final match = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)?', caseSensitive: false).firstMatch(start);
@@ -137,10 +154,13 @@ class _ScheduleDialog extends StatefulWidget {
 
 class _ScheduleDialogState extends State<_ScheduleDialog> {
   late final DateTime _today;
-  late final List<DateTime> _dates;
+  late List<DateTime> _dates;
   DateTime? _selectedDate;
   late _DayPart _part;
   String? _selectedSlot;
+  Map<_DayPart, List<String>>? _remoteSlots;
+
+  Map<_DayPart, List<String>> get _slotMap => _remoteSlots ?? _slotsByPart;
 
   @override
   void initState() {
@@ -148,6 +168,7 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
     final now = DateTime.now();
     _today = DateTime(now.year, now.month, now.day);
     _dates = [for (var i = 0; i < 10; i++) _today.add(Duration(days: i))];
+    _loadSlots();
     _part = now.hour < 12
         ? _DayPart.morning
         : now.hour < 17
@@ -165,13 +186,54 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
       }
       _selectedDate = day;
       _selectedSlot = current.slot;
-      for (final entry in _slotsByPart.entries) {
+      for (final entry in _slotMap.entries) {
         if (entry.value.contains(current.slot)) _part = entry.key;
       }
     }
   }
 
-  List<String> get _slots => _slotsByPart[_part]!;
+  Future<void> _loadSlots() async {
+    try {
+      final list = await SlotsService().list();
+      if (!mounted) return;
+      final grouped = <_DayPart, List<String>>{
+        _DayPart.morning: [],
+        _DayPart.afternoon: [],
+        _DayPart.evening: [],
+      };
+      for (final slot in list.slots) {
+        if (slot.status != 'open' || slot.label.isEmpty) continue;
+        final part = switch (slot.period) {
+          'afternoon' => _DayPart.afternoon,
+          'evening' => _DayPart.evening,
+          _ => _DayPart.morning,
+        };
+        grouped[part]!.add(slot.label);
+      }
+      if (grouped.values.every((rows) => rows.isEmpty)) return;
+      final horizon = list.horizonDays < 1 ? 7 : list.horizonDays;
+      setState(() {
+        _remoteSlots = grouped;
+        _dates = [for (var i = 0; i < horizon; i++) _today.add(Duration(days: i))];
+        final current = widget.current;
+        if (current != null) {
+          final day = DateTime(current.date.year, current.date.month, current.date.day);
+          if (!_dates.contains(day)) {
+            _dates
+              ..add(day)
+              ..sort();
+          }
+          for (final entry in grouped.entries) {
+            if (entry.value.contains(current.slot)) _part = entry.key;
+          }
+        }
+      });
+    } catch (_) {
+      // Keep the built-in slots when the slot API is unreachable.
+    }
+  }
+
+  List<String> get _slots => _slotMap[_part] ?? const [];
 
   bool get _hasPick => _selectedDate != null && (_selectedSlot ?? '').isNotEmpty;
 
@@ -200,7 +262,7 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
   void _selectPart(_DayPart part) {
     setState(() {
       _part = part;
-      if (!_slotsByPart[part]!.contains(_selectedSlot)) _selectedSlot = null;
+      if (!(_slotMap[part] ?? const []).contains(_selectedSlot)) _selectedSlot = null;
     });
   }
 

@@ -14,6 +14,7 @@ class OrderProvider with ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   bool _isFetching = false; // Prevent concurrent fetches
+  bool _fetchAgain = false;
 
   Timer? _reconcileDebounce;
   static const Duration _reconcileDebounceWindow = Duration(milliseconds: 500);
@@ -206,7 +207,7 @@ class OrderProvider with ChangeNotifier {
       {int page = 1, int limit = 10, String? status}) async {
     // Prevent concurrent fetches
     if (_isFetching) {
-      debugPrint('Order fetch already in progress, skipping...');
+      _fetchAgain = true;
       return;
     }
 
@@ -217,33 +218,10 @@ class OrderProvider with ChangeNotifier {
       notifyListeners();
     }
 
-    late final List<OrderRecord> local;
-    try {
-      local = await _localOrders.load();
-      final live = List<OrderRecord>.from(_orders);
-      final localIds = local.map((order) => order.id).toSet();
-      final pending = live.where((order) => !localIds.contains(order.id)).toList();
-      _orders
-        ..clear()
-        ..addAll(pending)
-        ..addAll(local);
-      _isLoading = false;
-      notifyListeners();
-      for (final order in pending) {
-        await _localOrders.upsert(order);
-      }
-    } catch (e) {
-      _isLoading = false;
-      _isFetching = false;
-      notifyListeners();
-      debugPrint('Error loading local orders: $e');
-      return;
-    }
-
     try {
       final result = await _repo
           .getOrders(page: page, limit: limit, status: status)
-          .timeout(const Duration(seconds: 3));
+          .timeout(const Duration(seconds: 8));
       final ordersList = (result['orders'] as List?) ?? [];
 
       final newOrders = <OrderRecord>[];
@@ -255,37 +233,21 @@ class OrderProvider with ChangeNotifier {
         }
       }
 
-      final backendIds = newOrders.map((order) => order.id).toSet();
-      final localIds = local.map((order) => order.id).toSet();
-      final live = List<OrderRecord>.from(_orders);
-      final pending = live
-          .where((order) => !backendIds.contains(order.id) && !localIds.contains(order.id))
-          .toList();
       _orders
         ..clear()
-        ..addAll(pending)
-        ..addAll(local.where((order) => !backendIds.contains(order.id)))
         ..addAll(newOrders);
-      for (final order in pending) {
-        await _localOrders.upsert(order);
-      }
-
       _error = null;
     } catch (e) {
-      final live = List<OrderRecord>.from(_orders);
-      final merged = <String, OrderRecord>{
-        for (final order in local) order.id: order,
-        for (final order in live) order.id: order,
-      };
-      _orders
-        ..clear()
-        ..addAll(merged.values);
-      _error = null;
+      _error = _orders.isEmpty ? 'Failed to load orders' : null;
       debugPrint('Error fetching orders: $e');
     } finally {
       _isLoading = false;
       _isFetching = false;
       notifyListeners();
+      if (_fetchAgain) {
+        _fetchAgain = false;
+        await fetchOrders(page: page, limit: limit, status: status);
+      }
     }
   }
 
@@ -317,7 +279,12 @@ class OrderProvider with ChangeNotifier {
   OrderRecord? _mapBackendOrderToOrderRecord(Map<String, dynamic> data) {
     try {
       final orderId = (data['order_id'] ?? '') as String;
-      final orderType = (data['order_type'] ?? '') as String;
+      final pickupMode = (data['pickup_mode'] ?? '') as String;
+      final orderType = pickupMode == 'instant'
+          ? 'instant_pickup'
+          : pickupMode == 'scheduled'
+              ? 'schedule_pickup'
+              : (data['order_type'] ?? '') as String;
       final orderStatusRaw = (data['order_status'] ?? '') as String;
       // Default to "placed" if status is empty or null
       final orderStatus = orderStatusRaw.isEmpty ? 'placed' : orderStatusRaw;
@@ -326,9 +293,12 @@ class OrderProvider with ChangeNotifier {
       final pickupTimeFrom = data['pickup_time_from'] as String?;
       final deliveryTimeFrom = data['delivery_time_from'] as String?;
       final pickupAddressMap = data['pickup_address'] as Map<String, dynamic>?;
-      final totalAmount = (data['total_amount'] ?? '0') as String;
       final items = (data['items'] as List?) ?? [];
       final bill = data['bill'] as Map<String, dynamic>?;
+      final generated = bill != null && bill['generated'] == true;
+      final billed = generated ? bill['final_amount'] : null;
+      final totalAmount =
+          '${data['total_amount'] ?? data['totalAmount'] ?? billed ?? '0'}';
       final billingStatus = (data['billing_status'] ?? '') as String;
       final billPaymentStatus =
           bill != null ? (bill['payment_status'] ?? '') as String : '';
@@ -366,7 +336,7 @@ class OrderProvider with ChangeNotifier {
       String? deliveryDateLabel;
       String? deliveryTimeLabel;
       DateTime? scheduledDeliveryAt;
-      if (orderType == 'both' && deliveryTimeFrom != null) {
+      if (deliveryTimeFrom != null) {
         final deliveryParsed = _parseBackendDateTime(deliveryTimeFrom);
         if (deliveryParsed != null) {
           scheduledDeliveryAt = deliveryParsed;
@@ -386,10 +356,11 @@ class OrderProvider with ChangeNotifier {
         final item = itemData as Map<String, dynamic>;
         final pricingType = (item['pricing_type'] ?? '') as String;
         final selections = (item['selections'] as List?) ?? [];
-        final categoryName = selections.isNotEmpty
-            ? (selections.first as Map<String, dynamic>)['category_name']
-                as String?
-            : null;
+        final categoryName = (item['category_name'] as String?) ??
+            (selections.isNotEmpty
+                ? (selections.first as Map<String, dynamic>)['category_name']
+                    as String?
+                : null);
 
         if (pricingType == 'per_unit') {
           // Per-unit items
@@ -398,7 +369,9 @@ class OrderProvider with ChangeNotifier {
 
           for (final sel in selections) {
             final selection = sel as Map<String, dynamic>;
-            final clothName = (selection['cloth_name'] ?? '') as String;
+            final clothName =
+                (selection['item_name'] ?? selection['cloth_name'] ?? '')
+                    as String;
             final qty = (selection['quantity'] ?? 0) as int;
 
             // Aggregate quantities by cloth name
@@ -406,7 +379,7 @@ class OrderProvider with ChangeNotifier {
             totalItems += qty;
 
             // Extract per-unit price from backend (string or num)
-            final priceRaw = selection['per_unit_price'];
+            final priceRaw = selection['unit_price'] ?? selection['per_unit_price'];
             if (priceRaw != null) {
               int priceInr = 0;
               if (priceRaw is num) {
@@ -421,10 +394,11 @@ class OrderProvider with ChangeNotifier {
           }
 
           if (quantities.isNotEmpty) {
-            final serviceName = selections.isNotEmpty
-                ? (selections.first as Map<String, dynamic>)['service_name']
-                    as String?
-                : 'Service';
+            final serviceName = (item['service_name'] as String?) ??
+                (selections.isNotEmpty
+                    ? (selections.first as Map<String, dynamic>)['service_name']
+                        as String?
+                    : 'Service');
             cartItems.add(
               CartItem(
                 id: (item['item_id'] ?? '') as String,
@@ -451,7 +425,9 @@ class OrderProvider with ChangeNotifier {
 
           for (final sel in selections) {
             final selection = sel as Map<String, dynamic>;
-            final clothName = (selection['cloth_name'] ?? '') as String;
+            final clothName =
+                (selection['item_name'] ?? selection['cloth_name'] ?? '')
+                    as String;
             final qty = (selection['quantity'] ?? 0) as int;
 
             // Extract service name and category from first valid selection
@@ -487,9 +463,9 @@ class OrderProvider with ChangeNotifier {
                   quantities, // Include quantities for kg-wise items to show cloth items
               clothIdByItemName: clothIdByItemName,
               isPerPiece: false,
-              weightKg: (item['weight_kg'] as String?) != null
-                  ? double.tryParse(item['weight_kg'] as String)
-                  : null,
+              weightKg: item['weight_kg'] == null
+                  ? null
+                  : double.tryParse('${item['weight_kg']}'),
             ),
           );
           // If no quantities, count as 1 item
@@ -530,15 +506,18 @@ class OrderProvider with ChangeNotifier {
 
       // Card title (orders contract): "Mixed" for more than one service line,
       // otherwise that service's name, "Laundry pickup" before the door count.
+      final serverTitle = (data['title'] as String?)?.trim() ?? '';
       final serviceNames = cartItems
           .map((c) => c.serviceName.trim())
           .where((s) => s.isNotEmpty)
           .toSet();
-      final String computedTitle = serviceNames.length > 1
-          ? 'Mixed'
-          : serviceNames.isNotEmpty
-              ? serviceNames.first
-              : 'Laundry pickup';
+      final String computedTitle = serverTitle.isNotEmpty
+          ? serverTitle
+          : serviceNames.length > 1
+              ? 'Mixed'
+              : serviceNames.isNotEmpty
+                  ? serviceNames.first
+                  : 'Laundry pickup';
 
       return OrderRecord(
         id: orderId,

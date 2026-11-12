@@ -14,7 +14,7 @@ class ApiService {
   static Future<void>? _refreshInFlight;
 
   // Local backend (Docker on host port 3001):
-  //   flutter run --dart-define=API_BASE_URL=http://192.168.0.6:3001/api/v1
+  //   flutter run --dart-define=API_BASE_URL=http://192.168.0.17:3001/api/v1
   // Android emulator:
   //   flutter run --dart-define=API_BASE_URL=http://10.0.2.2:3001/api/v1
   // USB + adb reverse (maps phone localhost:3001 -> PC):
@@ -24,7 +24,7 @@ class ApiService {
     const defined = String.fromEnvironment('API_BASE_URL', defaultValue: '');
     if (defined.isNotEmpty) return defined;
 
-    return 'http://192.168.0.6:3001/api/v1';
+    return 'http://192.168.0.17:3001/api/v1';
   }
 
   factory ApiService() => _instance;
@@ -34,9 +34,9 @@ class ApiService {
     _dio = Dio(
       BaseOptions(
         baseUrl: resolveBaseUrl(),
-        connectTimeout: const Duration(seconds: 3),
-        receiveTimeout: const Duration(seconds: 3),
-        sendTimeout: const Duration(seconds: 3),
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 20),
+        sendTimeout: const Duration(seconds: 10),
         headers: {'Content-Type': 'application/json'},
       ),
     );
@@ -119,9 +119,9 @@ class ApiService {
       final dio = Dio(
         BaseOptions(
           baseUrl: resolveBaseUrl(),
-          connectTimeout: const Duration(seconds: 3),
-          receiveTimeout: const Duration(seconds: 3),
-          sendTimeout: const Duration(seconds: 3),
+          connectTimeout: const Duration(seconds: 10),
+          receiveTimeout: const Duration(seconds: 20),
+          sendTimeout: const Duration(seconds: 10),
         ),
       );
       final response = await dio.post(

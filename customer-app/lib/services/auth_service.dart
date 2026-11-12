@@ -16,7 +16,7 @@ class CustomerSendOtpResult {
   factory CustomerSendOtpResult.fromJson(Map<String, dynamic> json) {
     return CustomerSendOtpResult(
       email: (json['email'] ?? '') as String,
-      expiresIn: (json['expiresIn'] ?? 0) as int,
+      expiresIn: (json['expiresIn'] is num) ? (json['expiresIn'] as num).toInt() : 0,
       otp: json['otp'] as String?,
     );
   }
@@ -100,6 +100,7 @@ class AuthService {
     final Response response = await _api.post(
       '/auth/customer/send-otp',
       data: {'email': email},
+      options: Options(extra: const {'skipAuth': true, 'skipRefresh': true}),
     );
 
     final data = (response.data as Map?)?['data'] as Map<String, dynamic>?;
@@ -116,6 +117,7 @@ class AuthService {
         'email': email,
         'userType': 'customer',
       },
+      options: Options(extra: const {'skipAuth': true, 'skipRefresh': true}),
     );
 
     final data = (response.data as Map?)?['data'] as Map<String, dynamic>?;
@@ -132,6 +134,7 @@ class AuthService {
     final Response response = await _api.post(
       '/auth/customer/verify-otp',
       data: {'email': email, 'otp': otp},
+      options: Options(extra: const {'skipAuth': true, 'skipRefresh': true}),
     );
 
     final data = (response.data as Map?)?['data'] as Map<String, dynamic>?;
@@ -149,6 +152,7 @@ class AuthService {
   }) async {
     final Response response = await _api.post(
       '/auth/customer/complete-registration',
+      options: Options(extra: const {'skipAuth': true, 'skipRefresh': true}),
       data: {
         'sessionToken': sessionToken,
         'customerData': {
@@ -170,6 +174,7 @@ class AuthService {
     final Response response = await _api.post(
       '/auth/refresh',
       data: {'refreshToken': refreshToken},
+      options: Options(extra: const {'skipAuth': true, 'skipRefresh': true}),
     );
 
     final data = (response.data as Map?)?['data'] as Map<String, dynamic>?;

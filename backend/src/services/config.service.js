@@ -49,6 +49,20 @@ const KEY_DEFS = {
         public: true,
         schema: () => Joi.number().integer().min(0).max(14).required(),
     },
+    EXPRESS_BUFFER_DAYS: {
+        default: 1,
+        description: 'Minimum calendar days between pickup and delivery for an Express order.',
+        publicName: 'expressBufferDays',
+        public: true,
+        schema: () => Joi.number().integer().min(0).max(14).required(),
+    },
+    BOOKING_HORIZON_DAYS: {
+        default: 7,
+        description: 'How many days ahead the schedule sheet date chips go.',
+        publicName: 'bookingHorizonDays',
+        public: true,
+        schema: () => Joi.number().integer().min(1).max(30).required(),
+    },
     DELIVERY_FEE: {
         default: 0,
         description: 'Flat delivery fee snapshotted onto the bill at pickup.',

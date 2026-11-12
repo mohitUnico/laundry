@@ -131,7 +131,6 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
         'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12,
       };
 
-      String? pickupDateIso;
       String? pickupTimeFromIso;
       String? pickupTimeToIso;
       String? deliveryTimeFromIso;
@@ -162,7 +161,6 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
         final deliveryUtc = istToUtc(year, month, day, hour24, minute);
         deliveryTimeFromIso = deliveryUtc.toUtc().toIso8601String();
         deliveryTimeToIso = deliveryTimeFromIso;
-        pickupDateIso = null;
         pickupTimeFromIso = null;
         pickupTimeToIso = null;
       } else {
@@ -187,7 +185,6 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
           year = now.year + 1;
         }
         pickupDateTimeUtc = istToUtc(year, month, day, hour24, minute);
-        pickupDateIso = pickupDateTimeUtc.toUtc().toIso8601String();
         pickupTimeFromIso = pickupDateTimeUtc.toUtc().toIso8601String();
         pickupTimeToIso = pickupTimeFromIso;
       }
@@ -224,25 +221,26 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
       } else if (orderType == 'both') {
         // Fallback: delivery window as pickup + 24h if not provided
         final pickupUtc = pickupDateTimeUtc ?? DateTime.now().toUtc().add(const Duration(days: 1));
-        final deliveryUtc = pickupUtc.add(const Duration(hours: 24));
+        final deliveryUtc = pickupUtc.add(const Duration(days: 2));
         deliveryTimeFromIso = deliveryUtc.toIso8601String();
         deliveryTimeToIso = deliveryTimeFromIso;
       }
 
-      // Create order via backend
+      // Create order via backend. v2 uses modes, not order_type or date fields.
+      final pickupScheduled = orderType != 'drop_only';
+      final deliveryScheduled = orderType == 'drop_only' || orderType == 'both';
       final orderRepo = OrderRepository();
       final orderResult = await orderRepo.createOrder(
         cartId: cartId,
         pickupAddressId: pickupAddressId,
         deliveryAddressId: deliveryAddressId,
-        orderType: orderType,
-        pickupDate: pickupDateIso,
-        deliveryDate: null,
+        pickupMode: pickupScheduled ? 'scheduled' : 'instant',
+        deliveryMode: deliveryScheduled ? 'scheduled' : 'instant',
         specialInstructions: null,
-        pickupTimeFrom: pickupTimeFromIso,
-        pickupTimeTo: pickupTimeToIso,
-        deliveryTimeFrom: deliveryTimeFromIso,
-        deliveryTimeTo: deliveryTimeToIso,
+        pickupTimeFrom: pickupScheduled ? pickupTimeFromIso : null,
+        pickupTimeTo: pickupScheduled ? pickupTimeToIso : null,
+        deliveryTimeFrom: deliveryScheduled ? deliveryTimeFromIso : null,
+        deliveryTimeTo: deliveryScheduled ? deliveryTimeToIso : null,
       );
 
       if (!mounted) return;
@@ -261,7 +259,8 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
         placedAt.hour >= 12 ? 1 : 0,
       );
 
-      context.read<OrderProvider>().addOrder(
+      final orders = context.read<OrderProvider>();
+      orders.addOrder(
             OrderRecord(
               id: orderResult.orderId,
               title: title,
@@ -281,6 +280,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
             ),
           );
 
+      await orders.fetchOrders(page: 1, limit: 50, status: 'all');
       await cart.clearAfterOrderPlaced();
 
       if (!mounted) return;

@@ -103,21 +103,21 @@ async function rescheduleOrder(customerId, orderId, body) {
 
     const scheduleChange = SCHEDULE_KEYS.some((key) => hasKey(body, key)) || (!hasKey(body, 'pickup_address_id') && !hasKey(body, 'delivery_address_id'));
     const addressChange = hasKey(body, 'pickup_address_id') || hasKey(body, 'delivery_address_id');
-    if (order.order_status !== 'placed' || (scheduleChange && order.is_express)) {
+    if (order.order_status !== 'placed') {
         throw new ConflictError('Order cannot be rescheduled', 'RESCHEDULE_NOT_ALLOWED');
     }
 
     let schedule = null;
     if (scheduleChange) {
         schedule = await validateSchedule({
-            is_express: false,
+            is_express: order.is_express,
             pickup_mode: body.pickup_mode || order.pickup_mode,
             delivery_mode: body.delivery_mode || order.delivery_mode,
             pickup_time_from: body.pickup_time_from !== undefined ? body.pickup_time_from : order.pickup_time_from,
             pickup_time_to: body.pickup_time_to !== undefined ? body.pickup_time_to : order.pickup_time_to,
             delivery_time_from: body.delivery_time_from !== undefined ? body.delivery_time_from : order.delivery_time_from,
             delivery_time_to: body.delivery_time_to !== undefined ? body.delivery_time_to : order.delivery_time_to,
-        });
+        }, { keepExpressSchedule: Boolean(order.is_express) });
     }
 
     const pickupAddress = hasKey(body, 'pickup_address_id') ? await ownedAddress(customerId, body.pickup_address_id) : null;
@@ -140,7 +140,6 @@ async function rescheduleOrder(customerId, orderId, body) {
             order_id: orderId,
             customer_id: customerId,
             order_status: 'placed',
-            ...(scheduleChange ? { is_express: false } : {}),
         },
         data,
     });
@@ -157,7 +156,7 @@ async function rescheduleOrder(customerId, orderId, body) {
         require('./notification-events').emitOrderEvent('rescheduled', { orderId }).catch(() => {});
         await onOrderPlaced({
             order_id: orderId,
-            is_express: false,
+            is_express: order.is_express,
             pickup_mode: schedule.pickup_mode,
             pickup_time_from: schedule.pickup_time_from,
         });

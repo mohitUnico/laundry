@@ -35,7 +35,7 @@ exports.createOrderContract = async (req, res, next) => {
                 total_amount: order.total_amount || '0.00',
                 bill: { generated: false },
                 can_cancel: true,
-                can_reschedule: !order.is_express,
+                can_reschedule: true,
             },
         });
     } catch (error) {

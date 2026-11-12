@@ -47,7 +47,7 @@ describe('order tracker', () => {
             { order_status: ORDER_STATUS.PLACED, is_express: true, pickup_mode: 'instant', delivery_mode: 'instant' },
             null
         );
-        expect(express.canReschedule).toBe(false);
+        expect(express.canReschedule).toBe(true);
 
         const payable = flagsFor(
             { order_status: ORDER_STATUS.PICKED_UP, is_express: false },

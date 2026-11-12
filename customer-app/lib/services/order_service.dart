@@ -36,18 +36,84 @@ class CreateOrderResult {
   }
 }
 
+class _Window {
+  final String? from;
+  final String? to;
+  const _Window(this.from, this.to);
+}
+
+/// Delivery must fall on or after the pickup calendar day plus the default
+/// two-day buffer (Asia/Kolkata). A same-day or next-day choice is moved
+/// forward so place order matches `validateSchedule`.
+_Window _deliveryOnOrAfterBuffer({
+  required String? pickupFrom,
+  required String? deliveryFrom,
+  required String? deliveryTo,
+}) {
+  const bufferDays = 2;
+  if (deliveryFrom == null || deliveryFrom.isEmpty) {
+    return _Window(deliveryFrom, deliveryTo);
+  }
+  final delivery = DateTime.parse(deliveryFrom);
+  final pickupYmd = (pickupFrom == null || pickupFrom.isEmpty)
+      ? _istYmd(DateTime.now())
+      : _istYmd(DateTime.parse(pickupFrom));
+  final earliest = _addDaysYmd(pickupYmd, bufferDays);
+  final gap = _daysBetweenYmd(_istYmd(delivery), earliest);
+  if (gap <= 0) return _Window(deliveryFrom, deliveryTo);
+  final shiftedFrom = delivery.add(Duration(days: gap)).toUtc().toIso8601String();
+  final shiftedTo = (deliveryTo == null || deliveryTo.isEmpty)
+      ? deliveryTo
+      : DateTime.parse(deliveryTo).add(Duration(days: gap)).toUtc().toIso8601String();
+  return _Window(shiftedFrom, shiftedTo);
+}
+
+String _istYmd(DateTime instant) {
+  final ist = instant.toUtc().add(const Duration(hours: 5, minutes: 30));
+  final y = ist.year.toString().padLeft(4, '0');
+  final m = ist.month.toString().padLeft(2, '0');
+  final d = ist.day.toString().padLeft(2, '0');
+  return '$y-$m-$d';
+}
+
+String _addDaysYmd(String ymd, int days) {
+  final base = DateTime.utc(
+    int.parse(ymd.substring(0, 4)),
+    int.parse(ymd.substring(5, 7)),
+    int.parse(ymd.substring(8, 10)),
+  ).add(Duration(days: days));
+  final y = base.year.toString().padLeft(4, '0');
+  final m = base.month.toString().padLeft(2, '0');
+  final d = base.day.toString().padLeft(2, '0');
+  return '$y-$m-$d';
+}
+
+int _daysBetweenYmd(String from, String to) {
+  final a = DateTime.utc(
+    int.parse(from.substring(0, 4)),
+    int.parse(from.substring(5, 7)),
+    int.parse(from.substring(8, 10)),
+  );
+  final b = DateTime.utc(
+    int.parse(to.substring(0, 4)),
+    int.parse(to.substring(5, 7)),
+    int.parse(to.substring(8, 10)),
+  );
+  return b.difference(a).inDays;
+}
+
 class OrderService {
   final ApiService _api;
 
   OrderService({ApiService? api}) : _api = api ?? ApiService();
 
   Future<CreateOrderResult> createOrder({
-    required String cartId,
+    String? cartId,
     required String pickupAddressId,
     required String deliveryAddressId,
-    required String orderType,
-    String? pickupDate,
-    String? deliveryDate,
+    bool isExpress = false,
+    String pickupMode = 'instant',
+    String deliveryMode = 'instant',
     String? specialInstructions,
     String? pickupTimeFrom,
     String? pickupTimeTo,
@@ -56,32 +122,40 @@ class OrderService {
   }) async {
     try {
       final payload = <String, dynamic>{
-        'cart_id': cartId,
         'pickup_address_id': pickupAddressId,
         'delivery_address_id': deliveryAddressId,
-        'order_type': orderType,
+        'is_express': isExpress,
+        'pickup_mode': isExpress ? 'instant' : pickupMode,
+        'delivery_mode': isExpress ? 'instant' : deliveryMode,
       };
 
-      if (pickupDate != null && pickupDate.isNotEmpty) {
-        payload['pickup_date'] = pickupDate;
-      }
-      if (deliveryDate != null && deliveryDate.isNotEmpty) {
-        payload['delivery_date'] = deliveryDate;
+      if (cartId != null && cartId.isNotEmpty) {
+        payload['cart_id'] = cartId;
       }
       if (specialInstructions != null && specialInstructions.isNotEmpty) {
         payload['special_instructions'] = specialInstructions;
       }
-      if (pickupTimeFrom != null && pickupTimeFrom.isNotEmpty) {
-        payload['pickup_time_from'] = pickupTimeFrom;
+      // Express place rejects any time fields. Instant legs must omit them too.
+      if (!isExpress && pickupMode == 'scheduled') {
+        if (pickupTimeFrom != null && pickupTimeFrom.isNotEmpty) {
+          payload['pickup_time_from'] = pickupTimeFrom;
+        }
+        if (pickupTimeTo != null && pickupTimeTo.isNotEmpty) {
+          payload['pickup_time_to'] = pickupTimeTo;
+        }
       }
-      if (pickupTimeTo != null && pickupTimeTo.isNotEmpty) {
-        payload['pickup_time_to'] = pickupTimeTo;
-      }
-      if (deliveryTimeFrom != null && deliveryTimeFrom.isNotEmpty) {
-        payload['delivery_time_from'] = deliveryTimeFrom;
-      }
-      if (deliveryTimeTo != null && deliveryTimeTo.isNotEmpty) {
-        payload['delivery_time_to'] = deliveryTimeTo;
+      if (!isExpress && deliveryMode == 'scheduled') {
+        final buffered = _deliveryOnOrAfterBuffer(
+          pickupFrom: pickupMode == 'scheduled' ? pickupTimeFrom : null,
+          deliveryFrom: deliveryTimeFrom,
+          deliveryTo: deliveryTimeTo,
+        );
+        if (buffered.from != null && buffered.from!.isNotEmpty) {
+          payload['delivery_time_from'] = buffered.from;
+        }
+        if (buffered.to != null && buffered.to!.isNotEmpty) {
+          payload['delivery_time_to'] = buffered.to;
+        }
       }
 
       final res = await _api.post(
@@ -125,6 +199,62 @@ class OrderService {
       throw Exception(msg);
     } catch (e) {
       throw Exception('Failed to fetch orders: $e');
+    }
+  }
+
+  Future<void> cancelOrder({
+    required String orderId,
+    required String reason,
+  }) async {
+    try {
+      await _api.post('/orders/$orderId/cancel', data: {'reason': reason});
+    } on DioException catch (e) {
+      throw Exception(_extractErrorMessage(e, 'Failed to cancel order'));
+    }
+  }
+
+  Future<Map<String, dynamic>> rescheduleOrder({
+    required String orderId,
+    String? pickupFrom,
+    String? pickupTo,
+    String? deliveryFrom,
+    String? deliveryTo,
+  }) async {
+    try {
+      final payload = <String, dynamic>{};
+      if (pickupFrom != null && pickupTo != null) {
+        payload['pickup_mode'] = 'scheduled';
+        payload['pickup_time_from'] = pickupFrom;
+        payload['pickup_time_to'] = pickupTo;
+      }
+      if (deliveryFrom != null && deliveryTo != null) {
+        payload['delivery_mode'] = 'scheduled';
+        payload['delivery_time_from'] = deliveryFrom;
+        payload['delivery_time_to'] = deliveryTo;
+      }
+      final res = await _api.patch('/orders/$orderId/schedule', data: payload);
+      final data = (res.data as Map<String, dynamic>)['data'];
+      return data is Map<String, dynamic> ? data : <String, dynamic>{};
+    } on DioException catch (e) {
+      throw Exception(_extractErrorMessage(e, 'Failed to change schedule'));
+    }
+  }
+
+  Future<void> payOrder(String orderId) async {
+    try {
+      final intent = await _api.post('/payments/orders/$orderId/pay-intent');
+      final data = (intent.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
+      final attempt = data['attempt'] as Map<String, dynamic>?;
+      final attemptId = attempt?['attemptId'] as String?;
+      if (attemptId == null || attemptId.isEmpty) {
+        throw Exception('Payment could not be started');
+      }
+      await _api.post(
+        '/payments/mock/attempts/$attemptId/complete',
+        data: {'status': 'succeeded'},
+      );
+    } on DioException catch (e) {
+      throw Exception(_extractErrorMessage(e, 'Payment failed'));
     }
   }
 

@@ -36,7 +36,7 @@ function flagsFor(order, bill) {
     const status = order.order_status;
     return {
         canCancel: status === ORDER_STATUS.PLACED,
-        canReschedule: status === ORDER_STATUS.PLACED && !order.is_express,
+        canReschedule: status === ORDER_STATUS.PLACED,
         canPay: Boolean(bill && bill.payment_status === 'pending' && PAYABLE.has(status)),
         isExpress: Boolean(order.is_express),
         pickupMode: order.pickup_mode,

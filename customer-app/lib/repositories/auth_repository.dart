@@ -1,5 +1,4 @@
 import '../services/auth_service.dart';
-import '../services/local_auth_store.dart';
 import '../utils/auth_storage.dart';
 import '../utils/jwt_utils.dart';
 
@@ -7,25 +6,24 @@ export '../services/auth_service.dart'
     show CustomerVerifyOtpResult, CustomerSendOtpResult, RefreshTokenResult;
 
 class AuthRepository {
-  final LocalAuthStore _localAuth;
+  final AuthService _service;
 
-  AuthRepository({LocalAuthStore? localAuth})
-      : _localAuth = localAuth ?? LocalAuthStore();
+  AuthRepository({AuthService? service}) : _service = service ?? AuthService();
 
   Future<CustomerSendOtpResult> sendCustomerOtp({required String email}) {
-    return _localAuth.sendOtp(email);
+    return _service.sendCustomerOtp(email: email);
   }
 
   Future<CustomerSendOtpResult> resendCustomerOtp({required String email}) {
-    return _localAuth.sendOtp(email);
+    return _service.resendCustomerOtp(email: email);
   }
 
-  /// Verifies OTP. If user exists, this also persists the returned JWT.
+  /// Verifies OTP with the backend. An existing customer receives a JWT.
   Future<CustomerVerifyOtpResult> verifyCustomerOtp({
     required String email,
     required String otp,
   }) async {
-    final result = await _localAuth.verifyOtp(email: email, otp: otp);
+    final result = await _service.verifyCustomerOtp(email: email, otp: otp);
 
     if (!result.isNewUser) {
       final token = result.token;
@@ -42,14 +40,14 @@ class AuthRepository {
     return result;
   }
 
-  /// Completes registration and persists the returned JWT.
+  /// Completes registration and stores the JWT the backend returns.
   Future<CustomerCompleteRegistrationResult> completeCustomerRegistration({
     required String sessionToken,
     required String fullName,
     String? phone,
     Map<String, dynamic>? address,
   }) async {
-    final result = await _localAuth.completeRegistration(
+    final result = await _service.completeCustomerRegistration(
       sessionToken: sessionToken,
       fullName: fullName,
       phone: phone,
@@ -76,7 +74,11 @@ class AuthRepository {
   }
 
   Future<RefreshTokenResult> refreshSession() async {
-    final result = await _localAuth.refresh();
+    final refresh = await AuthStorage.getRefreshToken();
+    if (refresh == null || refresh.isEmpty) {
+      throw Exception('Missing refresh token');
+    }
+    final result = await _service.refreshSession(refreshToken: refresh);
     if (result.token.isEmpty || result.refreshToken.isEmpty) {
       throw Exception('Invalid refresh response');
     }
@@ -85,5 +87,3 @@ class AuthRepository {
     return result;
   }
 }
-
-

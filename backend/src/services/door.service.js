@@ -114,9 +114,45 @@ function presentDoor(delivery) {
     };
 }
 
+async function catalogueTree() {
+    const categories = await prisma.serviceCategory.findMany({
+        where: { is_active: true },
+        orderBy: [{ display_order: 'asc' }, { category_name: 'asc' }],
+        include: {
+            services: {
+                where: { is_active: true },
+                orderBy: [{ display_order: 'asc' }, { service_name: 'asc' }],
+                include: {
+                    clothes_items: {
+                        where: { is_active: true },
+                        orderBy: [{ display_order: 'asc' }, { item_name: 'asc' }],
+                    },
+                },
+            },
+        },
+    });
+    return categories.map((category) => ({
+        categoryId: category.category_id,
+        categoryName: category.category_name,
+        services: category.services.map((service) => ({
+            serviceId: service.service_id,
+            serviceName: service.service_name,
+            perKgPrice: service.per_kg_price == null ? null : String(service.per_kg_price),
+            clothes: service.clothes_items.map((cloth) => ({
+                clothId: cloth.cloth_id,
+                itemName: cloth.item_name,
+                perUnitPrice: String(cloth.per_unit_price),
+            })),
+        })),
+    }));
+}
+
 async function getDoor({ staffId, orderId }) {
     const delivery = await loadOwnedPickup(staffId, orderId);
-    return presentDoor(delivery);
+    return {
+        ...presentDoor(delivery),
+        catalogue: await catalogueTree(),
+    };
 }
 
 async function saveDraft({ staffId, orderId, orderItemId, body }) {
@@ -125,8 +161,31 @@ async function saveDraft({ staffId, orderId, orderItemId, body }) {
     if (order.order_status !== ORDER_STATUS.PICKUP_ASSIGNED || order.items_confirmed_at) {
         throw new ConflictError('Door edits are closed after pickup is confirmed', 'DOOR_LOCKED');
     }
-    const item = order.order_items.find((row) => row.item_id === orderItemId);
-    if (!item) throw new NotFoundError('Order item');
+    let item = order.order_items.find((row) => row.item_id === orderItemId);
+    if (!item) {
+        const byService = order.order_items.find((row) => row.service_id === orderItemId);
+        if (byService) {
+            item = byService;
+        } else {
+            const service = await prisma.service.findFirst({
+                where: { service_id: orderItemId, is_active: true },
+            });
+            if (!service) throw new NotFoundError('Order item');
+            const pricingType = body.pricing_type || (body.weight_kg != null ? 'per_kg' : 'per_unit');
+            if (!['per_kg', 'per_unit'].includes(pricingType)) {
+                throw new ValidationError('pricing_type must be per_kg or per_unit');
+            }
+            item = await prisma.orderItem.create({
+                data: {
+                    order_id: orderId,
+                    service_id: service.service_id,
+                    pricing_type: pricingType,
+                    subtotal: 0,
+                },
+                include: { service: { include: { clothes_items: { where: { is_active: true } } } }, item_selections: true },
+            });
+        }
+    }
 
     if (body.photo_url !== undefined) {
         if (body.photo_url != null && typeof body.photo_url !== 'string') {
@@ -210,7 +269,9 @@ async function savePhoto({ staffId, orderId, orderItemId, file }) {
     if (delivery.order.order_status !== ORDER_STATUS.PICKUP_ASSIGNED || delivery.order.items_confirmed_at) {
         throw new ConflictError('Door edits are closed after pickup is confirmed', 'DOOR_LOCKED');
     }
-    const item = delivery.order.order_items.find((row) => row.item_id === orderItemId);
+    const item = delivery.order.order_items.find(
+        (row) => row.item_id === orderItemId || row.service_id === orderItemId
+    );
     if (!item) throw new NotFoundError('Order item');
     const photoUrl = await uploadBuffer({
         buffer: file.buffer,

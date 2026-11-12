@@ -178,7 +178,7 @@ describe('Phase 2 booking', () => {
         expect(ok.res.body.data.is_express).toBe(true);
         expect(ok.res.body.data.pickup_mode).toBe('instant');
         expect(ok.res.body.data.delivery_mode).toBe('instant');
-        expect(ok.res.body.data.can_reschedule).toBe(false);
+        expect(ok.res.body.data.can_reschedule).toBe(true);
 
         const bad = await addAndPlace(
             [{ service_id: perKgService.service_id, pricing_type: 'per_kg' }],
@@ -269,5 +269,24 @@ describe('Phase 2 booking', () => {
         );
         expect(placed.res.status).toBe(201);
         expect(placed.res.body.data.items[0].service_id).toBe(orphan.service_id);
+    });
+
+    it('places a pickup-card order with no cart', async () => {
+        const res = await request(app)
+            .post('/api/v1/orders/create_order')
+            .set('Authorization', `Bearer ${token}`)
+            .send({
+                pickup_address_id: home.address_id,
+                delivery_address_id: home.address_id,
+                is_express: true,
+            })
+            .expect(201);
+        expect(res.body.data.items).toEqual([]);
+        expect(res.body.data.pickup_mode).toBe('instant');
+        expect(res.body.data.is_express).toBe(true);
+        const row = await prisma.order.findUnique({
+            where: { order_id: res.body.data.order_id },
+        });
+        expect(row.cart_id).toBeNull();
     });
 });

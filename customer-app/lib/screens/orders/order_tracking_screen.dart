@@ -10,6 +10,7 @@ import '../cart/schedule_bottom_sheet.dart';
 import '../home/widgets/home_colors.dart';
 import '../../routes/app_routes.dart';
 import '../../routes/route_args.dart';
+import '../../services/order_service.dart';
 import '../../services/order_tracking_service.dart';
 import '../../services/google_directions_service.dart';
 import '../../utils/polling_config.dart';
@@ -475,13 +476,28 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
     ];
-    context.read<OrderProvider>().updateOrderSchedule(
-          id,
-          '${months[picked.date.month - 1]} ${picked.date.day}',
-          picked.slot,
-          at: scheduleSlotStart(picked.date, picked.slot),
-        );
-    setState(() => _slotLabel = schedulePickupHeadline(picked.date, picked.slot));
+    final start = scheduleSlotStart(picked.date, picked.slot);
+    final end = scheduleSlotEnd(picked.date, picked.slot);
+    try {
+      await OrderService().rescheduleOrder(
+        orderId: id,
+        pickupFrom: start.toUtc().toIso8601String(),
+        pickupTo: end.toUtc().toIso8601String(),
+      );
+      if (!mounted) return;
+      context.read<OrderProvider>().updateOrderSchedule(
+            id,
+            '${months[picked.date.month - 1]} ${picked.date.day}',
+            picked.slot,
+            at: start,
+          );
+      setState(() => _slotLabel = schedulePickupHeadline(picked.date, picked.slot));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$error')),
+      );
+    }
   }
 }
 

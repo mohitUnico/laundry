@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../routes/route_args.dart';
+import '../../services/order_service.dart';
 import '../../utils/pricing.dart';
 import '../home/widgets/home_colors.dart';
 import 'order_payment_success_screen.dart';
 
 class OrderPaymentScreen extends StatefulWidget {
+  final String? orderId;
   final int itemTotal;
   final int handling;
   final int pickup;
@@ -17,6 +19,7 @@ class OrderPaymentScreen extends StatefulWidget {
 
   const OrderPaymentScreen({
     super.key,
+    this.orderId,
     required this.itemTotal,
     required this.handling,
     required this.pickup,
@@ -34,6 +37,38 @@ enum _PayMode { visa, mastercard, cod }
 
 class _OrderPaymentScreenState extends State<OrderPaymentScreen> {
   _PayMode _mode = _PayMode.visa;
+  bool _paying = false;
+
+  Future<void> _pay() async {
+    final orderId = widget.orderId;
+    if (orderId != null && orderId.isNotEmpty && _mode != _PayMode.cod) {
+      setState(() => _paying = true);
+      try {
+        await OrderService().payOrder(orderId);
+      } catch (error) {
+        if (!mounted) return;
+        setState(() => _paying = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$error')),
+        );
+        return;
+      }
+    }
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => OrderPaymentSuccessScreen(
+          itemTotal: widget.itemTotal,
+          handling: widget.handling,
+          pickup: widget.pickup,
+          delivery: widget.delivery,
+          toPay: widget.toPay,
+          original: widget.original,
+          tracking: widget.tracking,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -137,21 +172,7 @@ class _OrderPaymentScreenState extends State<OrderPaymentScreen> {
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(
-                        builder: (_) => OrderPaymentSuccessScreen(
-                          itemTotal: widget.itemTotal,
-                          handling: widget.handling,
-                          pickup: widget.pickup,
-                          delivery: widget.delivery,
-                          toPay: widget.toPay,
-                          original: widget.original,
-                          tracking: widget.tracking,
-                        ),
-                      ),
-                    );
-                  },
+                  onPressed: _paying ? null : _pay,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF2F6BFF),
                     foregroundColor: Colors.white,

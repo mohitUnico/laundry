@@ -9,6 +9,7 @@ import '../../providers/cart_provider.dart';
 import '../../providers/order_provider.dart';
 import '../../models/order_record.dart';
 import '../../repositories/order_repository.dart';
+import '../../services/order_service.dart';
 import '../../repositories/customer_info_repository.dart';
 import '../../services/customer_info_service.dart';
 import 'delivery_options_screen.dart';
@@ -568,6 +569,10 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                         String timeLabel;
                         String? deliveryDateLabel;
                         String? deliveryTimeLabel;
+                        DateTime? pickupFromAt;
+                        DateTime? pickupToAt;
+                        DateTime? deliveryFromAt;
+                        DateTime? deliveryToAt;
 
                         if (option == DeliveryOptionType.deliveryOnly) {
                           // Delivery only: validate delivery time only (no pickup)
@@ -598,6 +603,8 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
                           timeLabel = _formatTime12h(_deliveryFromHour, _deliveryFromMinute, _deliveryFromAmPm);
                           deliveryDateLabel = dateLabel;
                           deliveryTimeLabel = timeLabel;
+                          deliveryFromAt = deliveryFromDt;
+                          deliveryToAt = deliveryToDt;
                         } else {
                           // Pickup only or both: validate pickup schedule
                           final fromDt = _asLocalDateTime(selectedDate, _fromHour, _fromMinute, _fromAmPm);
@@ -623,6 +630,8 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
 
                           dateLabel = '${_monthShort(selectedDate.month)} ${selectedDate.day}';
                           timeLabel = _formatTime12h(_fromHour, _fromMinute, _fromAmPm);
+                          pickupFromAt = fromDt;
+                          pickupToAt = toDt;
 
                           // Validate delivery schedule for "both" orders
                           if (option == DeliveryOptionType.pickupAndDelivery) {
@@ -655,20 +664,37 @@ class _ScheduleDateTimeScreenState extends State<ScheduleDateTimeScreen> {
 
                             deliveryDateLabel = '${_monthShort(deliverySelectedDate.month)} ${deliverySelectedDate.day}';
                             deliveryTimeLabel = _formatTime12h(_deliveryFromHour, _deliveryFromMinute, _deliveryFromAmPm);
+                            deliveryFromAt = deliveryFromDt;
+                            deliveryToAt = deliveryToDt;
                           }
                         }
 
-                        // If orderId is provided, update existing order
+                        // If orderId is provided, update the live schedule
                         if (args?.orderId != null) {
-                          context.read<OrderProvider>().updateOrderSchedule(
-                                args!.orderId!,
-                                dateLabel,
-                                timeLabel,
-                              );
-                          Navigator.of(context).pop();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Schedule updated successfully')),
-                          );
+                          try {
+                            await OrderService().rescheduleOrder(
+                              orderId: args!.orderId!,
+                              pickupFrom: pickupFromAt?.toUtc().toIso8601String(),
+                              pickupTo: pickupToAt?.toUtc().toIso8601String(),
+                              deliveryFrom: deliveryFromAt?.toUtc().toIso8601String(),
+                              deliveryTo: deliveryToAt?.toUtc().toIso8601String(),
+                            );
+                            if (!context.mounted) return;
+                            context.read<OrderProvider>().updateOrderSchedule(
+                                  args.orderId!,
+                                  dateLabel,
+                                  timeLabel,
+                                );
+                            Navigator.of(context).pop();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Schedule updated successfully')),
+                            );
+                          } catch (error) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('$error')),
+                            );
+                          }
                           return;
                         }
 

@@ -39,7 +39,7 @@ function parseDate(value, field) {
  * pickupDate + buffer (not "today"), so ordinary instant+instant is legal.
  * Express skips the buffer and forbids any time fields.
  */
-async function validateSchedule(input, { now = new Date() } = {}) {
+async function validateSchedule(input, { now = new Date(), keepExpressSchedule = false } = {}) {
     const isExpress = Boolean(input.is_express);
     const forbiddenLegacy = ['order_type', 'pickup_date', 'delivery_date'];
     for (const key of forbiddenLegacy) {
@@ -48,7 +48,7 @@ async function validateSchedule(input, { now = new Date() } = {}) {
         }
     }
 
-    if (isExpress) {
+    if (isExpress && !keepExpressSchedule) {
         const timeFields = [
             'pickup_time_from',
             'pickup_time_to',
@@ -98,7 +98,9 @@ async function validateSchedule(input, { now = new Date() } = {}) {
     checkWindow(pickup_mode, pickup_time_from, pickup_time_to, 'pickup');
     checkWindow(delivery_mode, delivery_time_from, delivery_time_to, 'delivery');
 
-    const bufferDays = await configService.getInt('PICKUP_DELIVERY_BUFFER_DAYS');
+    const bufferDays = await configService.getInt(
+        isExpress ? 'EXPRESS_BUFFER_DAYS' : 'PICKUP_DELIVERY_BUFFER_DAYS'
+    );
     const today = calendarDateIST(now);
     const pickupDate = pickup_mode === 'scheduled' ? calendarDateIST(pickup_time_from) : today;
     const earliestDelivery = addDaysYmd(pickupDate, bufferDays);
@@ -112,7 +114,7 @@ async function validateSchedule(input, { now = new Date() } = {}) {
     }
 
     return {
-        is_express: false,
+        is_express: isExpress,
         pickup_mode,
         delivery_mode,
         pickup_time_from: pickup_mode === 'scheduled' ? pickup_time_from : null,

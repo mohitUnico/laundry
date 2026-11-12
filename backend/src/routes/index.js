@@ -101,6 +101,8 @@ router.use('/delivery-staff-app', deliveryStaffAppRoutes);
 router.use('/staff-app/collection-manager', collectionManagerAppRoutes);
 router.use('/staff-app/distribution-manager', distributionManagerAppRoutes);
 router.use('/staff-app/service-man', serviceManAppRoutes);
+const slotsRoutes = require('./slots.routes');
+router.use('/slots', slotsRoutes);
 router.use('/config', configRoutes);
 router.use('/admin/config', adminConfigRoutes);
 const adminCatalogueRoutes = require('./admin-catalogue.routes');

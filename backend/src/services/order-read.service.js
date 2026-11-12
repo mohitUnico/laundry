@@ -1,12 +1,38 @@
 const prisma = require('../config/database');
 const configService = require('./config.service');
-const { NotFoundError, ValidationError } = require('../utils/errors');
+const { ConflictError, NotFoundError, ValidationError } = require('../utils/errors');
 const { ORDER_STATUS } = require('../constants/order-flow');
 const { flagsFor } = require('./order-tracker');
 const { inspectService } = require('./catalogue-rules');
+const { seedDemoOrders } = require('./demo-orders');
 
 const HISTORY = [ORDER_STATUS.DELIVERED, ORDER_STATUS.CANCELLED];
 const ACTIVE_EXCLUDED = [ORDER_STATUS.DELIVERED, ORDER_STATUS.CANCELLED];
+const UPCOMING = new Set([ORDER_STATUS.PLACED, ORDER_STATUS.PICKUP_ASSIGNED]);
+
+function cardType(status) {
+    if (UPCOMING.has(status)) return 'upcoming_pickup';
+    if (status === ORDER_STATUS.DELIVERED) return 'delivered';
+    if (status === ORDER_STATUS.CANCELLED) return null;
+    return 'in_progress';
+}
+
+function orderTitle(items) {
+    const names = [
+        ...new Set((items || []).map((item) => item.service?.service_name).filter(Boolean)),
+    ];
+    if (names.length === 0) return 'Laundry pickup';
+    if (names.length > 1) return 'Mixed';
+    return names[0];
+}
+
+function totalWeightKg(items) {
+    const rows = (items || []).filter((item) => item.pricing_type === 'per_kg' && item.weight_kg != null);
+    if (!rows.length) return null;
+    const sum = rows.reduce((total, item) => total + Number(item.weight_kg), 0);
+    if (!Number.isFinite(sum) || sum <= 0) return null;
+    return sum.toFixed(2);
+}
 
 function captainBlock(delivery) {
     if (!delivery?.staff) return null;
@@ -70,6 +96,8 @@ function detailItem(item, billed) {
     const linePrice = billed ? item.unit_price : perKg ? item.service?.per_kg_price : null;
     return {
         item_id: item.item_id,
+        category_id: item.service?.category_id || null,
+        category_name: item.service?.category?.category_name || null,
         service_id: item.service_id,
         service_name: item.service?.service_name || null,
         pricing_type: item.pricing_type,
@@ -93,26 +121,75 @@ function contractFlags(order) {
     const placed = order.order_status === ORDER_STATUS.PLACED;
     return {
         can_cancel: placed,
-        can_reschedule: placed && !order.is_express,
+        can_reschedule: placed,
         can_change_address: placed,
     };
 }
 
 const ORDER_ITEM_INCLUDE = {
-    service: true,
+    service: { include: { category: true } },
     item_selections: { include: { cloth_item: true } },
 };
 
 function statusFilter({ bucket, status }) {
+    if (status === 'all') return { notIn: [ORDER_STATUS.CANCELLED] };
     if (status === 'completed') return ORDER_STATUS.DELIVERED;
     if (status === 'active') return { notIn: ACTIVE_EXCLUDED };
-    if (status != null && status !== '') throw new ValidationError('status must be active or completed');
+    if (status != null && status !== '') {
+        throw new ValidationError('status must be all, active or completed');
+    }
     if (bucket == null || bucket === '' || bucket === 'active') return { notIn: ACTIVE_EXCLUDED };
     if (bucket === 'history') return { in: HISTORY };
     throw new ValidationError('bucket must be active or history');
 }
 
+function summaryRow(order) {
+    const flags = contractFlags(order);
+    const billed = Boolean(order.bill);
+    return {
+        order_id: order.order_id,
+        orderId: order.order_id,
+        order_status: order.order_status,
+        orderStatus: order.order_status,
+        card_type: cardType(order.order_status),
+        title: orderTitle(order.order_items),
+        is_express: order.is_express,
+        created_at: order.created_at,
+        createdAt: order.created_at,
+        pickup_mode: order.pickup_mode,
+        delivery_mode: order.delivery_mode,
+        pickup_time_from: order.pickup_time_from,
+        pickup_time_to: order.pickup_time_to,
+        delivery_time_from: order.delivery_time_from,
+        delivery_time_to: order.delivery_time_to,
+        pickup_address: addressSummary(order.pickup_address),
+        services: order.order_items.map((item) => ({
+            service_id: item.service_id,
+            service_name: item.service?.service_name || null,
+            pricing_type: item.pricing_type,
+        })),
+        items: order.order_items.map((item) => detailItem(item, billed)),
+        item_count: itemCount(order.order_items),
+        total_weight_kg: totalWeightKg(order.order_items),
+        can_cancel: flags.can_cancel,
+        can_reschedule: flags.can_reschedule,
+        bill: billContract(order.bill),
+        total_amount: order.bill ? moneyStr(order.bill.final_amount) : moneyStr(order.total_amount),
+        totalAmount: order.bill ? moneyStr(order.bill.final_amount) : moneyStr(order.total_amount),
+        ...flagsFor(order, order.bill),
+    };
+}
+
 async function listOrders({ customerId, bucket, status, page = 1, limit = 20 }) {
+    try {
+        const customer = await prisma.customer.findUnique({
+            where: { customer_id: customerId },
+            select: { customer_id: true, email: true },
+        });
+        if (customer) await seedDemoOrders(customer);
+    } catch (err) {
+        // A missing demo set must not hide the customer's own orders.
+    }
     const safePage = Math.max(1, Number(page) || 1);
     const safeLimit = Math.min(100, Math.max(1, Number(limit) || 20));
     const where = {
@@ -134,33 +211,7 @@ async function listOrders({ customerId, bucket, status, page = 1, limit = 20 }) 
         prisma.order.count({ where }),
     ]);
     return {
-        orders: rows.map((order) => {
-            const flags = contractFlags(order);
-            return {
-                order_id: order.order_id,
-                orderId: order.order_id,
-                order_status: order.order_status,
-                orderStatus: order.order_status,
-                is_express: order.is_express,
-                created_at: order.created_at,
-                createdAt: order.created_at,
-                pickup_mode: order.pickup_mode,
-                pickup_time_from: order.pickup_time_from,
-                pickup_time_to: order.pickup_time_to,
-                pickup_address: addressSummary(order.pickup_address),
-                services: order.order_items.map((item) => ({
-                    service_id: item.service_id,
-                    service_name: item.service?.service_name || null,
-                    pricing_type: item.pricing_type,
-                })),
-                item_count: itemCount(order.order_items),
-                can_cancel: flags.can_cancel,
-                can_reschedule: flags.can_reschedule,
-                bill: billContract(order.bill),
-                totalAmount: order.bill ? moneyStr(order.bill.final_amount) : moneyStr(order.total_amount),
-                ...flagsFor(order, order.bill),
-            };
-        }),
+        orders: rows.map(summaryRow),
         pagination: { page: safePage, limit: safeLimit, total },
     };
 }
@@ -184,6 +235,8 @@ async function getOrderDetail({ customerId, orderId }) {
         order_status: order.order_status,
         orderStatus: order.order_status,
         is_express: order.is_express,
+        card_type: cardType(order.order_status),
+        title: orderTitle(order.order_items),
         created_at: order.created_at,
         pickup_mode: order.pickup_mode,
         delivery_mode: order.delivery_mode,
@@ -196,6 +249,7 @@ async function getOrderDetail({ customerId, orderId }) {
         can_reschedule: flags.can_reschedule,
         can_change_address: flags.can_change_address,
         item_count: itemCount(order.order_items),
+        total_weight_kg: totalWeightKg(order.order_items),
         pickup_address: addressSummary(order.pickup_address),
         delivery_address: addressSummary(order.delivery_address),
         services: order.order_items.map((item) => ({
@@ -208,28 +262,81 @@ async function getOrderDetail({ customerId, orderId }) {
     };
 }
 
+function trackingPoint(address, lat, lng) {
+    return {
+        address: address || null,
+        latitude: lat == null ? null : Number(lat),
+        longitude: lng == null ? null : Number(lng),
+    };
+}
+
+function trackingStaff(staff) {
+    if (!staff) return null;
+    return {
+        staffId: staff.staff_id,
+        fullName: staff.full_name,
+        latitude: staff.current_latitude == null ? null : Number(staff.current_latitude),
+        longitude: staff.current_longitude == null ? null : Number(staff.current_longitude),
+    };
+}
+
+function trackingLeg(delivery) {
+    if (!delivery) return null;
+    return {
+        deliveryId: delivery.delivery_id,
+        deliveryType: delivery.delivery_type,
+        deliveryStatus: delivery.delivery_status,
+        staffId: delivery.staff_id,
+        staff: trackingStaff(delivery.staff),
+    };
+}
+
 async function getTracking({ customerId, orderId }) {
     const order = await prisma.order.findFirst({
         where: { order_id: orderId, customer_id: customerId },
-        include: { deliveries: { include: { staff: true } } },
+        include: {
+            deliveries: { include: { staff: true } },
+            pickup_address: true,
+            delivery_address: true,
+        },
     });
     if (!order) throw new NotFoundError('Order');
-    if (order.order_status === ORDER_STATUS.PLACED || order.order_status === ORDER_STATUS.CANCELLED) {
-        return { trackingAvailable: false, orderStatus: order.order_status };
+    if (order.order_status === ORDER_STATUS.CANCELLED) {
+        const err = new ConflictError('This order was cancelled', 'ORDER_CANCELLED');
+        throw err;
     }
-    const legType = [ORDER_STATUS.OUT_FOR_DELIVERY, ORDER_STATUS.DELIVERED, ORDER_STATUS.SERVICES_COMPLETED].includes(order.order_status)
-        ? 'drop'
-        : 'pickup';
-    const leg = order.deliveries.find((row) => row.delivery_type === legType && row.staff_id) || null;
-    if (!leg) return { trackingAvailable: false, orderStatus: order.order_status };
+    const laundry = await prisma.laundryConfig.findFirst({ where: { is_active: true } });
+    const pickupLeg = order.deliveries.find((row) => row.delivery_type === 'pickup') || null;
+    const dropLeg = order.deliveries.find((row) => row.delivery_type === 'drop') || null;
+    const active = [ORDER_STATUS.OUT_FOR_DELIVERY, ORDER_STATUS.DELIVERED, ORDER_STATUS.SERVICES_COMPLETED].includes(order.order_status)
+        ? dropLeg
+        : pickupLeg;
     const refresh = await configService.getInt('DIRECTIONS_REFRESH_SECONDS');
     return {
-        trackingAvailable: true,
+        orderId: order.order_id,
         orderStatus: order.order_status,
-        deliveryType: legType,
+        orderType: 'both',
+        trackingAvailable: order.order_status !== ORDER_STATUS.PLACED,
         directionsRefreshSeconds: refresh,
-        eta: null,
-        captain: captainBlock(leg),
+        shop: {
+            name: laundry?.business_name || 'Laundry',
+            ...trackingPoint(laundry?.address, laundry?.latitude, laundry?.longitude),
+        },
+        pickup: trackingPoint(
+            order.pickup_address?.full_address,
+            order.pickup_address?.latitude,
+            order.pickup_address?.longitude
+        ),
+        delivery: trackingPoint(
+            order.delivery_address?.full_address,
+            order.delivery_address?.latitude,
+            order.delivery_address?.longitude
+        ),
+        deliveries: {
+            pickup: trackingLeg(pickupLeg),
+            drop: trackingLeg(dropLeg),
+        },
+        captain: captainBlock(active && active.staff_id ? active : null),
     };
 }
 

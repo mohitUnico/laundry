@@ -3,12 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
-import '../../models/cart_item.dart';
-import '../../models/order_record.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/order_provider.dart';
 import '../../routes/app_routes.dart';
 import '../../services/customer_info_service.dart';
+import '../../services/order_service.dart';
 import '../home/widgets/home_colors.dart';
 import '../orders/order_placed_screen.dart';
 import 'schedule_bottom_sheet.dart';
@@ -106,52 +105,27 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
       return _placeHomePickup();
     }
     final cart = context.read<CartProvider>();
-    final items = List<CartItem>.from(cart.items);
-    final now = DateTime.now();
     final schedule = _splitSchedule(_collectScheduleLabel);
-    final savedLine = await _defaultAddressLine();
-    if (!mounted) return false;
-    final chosenLine = (_pickupAddress?.fullAddress ?? '').trim();
-    final address = chosenLine.isEmpty ? savedLine : chosenLine;
-
-    final serviceNames = items
-        .map((item) => item.serviceName.trim())
-        .where((name) => name.isNotEmpty)
-        .toSet();
-    final title = serviceNames.length == 1
-        ? serviceNames.first
-        : (serviceNames.isEmpty ? 'Laundry' : 'Mixed');
-    final totalItems = items.fold<int>(0, (sum, item) {
-      final qty = item.totalQuantity;
-      return sum + (qty > 0 ? qty : 1);
-    });
-    final totalInr = items.fold<int>(0, (sum, item) => sum + item.subtotalInr);
-    final orderNumber = (now.millisecondsSinceEpoch % 90000) + 10000;
-
-    await context.read<OrderProvider>().addOrder(
-          OrderRecord(
-            id: 'LD$orderNumber',
-            title: title,
-            items: items,
-            totalItems: totalItems,
-            totalInr: totalInr,
-            orderType: 'both',
-            dateLabel: schedule.dateLabel,
-            timeLabel: schedule.timeLabel,
-            scheduledPickupAt: schedule.at,
-            placedAt: now,
-            placedDateLabel: '${now.day} ${_monthShort(now.month)}',
-            placedTimeLabel: _clockLabel(now),
-            status: OrderStatus.inProgress,
-            backendStatus: 'placed',
-            pickupAddress: address,
-            isExpress: _expressWash,
-          ),
-        );
+    final pickupEnd = schedule.at.add(const Duration(minutes: 30));
+    String? orderId;
+    try {
+      orderId = await _submitOrder(
+        express: _expressWash,
+        cartId: cart.activeCartId,
+        pickupStart: schedule.at,
+        pickupEnd: pickupEnd,
+        deliveryStart: schedule.at.add(const Duration(days: 2)),
+        deliveryEnd: pickupEnd.add(const Duration(days: 2)),
+      );
+      if (orderId == null) return false;
+    } catch (error) {
+      _showMessage('$error');
+      return false;
+    }
     if (!mounted) return false;
     cart.clear();
     Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const OrderPlacedScreen()),
+      MaterialPageRoute(builder: (_) => OrderPlacedScreen(orderId: orderId)),
       (route) => false,
     );
     return true;
@@ -159,6 +133,43 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
 
   void _showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// Places the order on the API, then reloads the list from GET /orders.
+  Future<String?> _submitOrder({
+    required bool express,
+    String? cartId,
+    DateTime? pickupStart,
+    DateTime? pickupEnd,
+    DateTime? deliveryStart,
+    DateTime? deliveryEnd,
+  }) async {
+    final pickup = _pickupAddress ?? await _savedAddress();
+    final delivery = _deliveryAddress ?? pickup;
+    final pickupId = pickup?.addressId ?? '';
+    final deliveryId = delivery?.addressId ?? '';
+    if (pickupId.isEmpty || deliveryId.isEmpty) {
+      _showMessage('Add a pickup address first');
+      return null;
+    }
+    final scheduledPickup = !express && pickupStart != null && pickupEnd != null;
+    final scheduledDelivery =
+        !express && !_expressReturn && deliveryStart != null && deliveryEnd != null;
+    final result = await OrderService().createOrder(
+      cartId: (cartId == null || cartId.isEmpty) ? null : cartId,
+      pickupAddressId: pickupId,
+      deliveryAddressId: deliveryId,
+      isExpress: express,
+      pickupMode: scheduledPickup ? 'scheduled' : 'instant',
+      deliveryMode: scheduledDelivery ? 'scheduled' : 'instant',
+      pickupTimeFrom: scheduledPickup ? pickupStart.toUtc().toIso8601String() : null,
+      pickupTimeTo: scheduledPickup ? pickupEnd.toUtc().toIso8601String() : null,
+      deliveryTimeFrom: scheduledDelivery ? deliveryStart.toUtc().toIso8601String() : null,
+      deliveryTimeTo: scheduledDelivery ? deliveryEnd.toUtc().toIso8601String() : null,
+    );
+    if (!mounted) return result.orderId;
+    await context.read<OrderProvider>().fetchOrders(page: 1, limit: 50, status: 'all');
+    return result.orderId;
   }
 
   Future<bool> _placeHomePickup() async {
@@ -173,45 +184,24 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
       _showMessage('Choose a delivery time first');
       return false;
     }
-    final now = DateTime.now();
-    final saved = await _savedAddress();
-    if (!mounted) return false;
-    final orderNumber = (now.millisecondsSinceEpoch % 90000) + 10000;
-    final id = 'LD$orderNumber';
-    final chosen = _pickupAddress ?? saved;
-    final line = (chosen?.fullAddress ?? '').trim();
-    await context.read<OrderProvider>().addOrder(
-          OrderRecord(
-            id: id,
-            title: instant ? 'Instant pickup' : 'Scheduled pickup',
-            items: const [],
-            totalItems: 0,
-            totalInr: 0,
-            orderType: instant ? 'instant_pickup' : 'schedule_pickup',
-            dateLabel: instant
-                ? '${now.day} ${_monthShort(now.month)}'
-                : '${pick!.date.day} ${_monthShort(pick.date.month)}',
-            timeLabel: instant ? 'Within 20 mins' : pick!.slot,
-            scheduledPickupAt: instant ? null : scheduleSlotStart(pick!.date, pick.slot),
-            deliveryDateLabel: returnPick == null
-                ? null
-                : '${returnPick.date.day} ${_monthShort(returnPick.date.month)}',
-            deliveryTimeLabel: returnPick != null
-                ? returnPick.slot
-                : (_expressReturn ? 'Express' : null),
-            scheduledDeliveryAt:
-                returnPick == null ? null : scheduleSlotStart(returnPick.date, returnPick.slot),
-            placedAt: now,
-            placedDateLabel: '${now.day} ${_monthShort(now.month)}',
-            placedTimeLabel: _clockLabel(now),
-            status: OrderStatus.inProgress,
-            backendStatus: 'placed',
-            pickupAddress: line.isEmpty ? null : line,
-            pickupLat: chosen?.latitude,
-            pickupLng: chosen?.longitude,
-            isExpress: instant || _expressWash,
-          ),
-        );
+    String? id;
+    try {
+      id = await _submitOrder(
+        express: _expressWash,
+        pickupStart: instant || pick == null ? null : scheduleSlotStart(pick.date, pick.slot),
+        pickupEnd: instant || pick == null ? null : scheduleSlotEnd(pick.date, pick.slot),
+        deliveryStart: returnPick == null
+            ? null
+            : scheduleSlotStart(returnPick.date, returnPick.slot),
+        deliveryEnd: returnPick == null
+            ? null
+            : scheduleSlotEnd(returnPick.date, returnPick.slot),
+      );
+      if (id == null) return false;
+    } catch (error) {
+      _showMessage('$error');
+      return false;
+    }
     if (!mounted) return false;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(
@@ -268,21 +258,6 @@ class _DeliveryOptionsScreenState extends State<DeliveryOptionsScreen> {
         (item) => item.isDefault,
         orElse: () => addresses.first,
       );
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<String?> _defaultAddressLine() async {
-    try {
-      final addresses = await CustomerInfoService().getAddresses();
-      if (addresses.isEmpty) return null;
-      final address = addresses.firstWhere(
-        (item) => item.isDefault,
-        orElse: () => addresses.first,
-      );
-      final line = address.fullAddress.trim();
-      return line.isEmpty ? address.addressLabel.trim() : line;
     } catch (_) {
       return null;
     }
@@ -1251,22 +1226,4 @@ class _SlideToOrderButtonState extends State<_SlideToOrderButton>
       },
     );
   }
-}
-
-String _monthShort(int month) {
-  const months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
-  return months[month - 1];
 }

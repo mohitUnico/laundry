@@ -178,10 +178,13 @@ describe('Phase 4 cancel and reschedule', () => {
         expect(pending).toBe(1);
 
         const express = await place({ is_express: true });
-        const denied = await request(app)
+        const moved = await request(app)
             .patch(`/api/v1/orders/${express}/schedule`)
             .set('Authorization', `Bearer ${token}`)
             .send({ pickup_mode: 'scheduled', pickup_time_from: futureIso(2) });
-        expect(denied.status).toBe(409);
+        expect(moved.status).toBe(200);
+        const row = await prisma.order.findUnique({ where: { order_id: express } });
+        expect(row.is_express).toBe(true);
+        expect(row.pickup_mode).toBe('scheduled');
     });
 });

@@ -1,7 +1,5 @@
 const { PrismaClient } = require('@prisma/client')
 const { CATALOG } = require('./catalog.seed')
-const { seedDemoOrders } = require('../src/services/demo-orders')
-
 const prisma = new PrismaClient()
 
 // Idempotent seed — safe to re-run. Does not truncate existing data.
@@ -397,8 +395,7 @@ async function main() {
     await seedManagers()
     await seedServiceMen()
     await seedDeliveryStaff()
-    const customer = await seedCustomer()
-    await seedDemoOrders(customer)
+    await seedCustomer()
     await seedCoupons()
     await seedAppConfig()
 

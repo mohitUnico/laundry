@@ -4,7 +4,6 @@ const { ConflictError, NotFoundError, ValidationError } = require('../utils/erro
 const { ORDER_STATUS } = require('../constants/order-flow');
 const { flagsFor } = require('./order-tracker');
 const { inspectService } = require('./catalogue-rules');
-const { seedDemoOrders } = require('./demo-orders');
 
 const HISTORY = [ORDER_STATUS.DELIVERED, ORDER_STATUS.CANCELLED];
 const ACTIVE_EXCLUDED = [ORDER_STATUS.DELIVERED, ORDER_STATUS.CANCELLED];
@@ -181,15 +180,6 @@ function summaryRow(order) {
 }
 
 async function listOrders({ customerId, bucket, status, page = 1, limit = 20 }) {
-    try {
-        const customer = await prisma.customer.findUnique({
-            where: { customer_id: customerId },
-            select: { customer_id: true, email: true },
-        });
-        if (customer) await seedDemoOrders(customer);
-    } catch (err) {
-        // A missing demo set must not hide the customer's own orders.
-    }
     const safePage = Math.max(1, Number(page) || 1);
     const safeLimit = Math.min(100, Math.max(1, Number(limit) || 20));
     const where = {

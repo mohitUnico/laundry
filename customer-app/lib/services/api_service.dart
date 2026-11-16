@@ -13,18 +13,13 @@ class ApiService {
   late Dio _dio;
   static Future<void>? _refreshInFlight;
 
-  // Local backend (Docker on host port 3001):
-  //   flutter run --dart-define=API_BASE_URL=http://192.168.0.17:3001/api/v1
-  // Android emulator:
-  //   flutter run --dart-define=API_BASE_URL=http://10.0.2.2:3001/api/v1
-  // USB + adb reverse (maps phone localhost:3001 -> PC):
-  //   adb reverse tcp:3001 tcp:3001
+  // Hosted API. Override for a local backend:
   //   flutter run --dart-define=API_BASE_URL=http://127.0.0.1:3001/api/v1
   static String resolveBaseUrl() {
     const defined = String.fromEnvironment('API_BASE_URL', defaultValue: '');
     if (defined.isNotEmpty) return defined;
 
-    return 'http://192.168.0.17:3001/api/v1';
+    return 'http://13.234.213.224:3001/api/v1';
   }
 
   factory ApiService() => _instance;

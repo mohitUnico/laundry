@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../routes/app_routes.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/customer_info_service.dart';
 import 'edit_profile_dialog.dart';
 import '../home/widgets/home_colors.dart';
 import '../../theme/app_text_styles.dart';
@@ -21,6 +22,55 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  bool _deletingAccount = false;
+
+  Future<void> _confirmDeleteAccount() async {
+    if (_deletingAccount) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete account'),
+          content: const Text(
+            'This permanently deletes your WashBee account. Active orders must be finished or cancelled first.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _deletingAccount = true);
+    try {
+      await CustomerInfoService().deleteAccount();
+      if (!mounted) return;
+      await context.read<AuthProvider>().logout();
+      if (!mounted) return;
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        AppRoutes.onboarding,
+        (route) => false,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      final message = error.toString().replaceFirst('Exception: ', '');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } finally {
+      if (mounted) setState(() => _deletingAccount = false);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -154,6 +204,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   title: 'App Settings',
                   subtitle: 'Language, theme, data',
                   onTap: () {},
+                ),
+                _SettingsItem(
+                  icon: Icons.delete_outline_rounded,
+                  iconColor: const Color(0xFFF04438),
+                  title: 'Delete account',
+                  subtitle: _deletingAccount
+                      ? 'Deleting your account'
+                      : 'Permanently remove your account',
+                  onTap: _confirmDeleteAccount,
                 ),
               ],
             ),

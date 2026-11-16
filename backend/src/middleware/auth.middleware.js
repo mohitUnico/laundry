@@ -19,6 +19,16 @@ exports.authenticateJWT = async (req, res, next) => {
         // Verify token
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
+        if (decoded.role === 'customer') {
+            const customer = await prisma.customer.findUnique({
+                where: { customer_id: decoded.user_id },
+                select: { is_active: true },
+            });
+            if (!customer || customer.is_active === false) {
+                throw new AuthenticationError('Account deleted');
+            }
+        }
+
         // Attach user to request
         req.user = decoded;
         next();

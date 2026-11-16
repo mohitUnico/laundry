@@ -177,6 +177,25 @@ exports.getProfile = async (req, res, next) => {
     }
 };
 
+exports.deleteAccount = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'customer') {
+            throw new AuthorizationError('Only customers can delete their account');
+        }
+
+        const customerId = req.user.user_id;
+        await customerInfoService.deleteCustomerAccount(customerId);
+
+        res.status(200).json({
+            success: true,
+            data: { deleted: true },
+            message: 'Account deleted successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 exports.updateProfile = async (req, res, next) => {
     try {
         if (req.user.role !== 'customer') {

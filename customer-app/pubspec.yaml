@@ -53,6 +53,7 @@ dependencies:
   permission_handler: ^11.1.0
   flutter_local_notifications: ^17.2.2
   country_picker: ^2.0.27
+  razorpay_flutter: ^1.4.0
 
 dev_dependencies:
   flutter_test:

@@ -1,7 +1,7 @@
 const paymentService = require('../services/payment.service');
 const doorService = require('../services/door.service');
 const checkout = require('../services/payments/checkout.service');
-const { AuthorizationError, AppError } = require('../utils/errors');
+const { AuthorizationError } = require('../utils/errors');
 
 exports.processPayment = async (req, res, next) => {
     try {
@@ -66,6 +66,48 @@ exports.createPayIntent = async (req, res, next) => {
     }
 };
 
+exports.confirmRazorpay = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'customer') throw new AuthorizationError('Only customers can pay');
+        const data = await checkout.confirmRazorpayPayment({
+            customerId: req.user.user_id,
+            orderId: req.params.orderId,
+            razorpayOrderId: req.body.razorpayOrderId,
+            razorpayPaymentId: req.body.razorpayPaymentId,
+            razorpaySignature: req.body.razorpaySignature,
+        });
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.cancelAttempt = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'customer') throw new AuthorizationError('Only customers can cancel a payment');
+        const data = await checkout.cancelCheckout({
+            customerId: req.user.user_id,
+            orderId: req.params.orderId,
+        });
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.refundPayment = async (req, res, next) => {
+    try {
+        const data = await checkout.requestManualRefund({
+            actorId: req.user.user_id,
+            orderId: req.params.orderId,
+            reason: req.body.reason,
+        });
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
+};
+
 exports.paymentStatus = async (req, res, next) => {
     try {
         if (req.user.role !== 'customer') throw new AuthorizationError('Only customers can view payment status');
@@ -93,17 +135,3 @@ exports.webhook = async (req, res, next) => {
     }
 };
 
-exports.mockComplete = async (req, res, next) => {
-    try {
-        if (process.env.NODE_ENV === 'production') {
-            throw new AppError('Not found', 404, 'NOT_FOUND');
-        }
-        const data = await checkout.devForceAttempt({
-            attemptId: req.params.attemptId,
-            status: req.body.status,
-        });
-        res.status(200).json({ success: true, data });
-    } catch (error) {
-        next(error);
-    }
-};

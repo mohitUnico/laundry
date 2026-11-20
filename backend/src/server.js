@@ -8,6 +8,8 @@ let stopPickupAssignmentWorker;
 let startPickupAssignmentCatchupJob;
 let stopPickupAssignmentCatchupJob;
 let closeRedisConnection;
+let startPaymentReconciliationJob;
+let stopPaymentReconciliationJob;
 
 try {
     app = require('./app');
@@ -22,6 +24,7 @@ try {
     const pickupCatchupJob = require('./services/assignment/assignment-catchup.job');
     const pickupWorker = require('./services/assignment/assignment.worker');
     const redis = require('./config/redis');
+    const paymentReconciliation = require('./jobs/payment-reconciliation.job');
     startCleanupJob = portalAuth.startCleanupJob;
     startDailyMetricsJob = dailyMetricsJob.startDailyMetricsJob;
     startPickupAssignmentCatchupJob = pickupCatchupJob.startAssignmentCatchupJob;
@@ -29,6 +32,8 @@ try {
     startPickupAssignmentWorker = pickupWorker.startAssignmentWorker;
     stopPickupAssignmentWorker = pickupWorker.stopAssignmentWorker;
     closeRedisConnection = redis.closeRedisConnection;
+    startPaymentReconciliationJob = paymentReconciliation.startPaymentReconciliationJob;
+    stopPaymentReconciliationJob = paymentReconciliation.stopPaymentReconciliationJob;
 } catch (err) {
     console.error('❌ Startup failed (require/load):', err);
     process.exit(1);
@@ -60,6 +65,7 @@ const gracefulShutdown = async (signal) => {
     
     await stopPickupAssignmentWorker();
     stopPickupAssignmentCatchupJob();
+    if (stopPaymentReconciliationJob) await stopPaymentReconciliationJob();
 
     server.close(async () => {
         logger.info('✅ HTTP server closed');
@@ -104,6 +110,9 @@ const server = app.listen(PORT, () => {
         } catch (error) {
             logger.error('Failed to start assignment worker', { error: error.message });
         }
+        startPaymentReconciliationJob().catch((error) => {
+            logger.error('Failed to start payment reconciliation', { error: error.message });
+        });
     } catch (err) {
         logger.error('❌ Error during server startup (in listen callback):', err);
         process.exit(1);

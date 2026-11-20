@@ -1,6 +1,7 @@
 /**
  * Drives a v2 order through the HTTP API. Used by the lifecycle suite.
  */
+const crypto = require('crypto');
 const request = require('supertest');
 const app = require('./app');
 const prisma = require('../../src/config/database');
@@ -139,16 +140,141 @@ async function completeAllQueues(orderId) {
     return results;
 }
 
-async function payMock(orderId, customerToken, status = 'succeeded') {
+const gatewayPayments = new Map();
+const gatewayOrders = new Map();
+let razorpayFetchInstalled = false;
+
+function jsonResponse(status, data) {
+    return {
+        ok: status >= 200 && status < 300,
+        status,
+        json: async () => data,
+        text: async () => JSON.stringify(data),
+    };
+}
+
+function installRazorpayFetch() {
+    if (razorpayFetchInstalled) return;
+    const original = global.fetch;
+    razorpayFetchInstalled = true;
+    global.fetch = async (url, options = {}) => {
+        const target = String(url);
+        if (!target.startsWith('https://api.razorpay.com/v1')) return original(url, options);
+        const path = target.slice('https://api.razorpay.com/v1'.length).split('?')[0];
+        const method = String(options.method || 'GET').toUpperCase();
+        if (method === 'POST' && path === '/orders') {
+            const body = JSON.parse(options.body || '{}');
+            const id = `order_${crypto.randomBytes(6).toString('hex')}`;
+            const order = { id, amount: body.amount, currency: 'INR', status: 'created', receipt: body.receipt };
+            gatewayOrders.set(id, order);
+            return jsonResponse(200, order);
+        }
+        const orderPayments = path.match(/^\/orders\/([^/]+)\/payments$/);
+        if (method === 'GET' && orderPayments) {
+            const items = [...gatewayPayments.values()].filter((row) => row.order_id === decodeURIComponent(orderPayments[1]));
+            return jsonResponse(200, { items });
+        }
+        const onePayment = path.match(/^\/payments\/([^/]+)$/);
+        if (method === 'GET' && onePayment) {
+            const payment = gatewayPayments.get(decodeURIComponent(onePayment[1]));
+            if (!payment) return jsonResponse(404, { error: { description: 'payment not found' } });
+            return jsonResponse(200, payment);
+        }
+        const refund = path.match(/^\/payments\/([^/]+)\/refund$/);
+        if (method === 'POST' && refund) {
+            const payment = gatewayPayments.get(decodeURIComponent(refund[1]));
+            if (!payment) return jsonResponse(404, { error: { description: 'payment not found' } });
+            if (payment.refund_status === 'processed') {
+                return jsonResponse(400, { error: { description: 'The payment has been fully refunded already' } });
+            }
+            payment.refund_status = 'processed';
+            return jsonResponse(200, {
+                id: `rfnd_${payment.id}`,
+                payment_id: payment.id,
+                amount: payment.amount,
+                status: 'processed',
+            });
+        }
+        const oneOrder = path.match(/^\/orders\/([^/]+)$/);
+        if (method === 'GET' && oneOrder) {
+            const order = gatewayOrders.get(decodeURIComponent(oneOrder[1]));
+            if (!order) return jsonResponse(404, { error: { description: 'order not found' } });
+            return jsonResponse(200, order);
+        }
+        if (method === 'GET' && path === '/orders') return jsonResponse(200, { items: [...gatewayOrders.values()] });
+        const oneRefund = path.match(/^\/refunds\/([^/]+)$/);
+        if (method === 'GET' && oneRefund) {
+            return jsonResponse(200, { id: decodeURIComponent(oneRefund[1]), status: 'processed' });
+        }
+        return jsonResponse(404, { error: { description: `unmocked ${method} ${path}` } });
+    };
+}
+
+function rememberPayment({ providerRef, paymentId, amount, status }) {
+    if (!paymentId || !providerRef) return;
+    gatewayPayments.set(paymentId, {
+        id: paymentId,
+        order_id: providerRef,
+        amount,
+        status: status === 'failed' ? 'failed' : 'captured',
+        method: 'upi',
+    });
+}
+
+function razorpayEvent({ providerRef, paymentId, amount, status }) {
+    return JSON.stringify({
+        event: status === 'failed' ? 'payment.failed' : 'payment.captured',
+        payload: {
+            payment: {
+                entity: {
+                    id: paymentId,
+                    order_id: providerRef,
+                    amount,
+                    status: status === 'failed' ? 'failed' : 'captured',
+                    method: 'upi',
+                    error_description: status === 'failed' ? 'payment_failed' : null,
+                },
+            },
+        },
+    });
+}
+
+function sendRazorpayWebhook({ providerRef, paymentId, amount, status = 'succeeded' }) {
+    installRazorpayFetch();
+    rememberPayment({ providerRef, paymentId, amount, status });
+    const raw = razorpayEvent({ providerRef, paymentId, amount, status });
+    const signature = crypto.createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET).update(raw).digest('hex');
+    return request(app)
+        .post('/api/v1/payments/webhook/razorpay')
+        .set('Content-Type', 'application/json')
+        .set('x-razorpay-signature', signature)
+        .send(raw);
+}
+
+async function payWithRazorpay(orderId, customerToken, status = 'succeeded') {
+    installRazorpayFetch();
     const intent = await request(app)
         .post(`/api/v1/payments/orders/${orderId}/pay-intent`)
         .set(auth(customerToken));
     if (intent.status !== 200) return { intent, forced: null };
-    const attemptId = intent.body.data.attempt.attemptId;
-    const forced = await request(app)
-        .post(`/api/v1/payments/mock/attempts/${attemptId}/complete`)
-        .send({ status });
-    return { intent, forced, attemptId };
+    const providerRef = intent.body.data.attempt.providerRef;
+    const order = gatewayOrders.get(providerRef);
+    const paymentId = `pay_${providerRef}`;
+    const amount = order ? order.amount : null;
+    const forced = await sendRazorpayWebhook({
+        providerRef,
+        paymentId,
+        amount,
+        status,
+    });
+    return {
+        intent,
+        forced,
+        attemptId: intent.body.data.attempt.attemptId,
+        providerRef,
+        paymentId,
+        amount,
+    };
 }
 
 async function markDelivered(orderId, partnerToken) {
@@ -170,6 +296,7 @@ module.exports = {
     submitToCm,
     receiveAndQueue,
     completeAllQueues,
-    payMock,
+    payWithRazorpay,
+    sendRazorpayWebhook,
     markDelivered,
 };

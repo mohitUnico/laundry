@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:razorpay_flutter/razorpay_flutter.dart';
 
 import '../home/widgets/home_colors.dart';
 import '../../theme/app_text_styles.dart';
@@ -16,6 +17,8 @@ import '../../models/promo_code_model.dart';
 import '../../repositories/order_repository.dart';
 import '../../repositories/customer_info_repository.dart';
 import '../../repositories/payment_repository.dart';
+import '../../services/checkout_session.dart';
+import '../../services/payment_service.dart';
 import '../cart/delivery_options_screen.dart';
 
 class PaymentScreen extends StatefulWidget {
@@ -25,16 +28,266 @@ class PaymentScreen extends StatefulWidget {
   State<PaymentScreen> createState() => _PaymentScreenState();
 }
 
-class _PaymentScreenState extends State<PaymentScreen> {
+class _PaymentScreenState extends State<PaymentScreen> with WidgetsBindingObserver {
   PaymentMethod _selectedMethod = PaymentMethod.visa;
   final TextEditingController _promoCodeController = TextEditingController();
   String? _appliedPromoCode;
   int _promoDiscount = 0;
+  late final Razorpay _razorpay;
+  String? _pendingOrderId;
+  int _pendingAmountRupees = 0;
+  String? _banner;
+  bool _watchedStatus = false;
+  final CheckoutSession _checkout = CheckoutSession();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _razorpay = Razorpay();
+    _razorpay.on(Razorpay.EVENT_PAYMENT_SUCCESS, _onRazorpaySuccess);
+    _razorpay.on(Razorpay.EVENT_PAYMENT_ERROR, _onRazorpayError);
+    _razorpay.on(Razorpay.EVENT_EXTERNAL_WALLET, _onRazorpayWallet);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_watchedStatus) return;
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final orderId = args?['orderId'] as String?;
+    if (args?['mode'] == 'existingBill' && orderId != null && orderId.isNotEmpty) {
+      _watchedStatus = true;
+      _pendingOrderId = orderId;
+      _refreshPaymentStatus(navigateOnPaid: false);
+    }
+  }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _razorpay.clear();
     _promoCodeController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+      _checkout.pausedForExternalApp();
+      return;
+    }
+    if (state == AppLifecycleState.resumed) {
+      _refreshPaymentStatus(navigateOnPaid: true);
+    }
+  }
+
+  void _showBanner(String message) {
+    if (!mounted) return;
+    setState(() => _banner = message);
+  }
+
+  String _bannerFor(PayIntentResult result) {
+    switch (result.verificationState) {
+      case 'paid':
+        return 'Payment successful';
+      case 'paid_cash':
+        return 'Payment already completed';
+      case 'failed':
+        return 'Payment failed';
+      case 'cancelled':
+        return 'Payment cancelled';
+      case 'refund_pending':
+        return 'Refund pending';
+      case 'refund_completed':
+        return 'Refund completed';
+      case 'verifying':
+      case 'unknown':
+        return paymentVerificationMessage;
+      default:
+        return '';
+    }
+  }
+
+  Future<void> _refreshPaymentStatus({required bool navigateOnPaid}) async {
+    final orderId = _pendingOrderId;
+    if (orderId == null || orderId.isEmpty) return;
+    try {
+      final result = await PaymentRepository().paymentStatus(orderId: orderId);
+      if (!mounted) return;
+      _checkout.applyServerResult(result);
+      final text = _checkout.message.isNotEmpty ? _checkout.message : _bannerFor(result);
+      if (text.isNotEmpty) _showBanner(text);
+      if (navigateOnPaid && result.isPaidOnline) {
+        _openPaid(result);
+      }
+    } catch (_) {}
+  }
+
+  void _openPaid(PayIntentResult result) {
+    Navigator.of(context).pushNamedAndRemoveUntil(
+      AppRoutes.paymentSuccessful,
+      (route) => false,
+      arguments: {
+        'transactionId': result.transactionId ?? '',
+        'itemTotal': _pendingAmountRupees,
+        'handlingFee': 0,
+        'pickupFeeOriginal': 0,
+        'pickupFee': 0,
+        'deliveryFee': 0,
+        'originalTotal': _pendingAmountRupees,
+        'finalTotal': _pendingAmountRupees,
+        'deliveryOption': 'pickupOnly',
+      },
+    );
+  }
+
+  Future<void> _payExistingBill(String? existingOrderId) async {
+    if (!_checkout.begin()) {
+      _showBanner(_checkout.message);
+      return;
+    }
+    setState(() {});
+    if (existingOrderId == null || existingOrderId.isEmpty) {
+      _checkout.fail('Order ID missing for bill payment');
+      _showBanner(_checkout.message);
+      return;
+    }
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+    var loaderOpen = true;
+    try {
+      final intent = await PaymentRepository().createPayIntent(orderId: existingOrderId);
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      loaderOpen = false;
+      _pendingOrderId = existingOrderId;
+      _pendingAmountRupees = double.tryParse(intent.finalAmount)?.round() ?? _pendingAmountRupees;
+      _checkout.applyServerResult(intent);
+      if (_checkout.message.isNotEmpty) _showBanner(_checkout.message);
+      if (intent.isPaidOnline) {
+        _openPaid(intent);
+        return;
+      }
+      if (intent.verificationState == 'unknown' ||
+          intent.verificationState == 'verifying' ||
+          intent.verificationState == 'refund_pending' ||
+          intent.verificationState == 'refund_completed') {
+        return;
+      }
+      final launch = launchFromIntent(intent);
+      if (launch == null) {
+        _checkout.fail('Payment could not be started. Check the Razorpay keys and try again.');
+        _showBanner(_checkout.message);
+        return;
+      }
+      _pendingAmountRupees = (launch.amount / 100).round();
+      _checkout.awaitingExternalApp();
+      _showBanner(_checkout.message);
+      _razorpay.open(launch.toOptions());
+    } catch (e) {
+      if (!mounted) return;
+      if (loaderOpen) Navigator.of(context).pop();
+      final message = describePaymentError(e);
+      _checkout.unknown(message);
+      _showBanner(_checkout.message);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_checkout.message)),
+      );
+    }
+  }
+
+  Future<void> _onRazorpaySuccess(PaymentSuccessResponse response) async {
+    final orderId = _pendingOrderId;
+    if (orderId == null || !mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+    var loaderOpen = true;
+    _checkout.verifying();
+    _showBanner(_checkout.message);
+    try {
+      final result = await PaymentRepository().confirmRazorpay(
+        orderId: orderId,
+        razorpayOrderId: response.orderId ?? '',
+        razorpayPaymentId: response.paymentId ?? '',
+        razorpaySignature: response.signature ?? '',
+      );
+      if (!mounted) return;
+      try {
+        await context.read<OrderProvider>().fetchOrders(page: 1, limit: 10);
+      } catch (_) {}
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      loaderOpen = false;
+      _checkout.applyServerResult(result);
+      if (result.verificationState == 'refund_pending' || result.verificationState == 'refund_completed') {
+        _showBanner(_checkout.message);
+        return;
+      }
+      if (!result.isPaidOnline) {
+        _checkout.unknown(paymentVerificationMessage);
+        _showBanner(_checkout.message);
+        return;
+      }
+      _openPaid(result);
+    } catch (e) {
+      if (!mounted) return;
+      if (loaderOpen) Navigator.of(context).pop();
+      _checkout.unknown(describePaymentError(e));
+      _showBanner(_checkout.message);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_checkout.message)));
+    }
+  }
+
+  Future<void> _onRazorpayError(PaymentFailureResponse response) async {
+    if (!mounted) return;
+    final orderId = _pendingOrderId;
+    if (response.code == Razorpay.PAYMENT_CANCELLED) {
+      if (orderId != null) {
+        try {
+          final result = await PaymentRepository().cancelAttempt(orderId: orderId);
+          if (!mounted) return;
+          _checkout.applyServerResult(result);
+          if (result.isPaidOnline) {
+            _openPaid(result);
+            return;
+          }
+          if (result.verificationState == 'pending' ||
+              result.verificationState == 'verifying' ||
+              result.verificationState == 'unknown') {
+            _checkout.unknown(paymentVerificationMessage);
+          } else if (_checkout.phase == CheckoutPhase.idle || _checkout.phase == CheckoutPhase.awaiting) {
+            _checkout.cancelled();
+          }
+          _showBanner(_checkout.message);
+        } catch (error) {
+          _checkout.unknown(describePaymentError(error));
+          _showBanner(_checkout.message);
+        }
+      } else {
+        _checkout.cancelled();
+        _showBanner(_checkout.message);
+      }
+      return;
+    }
+    final sdkMessage = (response.message ?? '').trim();
+    _checkout.unknown(sdkMessage.isEmpty ? paymentVerificationMessage : sdkMessage);
+    _showBanner(_checkout.message);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_checkout.message)));
+    await _refreshPaymentStatus(navigateOnPaid: true);
+  }
+
+  void _onRazorpayWallet(ExternalWalletResponse response) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Continue in ${response.walletName ?? 'your wallet'}')),
+    );
   }
 
   @override
@@ -152,32 +405,36 @@ class _PaymentScreenState extends State<PaymentScreen> {
                               .copyWith(fontSize: 18),
                         ),
                         const SizedBox(height: 16),
-                        _PaymentMethodCard(
-                          method: PaymentMethod.visa,
-                          title: 'Visa ending in 2361',
-                          subtitle: 'Expiry 03/2028',
-                          icon: Icons.credit_card_rounded,
-                          isSelected: _selectedMethod == PaymentMethod.visa,
-                          onTap: () => setState(() => _selectedMethod = PaymentMethod.visa),
-                        ),
-                        const SizedBox(height: 12),
-                        _PaymentMethodCard(
-                          method: PaymentMethod.mastercard,
-                          title: 'Master ending in 4227',
-                          subtitle: 'Expiry 11/2027',
-                          icon: Icons.credit_card_rounded,
-                          isSelected: _selectedMethod == PaymentMethod.mastercard,
-                          onTap: () => setState(() => _selectedMethod = PaymentMethod.mastercard),
-                        ),
-                        const SizedBox(height: 12),
-                        _PaymentMethodCard(
-                          method: PaymentMethod.cod,
-                          title: 'COD',
-                          subtitle: 'Pay later',
-                          icon: Icons.money_rounded,
-                          isSelected: _selectedMethod == PaymentMethod.cod,
-                          onTap: () => setState(() => _selectedMethod = PaymentMethod.cod),
-                        ),
+                        if (isExistingBill)
+                          const _RazorpayMethodCard()
+                        else ...[
+                          _PaymentMethodCard(
+                            method: PaymentMethod.visa,
+                            title: 'Visa ending in 2361',
+                            subtitle: 'Expiry 03/2028',
+                            icon: Icons.credit_card_rounded,
+                            isSelected: _selectedMethod == PaymentMethod.visa,
+                            onTap: () => setState(() => _selectedMethod = PaymentMethod.visa),
+                          ),
+                          const SizedBox(height: 12),
+                          _PaymentMethodCard(
+                            method: PaymentMethod.mastercard,
+                            title: 'Master ending in 4227',
+                            subtitle: 'Expiry 11/2027',
+                            icon: Icons.credit_card_rounded,
+                            isSelected: _selectedMethod == PaymentMethod.mastercard,
+                            onTap: () => setState(() => _selectedMethod = PaymentMethod.mastercard),
+                          ),
+                          const SizedBox(height: 12),
+                          _PaymentMethodCard(
+                            method: PaymentMethod.cod,
+                            title: 'COD',
+                            subtitle: 'Pay later',
+                            icon: Icons.money_rounded,
+                            isSelected: _selectedMethod == PaymentMethod.cod,
+                            onTap: () => setState(() => _selectedMethod = PaymentMethod.cod),
+                          ),
+                        ],
                         const SizedBox(height: 100), // Space for bottom button
                       ],
                     ),
@@ -197,134 +454,30 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   ),
                   child: SafeArea(
                     top: false,
-                    child: _PayButton(
-                      amount: isExistingBill && existingBillTotal != null ? existingBillTotal : finalTotal,
-                      onTap: () async {
-                        // EXISTING BILL FLOW: only process payment for an already-created invoice
-                        if (isExistingBill) {
-                          if (existingOrderId == null || existingOrderId.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Order ID missing for bill payment')),
-                            );
-                            return;
-                          }
-
-                          if (!mounted) return;
-                          showDialog(
-                            context: context,
-                            barrierDismissible: false,
-                            builder: (context) => const Center(
-                              child: CircularProgressIndicator(),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_banner != null && _banner!.isNotEmpty) ...[
+                          Text(
+                            _banner!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Color(0xFF1B1F2A), fontSize: 13),
+                          ),
+                          if (isExistingBill && _checkout.showRefresh) ...[
+                            TextButton(
+                              onPressed: () => _refreshPaymentStatus(navigateOnPaid: true),
+                              child: const Text('Refresh status'),
                             ),
-                          );
-
-                          try {
-                            final paymentRepo = PaymentRepository();
-                            final invoice =
-                                await paymentRepo.getInvoiceByOrderId(orderId: existingOrderId);
-
-                            if (invoice == null) {
-                              if (mounted) {
-                                Navigator.of(context).pop();
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Invoice not generated yet')),
-                                );
-                              }
-                              return;
-                            }
-
-                            final bill = invoice.bill;
-                            final billAmount =
-                                (double.tryParse(bill.finalAmount) ?? 0.0).toInt();
-                            if (billAmount <= 0) {
-                              if (mounted) {
-                                Navigator.of(context).pop();
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Nothing to pay for this bill')),
-                                );
-                              }
-                              return;
-                            }
-
-                            String paymentMethodBackend;
-                            String paymentStatus;
-
-                            switch (_selectedMethod) {
-                              case PaymentMethod.visa:
-                              case PaymentMethod.mastercard:
-                                paymentMethodBackend = 'card';
-                                paymentStatus = 'completed';
-                                break;
-                              case PaymentMethod.cod:
-                                paymentMethodBackend = 'cod';
-                                paymentStatus = 'pending';
-                                break;
-                            }
-
-                            final timestamp =
-                                DateTime.now().millisecondsSinceEpoch.toString();
-                            var transactionId =
-                                'QUCVG${timestamp.length > 7 ? timestamp.substring(timestamp.length - 7) : timestamp.padLeft(7, '0')}';
-
-                            final paymentResult = await paymentRepo.processPayment(
-                              orderId: existingOrderId,
-                              paymentMethod: paymentMethodBackend,
-                              transactionId:
-                                  paymentStatus == 'completed' ? transactionId : null,
-                              paymentStatus: paymentStatus,
-                            );
-
-                            if (paymentResult.transactionId != null &&
-                                paymentResult.transactionId!.isNotEmpty) {
-                              transactionId = paymentResult.transactionId!;
-                            }
-
-                            // Refresh orders so bill payment status is updated in list
-                            try {
-                              await context
-                                  .read<OrderProvider>()
-                                  .fetchOrders(page: 1, limit: 10);
-                            } catch (_) {}
-
-                            if (!mounted) return;
-
-                            Navigator.of(context).pop(); // close loader
-
-                            if (_selectedMethod == PaymentMethod.cod) {
-                              // COD: status pending, go back to Orders
-                              Navigator.of(context).pushNamedAndRemoveUntil(
-                                AppRoutes.orders,
-                                (route) => false,
-                              );
-                            } else {
-                              // Card: reuse payment successful screen, then Orders
-                              Navigator.of(context).pushNamedAndRemoveUntil(
-                                AppRoutes.paymentSuccessful,
-                                (route) => false,
-                                arguments: {
-                                  'transactionId': transactionId,
-                                  'itemTotal': billAmount,
-                                  'handlingFee': 0,
-                                  'pickupFeeOriginal': 0,
-                                  'pickupFee': 0,
-                                  'deliveryFee': 0,
-                                  'originalTotal': billAmount,
-                                  'finalTotal': billAmount,
-                                  'deliveryOption': 'pickupOnly',
-                                },
-                              );
-                            }
-                          } catch (e) {
-                            if (!mounted) return;
-                            Navigator.of(context).pop(); // close loader
-                            final message = OrderPaymentErrorMessages.getPaymentErrorMessage(
-                              e,
-                              operation: 'process payment',
-                            );
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(message)),
-                            );
-                          }
+                          ],
+                          const SizedBox(height: 10),
+                        ],
+                        _PayButton(
+                      amount: isExistingBill && existingBillTotal != null ? existingBillTotal : finalTotal,
+                      label: isExistingBill ? _checkout.buttonLabel : 'Pay Now',
+                      enabled: !isExistingBill || !_checkout.blocksAnotherCheckout,
+                      onTap: () async {
+                        if (isExistingBill) {
+                          await _payExistingBill(existingOrderId);
                           return;
                         }
 
@@ -560,79 +713,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           // Calculate fees for passing to success screen
                           final totalItems = items.fold<int>(0, (a, x) => a + x.totalQuantity);
                           final totalInr = cart.totalInr;
-                          final perPieceItems = items.where((x) => x.isPerPiece).toList();
-                          final itemTotal = perPieceItems.fold<int>(0, (sum, x) => sum + x.subtotalInr);
-                          final handlingFee = (itemTotal * 0.114).round(); // ~11.4% handling fee
-                          const pickupFeeOriginal = 0; // FREE
-                          
-                          int pickupFee = 0; // FREE
-                          int deliveryFee = 0; // FREE
-                          
-                          final subtotal = itemTotal + handlingFee + pickupFee + deliveryFee;
-                          // Calculate original total based on delivery option
-                          final originalPickupFee = (deliveryOption == DeliveryOptionType.pickupOnly ||
-                                  deliveryOption == DeliveryOptionType.pickupAndDelivery)
-                              ? pickupFeeOriginal
-                              : 0;
-                          final originalDeliveryFee = (deliveryOption == DeliveryOptionType.deliveryOnly ||
-                                  deliveryOption == DeliveryOptionType.pickupAndDelivery)
-                              ? deliveryFee
-                              : 0;
-                          final originalTotal = itemTotal + handlingFee + originalPickupFee + originalDeliveryFee;
-                          final finalTotal = subtotal - _promoDiscount;
-
-                          // Process payment only if order has NO kg-wise items
-                          // For orders with kg-wise items, payment will be done after collection manager generates invoice
-                          final hasKgWiseItems = kgWiseItems.isNotEmpty;
-                          String transactionId = '';
-                          String paymentMethodBackend = '';
-                          String paymentStatus = 'pending';
-
-                          if (!hasKgWiseItems) {
-                            // Process payment immediately for per-piece only orders
-                            final paymentRepo = PaymentRepository();
-                            
-                            // Map PaymentMethod enum to backend payment_method string
-                            switch (_selectedMethod) {
-                              case PaymentMethod.visa:
-                              case PaymentMethod.mastercard:
-                                paymentMethodBackend = 'card';
-                                paymentStatus = 'completed';
-                                break;
-                              case PaymentMethod.cod:
-                                paymentMethodBackend = 'cod';
-                                paymentStatus = 'pending'; // COD is paid on delivery
-                                break;
-                            }
-
-                            // Generate transaction ID (for card payments, this would come from payment gateway)
-                            // For COD, transaction ID is generated when payment is confirmed on delivery
-                            final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
-                            transactionId = 'QUCVG${timestamp.length > 7 ? timestamp.substring(timestamp.length - 7) : timestamp.padLeft(7, '0')}';
-
-                            // Process payment and update bill
-                            final paymentResult = await paymentRepo.processPayment(
-                              orderId: orderResult.orderId,
-                              paymentMethod: paymentMethodBackend,
-                              transactionId: paymentStatus == 'completed' ? transactionId : null, // Only set transaction ID for completed payments
-                              paymentStatus: paymentStatus,
-                            );
-
-                            // Use transaction ID from payment result if available
-                            if (paymentResult.transactionId != null && paymentResult.transactionId!.isNotEmpty) {
-                              transactionId = paymentResult.transactionId!;
-                            } else if (paymentStatus == 'pending') {
-                              // For pending payments (COD), use a placeholder or empty
-                              transactionId = 'Pending';
-                            }
-                          } else {
-                            // For orders with kg-wise items, skip payment processing
-                            // Payment will be done after collection manager generates invoice
-                            paymentMethodBackend = _selectedMethod == PaymentMethod.cod ? 'cod' : 'card';
-                            paymentStatus = 'pending';
-                            transactionId = 'Pending';
-                          }
-
+                          // The bill is created after pickup. This screen does not mark it paid.
                           // Create local order record for UI
                           // Title: use category/service when single, "Mixed" when multiple services.
                           final serviceNames = items
@@ -686,46 +767,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           // Close loading dialog before navigation
                           Navigator.of(context).pop(); // Close loading
                           
-                          // Navigate based on whether payment was processed
-                          if (hasKgWiseItems) {
-                            // For orders with kg-wise items, payment is skipped
-                            // Navigate to order successful screen (payment will be done after invoice generation)
-                            Navigator.of(context).pushNamedAndRemoveUntil(
-                              AppRoutes.orderSuccessful,
-                              (r) => false,
-                              arguments: orderResult.orderId,
-                            );
-                          } else {
-                            // For per-piece only orders, payment was processed
-                            // Navigate based on payment method
-                            if (_selectedMethod == PaymentMethod.cod) {
-                              // For COD, navigate to order successful screen
-                              Navigator.of(context).pushNamedAndRemoveUntil(
-                                AppRoutes.orderSuccessful,
-                                (r) => false,
-                                arguments: orderResult.orderId,
-                              );
-                            } else {
-                              // For card payments, navigate to payment successful screen
-                              Navigator.of(context).pushNamedAndRemoveUntil(
-                                AppRoutes.paymentSuccessful,
-                                (r) => false,
-                                arguments: {
-                                  'transactionId': transactionId,
-                                  'itemTotal': itemTotal,
-                                  'handlingFee': handlingFee,
-                                  'pickupFeeOriginal': pickupFeeOriginal,
-                                  'pickupFee': pickupFee,
-                                  'deliveryFee': deliveryFee,
-                                  'originalTotal': originalTotal,
-                                  'finalTotal': finalTotal,
-                                  'deliveryOption': deliveryOption.name,
-                                  'promoCode': _appliedPromoCode,
-                                  'promoDiscount': _promoDiscount,
-                                },
-                              );
-                            }
-                          }
+                          Navigator.of(context).pushNamedAndRemoveUntil(
+                            AppRoutes.orderSuccessful,
+                            (r) => false,
+                            arguments: orderResult.orderId,
+                          );
                         } catch (e) {
                           if (!mounted) return;
                           Navigator.of(context).pop(); // Close loading
@@ -741,6 +787,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           );
                         }
                       },
+                    ),
+                      ],
                     ),
                   ),
                 ),
@@ -1290,6 +1338,54 @@ class _ToPaySection extends StatelessWidget {
   }
 }
 
+class _RazorpayMethodCard extends StatelessWidget {
+  const _RazorpayMethodCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: HomeColors.primary, width: 2),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: const Color(0xFF072654),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Center(
+              child: Text(
+                'RZP',
+                style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Razorpay', style: AppTextStyles.header(color: const Color(0xFF1B1F2A)).copyWith(fontSize: 15)),
+                const SizedBox(height: 2),
+                Text(
+                  'UPI, card, or netbanking. The bill amount is fixed by the server.',
+                  style: AppTextStyles.body(color: const Color(0xFF6B7280)).copyWith(fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _PaymentMethodCard extends StatelessWidget {
   final PaymentMethod method;
   final String title;
@@ -1463,11 +1559,15 @@ String _formatTime12h(int hour, int minute, int amPm) {
 
 class _PayButton extends StatelessWidget {
   final int amount;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final String label;
+  final bool enabled;
 
   const _PayButton({
     required this.amount,
     required this.onTap,
+    this.label = 'Pay Now',
+    this.enabled = true,
   });
 
   @override
@@ -1478,7 +1578,7 @@ class _PayButton extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap,
+          onTap: enabled ? onTap : null,
           borderRadius: BorderRadius.circular(18),
           child: Ink(
             decoration: BoxDecoration(
@@ -1493,7 +1593,7 @@ class _PayButton extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  'Pay ${Pricing.inr(amount)}',
+                  label == 'Pay Now' ? 'Pay ${Pricing.inr(amount)}' : label,
                   style: AppTextStyles.header(color: Colors.white)
                       .copyWith(fontSize: 16),
                 ),

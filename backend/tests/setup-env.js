@@ -30,3 +30,7 @@ if (!process.env.DIRECT_URL) {
 if (!process.env.REDIS_URL) {
     process.env.REDIS_URL = 'redis://localhost:6379/1';
 }
+
+process.env.RAZORPAY_KEY_ID = 'rzp_test_laundry';
+process.env.RAZORPAY_KEY_SECRET = 'test_secret';
+process.env.RAZORPAY_WEBHOOK_SECRET = 'whsec_test';

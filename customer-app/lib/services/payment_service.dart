@@ -174,43 +174,144 @@ class InvoiceSelection {
   }
 }
 
+const paymentVerificationMessage =
+    "Your payment is being verified. Please don't pay again until we confirm its status.";
+
+String describePaymentError(Object error) {
+  final raw = error.toString().replaceFirst('Exception: ', '');
+  final lower = raw.toLowerCase();
+  if (lower.contains('being verified') ||
+      lower.contains('timeout') ||
+      lower.contains('socket') ||
+      lower.contains('network') ||
+      lower.contains('failed to confirm payment') ||
+      lower.contains('failed to start payment')) {
+    return paymentVerificationMessage;
+  }
+  return raw;
+}
+
+class PayIntentResult {
+  final String provider;
+  final String? providerRef;
+  final Map<String, dynamic>? intent;
+  final String finalAmount;
+  final String paymentStatus;
+  final String? paymentMethod;
+  final String? transactionId;
+  final String verificationState;
+  final String? refundStatus;
+
+  const PayIntentResult({
+    required this.provider,
+    required this.providerRef,
+    required this.intent,
+    required this.finalAmount,
+    required this.paymentStatus,
+    required this.paymentMethod,
+    required this.transactionId,
+    required this.verificationState,
+    required this.refundStatus,
+  });
+
+  factory PayIntentResult.fromJson(Map<String, dynamic> json) {
+    final attempt = json['attempt'];
+    Map<String, dynamic>? intent;
+    String provider = '';
+    String? providerRef;
+    if (attempt is Map) {
+      provider = (attempt['provider'] ?? '').toString();
+      providerRef = attempt['providerRef'] as String?;
+      final rawIntent = attempt['intent'];
+      if (rawIntent is Map) intent = rawIntent.cast<String, dynamic>();
+    }
+    final refund = json['refund'];
+    return PayIntentResult(
+      provider: provider,
+      providerRef: providerRef,
+      intent: intent,
+      finalAmount: (json['finalAmount'] ?? '0').toString(),
+      paymentStatus: (json['paymentStatus'] ?? '').toString(),
+      paymentMethod: json['paymentMethod'] as String?,
+      transactionId: json['transactionId'] as String?,
+      verificationState: (json['verificationState'] ?? '').toString(),
+      refundStatus: refund is Map ? refund['status']?.toString() : null,
+    );
+  }
+
+  bool get isPaidOnline =>
+      paymentStatus == 'completed' &&
+      paymentMethod != 'cash' &&
+      verificationState != 'refund_pending' &&
+      verificationState != 'refund_completed';
+}
+
 class PaymentService {
   final ApiService _api;
 
   PaymentService({ApiService? api}) : _api = api ?? ApiService();
 
-  /// Process payment for an order
+  /// The server rejects client-supplied payment status. Checkout uses createPayIntent.
   Future<PaymentResult> processPayment({
     required String orderId,
     required String paymentMethod,
     String? transactionId,
     String? paymentStatus,
   }) async {
+    throw Exception(
+      'Payment for $orderId is confirmed from Razorpay. The app cannot mark $paymentMethod ${paymentStatus ?? ''} ${transactionId ?? ''} as paid.',
+    );
+  }
+
+  Future<PayIntentResult> createPayIntent({required String orderId}) async {
     try {
-      final payload = <String, dynamic>{
-        'payment_method': paymentMethod,
-      };
-
-      if (transactionId != null && transactionId.isNotEmpty) {
-        payload['transaction_id'] = transactionId;
-      }
-
-      if (paymentStatus != null && paymentStatus.isNotEmpty) {
-        payload['payment_status'] = paymentStatus;
-      }
-
-      final res = await _api.post(
-        '/payments/process/$orderId',
-        data: payload,
-      );
-
+      final res = await _api.post('/payments/orders/$orderId/pay-intent');
       final data = (res.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
-      return PaymentResult.fromJson(data);
+      return PayIntentResult.fromJson(data);
     } on DioException catch (e) {
-      final msg = _extractErrorMessage(e, 'Failed to process payment');
-      throw Exception(msg);
-    } catch (e) {
-      throw Exception('Failed to process payment: $e');
+      throw Exception(_extractErrorMessage(e, 'Failed to start payment'));
+    }
+  }
+
+  Future<PayIntentResult> confirmRazorpay({
+    required String orderId,
+    required String razorpayOrderId,
+    required String razorpayPaymentId,
+    required String razorpaySignature,
+  }) async {
+    try {
+      final res = await _api.post(
+        '/payments/orders/$orderId/razorpay/confirm',
+        data: {
+          'razorpayOrderId': razorpayOrderId,
+          'razorpayPaymentId': razorpayPaymentId,
+          'razorpaySignature': razorpaySignature,
+        },
+      );
+      final data = (res.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
+      return PayIntentResult.fromJson(data);
+    } on DioException catch (e) {
+      throw Exception(_extractErrorMessage(e, 'Failed to confirm payment'));
+    }
+  }
+
+  Future<PayIntentResult> paymentStatus({required String orderId}) async {
+    try {
+      final res = await _api.get('/payments/orders/$orderId/payment-status');
+      final data = (res.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
+      return PayIntentResult.fromJson(data);
+    } on DioException catch (e) {
+      throw Exception(_extractErrorMessage(e, 'Failed to fetch payment status'));
+    }
+  }
+
+  Future<PayIntentResult> cancelAttempt({required String orderId}) async {
+    try {
+      final res = await _api.post('/payments/orders/$orderId/cancel-attempt');
+      final data = (res.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
+      return PayIntentResult.fromJson(data);
+    } on DioException catch (e) {
+      throw Exception(_extractErrorMessage(e, 'Failed to cancel payment'));
     }
   }
 

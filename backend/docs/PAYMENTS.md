@@ -2,13 +2,17 @@
 
 Customers cannot set a bill to paid. `POST /api/v1/payments/orders/:orderId/process` returns `410 PAYMENT_FLOW_CHANGED`.
 
-## Provider
+## Razorpay
 
-`src/services/payments/mock.provider.js` implements `createIntent`, `verifyWebhook`, and `fetchStatus`. A real PSP replaces that module. The mock is refused in production on the dev complete endpoint.
+`src/services/payments/razorpay.provider.js` creates the Razorpay order, verifies the Checkout signature, and verifies the webhook.
 
-`POST /api/v1/payments/orders/:orderId/pay-intent` creates one live attempt for `bill.final_amount`. A repeat call returns that attempt. The webhook is `POST /api/v1/payments/webhook/mock` with header `x-mock-signature` (HMAC-SHA256 of the raw body, secret `PAYMENT_WEBHOOK_SECRET` or `mock-webhook-secret`).
+`POST /api/v1/payments/orders/:orderId/pay-intent` creates one live attempt for `bill.final_amount`. A repeat call returns that attempt. The customer app opens Checkout with the public key and the Razorpay order id.
 
-Success sets `payment_status = completed` and `payment_method = upi` only if the bill is still pending. A duplicate webhook is ignored. If cash already won, the attempt is marked succeeded with `failure_reason = refund_required` and the bill stays cash.
+`POST /api/v1/payments/orders/:orderId/razorpay/confirm` checks the Checkout signature, fetches the payment from Razorpay, and settles the bill only when the order id and amount match.
+
+`POST /api/v1/payments/webhook/razorpay` checks `X-Razorpay-Signature` with `RAZORPAY_WEBHOOK_SECRET`. `payment.captured` settles the bill. `payment.failed` leaves it unpaid.
+
+Success sets `payment_status = completed` only if the bill is still pending. A duplicate webhook is ignored. If cash already won, the attempt is marked succeeded with `failure_reason = refund_required` and the bill stays cash.
 
 ## Coupon
 

@@ -240,24 +240,6 @@ class OrderService {
     }
   }
 
-  Future<void> payOrder(String orderId) async {
-    try {
-      final intent = await _api.post('/payments/orders/$orderId/pay-intent');
-      final data = (intent.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
-      final attempt = data['attempt'] as Map<String, dynamic>?;
-      final attemptId = attempt?['attemptId'] as String?;
-      if (attemptId == null || attemptId.isEmpty) {
-        throw Exception('Payment could not be started');
-      }
-      await _api.post(
-        '/payments/mock/attempts/$attemptId/complete',
-        data: {'status': 'succeeded'},
-      );
-    } on DioException catch (e) {
-      throw Exception(_extractErrorMessage(e, 'Payment failed'));
-    }
-  }
-
   String _extractErrorMessage(DioException e, String fallback) {
     try {
       final data = e.response?.data;

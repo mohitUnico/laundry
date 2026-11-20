@@ -16,8 +16,8 @@ exports.errorHandler = (err, req, res, next) => {
         method: req.method,
     });
 
-    // Mongoose/Prisma validation error
-    if (err.name === 'ValidationError') {
+    // Mongoose validation errors are not operational. Our ValidationError already has status and message.
+    if (err.name === 'ValidationError' && !err.isOperational) {
         const message = 'Validation Error';
         error = new AppError(message, 400, 'VALIDATION_ERROR');
     }

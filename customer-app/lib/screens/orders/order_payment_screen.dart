@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:razorpay_flutter/razorpay_flutter.dart';
 
+import '../../repositories/payment_repository.dart';
+import '../../services/checkout_session.dart';
+import '../../services/payment_service.dart';
 import '../../routes/route_args.dart';
-import '../../services/order_service.dart';
 import '../../utils/pricing.dart';
 import '../home/widgets/home_colors.dart';
 import 'order_payment_success_screen.dart';
@@ -35,26 +38,203 @@ class OrderPaymentScreen extends StatefulWidget {
 
 enum _PayMode { visa, mastercard, cod }
 
-class _OrderPaymentScreenState extends State<OrderPaymentScreen> {
+class _OrderPaymentScreenState extends State<OrderPaymentScreen> with WidgetsBindingObserver {
   _PayMode _mode = _PayMode.visa;
-  bool _paying = false;
+  String? _notice;
+  final CheckoutSession _checkout = CheckoutSession();
+  late final Razorpay _razorpay;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _razorpay = Razorpay();
+    _razorpay.on(Razorpay.EVENT_PAYMENT_SUCCESS, _onRazorpaySuccess);
+    _razorpay.on(Razorpay.EVENT_PAYMENT_ERROR, _onRazorpayError);
+    _razorpay.on(Razorpay.EVENT_EXTERNAL_WALLET, _onRazorpayWallet);
+    _refreshStatus(navigateOnPaid: false);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _razorpay.clear();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+      _checkout.pausedForExternalApp();
+      return;
+    }
+    if (state == AppLifecycleState.resumed) {
+      _refreshStatus(navigateOnPaid: true);
+    }
+  }
+
+  void _setNotice(String message) {
+    if (!mounted) return;
+    setState(() => _notice = message);
+  }
+
+  String _noticeFor(PayIntentResult result) {
+    switch (result.verificationState) {
+      case 'paid':
+        return 'Payment successful';
+      case 'paid_cash':
+        return 'Payment already completed';
+      case 'failed':
+        return 'Payment failed';
+      case 'cancelled':
+        return 'Payment cancelled';
+      case 'refund_pending':
+        return 'Refund pending';
+      case 'refund_completed':
+        return 'Refund completed';
+      case 'verifying':
+      case 'unknown':
+        return paymentVerificationMessage;
+      default:
+        return '';
+    }
+  }
+
+  Future<void> _refreshStatus({required bool navigateOnPaid}) async {
+    final orderId = widget.orderId;
+    if (orderId == null || orderId.isEmpty) return;
+    try {
+      final result = await PaymentRepository().paymentStatus(orderId: orderId);
+      if (!mounted) return;
+      _checkout.applyServerResult(result);
+      final text = _checkout.message.isNotEmpty ? _checkout.message : _noticeFor(result);
+      if (text.isNotEmpty && text != 'Pay Now') _setNotice(text);
+      if (navigateOnPaid && result.isPaidOnline) _openSuccess();
+    } catch (_) {}
+  }
 
   Future<void> _pay() async {
     final orderId = widget.orderId;
-    if (orderId != null && orderId.isNotEmpty && _mode != _PayMode.cod) {
-      setState(() => _paying = true);
-      try {
-        await OrderService().payOrder(orderId);
-      } catch (error) {
-        if (!mounted) return;
-        setState(() => _paying = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$error')),
-        );
+    if (_mode == _PayMode.cod) {
+      _setNotice('Cash is collected by the captain after an online payment fails. It is not marked paid here.');
+      return;
+    }
+    if (!_checkout.begin()) {
+      _setNotice(_checkout.message);
+      return;
+    }
+    setState(() {});
+    if (orderId == null || orderId.isEmpty) {
+      _checkout.fail('Order ID missing for bill payment');
+      _setNotice(_checkout.message);
+      return;
+    }
+    try {
+      final intent = await PaymentRepository().createPayIntent(orderId: orderId);
+      if (!mounted) return;
+      _checkout.applyServerResult(intent);
+      if (_checkout.message.isNotEmpty && _checkout.message != 'Pay Now') _setNotice(_checkout.message);
+      if (intent.isPaidOnline) {
+        _openSuccess();
         return;
       }
+      if (intent.verificationState == 'unknown' ||
+          intent.verificationState == 'verifying' ||
+          intent.verificationState == 'refund_pending' ||
+          intent.verificationState == 'refund_completed') {
+        return;
+      }
+      final launch = launchFromIntent(intent);
+      if (launch == null) {
+        _checkout.fail('Payment could not be started. Check the Razorpay keys and try again.');
+        _setNotice(_checkout.message);
+        return;
+      }
+      _checkout.awaitingExternalApp();
+      _setNotice(_checkout.message);
+      _razorpay.open(launch.toOptions());
+    } catch (error) {
+      if (!mounted) return;
+      _checkout.unknown(describePaymentError(error));
+      _setNotice(_checkout.message);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_checkout.message)),
+      );
     }
+  }
+
+  Future<void> _onRazorpaySuccess(PaymentSuccessResponse response) async {
+    final orderId = widget.orderId;
+    if (orderId == null || !mounted) return;
+    _checkout.verifying();
+    _setNotice(_checkout.message);
+    try {
+      final result = await PaymentRepository().confirmRazorpay(
+        orderId: orderId,
+        razorpayOrderId: response.orderId ?? '',
+        razorpayPaymentId: response.paymentId ?? '',
+        razorpaySignature: response.signature ?? '',
+      );
+      if (!mounted) return;
+      _checkout.applyServerResult(result);
+      if (result.verificationState == 'refund_pending' || result.verificationState == 'refund_completed') {
+        _setNotice(_checkout.message);
+        return;
+      }
+      if (!result.isPaidOnline) {
+        _checkout.unknown(paymentVerificationMessage);
+        _setNotice(_checkout.message);
+        return;
+      }
+      _openSuccess();
+    } catch (error) {
+      if (!mounted) return;
+      _checkout.unknown(describePaymentError(error));
+      _setNotice(_checkout.message);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_checkout.message)));
+    }
+  }
+
+  Future<void> _onRazorpayError(PaymentFailureResponse response) async {
     if (!mounted) return;
+    final orderId = widget.orderId;
+    if (response.code == Razorpay.PAYMENT_CANCELLED && orderId != null && orderId.isNotEmpty) {
+      try {
+        final result = await PaymentRepository().cancelAttempt(orderId: orderId);
+        if (!mounted) return;
+        _checkout.applyServerResult(result);
+        if (result.isPaidOnline) {
+          _openSuccess();
+          return;
+        }
+        if (result.verificationState == 'pending' ||
+            result.verificationState == 'verifying' ||
+            result.verificationState == 'unknown') {
+          _checkout.unknown(paymentVerificationMessage);
+        } else if (_checkout.phase == CheckoutPhase.idle || _checkout.phase == CheckoutPhase.awaiting) {
+          _checkout.cancelled();
+        }
+        _setNotice(_checkout.message);
+      } catch (error) {
+        _checkout.unknown(describePaymentError(error));
+        _setNotice(_checkout.message);
+      }
+      return;
+    }
+    final sdkMessage = (response.message ?? '').trim();
+    _checkout.unknown(sdkMessage.isEmpty ? paymentVerificationMessage : sdkMessage);
+    _setNotice(_checkout.message);
+    await _refreshStatus(navigateOnPaid: true);
+  }
+
+  void _onRazorpayWallet(ExternalWalletResponse response) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Continue in ${response.walletName ?? 'your wallet'}')),
+    );
+  }
+
+  void _openSuccess() {
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (_) => OrderPaymentSuccessScreen(
@@ -168,11 +348,27 @@ class _OrderPaymentScreenState extends State<OrderPaymentScreen> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              child: SizedBox(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_notice != null && _notice!.isNotEmpty) ...[
+                    Text(
+                      _notice!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Color(0xFF1F2430), fontSize: 13),
+                    ),
+                    if (_checkout.showRefresh)
+                      TextButton(
+                        onPressed: () => _refreshStatus(navigateOnPaid: true),
+                        child: const Text('Refresh status'),
+                      ),
+                    const SizedBox(height: 8),
+                  ],
+                  SizedBox(
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton(
-                  onPressed: _paying ? null : _pay,
+                  onPressed: _checkout.blocksAnotherCheckout ? null : _pay,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF2F6BFF),
                     foregroundColor: Colors.white,
@@ -185,7 +381,9 @@ class _OrderPaymentScreenState extends State<OrderPaymentScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        'Pay ${Pricing.inr(widget.toPay)}',
+                        _checkout.buttonLabel == 'Pay Now'
+                            ? 'Pay ${Pricing.inr(widget.toPay)}'
+                            : _checkout.buttonLabel,
                         style: GoogleFonts.poppins(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -197,6 +395,8 @@ class _OrderPaymentScreenState extends State<OrderPaymentScreen> {
                     ],
                   ),
                 ),
+              ),
+                ],
               ),
             ),
           ],

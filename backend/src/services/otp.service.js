@@ -36,6 +36,7 @@ const OTP_EXPIRY_MINUTES = parseInt(process.env.OTP_EXPIRY_MINUTES || '5');
 const OTP_MAX_ATTEMPTS = parseInt(process.env.OTP_MAX_ATTEMPTS || '5');
 const OTP_RATE_LIMIT_SECONDS = parseInt(process.env.OTP_RATE_LIMIT_SECONDS || '60');
 const SESSION_EXPIRY_MINUTES = 30; // Session token expires in 30 minutes
+const PLAY_REVIEW_OTP_EXPIRY_MINUTES = 60 * 24 * 7;
 
 const USER_TYPES = {
     MART: 'mart',
@@ -67,6 +68,79 @@ const PURPOSE = {
  */
 const _generateOtp = () => {
     return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
+/**
+ * Play Console sign-in account. Active only when both env values are set.
+ * The fixed OTP is accepted for this customer email alone.
+ */
+const _playReviewLogin = () => {
+    const email = String(process.env.PLAY_REVIEW_EMAIL || '').toLowerCase().trim();
+    const otp = String(process.env.PLAY_REVIEW_OTP || '').trim();
+    if (!email || !/^\d{6}$/.test(otp)) {
+        return null;
+    }
+    return { email, otp };
+};
+
+const _isPlayReviewCustomer = (email, userType) => {
+    const review = _playReviewLogin();
+    return Boolean(review && userType === USER_TYPES.CUSTOMER && email === review.email);
+};
+
+const _ensurePlayReviewCustomer = async (email) => {
+    const existing = await prisma.customer.findUnique({ where: { email } });
+    if (existing) {
+        if (existing.is_active) return existing;
+        return prisma.customer.update({
+            where: { customer_id: existing.customer_id },
+            data: { is_active: true },
+        });
+    }
+
+    return prisma.customer.create({
+        data: {
+            email,
+            full_name: 'Play Reviewer',
+            is_active: true,
+        },
+    });
+};
+
+/**
+ * Issue the fixed review OTP without sending email, and keep the customer
+ * so verification logs the reviewer in instead of starting registration.
+ */
+const _issuePlayReviewOtp = async (email) => {
+    const review = _playReviewLogin();
+
+    await prisma.otpVerification.deleteMany({
+        where: {
+            email,
+            user_type: USER_TYPES.CUSTOMER,
+            purpose: PURPOSE.LOGIN_OR_SIGNUP,
+            is_verified: false,
+        },
+    });
+
+    await prisma.otpVerification.create({
+        data: {
+            email,
+            otp_code: review.otp,
+            purpose: PURPOSE.LOGIN_OR_SIGNUP,
+            user_type: USER_TYPES.CUSTOMER,
+            expires_at: _getExpiryTime(PLAY_REVIEW_OTP_EXPIRY_MINUTES),
+            max_attempts: OTP_MAX_ATTEMPTS,
+        },
+    });
+
+    await _ensurePlayReviewCustomer(email);
+
+    logger.info('Play Console review OTP ready', { email });
+
+    return {
+        expiresIn: PLAY_REVIEW_OTP_EXPIRY_MINUTES * 60,
+    };
 };
 
 /**
@@ -192,6 +266,10 @@ const sendOtp = async (email, userType) => {
             }
         }
 
+        if (_isPlayReviewCustomer(email, userType)) {
+            return await _issuePlayReviewOtp(email);
+        }
+
         // Check rate limiting
         await _checkRateLimit(email, userType);
 
@@ -257,52 +335,64 @@ const verifyOtp = async (email, otp, userType, options = {}) => {
         email = email.toLowerCase().trim();
         const normalizedOtp = String(otp ?? '').trim();
 
-        // Always verify against the most recently issued OTP for this email.
-        const otpRecord = await prisma.otpVerification.findFirst({
-            where: {
-                email,
-                user_type: userType,
-                purpose: PURPOSE.LOGIN_OR_SIGNUP,
-            },
-            orderBy: {
-                created_at: 'desc'
+        const playReview = _isPlayReviewCustomer(email, userType);
+        let otpRecord = null;
+
+        if (playReview) {
+            if (normalizedOtp !== _playReviewLogin().otp) {
+                throw new AuthenticationError('Invalid OTP.');
             }
-        });
+            await _ensurePlayReviewCustomer(email);
+        } else {
+            // Always verify against the most recently issued OTP for this email.
+            otpRecord = await prisma.otpVerification.findFirst({
+                where: {
+                    email,
+                    user_type: userType,
+                    purpose: PURPOSE.LOGIN_OR_SIGNUP,
+                },
+                orderBy: {
+                    created_at: 'desc'
+                }
+            });
 
-        if (!otpRecord) {
-            throw new AuthenticationError('No OTP found. Please request a new OTP.');
+            if (!otpRecord) {
+                throw new AuthenticationError('No OTP found. Please request a new OTP.');
+            }
+
+            if (otpRecord.is_verified) {
+                throw new AuthenticationError('OTP already used. Please request a new OTP.');
+            }
+
+            // Check if expired
+            if (new Date() > otpRecord.expires_at) {
+                throw new AuthenticationError('OTP has expired. Please request a new OTP.');
+            }
+
+            // Check max attempts
+            if (otpRecord.attempts >= otpRecord.max_attempts) {
+                throw new AuthenticationError('Maximum verification attempts exceeded. Please request a new OTP.');
+            }
+
+            // Verify OTP
+            if (otpRecord.otp_code !== normalizedOtp) {
+                // Increment attempts
+                await _incrementAttempts(otpRecord.otp_id);
+
+                const remainingAttempts = otpRecord.max_attempts - (otpRecord.attempts + 1);
+                throw new AuthenticationError(
+                    `Invalid OTP. ${remainingAttempts} attempt(s) remaining.`
+                );
+            }
         }
 
-        if (otpRecord.is_verified) {
-            throw new AuthenticationError('OTP already used. Please request a new OTP.');
+        if (otpRecord) {
+            // Mark OTP as verified
+            await prisma.otpVerification.update({
+                where: { otp_id: otpRecord.otp_id },
+                data: { is_verified: true }
+            });
         }
-
-        // Check if expired
-        if (new Date() > otpRecord.expires_at) {
-            throw new AuthenticationError('OTP has expired. Please request a new OTP.');
-        }
-
-        // Check max attempts
-        if (otpRecord.attempts >= otpRecord.max_attempts) {
-            throw new AuthenticationError('Maximum verification attempts exceeded. Please request a new OTP.');
-        }
-
-        // Verify OTP
-        if (otpRecord.otp_code !== normalizedOtp) {
-            // Increment attempts
-            await _incrementAttempts(otpRecord.otp_id);
-
-            const remainingAttempts = otpRecord.max_attempts - (otpRecord.attempts + 1);
-            throw new AuthenticationError(
-                `Invalid OTP. ${remainingAttempts} attempt(s) remaining.`
-            );
-        }
-
-        // Mark OTP as verified
-        await prisma.otpVerification.update({
-            where: { otp_id: otpRecord.otp_id },
-            data: { is_verified: true }
-        });
 
         // Check if user exists based on user type
         let existingUser = null;

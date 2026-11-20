@@ -12,7 +12,6 @@ const configService = require('../../src/services/config.service');
 const engine = require('../../src/services/assignment/assignment-engine.service');
 const { runAssignmentCatchup } = require('../../src/services/assignment/assignment-catchup.job');
 const dropTrigger = require('../../src/services/assignment/drop-trigger.service');
-const mockProvider = require('../../src/services/payments/mock.provider');
 const {
     app,
     auth,
@@ -25,7 +24,8 @@ const {
     submitToCm,
     receiveAndQueue,
     completeAllQueues,
-    payMock,
+    payWithRazorpay,
+    sendRazorpayWebhook,
     markDelivered,
 } = require('../helpers/flow');
 
@@ -145,11 +145,9 @@ describe('v2 order lifecycle', () => {
             .set(auth(drop.token));
         expect(cashTooSoon.status).toBe(409);
 
-        const paid = await payMock(orderId, customerToken, 'succeeded');
+        const paid = await payWithRazorpay(orderId, customerToken, 'succeeded');
         expect(paid.forced.status).toBe(200);
-        const duplicate = await request(app)
-            .post(`/api/v1/payments/mock/attempts/${paid.attemptId}/complete`)
-            .send({ status: 'succeeded' });
+        const duplicate = await sendRazorpayWebhook(paid);
         expect(duplicate.status).toBe(200);
 
         const delivered = await markDelivered(orderId, drop.token);
@@ -340,7 +338,7 @@ describe('v2 order lifecycle', () => {
         const drop = await acceptPending(orderId, 'drop');
         expect(drop.res.status).toBe(200);
 
-        const failed = await payMock(orderId, customerToken, 'failed');
+        const failed = await payWithRazorpay(orderId, customerToken, 'failed');
         expect(failed.forced.status).toBe(200);
         const attempt = await prisma.paymentAttempt.findUnique({ where: { attempt_id: failed.attemptId } });
         expect(attempt.status).toBe('failed');
@@ -357,15 +355,12 @@ describe('v2 order lifecycle', () => {
         expect(cash.status).toBe(200);
         expect(cash.body.data.paymentMethod).toBe('cash');
 
-        const body = JSON.stringify({
+        const late = await sendRazorpayWebhook({
             providerRef: attempt.provider_ref,
+            paymentId: `pay_late_${attempt.provider_ref}`,
+            amount: failed.amount,
             status: 'succeeded',
         });
-        const late = await request(app)
-            .post('/api/v1/payments/webhook/mock')
-            .set('Content-Type', 'application/json')
-            .set('x-mock-signature', mockProvider.signBody(body))
-            .send(body);
         expect(late.status).toBe(200);
         expect(late.body.data.refundRequired).toBe(true);
         const bill = await prisma.bill.findUnique({ where: { order_id: orderId } });

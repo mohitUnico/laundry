@@ -471,6 +471,7 @@ model Bill {
   order          Order         @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
   coupon         Coupon?       @relation(fields: [coupon_id], references: [id])
   payment_attempts PaymentAttempt[]
+  payment_refunds  PaymentRefund[]
 
   @@index([payment_status])
   @@index([created_at])
@@ -801,27 +802,73 @@ enum PaymentAttemptStatus {
   failed
   cancelled
   expired
+  uncertain
 }
 
 model PaymentAttempt {
-  attempt_id      Int                  @id @default(autoincrement())
-  order_id        String
-  bill_id         String
-  provider        String               @db.VarChar(30)
-  provider_ref    String?              @db.VarChar(100)
-  idempotency_key String               @unique @db.VarChar(100)
-  amount          Decimal              @db.Decimal(10, 2)
-  status          PaymentAttemptStatus @default(initiated)
-  intent_payload  Json?
-  failure_reason  String?
-  created_at      DateTime             @default(now())
-  updated_at      DateTime             @updatedAt
-  order           Order                @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
-  bill            Bill                 @relation(fields: [bill_id], references: [bill_id], onDelete: Cascade)
+  attempt_id             Int                  @id @default(autoincrement())
+  order_id               String
+  bill_id                String
+  provider               String               @db.VarChar(30)
+  provider_ref           String?              @db.VarChar(100)
+  razorpay_payment_id    String?              @unique @db.VarChar(100)
+  idempotency_key        String               @unique @db.VarChar(100)
+  amount                 Decimal              @db.Decimal(10, 2)
+  status                 PaymentAttemptStatus @default(initiated)
+  intent_payload         Json?
+  failure_reason         String?
+  last_checked_at        DateTime?
+  check_count            Int                  @default(0)
+  reconciliation_status  String?              @db.VarChar(30)
+  created_at             DateTime             @default(now())
+  updated_at             DateTime             @updatedAt
+  order                  Order                @relation(fields: [order_id], references: [order_id], onDelete: Cascade)
+  bill                   Bill                 @relation(fields: [bill_id], references: [bill_id], onDelete: Cascade)
+  refunds                PaymentRefund[]
+  webhook_events         PaymentWebhookEvent[]
 
+  // One initiated, pending, or uncertain row per order is enforced by
+  // payment_attempts_one_live_per_order in SQL. Prisma cannot model that partial index.
   @@index([order_id, status])
   @@index([provider_ref])
+  @@index([status, last_checked_at])
   @@map("payment_attempts")
+}
+
+model PaymentWebhookEvent {
+  id           String    @id @default(uuid())
+  event_id     String    @unique @db.VarChar(120)
+  event_name   String    @db.VarChar(80)
+  status       String    @db.VarChar(20)
+  attempt_id   Int?
+  error        String?   @db.VarChar(300)
+  created_at   DateTime  @default(now())
+  processed_at DateTime?
+  attempt      PaymentAttempt? @relation(fields: [attempt_id], references: [attempt_id], onDelete: SetNull)
+
+  @@index([status])
+  @@map("payment_webhook_events")
+}
+
+model PaymentRefund {
+  id                  String   @id @default(uuid())
+  attempt_id          Int
+  bill_id             String
+  razorpay_payment_id String   @db.VarChar(100)
+  razorpay_refund_id  String?  @unique @db.VarChar(100)
+  amount              Decimal  @db.Decimal(10, 2)
+  status              String   @db.VarChar(20)
+  reason              String   @db.VarChar(255)
+  idempotency_key     String   @unique @db.VarChar(120)
+  created_by          String?  @db.VarChar(100)
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+  attempt             PaymentAttempt @relation(fields: [attempt_id], references: [attempt_id], onDelete: Cascade)
+  bill                Bill           @relation(fields: [bill_id], references: [bill_id], onDelete: Cascade)
+
+  @@index([razorpay_payment_id])
+  @@index([status])
+  @@map("payment_refunds")
 }
 
 model NotificationDelivery {

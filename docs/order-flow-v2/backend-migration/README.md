@@ -12,7 +12,7 @@
 |---|---|
 | Existing data | **Keep the catalogue: `ServiceCategory`, `Service`, `ClothesItem` (all rows, ids and prices).** Order and customer data need not be kept (carts, orders, deliveries, bills, payments, queues, assignments, notifications are cleared). **`migrate reset` is never run on the dev/prod database**; only the separate test database is reset. Migrations are written so catalogue rows survive untouched (the only catalogue change is additive: `Service.includes/excludes`, default empty). No backfill work is needed. |
 | API compatibility | **Break `/api/v1` in place.** Flutter apps are updated after the backend is done and tested. Every phase therefore ends with an "API contract" table so the frontend work can be derived from it later. |
-| Payment provider (PSP) | Not chosen yet. Build a **provider interface + mock provider** first. The real PSP is a drop-in later (see Phase 9). |
+| Payment provider (PSP) | Razorpay. `razorpay.provider.js` creates the order, verifies the Checkout signature, and verifies the webhook. |
 | Config storage | **DB table with env fallback + small admin API** (Phase 1). Admin UI comes later. |
 | Maps | Flutter already has Google Maps. Backend uses **straight-line (haversine) distance** for ring search and for the km shown on manager lists. The route polyline and "refresh Directions every 2 min if off-route" are **client** concerns. A road-distance provider can be plugged in later behind an interface. This replaces spec §2.6 "Google Maps (road)" and is recorded in Phase 13. |
 | No staff on shift at timeout | After timeout the manager may assign **any verified, active** delivery staff (on-shift or not). Rings still notify on-shift staff only. |

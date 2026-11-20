@@ -4,7 +4,7 @@
 
 ## Goal
 
-Customer pays the bill (optional coupon, UPI intent via a provider interface, mock provider for now), captain records cash only after a failed UPI, and **Mark delivered** needs payment completed plus one drop photo.
+Customer pays the bill (optional coupon, UPI through Razorpay), captain records cash only after a failed UPI, and **Mark delivered** needs payment completed plus one drop photo.
 
 Spec: Part 5 (P5.10 to P5.13), Part 3 section on Bill, diagrams 4.6, 5.10.
 
@@ -17,7 +17,7 @@ model PaymentAttempt {
   attempt_id       Int      @id @default(autoincrement())
   order_id         Int
   bill_id          Int
-  provider         String   @db.VarChar(30)       // mock | razorpay | ...
+  provider         String   @db.VarChar(30)       // razorpay
   provider_ref     String?  @db.VarChar(100)      // gateway order/txn id
   idempotency_key  String   @unique @db.VarChar(100)
   amount           Decimal  @db.Decimal(10,2)
@@ -34,7 +34,7 @@ model PaymentAttempt {
 
 ## Tasks
 
-1. **Provider interface** `src/services/payments/provider.interface.js`: `createIntent({ amount, orderId, attemptId })`, `verifyWebhook(headers, rawBody)`, `fetchStatus(ref)`. `mock.provider.js` returns a fake UPI link and exposes a dev-only endpoint to force `succeeded`/`failed`. Real PSP is a later drop-in.
+1. **Provider interface** `src/services/payments/provider.interface.js`: `createIntent({ amount, orderId, attemptId })`, `verifyWebhook(headers, rawBody)`, `fetchStatus(ref)`. `razorpay.provider.js` implements that contract.
 2. **Coupons** (existing `Coupon` table):
    - `POST /payments/orders/:orderId/coupon {code}` and `DELETE`: only when order is `picked_up` or later, bill unpaid, no pending attempt. Validate active, dates, usage limit, min order, applicable scope. Percentage/fixed with the existing cap. Discount is capped so `final_amount >= 1.00` (A8).
    - Updates `Bill.discount_amount`, `final_amount`, `coupon_id/code`; the response recomputes the totals. Usage count is incremented only when payment succeeds.
@@ -71,11 +71,10 @@ model PaymentAttempt {
 - Cash: before any attempt -> 409; after failed attempt -> OK; after succeeded -> 409; parallel webhook + cash -> exactly one completes.
 - Mark delivered: unpaid -> 409; no photo -> 400; wrong captain -> 403; success sets all fields; repeated call idempotent.
 - Customer can never set payment status (no endpoint left).
-- Full happy path including payment up to `delivered` on mock provider.
+- Full happy path including payment up to `delivered`.
 
 ## Exit checklist
 
-- [ ] Payment provider is behind the interface; mock works in dev and tests only.
-- [ ] Webhook signature and idempotency tested.
+- [ ] Razorpay is behind the provider interface. Webhook signature and idempotency tested.
 - [ ] `delivered` unreachable without payment and photo.
 - [ ] Postman folder "Phase 9".

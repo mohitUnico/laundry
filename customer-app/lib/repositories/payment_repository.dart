@@ -31,5 +31,31 @@ class PaymentRepository {
   }) {
     return _service.getInvoiceByOrderId(orderId: orderId);
   }
+
+  Future<PayIntentResult> createPayIntent({required String orderId}) {
+    return _service.createPayIntent(orderId: orderId);
+  }
+
+  Future<PayIntentResult> confirmRazorpay({
+    required String orderId,
+    required String razorpayOrderId,
+    required String razorpayPaymentId,
+    required String razorpaySignature,
+  }) {
+    return _service.confirmRazorpay(
+      orderId: orderId,
+      razorpayOrderId: razorpayOrderId,
+      razorpayPaymentId: razorpayPaymentId,
+      razorpaySignature: razorpaySignature,
+    );
+  }
+
+  Future<PayIntentResult> paymentStatus({required String orderId}) {
+    return _service.paymentStatus(orderId: orderId);
+  }
+
+  Future<PayIntentResult> cancelAttempt({required String orderId}) {
+    return _service.cancelAttempt(orderId: orderId);
+  }
 }
 

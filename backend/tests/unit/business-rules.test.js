@@ -3,9 +3,7 @@ const { assertBookable } = require('../../src/services/catalogue-rules');
 const { flagsFor, trackerFor, STATUS_STEP } = require('../../src/services/order-tracker');
 const { ORDER_STATUS } = require('../../src/constants/order-flow');
 const { distanceKm } = require('../../src/services/assignment/distance.provider');
-const mockProvider = require('../../src/services/payments/mock.provider');
 const { MATRIX } = require('../../src/services/notification-events');
-const { UnauthorizedError } = require('../../src/utils/errors');
 
 describe('catalogue bookable guard', () => {
     it('rejects an inactive service and accepts a priced one', () => {
@@ -72,25 +70,6 @@ describe('haversine distance', () => {
         );
         expect(km).toBeGreaterThan(0.5);
         expect(km).toBeLessThan(2);
-    });
-});
-
-describe('mock payment provider', () => {
-    it('signs a body and rejects a bad signature', async () => {
-        const intent = await mockProvider.createIntent({ amount: '10.00', orderId: 'o1', attemptId: 7 });
-        expect(intent.providerRef).toBe('mock_7');
-        expect(intent.intentPayload.upiLink).toContain('mock_7');
-
-        const body = JSON.stringify({ providerRef: intent.providerRef, status: 'succeeded' });
-        const parsed = mockProvider.verifyWebhook({ 'x-mock-signature': mockProvider.signBody(body) }, body);
-        expect(parsed.status).toBe('succeeded');
-
-        expect(() => mockProvider.verifyWebhook({}, body)).toThrow(UnauthorizedError);
-        expect(() => mockProvider.verifyWebhook({ 'x-mock-signature': '00' }, body)).toThrow(UnauthorizedError);
-        await expect(mockProvider.fetchStatus('mock_7')).resolves.toEqual({
-            status: 'pending',
-            providerRef: 'mock_7',
-        });
     });
 });
 

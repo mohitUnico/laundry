@@ -1,3 +1,6 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -6,8 +9,33 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localProperties.load(FileInputStream(localPropertiesFile))
+}
+
+val mapsSdkKey = (localProperties.getProperty("MAPS_SDK_KEY") ?: "").trim()
+if (mapsSdkKey.isEmpty()) {
+    throw GradleException(
+        "MAPS_SDK_KEY is missing from android/local.properties. Add the Maps SDK key before building."
+    )
+}
+
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+
+fun keystoreValue(name: String): String? =
+    keystoreProperties.getProperty(name)?.trim()?.takeIf { it.isNotEmpty() }
+
+val hasReleaseKeystore = keystorePropertiesFile.exists() &&
+    listOf("keyAlias", "keyPassword", "storeFile", "storePassword").all { keystoreValue(it) != null }
+
 android {
-    namespace = "com.example.laundry_customer_app"
+    namespace = "com.washbee.customer"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -22,21 +50,40 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.laundry_customer_app"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
+        applicationId = "com.washbee.customer"
         minSdk = maxOf(flutter.minSdkVersion, 21)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = mapsSdkKey
+    }
+
+    signingConfigs {
+        if (hasReleaseKeystore) {
+            create("release") {
+                keyAlias = keystoreValue("keyAlias")
+                keyPassword = keystoreValue("keyPassword")
+                storeFile = file(keystoreValue("storeFile")!!)
+                storePassword = keystoreValue("storePassword")
+            }
+        }
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            if (hasReleaseKeystore) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
+    }
+}
+
+tasks.configureEach {
+    if (name.contains("Release", ignoreCase = true) && !hasReleaseKeystore) {
+        doFirst {
+            throw GradleException(
+                "Release signing key is missing. Create an upload key and android/key.properties before building a release."
+            )
         }
     }
 }
@@ -47,7 +94,7 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
-    
+
     // Firebase
     implementation(platform("com.google.firebase:firebase-bom:34.8.0"))
     implementation("com.google.firebase:firebase-analytics")

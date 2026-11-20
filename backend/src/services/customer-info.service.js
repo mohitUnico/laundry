@@ -1,6 +1,6 @@
 const prisma = require('../config/database');
 const logger = require('../utils/logger');
-const { NotFoundError, ValidationError, AppError } = require('../utils/errors');
+const { NotFoundError, ValidationError, AppError, ConflictError } = require('../utils/errors');
 const { uploadBuffer } = require('./cloudinary-upload.service');
 const { v4: uuidv4 } = require('uuid');
 
@@ -316,6 +316,124 @@ exports.updateCustomerProfile = async (customerId, payload) => {
         });
 
         return updated;
+    });
+};
+
+const ACTIVE_ORDER_STATUSES = [
+    'placed',
+    'pickup_assigned',
+    'picked_up',
+    'submitted_to_cm',
+    'received_by_collection',
+    'submitted_to_services',
+    'services_in_progress',
+    'services_completed',
+    'out_for_delivery',
+];
+
+exports.deleteCustomerAccount = async (customerId) => {
+    assertUuid(customerId, 'customerId');
+
+    return prisma.$transaction(async (tx) => {
+        const customer = await tx.customer.findUnique({
+            where: { customer_id: customerId },
+            select: { customer_id: true },
+        });
+        if (!customer) {
+            throw new NotFoundError('Customer');
+        }
+
+        const activeOrderCount = await tx.order.count({
+            where: {
+                customer_id: customerId,
+                order_status: { in: ACTIVE_ORDER_STATUSES },
+            },
+        });
+        if (activeOrderCount > 0) {
+            throw new ConflictError(
+                'Finish or cancel active orders before deleting your account',
+                'ACCOUNT_HAS_ACTIVE_ORDERS'
+            );
+        }
+
+        await tx.customer.update({
+            where: { customer_id: customerId },
+            data: {
+                is_active: false,
+                email: `deleted+${customerId}@invalid.local`,
+                full_name: 'Deleted user',
+                phone: null,
+                profile_image_url: null,
+                fcm_token: null,
+            },
+        });
+
+        // Orders keep a cart_id with no ON DELETE. Detach them so the cart rows
+        // can be removed without deleting the orders or bills.
+        await tx.order.updateMany({
+            where: { customer_id: customerId, cart_id: { not: null } },
+            data: { cart_id: null },
+        });
+        await tx.cart.deleteMany({
+            where: { customer_id: customerId },
+        });
+        await tx.customerNotification.deleteMany({
+            where: { customer_id: customerId },
+        });
+
+        const addresses = await tx.customerAddress.findMany({
+            where: { customer_id: customerId },
+            select: { address_id: true },
+        });
+        const addressIds = addresses.map((row) => row.address_id);
+
+        let referencedIds = [];
+        if (addressIds.length > 0) {
+            const referencingOrders = await tx.order.findMany({
+                where: {
+                    OR: [
+                        { pickup_address_id: { in: addressIds } },
+                        { delivery_address_id: { in: addressIds } },
+                    ],
+                },
+                select: { pickup_address_id: true, delivery_address_id: true },
+            });
+            const referenced = new Set();
+            for (const order of referencingOrders) {
+                if (addressIds.includes(order.pickup_address_id)) {
+                    referenced.add(order.pickup_address_id);
+                }
+                if (addressIds.includes(order.delivery_address_id)) {
+                    referenced.add(order.delivery_address_id);
+                }
+            }
+            referencedIds = [...referenced];
+        }
+
+        const unusedIds = addressIds.filter((id) => !referencedIds.includes(id));
+        if (referencedIds.length > 0) {
+            await tx.customerAddress.updateMany({
+                where: { address_id: { in: referencedIds } },
+                data: { full_address: 'Deleted', delivery_note: null },
+            });
+        }
+        if (unusedIds.length > 0) {
+            await tx.customerAddress.deleteMany({
+                where: { address_id: { in: unusedIds } },
+            });
+        }
+
+        await tx.refreshToken.updateMany({
+            where: {
+                user_id: customerId,
+                user_type: 'customer',
+                revoked_at: null,
+            },
+            data: { revoked_at: new Date() },
+        });
+
+        logger.info('Customer account deleted', { customerId });
+        return { deleted: true };
     });
 };
 

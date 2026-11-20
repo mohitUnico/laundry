@@ -179,6 +179,10 @@ class CustomerInfoService {
     await _data(() => _api.delete('/customer-info/addresses/$addressId'));
   }
 
+  Future<void> deleteAccount() async {
+    await _data(() => _api.delete('/customer-info/account'));
+  }
+
   Future<Map<String, dynamic>> uploadProfileImage({required File file}) async {
     final form = FormData.fromMap({
       'file': await MultipartFile.fromFile(

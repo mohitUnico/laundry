@@ -90,6 +90,15 @@ router.post(
     customerInfoController.uploadProfileImage
 );
 
+// DELETE /api/v1/customer-info/account
+// Anonymize the authenticated customer. Refuses while an order is still active.
+router.delete(
+    '/account',
+    authenticateJWT,
+    authorize('customer'),
+    customerInfoController.deleteAccount
+);
+
 // GET /api/v1/customer-info/profile
 // Get authenticated customer's profile
 router.get(

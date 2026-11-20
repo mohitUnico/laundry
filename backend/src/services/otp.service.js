@@ -457,6 +457,10 @@ const verifyOtp = async (email, otp, userType, options = {}) => {
         }
 
         if (existingUser) {
+            if (userType === USER_TYPES.CUSTOMER && existingUser.is_active === false) {
+                throw new AuthenticationError('This account has been deleted');
+            }
+
             // Existing user - login complete
             logger.info('Existing user verified', {
                 email,
